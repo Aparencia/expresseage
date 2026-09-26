@@ -1,0 +1,182 @@
+<view class="page">
+  <!-- ── M14 布局：上=取图区（常驻），中=可滚的核对/填写区，下=保存区（常驻）──────────
+       用户实测的痛点是"一屏装不下，滚到保存太远"。三条硬约束决定了这里的写法：
+       ① 可滚区必须是 `<scroll-view>`（`<view>` + overflow 在真机手指滑不动，教训卡 2026-09-19_view上的overflow不能滑.md）
+       ② `<scroll-view>` 竖向滚动要有**确定高度** ⇒ 由 JS 实测上下两条的高度后算出来（见 页面的 measureMid）
+       ③ 「保存」是 `.page` 的**直接子节点**，不在任何条件容器里 ⇒ 列表多长都点得到（r1 的 R-01 同族断链）。
+         唯一的例外是 `notFound`：那一屏没有归属、也就没有任何可存的东西，所以整条操作栏不出现。 -->
+  <view class="top">
+    <view class="error" wx:if="{{errorText}}">{{errorText}}</view>
+
+    <!-- 上游指定的客户已经不存在（刚被删 / 参数不对）：这一屏不给填，说清楚为什么 -->
+    <view class="card" wx:if="{{notFound}}">
+      <view class="section-title">找不到这位客户</view>
+      <!-- 说明文案由零件单源给（`intake-parts.screenOffer().notFoundHint`）：本轮撤掉了常驻建档入口，
+           文案若留旧句就会变成"教人点屏幕上不存在的东西"（这一族错在真机上已经栽过两次） -->
+      <view class="hint">{{notFoundHint}}</view>
+    </view>
+
+    <block wx:if="{{!notFound}}">
+      <!-- ── 客户选择区（M7）：预选只说明"命中依据"，**不显示会话标识本身**（M11） -->
+      <view class="card">
+        <view class="target">
+          <text class="target-label">给谁录</text>
+          <picker class="target-pick" mode="selector" range="{{customerLabels}}" bindchange="onPickCustomer">
+            <view class="target-value" wx:if="{{targetLabel}}">{{targetLabel}}</view>
+            <!-- ③ 未选中 ⇒ **灰字占位**（文案来自零件单源 `NO_TARGET_PLACEHOLDER`；⛔ 不再有"点这里选一位客户"
+                 这种常驻蓝色 CTA）。行仍保持可点 —— 手选是保存时裁决的**第一优先**（人始终高于规则） -->
+            <view class="target-value target-empty" wx:else>{{noTargetPlaceholder}}</view>
+          </picker>
+        </view>
+        <view class="preselect" wx:if="{{preselectNote}}">{{preselectNote}}</view>
+        <!-- ③ 常驻建档入口已撤除（2026-09-25 交互改判：建档只在**保存时归不上**才触发）⇒ 这一屏不再有它。
+             曾经这里挂过一颗 `create-entry`，而"有档案但没选人"这一态没有它 ⇒ 提示指着一颗不存在的按钮（真机第二次失败） -->
+      </view>
+
+      <!-- ── 取图两按钮（M5）：两个来源都只取一张（多张流水线 DESIGN §5 判为不搬） -->
+      <view class="card">
+        <view class="section-title">加一件快递</view>
+        <!-- 站点那句（`stationHint`）带 `!draft.stationName` 守卫：格子有值就不上屏 ⇒ 屏上不可能"既填好又说没认出来" -->
+        <view class="banner">{{banner}}<text wx:if="{{stationHint && !draft.stationName}}">{{stationHint}}</text></view>
+        <view class="start-actions">
+          <button class="btn btn-plain start-btn" bindtap="onChooseFromChat" disabled="{{busy || recognizing}}">从聊天选图</button>
+          <button class="btn btn-plain start-btn" bindtap="onChooseFromAlbum" disabled="{{busy || recognizing}}">相册或拍照</button>
+        </view>
+        <view class="hint">不选图也能录：直接在下面填。识别失败只会有上面这一行提示，不影响保存。</view>
+      </view>
+    </block>
+  </view>
+
+  <!-- 中间可滚区：核对与填写的东西全在这里，高度由 measureMid 实测给出 -->
+  <scroll-view class="mid" scroll-y style="height: {{midHeight}}" wx:if="{{!notFound}}">
+    <!-- ── 单条预填行（识别认到 1 件、或全手填时）────────────────── -->
+    <view class="card" wx:if="{{drafts.length <= 1}}">
+      <view class="field">
+        <text class="label">去哪取 *</text>
+        <input class="input" value="{{draft.stationName}}" data-field="stationName"
+               bindinput="onDraftInput" bindblur="onStationBlur" placeholder="如：菜鸟驿站-3号楼" maxlength="40" />
+        <view class="notice" wx:if="{{stationNotice}}">{{stationNotice}}</view>
+        <picker class="pick" mode="selector" range="{{stationPoints}}" bindchange="onPickStationPoint">
+          <view class="pick-value">从取件点里选一个</view>
+        </picker>
+      </view>
+      <view class="field">
+        <text class="label">取件码 *</text>
+        <input class="input" value="{{draft.pickupCode}}" data-field="pickupCode"
+               bindinput="onDraftInput" placeholder="如：8-2-3021" maxlength="40" />
+      </view>
+      <view class="field">
+        <text class="label">柜号</text>
+        <picker class="pick" mode="selector" range="{{lockerPoints}}" bindchange="onPickLocker">
+          <view class="pick-value" wx:if="{{draft.lockerNo}}">{{draft.lockerNo}}</view>
+          <view class="pick-value pick-empty" wx:else>不知道就留空</view>
+        </picker>
+      </view>
+      <view class="field">
+        <text class="label">运单后 5 位</text>
+        <input class="input" value="{{draft.trackingTail}}" data-field="trackingTail"
+               bindinput="onDraftInput" placeholder="还没取到码、要拿尾号去查时才填" maxlength="20" />
+        <view class="hint">取件码空着、只填这一格时，会记成「尾号12345」并归到清单的「需查明」档。</view>
+      </view>
+    </view>
+
+    <!-- ── 一图多码（M8）：逐条可编辑 + 一键全存 ─────────────────── -->
+    <view class="card" wx:if="{{drafts.length > 1}}">
+      <view class="section-title">这图里 {{drafts.length}} 件（逐条核对后一次存完）</view>
+      <!-- `wx:for-item="row"`：本批（SCOPE M4 单条保存）的模板与裁决层统一把"列表里的这一行"叫 row
+           （下面的 `data-key` / `fromImage` 都从它取）；⛔ 业务字段名一个字没改，只是循环变量名（同 pickup-list 的 `parcel`） -->
+      <view class="draft-row" wx:for="{{drafts}}" wx:for-item="row" wx:key="key">
+        <view class="draft-head">
+          <view class="draft-head-main">
+            <text class="draft-index">第 {{index + 1}} 件</text>
+            <!-- 来源标号（SCOPE M6）：`fromImage` 是 **0 起**下标 ⇒ 人话要 +1。
+                 ⚠️ 这个字段**只有多选批次的行才有**（单张识别/手填的行没有它 = undefined）⇒ 必须挡在 `wx:if` 里，
+                 两条边界都得守：
+                 ① `undefined` 为假 ⇒ 整个节点不建 ⇒ 屏上**不可能**出现「第 NaN 张」或「第 张」（不是靠文本兜底，是没这个节点）；
+                 ② ⛔ 不能写成 `wx:if="{{row.fromImage}}"` —— 0 是**合法值**（第 1 张），那样会把第一张的行标号整条吞掉。 -->
+            <text class="draft-source" wx:if="{{row.fromImage === 0 || row.fromImage}}">第 {{row.fromImage + 1}} 张</text>
+          </view>
+          <!-- 单条保存入口（SCOPE M4）：处理器是 `recognize-flow.js` 里的 `onSaveRow`，行身份走 `data-key`。
+               ⛔ 名字不许改：页面并进方法时按这个字面量绑（改名 = 点了没反应，且 check 抓不到） -->
+          <button class="draft-save" size="mini" data-key="{{row.key}}" bindtap="onSaveRow">存这条</button>
+        </view>
+        <view class="draft-fields">
+          <input class="input draft-code" value="{{row.pickupCode}}" data-key="{{row.key}}"
+                 bindinput="onRowCodeInput" placeholder="取件码" maxlength="40" />
+          <picker class="pick draft-picker" mode="selector" range="{{rowStationPoints}}" data-key="{{row.key}}" bindchange="onRowStationChange">
+            <view class="pick-value" wx:if="{{row.stationName}}">{{row.stationName}}</view>
+            <view class="pick-value pick-empty" wx:else>选去哪取</view>
+          </picker>
+          <picker class="pick draft-locker" mode="selector" range="{{lockerPoints}}" data-key="{{row.key}}" bindchange="onRowLockerChange">
+            <view class="pick-value" wx:if="{{row.lockerNo}}">{{row.lockerNo}}</view>
+            <view class="pick-value pick-empty" wx:else>柜号</view>
+          </picker>
+        </view>
+        <view class="draft-meta">
+          <!-- 拦空保存（R-01）要有**行上**的可视标记：只有顶部红条的话，四件里到底是哪两件还得人去对。
+               判据 = 草稿行自带的 `row.needStation`（r2 的 R2-C06 之后模板里没有规则，见 parcel-drafts.withFlags）-->
+          <text class="row-need-station" wx:if="{{row.needStation}}">⚠ 还没选取件点：这一件存不进去（点上面「选去哪取」）</text>
+          <!-- ❓ 从 `.draft-head` 挪到这一块（诊断区）：head 的右槽给了「存这条」，窄屏上两者并排会被压成两行 -->
+          <text class="draft-unknown" wx:if="{{row.unknown}}">❓ 去哪取没判出来</text>
+          <text class="draft-rule" wx:if="{{row.matched}}">命中依据：{{row.matched}}</text>
+          <text class="draft-raw" wx:if="{{row.stationRaw}}">识别到：{{row.stationRaw}}</text>
+        </view>
+      </view>
+      <!-- 置灰必须带解释，且不能把"没码"这条路堵死（提示行 + 按钮保持可点，函数里再挡） -->
+      <view class="drafts-hint" wx:if="{{draftsReady === 0}}">还没有任何一行有取件码 —— 先逐行补上，再点「全部保存」。</view>
+      <view class="drafts-hint" wx:elif="{{draftsNoCode > 0}}">有 {{draftsNoCode}} 行还没码，本次不会存进去（其余 {{draftsReady}} 行会存）。</view>
+    </view>
+
+    <!-- ── 核对材料：识别原文 + 截图。都只在本页显示，不落盘、不联网 ─────── -->
+    <view class="card" wx:if="{{lines.length}}">
+      <view class="lines-head" bindtap="onToggleLines">
+        <text class="lines-title">识别原文（{{lines.length}} 行）</text>
+        <text class="station-state" wx:if="{{showLines}}">收起</text>
+        <text class="station-state" wx:else>展开</text>
+      </view>
+      <scroll-view class="lines" wx:if="{{showLines}}" scroll-y style="height: 360rpx">
+        <!-- 这份原文每换一张图就**整组替换**、行本身不可点不可改 ⇒ 用 index 作键（这里出现重复文字行的概率
+             比 v1 那页高，`*this` 会撞键；v1 的 R-10 针对的是"会增删行的列表"，不是本区） -->
+        <view class="line" wx:for="{{lines}}" wx:key="index">{{item}}</view>
+      </scroll-view>
+      <view class="hint">这些字只在本页显示，不会存进档案，也不联网。</view>
+    </view>
+
+    <view class="card" wx:if="{{imagePath}}">
+      <image class="preview" src="{{imagePath}}" mode="widthFix" />
+      <view class="hint">截图只在本页显示：不落盘、不上传、不进本地库。</view>
+    </view>
+  </scroll-view>
+
+  <view class="actions" wx:if="{{!notFound}}">
+    <button class="btn btn-plain" bindtap="onCancel">取消</button>
+    <button class="btn" bindtap="onSave">{{drafts.length > 1 ? '全部保存' : '保存'}}</button>
+  </view>
+
+  <!-- 离屏画布：utils/ocr.js 靠它把图片转成 RGBA 像素。
+       id 必须叫 ocr-canvas —— 改名 = 识别整条链路报 IMAGE_DECODE_FAILED（不是"少预填"，是全挂） -->
+  <canvas type="2d" id="ocr-canvas" class="offscreen"></canvas>
+
+  <!-- ── ② 内联新建客户浮层（2026-09-25 用户裁决：不离开这一屏）─────────────────────
+       开合只写 create* 三个键（见 `form-parts.createSheetPatch`）：返回值里没有任何 `draft.*`，
+       所以"打开/取消浮层会不会把已填的站点、取件码、多码列表弄丢"在结构上就不成立。 -->
+  <view class="create-mask" wx:if="{{createOpen}}" bindtap="onCreateCancel"></view>
+  <view class="create-sheet" wx:if="{{createOpen}}">
+    <view class="create-title">新建客户</view>
+    <!-- 保存时裁决为"归不上"才走到这里 ⇒ 先说清**为什么**要建（文案单源，含挡板态"命中多条"的口径；
+         ⛔ 挡板态不许静默挑第一个 —— DESIGN §10：挡住 + 人确认「仍要新建」） -->
+    <view class="create-blocked" wx:if="{{createBlockedText}}">{{createBlockedText}}</view>
+    <view class="create-hint">一行就行：楼栋 宿舍号 称呼。称呼不填也能建（系统按 A/B/C 自动补名，之后能在详情页改）。</view>
+    <input class="create-input" value="{{createLine}}" bindinput="onCreateLineInput"
+           placeholder="如：D4-522 小王" maxlength="60" confirm-type="done" />
+    <view class="create-error" wx:if="{{createError}}">{{createError}}</view>
+    <view class="create-actions">
+      <button class="btn btn-plain" bindtap="onCreateCancel">取消</button>
+      <button class="btn" bindtap="onCreateSubmit">{{createSubmitLabel}}</button>
+    </view>
+    <!-- 「去取会话键」（2026-09-25 用户裁决 A：清单动线也能取键）：**只在真的没有键时**出现
+         （`saveFlowPatch` 判 `NO_KEY` 才写文案）⇒ 不常驻、不指着不存在的东西。
+         点了会离开这一屏（平台限制），回来时由 `?resume=1` 把已填内容接回来（见 session-key-flow.js）。 -->
+    <button class="btn btn-plain" wx:if="{{createKeyActionText}}" bindtap="onFetchSessionKey">{{createKeyActionText}}</button>
+  </view>
+</view>

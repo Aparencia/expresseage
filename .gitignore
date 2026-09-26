@@ -1,0 +1,29 @@
+# 依赖与产物
+node_modules/
+__pycache__/
+*.pyc
+dist/
+build/
+.next/
+coverage/
+.venv/
+venv/
+
+# 环境与密钥（永不提交）
+.env
+.env.local
+*.pem
+*.key
+
+# 系统与编辑器
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log
+
+# 迁移脚本的本地开发快照（跑 up/seed/down 时生成，不进版本库）
+migrations/_devstore*.json
+
+# 微信开发者工具的机器私有配置（每个开发者/机器不同；官方模板同样建议忽略）
+project.private.config.json

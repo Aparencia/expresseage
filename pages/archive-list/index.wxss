@@ -1,0 +1,315 @@
+/* pages/archive-list/index.wxss · 客户档案 */
+/* 类名与 wxml 一一对帐（tools/check.js 第 8 条机械拦"用了没定义"） */
+.page {
+  padding: 32rpx 32rpx 200rpx; /* 底部留白：tabBar + 浮动按钮都不压住最后一行 */
+}
+
+.card {
+  background: #ffffff;
+  border-radius: 16rpx;
+  padding: 28rpx 32rpx;
+  margin-bottom: 20rpx;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 72rpx; /* 行内「＋ 录快件」是点击目标，行本身要撑到可点高度 */
+}
+
+/* 主标识：楼栋 + 宿舍号（用户口径"先找楼栋宿舍，称呼只是备注"） */
+.name {
+  font-size: 34rpx;
+  font-weight: 600;
+  min-width: 0;
+}
+
+.sub {
+  margin-top: 8rpx;
+  font-size: 26rpx;
+  color: #767676; /* 对比度 ≥4.5:1 */
+}
+
+/* 副行里跟在称呼后面的**短键**（本地摘要后 6 位；pick_friend 范围扩展批 / 用户裁决①）。
+   刻意比称呼再淡一档：它是给人核对"这条档案绑的是哪个会话"的辅助信息，不是主标识。 */
+.key-tag {
+  margin-left: 12rpx;
+  font-size: 22rpx;
+  color: #9a9a9a;
+}
+
+.quick-add {
+  font-size: 26rpx;
+  color: #1a5fb4;
+  padding: 22rpx 0 22rpx 32rpx; /* 纵向 26rpx 字高 + 上下 22rpx ≈ 88rpx 触摸盒 */
+  flex-shrink: 0;
+}
+
+/* 行内两颗动作（录快件 / 换绑）的容器：`.row` 是 space-between，三颗子元素直接放会把中间那颗推到行中央 */
+.row-acts {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* 两颗动作挨着的间距（第二颗自己让出左侧留白，省得再写一个专用类） */
+.row-acts .quick-add + .quick-add {
+  padding-left: 24rpx;
+}
+
+.empty {
+  margin-top: 140rpx;
+  text-align: center;
+  color: #767676;
+}
+
+.empty-title {
+  font-size: 32rpx;
+}
+
+.empty-hint {
+  margin-top: 12rpx;
+  font-size: 24rpx;
+}
+
+.error {
+  background: #fdecea;
+  color: #c62828;
+  border-radius: 12rpx;
+  padding: 20rpx 24rpx;
+  margin-bottom: 20rpx;
+  font-size: 26rpx;
+}
+
+/* ── 右下角「＋ 新建」（M3 的唯一手动建档入口）───────────────── */
+.fab {
+  position: fixed;
+  right: 32rpx;
+  bottom: calc(140rpx + env(safe-area-inset-bottom)); /* 140rpx：让开 tabBar 的高度 */
+  background: #1f1f1f;
+  color: #ffffff;
+  font-size: 28rpx;
+  padding: 24rpx 32rpx;
+  border-radius: 48rpx;
+  box-shadow: 0 6rpx 20rpx rgba(0, 0, 0, 0.18);
+  z-index: 20;
+}
+
+/* ── 新建浮层：遮罩与面板是兄弟节点，z-index 决定谁在上 ───────── */
+.sheet-mask {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 30;
+}
+
+.sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #ffffff;
+  border-radius: 24rpx 24rpx 0 0;
+  padding: 28rpx 32rpx calc(32rpx + env(safe-area-inset-bottom));
+  z-index: 31;
+}
+
+.sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 72rpx;
+}
+
+.sheet-title {
+  font-size: 32rpx;
+  font-weight: 600;
+}
+
+/* 可滚区（<scroll-view>；高度由 JS 写进 style，见 index.js 的 SHEET_* 常量说明） */
+.sheet-scroll {
+  width: 100%;
+}
+
+.sheet-line {
+  border: 2rpx solid #d5d5d5;
+  border-radius: 12rpx;
+  padding: 20rpx 24rpx;
+  font-size: 32rpx;
+  margin-top: 12rpx;
+}
+
+.sheet-note {
+  font-size: 22rpx;
+  color: #767676;
+  margin-top: 12rpx;
+}
+
+.sheet-error {
+  font-size: 26rpx;
+  color: #c62828;
+  background: #fdecea;
+  border-radius: 10rpx;
+  padding: 16rpx 20rpx;
+  margin-top: 16rpx;
+}
+
+.sheet-field {
+  display: flex;
+  align-items: center;
+  margin-top: 20rpx;
+}
+
+.sheet-label {
+  width: 130rpx;
+  font-size: 26rpx;
+  color: #767676;
+  flex-shrink: 0;
+}
+
+.sheet-input {
+  flex: 1;
+  border-bottom: 2rpx solid #e5e5e5;
+  font-size: 30rpx;
+  padding: 12rpx 0;
+  min-width: 0;
+}
+
+.sheet-auto {
+  font-size: 22rpx;
+  color: #767676;
+  margin-top: 16rpx;
+}
+
+.sheet-actions {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 28rpx;
+}
+
+.sheet-btn {
+  flex: 1;
+  font-size: 30rpx;
+  border-radius: 12rpx;
+  line-height: 88rpx; /* 官方 button 的高度靠 line-height 撑，88rpx = 达标触摸盒 */
+  margin: 0 8rpx;
+  padding: 0;
+}
+
+.sheet-btn-plain {
+  background: #f2f2f2;
+  color: #1f1f1f;
+}
+
+.sheet-btn-main {
+  background: #1f1f1f;
+  color: #ffffff;
+}
+
+.sheet-chat {
+  padding: 16rpx 18rpx;
+  border-radius: 12rpx;
+  background: #e6f4ea;
+  color: #1a1a1a;
+  font-size: 26rpx;
+  line-height: 1.5;
+  margin-bottom: 12rpx;
+}
+
+/* 取证读数行：小字灰底但**不禁用复制**——真机跑 U-5 时要截图给裁决看（原文已过 maskRoomIds） */
+.sheet-chat-raw {
+  padding: 10rpx 18rpx 16rpx;
+  font-size: 22rpx;
+  line-height: 1.5;
+  color: #555555;
+  word-break: break-all;
+}
+
+/* 完整会话键行（用户裁决①"浮层完整摘要"）：16 位本地摘要，等宽感 + 可换行。
+   ⛔ 只可能是摘要（不可逆）；平台原值永远不该走到这里。 */
+.sheet-key {
+  padding: 0 18rpx 16rpx;
+  font-size: 22rpx;
+  line-height: 1.5;
+  color: #555555;
+  word-break: break-all;
+}
+
+/* 查重命中提示（pick_friend M5）：默认挡住"同一条会话建第二条档案"，但给人两条明确出口。
+   颜色刻意**不用红**（与 .error 区分）：命中是正常结果，只是需要人确认一下，不是出错。 */
+.sheet-dup {
+  padding: 16rpx 18rpx;
+  border-radius: 12rpx;
+  background: #eef3ff;
+  color: #1a1a1a;
+  font-size: 26rpx;
+  line-height: 1.5;
+  margin-bottom: 12rpx;
+  word-break: break-all;
+}
+
+/* 会话区的小文字按钮（「重新选择聊天好友」/「去这条档案」/「仍要新建」）：
+   为什么不用 <button>：这三个都是浮层内的次要动作，套 button 会带上默认边框与整行宽度，把浮层撑变形。
+   触摸盒口径 = `min-height: 88rpx`（24 卡 R-09 实测：原 padding 12rpx + 24rpx×1.4 ≈ **62rpx**，
+   **不到** 88rpx 基线；改成 min-height 之后与站点头/清单行同一口径）。 */
+.sheet-chat-retry {
+  display: inline-flex;         /* 配合 min-height 让触摸盒达标，并让文字垂直居中 */
+  align-items: center;
+  min-height: 88rpx;
+  padding: 0 24rpx;
+  margin: 0 12rpx 12rpx 0;
+  border-radius: 10rpx;
+  border: 2rpx solid #d0d0d0;
+  color: #1f1f1f;
+  font-size: 24rpx;
+  line-height: 1.4;
+}
+
+/* 顶部提示条：档案建好了、但会话标识没被采用这类"部分成功"（与 .error 同一位置，颜色用中性偏警告——
+   这不是失败，是一句必须让人知道的补充） */
+.notice {
+  background: #fff4e5;
+  color: #8a4b00;
+  border-radius: 12rpx;
+  padding: 20rpx 24rpx;
+  margin-bottom: 20rpx;
+  font-size: 26rpx;
+  line-height: 1.6;
+}
+
+/* ── 左滑删除（2026-09-25 详情页批 / SCOPE M6）────────────────────────────
+   按钮铺在行底下、行本身往左移才露出来。位移只写在 CSS 一处（JS 只给 `row-open` 这个类，
+   不重复算一份像素）—— `swipe.js` 的阈值只判"开/关"，两处各算一次位移迟早分叉。 */
+/* 行间距必须挂在包裹层，⛔ 别搬回 .card —— 卡片的外边距会落在包裹层内部（.row-wrap 有
+   overflow:hidden ⇒ 自成 BFC、外边距不外泄）⇒ 包裹层高 = 卡片高 + 间距，而红条用
+   top:0;bottom:0 撑满包裹层 ⇒ 红条比卡片高一条缝，不左滑也常驻露淡红（2026-09-25 真机缺陷③）。 */
+.row-wrap { position: relative; overflow: hidden; border-radius: 16rpx; margin-bottom: 20rpx; }
+.row-wrap .card { position: relative; z-index: 1; transition: transform 0.18s ease; margin-bottom: 0; }
+.row-open .card { transform: translateX(-160rpx); }
+.row-del { position: absolute; top: 0; right: 0; bottom: 0; z-index: 0; display: flex; align-items: center;
+  justify-content: center; width: 160rpx; border-radius: 0 16rpx 16rpx 0; background: #fdecec; color: #a12a2a; font-size: 30rpx; }
+
+/* 回收站入口：只在有已删档案时渲染（`deletedCount > 0`） */
+.recycle-entry { margin: 8rpx 0 120rpx; padding: 24rpx 0; text-align: center; color: #6a6a6a; font-size: 28rpx; }
+
+/* 回收站列表行 */
+.recycle-empty { padding: 40rpx 0; text-align: center; color: #9a9a9a; font-size: 26rpx; }
+.recycle-row { padding: 20rpx 0; border-bottom: 1rpx solid #f0f0f0; }
+.recycle-info { display: flex; flex-direction: column; }
+.recycle-label { font-size: 30rpx; color: #1a1a1a; }
+.recycle-sub { margin-top: 6rpx; color: #9a9a9a; font-size: 24rpx; }
+.recycle-acts { display: flex; gap: 24rpx; margin-top: 16rpx; }
+/* 触摸目标 ≥88rpx：真机上更小的按钮点不准（R-09 实测口径：62 < 88 不合格） */
+.recycle-btn { min-height: 88rpx; line-height: 88rpx; padding: 0 28rpx; border-radius: 12rpx; background: #f0f0f0; color: #1a1a1a; font-size: 28rpx; }
+.recycle-btn-danger { background: #fdecec; color: #a12a2a; }
+
+/* 彻底删除的强确认区（判据在 recycle.js：确认词必须逐字） */
+.purge-box { margin-top: 16rpx; padding: 20rpx; border-radius: 12rpx; background: #fff6e5; }
+.purge-text { color: #8a5a00; font-size: 26rpx; line-height: 1.6; }
+.purge-input { margin-top: 16rpx; padding: 0 16rpx; min-height: 88rpx; border-radius: 12rpx; background: #ffffff; font-size: 28rpx; }
+.purge-acts { display: flex; gap: 20rpx; margin-top: 16rpx; }
+.sheet-btn-danger { background: #a12a2a; color: #ffffff; }

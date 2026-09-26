@@ -1,0 +1,36 @@
+/* pages/customer-detail/index.wxss · 客户详情（与档案页、清单页同一套视觉语言：白卡片 + 灰底 + 黑主按钮） */
+.page { min-height: 100vh; padding: 20rpx 24rpx 60rpx; box-sizing: border-box; background: #f6f6f6; }
+.error { margin-bottom: 16rpx; padding: 18rpx 20rpx; border-radius: 12rpx; background: #fdecec; color: #a12a2a; font-size: 26rpx; }
+.notice { margin-bottom: 16rpx; padding: 18rpx 20rpx; border-radius: 12rpx; background: #eef7ee; color: #2c6b2c; font-size: 26rpx; }
+.loading { padding: 40rpx 0; text-align: center; color: #8a8a8a; font-size: 26rpx; }
+.deleted-bar { margin-bottom: 16rpx; padding: 18rpx 20rpx; border-radius: 12rpx; background: #fff6e5; color: #8a5a00; font-size: 26rpx; }
+
+.card { margin-bottom: 20rpx; padding: 24rpx; border-radius: 16rpx; background: #ffffff; }
+.card-title { display: flex; align-items: center; justify-content: space-between; }
+.card-name { font-size: 34rpx; font-weight: 600; color: #1a1a1a; }
+/* 短键小标签：与档案列表同一形态（`.key-tag`），保证"同一样东西在两屏长得一样" */
+.key-tag { padding: 4rpx 12rpx; border-radius: 999rpx; background: #f0f0f0; color: #6a6a6a; font-size: 22rpx; }
+.key-full { margin-top: 12rpx; color: #4a4a4a; font-size: 24rpx; word-break: break-all; }
+.key-hint { margin-top: 12rpx; color: #9a9a9a; font-size: 24rpx; }
+
+.section-title { margin-bottom: 16rpx; font-size: 28rpx; font-weight: 600; color: #1a1a1a; }
+.field { display: flex; align-items: center; min-height: 88rpx; border-bottom: 1rpx solid #f0f0f0; }
+.label { width: 140rpx; color: #6a6a6a; font-size: 28rpx; }
+.input { flex: 1; font-size: 28rpx; color: #1a1a1a; }
+.empty-line { padding: 16rpx 0; color: #9a9a9a; font-size: 26rpx; }
+
+.station { margin-top: 18rpx; }
+.station-head { display: flex; align-items: baseline; justify-content: space-between; }
+.station-name { font-size: 28rpx; color: #1a1a1a; }
+.station-count { color: #8a8a8a; font-size: 24rpx; }
+.pickup { display: flex; align-items: baseline; justify-content: space-between; padding: 10rpx 0 10rpx 20rpx; }
+.pickup-code { font-size: 30rpx; color: #1a1a1a; }
+.pickup-state { color: #8a8a8a; font-size: 24rpx; }
+
+/* 触摸目标 ≥88rpx：真机上小于这个数的按钮点不准（R-09 的实测口径：62 < 88 就是不合格） */
+.actions { display: flex; gap: 20rpx; margin-top: 24rpx; }
+.btn { flex: 1; min-height: 88rpx; line-height: 88rpx; border-radius: 12rpx; font-size: 30rpx; }
+.btn-main { background: #1a1a1a; color: #ffffff; }
+.btn-plain { background: #f0f0f0; color: #1a1a1a; }
+.btn-danger { background: #fdecec; color: #a12a2a; }
+.hint { margin-top: 18rpx; color: #9a9a9a; font-size: 24rpx; line-height: 1.5; }

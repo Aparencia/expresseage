@@ -1,0 +1,30 @@
+<!-- chatpick/index.wxml · 聊天工具入口页（**独立分包 + Skyline + glass-easel**，只取数不判读）
+     ⚠️ 全部文字都包在 <text> 里，不是风格问题：本页走 Skyline 渲染引擎，而 Skyline 下裸文本节点不保证渲染
+        （webview 里能显示、换引擎就成空白 = 静默白屏）。
+     ⚠️ 自画标题栏：Skyline 页强制 `navigationStyle:"custom"`（工具报错原文要求），系统导航栏没了 ⇒
+        顶部自己留状态栏高度、右侧给胶囊让位（两处尺寸由 JS 读平台值，读不到有保守缺省）。
+     ⛔ 这一屏不显示任何平台原文（errMsg / 返回字段名都可能含会话标识）：能脱敏的代码在主包、分包引不到，
+        所以固定文案 + 把原文交给主包脱敏后显示。取证读数在「用户档案」那一格的建档浮层里看。 -->
+<view class="page">
+  <view class="nav" style="padding-top: {{statusBarPx}}px;">
+    <view class="nav-row" style="padding-right: {{capsuleRightPx}}px;">
+      <text class="nav-title">从聊天建档</text>
+    </view>
+  </view>
+
+  <view class="state state-{{bindState}}"><text>{{bindText}}</text></view>
+  <view class="tip"><text>这一页只负责认出你从哪个会话进来；楼栋、宿舍号、称呼在下一步填。</text></view>
+  <!-- U-7 读数行：内存桥通不通必须看得见（断了是静默失效：这页正常、主包收不到） -->
+  <view class="bridge"><text>{{bridgeText}}</text></view>
+  <!-- U-11 读数行（pick_friend）：这条走 `selectGroupMembers`（官方口径是**明文**数组，且单聊下不弹选择器），
+       与上面那条 `getChatToolInfo` 的**加密**通道互相独立 ⇒ 两行要分别截图 -->
+  <view class="bridge"><text>{{pairText}}</text></view>
+
+  <view class="btn btn-plain" bindtap="onRetry"><text>重新读取当前会话</text></view>
+  <view class="btn btn-plain" bindtap="onEnterChatTool"><text>重新选择要绑定的会话</text></view>
+
+  <view class="foot">
+    <!-- 取到取不到都按得动：不许把用户困在入口页（取不到时照样能手动建档，只是不带会话标识） -->
+    <view class="btn btn-main" bindtap="onGoForm"><text>去建档</text></view>
+  </view>
+</view>

@@ -1,0 +1,90 @@
+/* chatpick/index.wxss · 聊天工具入口页（**独立分包 + Skyline 渲染引擎**）
+   色值与主包三页同一套（`#1a1a1a` 正文 / `#c62828` 错误 / `#fdecea` 错误底）：分包页不是另一套设计，
+   否则同一屏会出现两种灰。触摸目标 ≥88rpx（v1 的无障碍教训）。
+   ⚠️ **刻意自包含**：独立分包是否应用主包 `app.wxss` 是一条未取证的假设（U-7）⇒ 样式一律本地定义。
+   ⚠️ **Skyline 只保留精简 CSS 集**（官方：「CSS 特性在满足基本需求的前提下进行了大幅精简」）⇒
+      这里只用 flex / padding / margin / border-radius / background / color / font-* / position:fixed；
+      不依赖 `display:block`、网格与复杂选择器。文字一律包在 `<text>` 里（见 wxml 注释）。 */
+.page {
+  /* Skyline 下布局引擎以 flex 为默认模型，显式声明列方向，避免"内容堆在一行"的差异 */
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  padding: 0 24rpx 200rpx;
+  box-sizing: border-box;
+  background: #f6f6f6;
+  color: #1a1a1a;
+}
+
+/* 自画标题栏（Skyline 强制 custom 导航，系统栏没了）：行高按胶囊那条基准线 44px 走，
+   状态栏留白与胶囊让位由 WXML 上的 style 注入（尺寸由 JS 读平台值，读不到有缺省） */
+.nav { background: #f6f6f6; }
+.nav-row { height: 44px; display: flex; align-items: center; }
+.nav-title { font-size: 34rpx; font-weight: 600; }
+
+.state {
+  margin-top: 20rpx;
+  padding: 14rpx 18rpx;
+  border-radius: 12rpx;
+  font-size: 26rpx;
+  line-height: 1.5;
+  background: #eeeeee;
+  color: #1a1a1a;
+}
+.state-idle { background: #e8eef7; }
+.state-bound { background: #e6f4ea; }
+.state-failed { background: #fdecea; color: #c62828; }
+.state-unsupported { background: #fff4e5; color: #8a4b00; }
+
+.tip {
+  margin-top: 16rpx;
+  padding: 18rpx;
+  border-radius: 12rpx;
+  background: #ffffff;
+  color: #555555;
+  font-size: 24rpx;
+  line-height: 1.6;
+}
+
+/* U-7 取证读数行：小字灰底，**不禁用复制** —— 真机跑时要截图给裁决看（这一行不含任何会话标识） */
+.bridge {
+  margin-top: 10rpx;
+  font-size: 22rpx;
+  line-height: 1.5;
+  color: #555555;
+  word-break: break-all;
+}
+
+.btn {
+  min-height: 88rpx;
+  padding: 0 28rpx;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12rpx;
+  font-size: 30rpx;
+}
+.btn-plain {
+  margin-top: 16rpx;
+  border: 2rpx solid #1a1a1a;
+  background: #ffffff;
+  color: #1a1a1a;
+}
+.btn-main { background: #1a1a1a; color: #ffffff; }
+/* 刻意**不做** `opacity:.5` 的"进行中"态（r3 的 R3-15）：白字压在五成透明黑上对比度掉到 4.5:1 以下，
+   而吞点击已经由函数里那句 toast 说明了，不需要靠"看起来按不动"来表达 */
+
+/* 「去建档」是本页唯一的主行动，钉在底部：不让它跟着内容滚走（M14 同一条痛点的另一处） */
+.foot {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  gap: 16rpx;
+  padding: 16rpx 24rpx calc(16rpx + env(safe-area-inset-bottom));
+  background: #ffffff;
+  box-shadow: 0 -2rpx 8rpx rgba(0, 0, 0, 0.06);
+}
+.foot .btn { flex: 1; margin-top: 0; }

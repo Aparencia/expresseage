@@ -1,0 +1,51 @@
+{
+  "pages": [
+    "pages/pickup-list/index",
+    "pages/archive-list/index",
+    "pages/customer-detail/index",
+    "pages/recognize/index"
+  ],
+  "tabBar": {
+    "color": "#8a8a8a",
+    "selectedColor": "#1a1a1a",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "black",
+    "list": [
+      {
+        "pagePath": "pages/pickup-list/index",
+        "text": "取件清单"
+      },
+      {
+        "pagePath": "pages/archive-list/index",
+        "text": "用户档案"
+      }
+    ]
+  },
+  "window": {
+    "navigationBarTitleText": "代取台账 v2",
+    "navigationBarBackgroundColor": "#ffffff",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#f6f6f6"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json",
+  "lazyCodeLoading": "requiredComponents",
+  "subPackages": [
+    {
+      "root": "chatpick",
+      "independent": true,
+      "renderer": "skyline",
+      "componentFramework": "glass-easel",
+      "pages": [
+        "index"
+      ]
+    }
+  ],
+  "chatTools": [
+    {
+      "root": "chatpick",
+      "entryPagePath": "index",
+      "desc": "在客户单聊里直接建一位客户的档案"
+    }
+  ]
+}

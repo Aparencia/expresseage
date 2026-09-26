@@ -1,0 +1,7 @@
+{
+  "usingComponents": {},
+  "renderer": "skyline",
+  "componentFramework": "glass-easel",
+  "navigationStyle": "custom",
+  "navigationBarTitleText": "从聊天建档"
+}

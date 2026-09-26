@@ -1,0 +1,2 @@
+# 占位文件：让空目录能进 git（空目录 clone 后会消失）。
+# 首次内容由 40 卡产出：docs/archive/<日期>/（specs 快照 + TECH_DEBT 滚动，用 git mv 保历史）。

@@ -1,0 +1,147 @@
+<view class="page">
+  <view class="error" wx:if="{{errorText}}">{{errorText}}</view>
+  <!-- 顶部提示条：一次"档案建好了但会话标识没被采用"这类必须让人看见的事（R3-05：不静默跳走） -->
+  <view class="notice" wx:if="{{notice}}">{{notice}}</view>
+
+  <view class="empty" wx:if="{{isEmpty && !errorText}}">
+    <view class="empty-title">还没有客户档案</view>
+    <view class="empty-hint">点右下角「＋ 新建」，把客户发来的「D4-522 小王」整行粘进去就行</view>
+  </view>
+
+  <!-- 档案行（SCOPE §7 元素级）：主标识 = 楼栋 + 宿舍号，副行 = 称呼。
+       ⛔ 不显示"待取 N"、⛔ 不显示 id（M9 负向判据：id 只在 data-* 里流转，绝不上屏）
+       2026-09-25 详情页批：整行可点（进详情）＋ 右→左划露出「删除」（用户裁决③；判据在 `swipe.js`） -->
+  <view class="row-wrap {{swipeId === item.id ? 'row-open' : ''}}"
+        wx:for="{{customers}}" wx:key="id"
+        data-id="{{item.id}}"
+        bindtouchstart="onRowTouchStart" bindtouchend="onRowTouchEnd">
+    <!-- 删除按钮铺在行底下：行往左移才露出来（位移由 `.row-open .card` 给，不在 JS 里再算一份） -->
+    <view class="row-del" data-id="{{item.id}}" catchtap="onRowDelete">删除</view>
+    <view class="card" data-id="{{item.id}}" bindtap="onOpenDetail">
+      <view class="row">
+        <!-- 主行 = 单源标签（楼栋 宿舍 + 称呼；空称呼派生名自带 A/B/C ⇒ 同宿舍两位可区分） -->
+        <text class="name">{{item.label}}</text>
+        <!-- 行内两颗动作（录快件 / 换绑）包一层：`.row` 是 space-between，三颗子元素直接放会把中间那颗推到行中央 -->
+        <view class="row-acts">
+          <!-- catchtap：阻止冒泡（整行点了进详情页，这两颗不许连带跳走） -->
+          <text class="quick-add" data-id="{{item.id}}" catchtap="onGoRecognize">＋ 录快件</text>
+          <!-- 换绑（pick_friend 批 3 / M7）：平台换了会话 id 之后，把这位客户重新认回来
+               —— 复用同一条"选择聊天好友"流程，选完由页面把新键挂回这条档案 -->
+          <text class="quick-add" data-id="{{item.id}}" catchtap="onRebindKey">换绑</text>
+        </view>
+      </view>
+      <!-- 副行 = 称呼 + **短键**（pick_friend 范围扩展批 / 用户裁决①"列表短键"）。
+           键是**本地摘要**（16 hex、不可逆）⇒ 允许上屏；⛔ 平台原值一个字符都不许出现在这一屏 -->
+      <view class="sub">
+        <text wx:if="{{item.subName}}">{{item.subName}}</text>
+        <text class="key-tag" wx:if="{{item.keyTag}}">{{item.keyTag}}</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 回收站入口（用户裁决④："软删记得留一个真删的入口"）：只在存在已删档案时出现 -->
+  <view class="recycle-entry" wx:if="{{deletedCount > 0}}" bindtap="onOpenRecycle">已删除（{{deletedCount}}）</view>
+
+  <view class="fab" bindtap="onNewCustomer">＋ 新建</view>
+
+  <!-- 新建浮层（M3）：底部上滑。
+       遮罩与面板是**兄弟节点**（不是父子）——若把面板放进遮罩里，点面板会冒泡到遮罩、浮层自己就关了。
+       可滚区必须是 <scroll-view>（真机上 <view> + overflow 滑不动，教训卡 2026-09-19），
+       高度由 JS 按"当前有几块内容"算出来后写进 style（竖向滚动必须给固定高度）。 -->
+  <view class="sheet-mask" wx:if="{{sheetOpen}}" bindtap="onCloseSheet"></view>
+  <view class="sheet" wx:if="{{sheetOpen}}">
+    <view class="sheet-head">
+      <text class="sheet-title">新建客户</text>
+    </view>
+
+    <scroll-view class="sheet-scroll" scroll-y style="height: {{sheetScrollHeight}}">
+      <!-- 会话绑定状态行 + 脱敏取证行：只有从聊天（独立分包 chatpick）进来时才有值。
+           刻意走 reasonText + maskRoomIds：判读与脱敏单源在 utils/chat-tool.js，页面上不出现 id 原值（D3/M11）。 -->
+      <view class="sheet-chat" wx:if="{{chatState}}">{{chatState}}</view>
+      <view class="sheet-chat-raw" wx:if="{{chatEvidence}}">{{chatEvidence}}</view>
+      <!-- 完整会话键（用户裁决①"详情/浮层完整摘要"）：与上面的指纹并列，注明"本地摘要"。
+           ⛔ 这里能出现的只有**摘要**（不可逆）；平台原值仍只活在内存桥里、消费一次即清 -->
+      <view class="sheet-key" wx:if="{{chatKeyDigest}}">{{chatKeyDigest}}</view>
+      <!-- 查重命中（pick_friend M5）：默认**挡住**"同一条会话建第二条档案"，但给人两条明确出口
+           （用户裁决："挡住 + 一颗『仍要新建』的人确认"）。文案里的出口说明与按钮一一对应，不靠猜 -->
+      <view class="sheet-dup" wx:if="{{sheetDupText}}">{{sheetDupText}}</view>
+      <view class="sheet-chat-retry" wx:if="{{sheetDupText}}" bindtap="onGoDup">去这条档案</view>
+      <view class="sheet-chat-retry" wx:if="{{sheetDupText}}" bindtap="onForceNew">仍要新建</view>
+      <view class="sheet-chat-retry" wx:if="{{chatState}}" bindtap="onChatRetry">重新选择聊天好友</view>
+      <input class="sheet-line" value="{{sheetLine}}" bindinput="onSheetInput"
+             placeholder="D4-522 小王" maxlength="60" confirm-type="done" />
+      <view class="sheet-note">楼区 D/X/N/B/C + 栋号 1~10 + 宿舍号（不小于 100）：「D4-522」与「D4522」都认；称呼不填也能建。</view>
+      <view class="sheet-error" wx:if="{{sheetError}}">{{sheetError}}</view>
+
+      <view class="sheet-field">
+        <text class="sheet-label">楼栋</text>
+        <input class="sheet-input" value="{{sheetForm.building}}" data-field="building"
+               bindinput="onSheetFieldInput" maxlength="20" placeholder="如 D4" />
+      </view>
+      <view class="sheet-field">
+        <text class="sheet-label">宿舍号</text>
+        <input class="sheet-input" value="{{sheetForm.dorm}}" data-field="dorm"
+               bindinput="onSheetFieldInput" maxlength="20" placeholder="如 522" />
+      </view>
+      <view class="sheet-field">
+        <text class="sheet-label">称呼</text>
+        <input class="sheet-input" value="{{sheetForm.name}}" data-field="name"
+               bindinput="onSheetFieldInput" maxlength="20" placeholder="可不填，系统按 A/B/C 排" />
+      </view>
+      <view class="sheet-auto" wx:if="{{sheetNameAuto}}">称呼留空 → 系统会按同楼栋同宿舍的顺序自动起名</view>
+    </scroll-view>
+
+    <view class="sheet-actions">
+      <button class="sheet-btn sheet-btn-plain" bindtap="onCloseSheet">取消</button>
+      <button class="sheet-btn sheet-btn-main" bindtap="onSheetSave">建好了</button>
+    </view>
+  </view>
+
+  <!-- 回收站（用户裁决④ + 2026-09-25 真机反馈）：恢复 / 彻底删除 / **全部彻底删除**。
+       ⛔ 彻底删除是全项目唯一不可逆的动作 ⇒ 二次确认**由同一颗按钮点两下承担**
+       （第一下 arm：摊开后果、按钮换字；第二下才真删。判据与文案在 recycle.js，可断言）。
+       ⛔ 动作只由用户在这里点出来；agent 不执行任何删除（AGENTS §4）。 -->
+  <view class="sheet-mask" wx:if="{{recycleOpen}}" bindtap="onCloseRecycle"></view>
+  <view class="sheet" wx:if="{{recycleOpen}}">
+    <view class="sheet-head">
+      <text class="sheet-title">已删除（{{deletedCount}}）</text>
+    </view>
+    <scroll-view class="sheet-scroll" scroll-y style="height: 620rpx">
+      <view class="recycle-empty" wx:if="{{deletedCount === 0}}">回收站是空的</view>
+
+      <!-- 全部彻底删除：比逐条更危险的一颗按钮 ⇒ 把"几位、名下共几件"摊开 -->
+      <view class="recycle-row" wx:if="{{deletedCount > 0}}">
+        <view class="recycle-info">
+          <text class="recycle-label">全部（{{deletedCount}} 位）</text>
+          <text class="recycle-sub">名下共 {{deletedParcelTotal}} 条快件记录</text>
+        </view>
+        <view class="recycle-acts">
+          <text class="recycle-btn recycle-btn-danger" wx:if="{{!purgeAllArmed}}" bindtap="onPurgeAllAsk">{{purgeAllIdleText}}</text>
+          <text class="recycle-btn recycle-btn-danger" wx:else bindtap="onPurgeAllAsk">{{purgeAllArmedText}}</text>
+        </view>
+      </view>
+      <view class="purge-box" wx:if="{{purgeAllArmed}}">
+        <view class="purge-text">{{purgeAllQuestion}}</view>
+      </view>
+
+      <view class="recycle-row" wx:for="{{deletedRows}}" wx:key="id">
+        <view class="recycle-info">
+          <text class="recycle-label">{{item.label}}</text>
+          <text class="recycle-sub">名下 {{item.parcelCount}} 条快件记录</text>
+        </view>
+        <view class="recycle-acts">
+          <text class="recycle-btn" data-id="{{item.id}}" catchtap="onRecycleRestore">恢复</text>
+          <text class="recycle-btn recycle-btn-danger" wx:if="{{purgeArmedId !== item.id}}" data-id="{{item.id}}" catchtap="onPurgeAsk">彻底删除</text>
+          <text class="recycle-btn recycle-btn-danger" wx:else data-id="{{item.id}}" catchtap="onPurgeAsk">{{purgeArmedText}}</text>
+        </view>
+      </view>
+      <view class="purge-box" wx:if="{{purgeArmedId}}">
+        <view class="purge-text">{{purgeQuestion}}</view>
+      </view>
+    </scroll-view>
+
+    <view class="sheet-actions">
+      <button class="sheet-btn sheet-btn-plain" bindtap="onCloseRecycle">关闭</button>
+    </view>
+  </view>
+</view>

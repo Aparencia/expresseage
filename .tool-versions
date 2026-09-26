@@ -1,0 +1,6 @@
+# .tool-versions · 环境版本锁定（与产品版本无关；按 11 卡选型填）
+# agent 与人安装依赖、排查环境时以此为准；改这里的任何一行都算环境变更，需要在归档回执里说明。
+language = node 24.18.0
+package-manager = npm 11.16.0（本项目零依赖，无 node_modules）
+runtime = 微信小程序（基础库由微信客户端提供）；开发用微信开发者工具，版本见 docs/RUNBOOK.md
+database = 无（数据存本机 wx.setStorageSync；不跨设备）

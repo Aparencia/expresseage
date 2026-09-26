@@ -1,0 +1,456 @@
+/* pages/recognize/index.wxss · 添加快递（取图 → 识别 → 核对 → 存） */
+/* 类名与 wxml 一一对帐（tools/check.js 第 8 条机械拦"用了没定义"）。
+   本页刻意**不用** `class="{{cond ? 'a' : 'b'}}"`：那条判据不支持整段插值的 class，
+   带引号的动态值会被解析成垃圾 token 逐个报红；条件态一律走两条静态分支。 */
+/* M14 的三段式骨架（用户实测痛点："一屏装不下，滚到保存太远"）：
+   整页高 = 100%，上区与操作栏按内容自然高，中区 `flex:1` 吃掉剩下的空间。
+   ⚠️ 这里的 `flex:1` 只是**兜底高度** —— `<scroll-view>` 在个别渲染下拿不到 flex 高，
+   所以 JS 还会实测一次并把确定值写进 `style="height: …"`（见 index.js 的 measureMid）。 */
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  box-sizing: border-box;
+  padding: 0;   /* 左右留白由三段各自负责：中区自带 padding，写在这里会被 scroll-view 重复算一次 */
+}
+
+.top {
+  flex: none;
+  padding: 24rpx 32rpx 0;
+}
+
+/* 中间可滚区：`<scroll-view>` 的高度由 JS 实测写进 style，这里的 flex 只是兜底 */
+.mid {
+  flex: 1 1 auto;
+  min-height: 0;          /* flex 子项默认不收缩到 0 以下，缺这行会把父级撑高 ⇒ 滑不动 */
+  box-sizing: border-box;
+  padding: 0 32rpx 24rpx; /* 左右留白在这里给（中区自己带 padding，卡片宽算法与 .page 一致） */
+}
+
+.card {
+  background: #ffffff;
+  border-radius: 16rpx;
+  padding: 28rpx 32rpx;
+  margin-bottom: 20rpx;
+}
+
+.section-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  margin-bottom: 16rpx;
+}
+
+/* ── 客户选择区 ─────────────────────────────────────────── */
+.target {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.target-label {
+  font-size: 26rpx;
+  color: #767676;
+  flex-shrink: 0;
+  margin-right: 24rpx;
+}
+
+.target-pick {
+  flex: 1;
+  min-width: 0;
+}
+
+.target-value {
+  font-size: 32rpx;
+  font-weight: 600;
+  text-align: right;
+  padding: 22rpx 0; /* 纵向撑到 ≈88rpx：这是本页第一个要点中的东西 */
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.target-empty {
+  font-weight: 400;
+  color: #1a5fb4;
+}
+
+/* 会话预选说明行：蓝灰底，与"错误"（红）和"提示"（灰）在颜色上就分开 */
+.preselect {
+  background: #eef4ff;
+  color: #1a3f6e;
+  border-radius: 10rpx;
+  padding: 16rpx 20rpx;
+  margin-top: 16rpx;
+  font-size: 26rpx;
+}
+
+/* ── 状态条 / 取图按钮 ──────────────────────────────────── */
+.banner {
+  background: #f2f6f3;
+  color: #26402f;
+  border-radius: 12rpx;
+  padding: 20rpx 24rpx;
+  font-size: 26rpx;
+  margin-bottom: 20rpx;
+}
+
+.start-actions {
+  display: flex;
+  justify-content: space-between;
+}
+
+.start-btn {
+  flex: 1;
+  margin: 0 8rpx;
+}
+
+.btn {
+  background: #1f1f1f;
+  color: #ffffff;
+  font-size: 30rpx;
+  line-height: 88rpx; /* 官方 button 高度靠 line-height 撑：88rpx = 达标触摸盒 */
+  border-radius: 12rpx;
+  padding: 0 28rpx;
+}
+
+.btn-plain {
+  background: #f2f2f2;
+  color: #1f1f1f;
+}
+
+/* M14：操作栏钉在页面**底部**，不参与滚动 —— 这一屏的痛点就是"滚到保存太远"。
+   白底 + 上分隔线让它视觉上离开卡片流；`env(safe-area-inset-bottom)` 兜全面屏（本页不是 tab 页，没有 tabBar 让位问题）。 */
+.actions {
+  flex: none;
+  display: flex;
+  justify-content: space-between;
+  padding: 16rpx 32rpx calc(16rpx + env(safe-area-inset-bottom));
+  background: #ffffff;
+  box-shadow: 0 -2rpx 8rpx rgba(0, 0, 0, 0.06);
+}
+
+.actions .btn {
+  flex: 1;
+  margin: 0 8rpx;
+}
+
+/* ── 表单项 ─────────────────────────────────────────────── */
+.field {
+  margin-bottom: 24rpx;
+}
+
+.label {
+  display: block;
+  font-size: 26rpx;
+  color: #767676;
+  margin-bottom: 8rpx;
+}
+
+.input {
+  border-bottom: 2rpx solid #e5e5e5;
+  font-size: 32rpx;
+  line-height: 44rpx;   /* 显式行高：本页不写就继承 app.wxss 里 page 的 1.6（=51.2rpx），盒高算不清 */
+  /* ⛔ `min-height` 不能删：`<input>` 是**原生组件**、自带默认最小高 `1.4rem`（≈44.8rpx；官方组件文档属性表未列此项，
+     实测与出处见 https://www.cnblogs.com/iuniko/p/17544732.html ，且 Android 端不复现）。
+     本块是 `box-sizing: border-box` + 上下 `padding 16rpx` ⇒ 不给显式高度时内容盒只剩 ≈11rpx，
+     32rpx 的字会被**垂直裁掉一半**（真机截图 2026-09-25 实录）。
+     同屏的 `.pick-value` 是 `<view>`、没有这个默认最小高 ⇒ 只有下划线式输入被裁 —— 这正是缺陷②的分化线。
+     88rpx 与本页其它控件同一口径（`.btn` / `.pick-value` / `.lines-head` 都是 88rpx）：
+     88 - 32(上下 padding) - 2(下边框) = 54rpx ≥ 行高 44rpx，留 10rpx 余量。 */
+  min-height: 88rpx;
+  padding: 16rpx 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.notice {
+  font-size: 22rpx;
+  color: #1a5fb4;
+  margin-top: 8rpx;
+}
+
+/* 点选器（原生 picker：值域来自 utils/stations.js，页面不自己列清单） */
+.pick {
+  margin-top: 12rpx;
+}
+
+.pick-value {
+  font-size: 28rpx;
+  color: #1f1f1f;
+  background: #f2f2f2;
+  border-radius: 10rpx;
+  padding: 22rpx 24rpx; /* 22+40+22 ≈ 88rpx 触摸盒 */
+}
+
+.pick-empty {
+  color: #767676;
+}
+
+/* ── 一图多码的每条（M8）───────────────────────────────── */
+.draft-row {
+  border-bottom: 1rpx solid #f2f2f2;
+  padding: 20rpx 0;
+}
+
+.draft-row:last-child {
+  border-bottom: none;
+}
+
+.draft-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8rpx;
+}
+
+.draft-index {
+  font-size: 24rpx;
+  color: #767676;
+}
+
+/* 行头左组（序号 + 来源标号）：`.draft-head` 是 space-between ⇒ 左组整体靠左，右槽留给「存这条」。
+   `min-width: 0` 是为了窄屏上"第 9 件 + 第 9 张"变长时**先压这一组**、别把右边那颗按钮挤出屏幕。 */
+.draft-head-main {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+/* 「第 i 张」来源标号（SCOPE M6）。⛔ 只有多选批次的行带 `fromImage` ⇒ 单张识别/手填的行上**整条不出现**
+   （挡在 wxml 的 wx:if 里，这里只管长相：单源无值 → 无节点 → 页面上不存在"第 张"这种半截话）。
+   配色沿用本页 `.preselect` 的蓝灰 = "说明性信息"这一族；⛔ 不用红/橙 —— 那两色在本页表示"要人去处理"
+   （`.row-need-station` / `.drafts-hint`），来源标号只是让人对得上原文，不是待办。 */
+.draft-source {
+  font-size: 22rpx;
+  color: #1a3f6e;
+  background: #eef4ff;
+  border-radius: 6rpx;
+  padding: 2rpx 10rpx;
+  margin-left: 12rpx;
+  flex: none;
+}
+
+/* 行内「存这条」（SCOPE M4）= **次要**动作：主按钮是底部通栏的「全部保存」⇒ 走本页"蓝色文字动作"这一族
+   （同 `.station-state` 的展开/收起），⛔ 不套 `.btn`（那是 88rpx 黑底主按钮口径，每行都顶一颗会抢主按钮的重量）。
+   ⚠️ 两条必须显式覆盖小程序 `button` 的默认样式，否则长相与本页其它控件不同族：
+   ① 默认底色 #f8f8f8 + `::after` 那圈 1px 描边 ⇒ 看着像"灰底套一圈黑边"（本页灰底块是 `.pick-value` 那种无边的）；
+   ② 默认 `display:block` 行高 2.555 ⇒ 会把 `.draft-head` 撑高一倍、每行白白多占十几 rpx。
+   触摸盒仍按本页口径给到 88rpx（`.station-state` 是同一个做法：字小、盒不小）。 */
+.draft-save {
+  flex: none;
+  margin: 0;
+  padding: 0 0 0 24rpx;
+  min-height: 88rpx;
+  line-height: 88rpx;
+  font-size: 26rpx;
+  color: #1a5fb4;
+  background: transparent;
+}
+
+.draft-save::after {
+  border: none;
+}
+
+.draft-unknown {
+  font-size: 24rpx;
+  color: #c62828;
+}
+
+.draft-fields {
+  display: flex;
+  align-items: center;
+}
+
+.draft-code {
+  flex: 2;
+  min-width: 0;
+  font-size: 30rpx;
+}
+
+.draft-picker {
+  flex: 2;
+  min-width: 0;
+  margin-left: 12rpx;
+}
+
+.draft-locker {
+  flex: 1;
+  min-width: 0;
+  margin-left: 12rpx;
+}
+
+.draft-meta {
+  display: flex;
+  flex-direction: column;
+  margin-top: 8rpx;
+}
+
+.draft-rule {
+  font-size: 22rpx;
+  color: #26402f;
+}
+
+.draft-raw {
+  font-size: 22rpx;
+  color: #8a8a8a;
+}
+
+/* 拦空保存的行上标记（R-01）：与 `.draft-unknown`（识别时没判出来 = 出处说明）分两色 ——
+   这条是"不补就存不进去"的可执行动作，用红底压在最上方，别和灰色出处信息混成一片 */
+.row-need-station {
+  font-size: 24rpx;
+  color: #c62828;
+  background: #fdecea;
+  border-radius: 8rpx;
+  padding: 8rpx 12rpx;
+}
+
+.drafts-hint {
+  background: #fff5e6;
+  color: #7a4a00;
+  border-radius: 10rpx;
+  padding: 16rpx 20rpx;
+  margin-top: 16rpx;
+  font-size: 24rpx;
+}
+
+/* ── 识别原文与截图预览（只在本页显示）────────────────── */
+.lines-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 88rpx; /* 整行是"展开/收起"的点击目标 */
+}
+
+.lines-title {
+  font-size: 26rpx;
+}
+
+.station-state {
+  font-size: 26rpx;
+  color: #1a5fb4;
+  padding: 16rpx 0 16rpx 24rpx;
+}
+
+/* 可滚区：必须是 <scroll-view> 且**竖向给固定高度**
+   （教训卡 2026-09-19：<view> + overflow-y:auto 在开发者工具里能滑、真机滑不动）*/
+.lines {
+  border: 1rpx solid #eeeeee;
+  border-radius: 10rpx;
+  padding: 16rpx 20rpx;
+  margin-bottom: 12rpx;
+}
+
+.line {
+  font-size: 24rpx;
+  color: #4a4a4a;
+  padding: 6rpx 0;
+  word-break: break-all;
+}
+
+.preview {
+  width: 100%;
+  border-radius: 12rpx;
+}
+
+/* ── 通用提示 ───────────────────────────────────────────── */
+.hint {
+  font-size: 22rpx;
+  color: #8a8a8a;
+  margin-top: 8rpx;
+}
+
+.error {
+  background: #fdecea;
+  color: #c62828;
+  border-radius: 12rpx;
+  padding: 20rpx 24rpx;
+  margin-bottom: 20rpx;
+  font-size: 26rpx;
+}
+
+/* 离屏画布：utils/ocr.js 靠它把图片转成 RGBA 像素喂给 VisionKit。
+   **id 必须是 ocr-canvas**（buildCanvasFrame 里写死的选择器），改名 = 识别全挂 IMAGE_DECODE_FAILED。
+   不能用 display:none（节点会被销毁、取不到 canvas），所以移出可视区域。 */
+.offscreen {
+  position: fixed;
+  left: -9999rpx;
+  top: -9999rpx;
+  width: 10rpx;
+  height: 10rpx;
+}
+
+/* ── ② 内联新建客户浮层（2026-09-25 范围扩展批）───────────────────────────────
+   本页局部样式：档案页那套 `.sheet-*` 是**那一页的**零件，跨页复用类名会让"改一处影响两页"（AGENTS §2.2）。
+   ⚠️ `.create-input` 必须显式给 `line-height` + `min-height`：`<input>` 是原生组件、自带默认最小高
+   （1.4rem ≈ 44.8rpx），配上 `box-sizing:border-box` 的上下 padding 会把内容盒压到只剩十几 rpx、
+   把字**垂直裁掉一半**（2026-09-25 真机截图实录，同一页 `.input` 已修过同款）。 */
+.create-blocked {
+  margin-top: 16rpx;
+  padding: 16rpx 20rpx;
+  border-radius: 12rpx;
+  background: #fff7e6;
+  color: #8a5a00;
+  font-size: 26rpx;
+  line-height: 40rpx;
+}
+
+.create-mask {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 20;
+}
+
+.create-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #ffffff;
+  border-radius: 24rpx 24rpx 0 0;
+  padding: 28rpx 32rpx calc(28rpx + env(safe-area-inset-bottom));
+  z-index: 21;
+}
+
+.create-title {
+  font-size: 34rpx;
+  font-weight: 600;
+}
+
+.create-hint {
+  font-size: 22rpx;
+  color: #8a8a8a;
+  margin-top: 10rpx;
+  line-height: 1.5;
+}
+
+.create-input {
+  border-bottom: 2rpx solid #e5e5e5;
+  font-size: 32rpx;
+  line-height: 44rpx;
+  min-height: 88rpx;
+  padding: 16rpx 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.create-error {
+  color: #c62828;
+  font-size: 26rpx;
+  margin-top: 12rpx;
+  line-height: 1.5;
+}
+
+.create-actions {
+  display: flex;
+  margin-top: 24rpx;
+}
+
+.create-actions .btn {
+  flex: 1;
+  margin: 0 8rpx;
+}

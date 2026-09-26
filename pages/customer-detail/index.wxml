@@ -1,0 +1,70 @@
+<!-- pages/customer-detail/index.wxml · 客户详情（SCOPE M1~M5）
+     ⛔ 这一屏只许出现：人话字段 + 摘要（短键/完整摘要）+ 快件码。
+     平台原值、档案 id 都不上屏（id 只在 URL 与 data-* 里流转，M9 负向判据） -->
+<view class="page">
+  <view class="error" wx:if="{{errorText}}">{{errorText}}</view>
+  <view class="notice" wx:if="{{notice}}">{{notice}}</view>
+
+  <view class="loading" wx:if="{{loading}}">正在读这条档案…</view>
+
+  <block wx:if="{{!loading && !errorText}}">
+    <!-- 已删除横幅：这条档案在回收站里（恢复按钮就在下面） -->
+    <view class="deleted-bar" wx:if="{{isDeleted}}">这条档案已删除（在回收站里）—— 恢复后才会回到列表</view>
+
+    <view class="card">
+      <view class="card-title">
+        <text class="card-name">{{header}}</text>
+        <text class="key-tag" wx:if="{{keyShort}}">{{keyShort}}</text>
+      </view>
+      <!-- 会话键（用户裁决①）：短键在标题旁，完整摘要在这里；两者都是**本地摘要**（不可逆） -->
+      <view class="key-full" wx:if="{{keyFull}}">{{keyFull}}</view>
+      <view class="key-hint" wx:if="{{!keyFull}}">这条档案还没绑定会话键（建档时没走"选择聊天好友"）</view>
+    </view>
+
+    <!-- 基本字段（可改，M2）：值域闸与建档同源（保存时走 customer-input 那一行） -->
+    <view class="card">
+      <view class="section-title">基本字段</view>
+      <view class="field">
+        <text class="label">楼栋</text>
+        <input class="input" value="{{form.building}}" data-field="building" bindinput="onFieldInput" maxlength="20" placeholder="如 D4" />
+      </view>
+      <view class="field">
+        <text class="label">宿舍号</text>
+        <input class="input" value="{{form.dorm}}" data-field="dorm" bindinput="onFieldInput" maxlength="20" placeholder="如 522" />
+      </view>
+      <view class="field">
+        <text class="label">称呼</text>
+        <input class="input" value="{{form.name}}" data-field="name" bindinput="onFieldInput" maxlength="20" placeholder="留空则按同楼同宿舍顺序分配" />
+      </view>
+      <view class="field">
+        <text class="label">备注</text>
+        <input class="input" value="{{form.note}}" data-field="note" bindinput="onFieldInput" maxlength="60" placeholder="如：只在晚上取" />
+      </view>
+      <button class="btn btn-main" bindtap="onSave">保存修改</button>
+    </view>
+
+    <!-- 名下快件（M4）：按站点分组，待取数写在站点后面 -->
+    <view class="card">
+      <view class="section-title">名下快件（{{parcelTotal}}）</view>
+      <view class="empty-line" wx:if="{{parcelTotal === 0}}">还没有这个人的快件记录</view>
+      <view class="station" wx:for="{{groups}}" wx:key="stationName">
+        <view class="station-head">
+          <text class="station-name">{{item.stationName}}</text>
+          <text class="station-count">待取 {{item.pending}}</text>
+        </view>
+        <view class="pickup" wx:for="{{item.items}}" wx:for-item="one" wx:key="id">
+          <text class="pickup-code">{{one.pickupCode}}</text>
+          <text class="pickup-state">{{one.stateText}}</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 操作区（用户原话"交互记得做全"）：换绑 / 软删；已删态只给恢复 -->
+    <view class="actions">
+      <button class="btn btn-plain" wx:if="{{!isDeleted}}" bindtap="onRebind">换绑</button>
+      <button class="btn btn-danger" wx:if="{{!isDeleted}}" bindtap="onSoftDelete">删除</button>
+      <button class="btn btn-main" wx:if="{{isDeleted}}" bindtap="onRestore">恢复</button>
+    </view>
+    <view class="hint">删除只是隐藏（可恢复）；要真删请去列表底部的「已删除」里彻底删除。</view>
+  </block>
+</view>

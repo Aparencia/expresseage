@@ -1,0 +1,101 @@
+<view class="page">
+  <!-- M13 快速入库入口：放在列表最前（进这一格第一眼就看到）。
+       刻意**不用 position:fixed**：v1 的教训是自定义滚动容器才谈得上吸顶，普通 `<view>` 上 overflow 不滑
+       （教训卡 2026-09-19_view上的overflow不能滑.md），固定条还要重算 tabBar 与安全区高度 —— 那属于 M14 的布局改造。
+       只有一个客户时录入页会直接带着他；多个客户则进去后要求手选：系统不猜归属（M7 同一条纪律）。 -->
+  <view class="intake-bar">
+    <view class="intake-btn" bindtap="onQuickIntake">＋ 录快件</view>
+  </view>
+
+  <view class="error" wx:if="{{errorText}}">{{errorText}}</view>
+
+  <!-- 「未归类」分组（2026-09-25 用户裁决 A：加占位客户）：取消建档留下的件在这里**看得见、能整批重归**。
+       ⛔ 只存不给出口 = 造一个看不见的黑洞（用户找不到那些件，也就永远归不回去）。
+       类名全部复用既有样式（card/station-head/hint/intake-btn/row/…），不新增 wxss。 -->
+  <view class="card" wx:if="{{unassignedCount > 0}}">
+    <view class="station-head">
+      <view class="station-head-main">
+        <text class="station-name">{{unassignedHead}}</text>
+      </view>
+    </view>
+    <view class="hint">{{unassignedHint}}</view>
+    <picker wx:if="{{reassignLabels.length > 0}}" mode="selector" range="{{reassignLabels}}" bindchange="onReassignPick">
+      <view class="intake-bar"><view class="intake-btn">{{reassignText}}</view></view>
+    </picker>
+    <view class="hint" wx:else>{{reassignText}}</view>
+    <view class="row" wx:for="{{unassignedItems}}" wx:for-item="parcel" wx:key="id">
+      <view class="check-box" data-id="{{parcel.id}}" bindtap="onTogglePickedItem"></view>
+      <view class="row-main">
+        <text class="code">{{parcel.pickupCode}}</text>
+        <text class="side" wx:if="{{parcel.lockerNo}}">{{parcel.lockerNo}}</text>
+        <text class="side" wx:elif="{{parcel.trackingTail}}">尾号 {{parcel.trackingTail}}</text>
+        <text class="who">{{parcel.stationName}}</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 空态：一条记录都没有。文案指出去哪录件（2026-09-25 真机反馈：录入页自己能当场建客户，
+       不必再绕到档案页 ⇒ 文案跟着入口一起改，否则人还是以为"得先去建档"） -->
+  <view class="empty" wx:if="{{isEmpty && !errorText}}">
+    <view class="empty-title">还没有快递</view>
+    <view class="empty-hint">点上方「＋ 录快件」录第一件；还没有客户档案的话，录入页里能当场建一位（不用离开那一屏）</view>
+  </view>
+
+  <!-- 待办区：一个站点一张卡（站名字典序、组内排法全在 utils/aggregate.js，W2） -->
+  <view class="card" wx:for="{{todoGroups}}" wx:key="key">
+    <view class="station-head" data-key="{{item.key}}" bindtap="onToggleStation">
+      <view class="station-head-main">
+        <text class="station-name">{{item.stationName}}</text>
+        <text class="station-count">{{item.count}} 件</text>
+      </view>
+      <text class="station-state" wx:if="{{item.expanded}}">收起</text>
+      <text class="station-state" wx:else>展开</text>
+    </view>
+
+    <block wx:if="{{item.expanded}}">
+      <view class="row" wx:for="{{item.items}}" wx:for-item="parcel" wx:key="id">
+        <!-- 未勾 = 空白方块；已勾 = 实心方块。两条分支各用**静态 class**：
+             `tools/check.js` 第 8 条（class 必须在 wxss 里有定义）不支持整段插值的 class -->
+        <view class="check-box" data-id="{{parcel.id}}" bindtap="onTogglePickedItem"></view>
+        <view class="row-main">
+          <text class="code">{{parcel.pickupCode}}</text>
+          <!-- 柜号与尾号是两条不同线索，同行只出现一个：有柜号说"去哪个柜"，只有尾号说"先拿去查" -->
+          <text class="side" wx:if="{{parcel.lockerNo}}">{{parcel.lockerNo}}</text>
+          <text class="side" wx:elif="{{parcel.trackingTail}}">尾号 {{parcel.trackingTail}}</text>
+          <text class="who">{{parcel.customerName}}</text>
+        </view>
+      </view>
+      <view class="group-empty" wx:if="{{item.count === 0}}">这一站都拿到手了</view>
+    </block>
+  </view>
+
+  <!-- 待办清空但下方还有东西：不能只说"还没有快递"（那会让人以为记录丢了） -->
+  <view class="cleared" wx:if="{{todoEmpty && hasHistory && !errorText}}">
+    没点勾的快递都清完了 —— 下面「已取件」还留着 {{pickedCount}} 件
+  </view>
+
+  <!-- 已取件区（SCOPE S2 的最小版：只分区展示，不做归档/完成分区）-->
+  <view class="card" wx:if="{{pickedItems.length > 0}}">
+    <view class="station-head" bindtap="onTogglePickedSection">
+      <view class="station-head-main">
+        <text class="station-name">已取件</text>
+        <text class="station-count">{{pickedCount}} 件</text>
+      </view>
+      <text class="station-state" wx:if="{{showPicked}}">收起</text>
+      <text class="station-state" wx:else>展开</text>
+    </view>
+    <block wx:if="{{showPicked}}">
+      <view class="row" wx:for="{{pickedItems}}" wx:key="id">
+        <view class="check-box check-box-on" data-id="{{item.id}}" bindtap="onTogglePickedItem"></view>
+        <view class="row-main">
+          <text class="code code-muted">{{item.pickupCode}}</text>
+          <text class="side" wx:if="{{item.lockerNo}}">{{item.lockerNo}}</text>
+          <text class="side" wx:elif="{{item.trackingTail}}">尾号 {{item.trackingTail}}</text>
+          <text class="who">{{item.customerName}}</text>
+          <text class="picked-at" wx:if="{{item.pickedText}}">{{item.pickedText}}</text>
+        </view>
+      </view>
+      <view class="hint">点方块可以退回"没拿到"（勾是拿到手，不是已送达）。</view>
+    </block>
+  </view>
+</view>

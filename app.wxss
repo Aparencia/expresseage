@@ -1,0 +1,8 @@
+/* app.wxss · 全局样式
+   只放跨页面共用的东西；页面自己的样式写在页面 wxss 里，避免全局选择器互相污染。 */
+page {
+  background: #f6f6f6;
+  color: #1f1f1f;
+  font-size: 28rpx;
+  line-height: 1.6;
+}

@@ -1,0 +1,181 @@
+/* pages/pickup-list/index.wxss · 取件清单 */
+/* 类名与 wxml 一一对帐：tools/check.js 第 8 条会机械检查"wxml 用到的 class 必须在本页或 app.wxss 里有定义"，
+   所以这里不靠"看起来差不多"，新增一个类就得同步一行。 */
+.page {
+  padding: 32rpx 32rpx 200rpx; /* 底部留白：tabBar 会盖住最后一张卡的下沿 */
+}
+
+.card {
+  background: #ffffff;
+  border-radius: 16rpx;
+  padding: 28rpx 32rpx;
+  margin-bottom: 20rpx;
+}
+
+/* ── M13 快速入库入口 ──────────────────────────────────────── */
+.intake-bar { display: flex; margin-bottom: 20rpx; }
+
+.intake-btn {
+  flex: 1;
+  min-height: 88rpx;            /* 触摸目标口径与勾选方块同一条 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16rpx;
+  background: #1a1a1a;
+  color: #ffffff;               /* 对 #1a1a1a ≈ 17:1，远高于 4.5:1 */
+  font-size: 30rpx;
+  font-weight: 600;
+}
+
+/* ── 站点头（点整行 = 收起/展开）──────────────────────────────── */
+.station-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 88rpx; /* 本行是点击目标：低于 88rpx（≈44px）手指按不准（v1 的 M6 无障碍教训） */
+}
+
+.station-head-main {
+  display: flex;
+  align-items: baseline;
+  min-width: 0; /* 长站名允许收缩，不把右侧"收起/展开"挤出屏 */
+}
+
+.station-name {
+  font-size: 32rpx;
+  font-weight: 600;
+  margin-right: 16rpx;
+}
+
+.station-count {
+  font-size: 24rpx;
+  color: #767676; /* 对比度 ≥4.5:1（v1 R-11 口径） */
+}
+
+.station-state {
+  font-size: 26rpx;
+  color: #1a5fb4;
+  padding: 16rpx 0 16rpx 24rpx; /* 纵向撑到 ≥88rpx 的可点高度 */
+}
+
+/* ── 记录行 ─────────────────────────────────────────────── */
+.row {
+  display: flex;
+  align-items: center;
+  padding: 18rpx 0;
+  border-bottom: 1rpx solid #f2f2f2;
+}
+
+.row:last-child {
+  border-bottom: none;
+}
+
+/* 勾选方块：**触摸盒 = 40rpx 可见框 + 上下左右各 24rpx padding = 88rpx**（M10 无障碍硬口径）。
+   box-sizing 必须是 content-box，否则 padding 会被算进 40rpx 里、触摸盒缩回 40rpx。 */
+.check-box {
+  width: 40rpx;
+  height: 40rpx;
+  border: 2rpx solid #b8b8b8;
+  border-radius: 8rpx;
+  margin-right: 20rpx;
+  padding: 24rpx;
+  box-sizing: content-box;
+  flex-shrink: 0;
+  background-clip: content-box;
+}
+
+/* 已勾态（只出现在「已取件」区）：深色实心 + 一个内勾提示，颜色不作为唯一区分（无障碍） */
+.check-box-on {
+  border-color: #1f1f1f;
+  background-color: #1f1f1f;
+}
+
+.row-main {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.code {
+  font-size: 32rpx;
+  font-weight: 600;
+  flex-shrink: 0; /* 取件码是主信息，不许被挤没 */
+  margin-right: 16rpx;
+}
+
+.code-muted {
+  color: #767676;
+  font-weight: 400;
+}
+
+/* 柜号 / 尾号：次要线索，小字 */
+.side {
+  font-size: 24rpx;
+  color: #767676;
+  margin-right: 16rpx;
+  flex-shrink: 0;
+}
+
+.who {
+  font-size: 26rpx;
+  color: #1f1f1f;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.picked-at {
+  font-size: 22rpx;
+  color: #8a8a8a;
+  margin-left: 16rpx;
+  flex-shrink: 0;
+}
+
+.group-empty {
+  font-size: 24rpx;
+  color: #767676;
+  padding: 12rpx 0;
+}
+
+/* ── 空态 / 提示 ─────────────────────────────────────────── */
+.empty {
+  margin-top: 140rpx;
+  text-align: center;
+  color: #767676;
+}
+
+.empty-title {
+  font-size: 32rpx;
+}
+
+.empty-hint {
+  margin-top: 12rpx;
+  font-size: 24rpx;
+}
+
+.cleared {
+  background: #eef4ff;
+  color: #1a3f6e;
+  border-radius: 12rpx;
+  padding: 20rpx 24rpx;
+  margin-bottom: 20rpx;
+  font-size: 26rpx;
+}
+
+.error {
+  background: #fdecea;
+  color: #c62828;
+  border-radius: 12rpx;
+  padding: 20rpx 24rpx;
+  margin-bottom: 20rpx;
+  font-size: 26rpx;
+}
+
+.hint {
+  font-size: 22rpx;
+  color: #8a8a8a;
+  padding-top: 12rpx;
+}
