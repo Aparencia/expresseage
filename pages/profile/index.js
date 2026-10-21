@@ -15,6 +15,7 @@ const storage = require('../../utils/storage');
 const enums = require('../../shared/enums');
 const vm = require('./parts/view-model');
 const ui = require('./parts/ui');
+const shareCard = require('./parts/share-card');
 
 const BIND_PAGE = '/pkg-customer/pages/bind/index';
 const CUSTOMER_ORDERS_PAGE = '/pages/customer/orders/index';
@@ -483,14 +484,12 @@ Page({
     });
   },
 
+  // 分享卡判据全在 parts/share-card.js：只带兼职编号，不带昵称/头像/宿舍/尾号（纯件可单测）
   onShareAppMessage() {
-    const card = this.data.partnerCard || {};
-    if (!this.data.isCustomer && !this.data.viewSession && card.partnerNo) {
-      return {
-        title: '我在做校园代取，凭兼职编号找我下单',
-        path: '/pages/role/index?bind=' + encodeURIComponent(card.partnerNo)
-      };
-    }
-    return { title: '校园快递代取', path: '/pages/role/index' };
+    return shareCard.buildShareMessage({
+      isCustomer: this.data.isCustomer,
+      viewSession: this.data.viewSession,
+      partnerCard: this.data.partnerCard
+    });
   }
 });

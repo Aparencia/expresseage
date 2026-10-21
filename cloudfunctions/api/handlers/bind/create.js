@@ -7,9 +7,11 @@
 const { COLLECTIONS } = require('../../shared/collections');
 const enums = require('../../shared/enums');
 const role = require('../../shared/role');
+const ids = require('../../shared/ids');
 const validate = require('../../shared/validate');
 const { partnerPublic } = require('../../db/dto/full');
 const { errors } = require('../../lib/errors');
+const tx = require('../../lib/tx');
 const identity = require('../user/_common');
 const bindCommon = require('../bind/_common');
 
@@ -36,7 +38,9 @@ async function handler(ctx, payload) {
   }
   const codeResult = validate.validatePartnerNo(input.partnerNo);
   if (!codeResult.ok) {
-    throw errors.validation('partnerNo', '兼职编号格式不正确，请核对后重试');
+    // 错前缀同源提示（CONTRACT §3.1 规则 4）：C 开头/DEV 开头/其他格式三句只取 shared/error-copy 单源，
+    // 只描述格式、不暴露该编号是否存在。
+    throw errors.validation('partnerNo', ids.prefixHint(input.partnerNo).message);
   }
   const partner = await ctx.dao.findOne(COLLECTIONS.PARTNERS, { where: { partnerNo: codeResult.canonical } });
   if (!partner || partner.deletedAt || partner.status === enums.PARTNER_STATUS.CLOSED) {
@@ -81,12 +85,13 @@ async function handler(ctx, payload) {
   const nowDate = identity.nowDate(ctx);
   let binding = null;
   try {
-    binding = await ctx.dao.transaction(async (trx) => bindCommon.createBindingInTx(trx, {
+    // roomTag 事务分配（counters 自增 + bindings.add）：并发写冲突有界重试，非冲突错误仍走下方分支。
+    binding = await tx.retryOnConflict(ctx.dao, async (trx) => bindCommon.createBindingInTx(trx, {
       customer,
       partner,
       nowMs,
       nowDate
-    }));
+    }), { requestId: ctx.requestId });
   } catch (error) {
     // 并发重复提交：activeKey 唯一索引兜底；冲突说明同一顾客的 ACTIVE 绑定已存在，读回后幂等返回
     if (!ctx.dao.isDuplicateError(error)) {

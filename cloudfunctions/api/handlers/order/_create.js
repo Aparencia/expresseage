@@ -236,7 +236,7 @@ function buildCreatedEvent(order, context, clientRequestId, itemIndex, nowDate) 
 }
 
 async function findExistingByRequestKey(ctx, requestKey) {
-  return ctx.dao.findOne(COLLECTIONS.orders, { where: { requestKey } });
+  return ctx.dao.findOne(COLLECTIONS.ORDERS, { where: { requestKey } });
 }
 
 async function backfillFailureRecords(ctx, associations) {

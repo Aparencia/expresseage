@@ -38,7 +38,7 @@
     <view class="muted">服务类型：{{servicesText}}</view>
     <view class="muted">服务范围：{{zonesText}}</view>
     <view class="muted" wx:if="{{!preview.acceptingOrders}}">这位兼职暂停接单，绑定后暂时不能下单。</view>
-    <button class="btn btn-primary btn-block" bindtap="onConfirm">{{submitting ? '绑定中…' : '确认绑定'}}</button>
+    <button class="btn btn-primary btn-block" bindtap="onConfirm" disabled="{{readonly}}">{{submitting ? '绑定中…' : '确认绑定'}}</button>
   </view>
 
   <view class="card" wx:if="{{roomTag}}">

@@ -2,6 +2,7 @@
 const partnerApi = require('../../../api/modules/partner');
 const store = require('../../../store/index');
 const customerView = require('../../../utils/customer-view');
+const shareCard = require('../../profile/parts/share-card');
 
 Page({
   data: {
@@ -97,10 +98,12 @@ Page({
     });
   },
 
+  // 分享绑定卡片：判据/encode/path 全部来自 parts/share-card 纯件（单一来源；无编号回通用分享）
   onShareAppMessage() {
-    return {
-      title: '我在做校园代取，凭兼职编号找我下单',
-      path: '/pages/role/index?bind=' + (this.data.partnerNo || '')
-    };
+    return shareCard.buildShareMessage({
+      isCustomer: false,
+      viewSession: !!this.data.session,
+      partnerCard: { partnerNo: this.data.partnerNo || '' }
+    });
   }
 });

@@ -61,22 +61,20 @@ Page({
   },
 
   handleInput(raw) {
-    const idsApi = ids || {};
-    const normalize = typeof idsApi.normalizeInput === 'function' ? idsApi.normalizeInput : String;
-    const parse = typeof idsApi.parseNo === 'function' ? idsApi.parseNo : null;
-    const normalized = normalize(raw);
-    const parsed = parse ? parse(normalized) : { ok: false };
+    const normalized = ids.normalizeInput(raw);
+    const parsed = ids.parseNo(normalized);
     let hint = '';
-    if (normalized && !parsed.ok && typeof idsApi.prefixHint === 'function') {
-      hint = idsApi.prefixHint(normalized) || '';
+    if (normalized && !parsed.ok) {
+      // utils/ids.prefixHint 返回 { reason, message }：页面只显示同源 message（与云端 VALIDATION_FAILED.message 同一句）
+      hint = ids.prefixHint(normalized).message || '';
     }
     this.setData({
       input: String(raw || ''),
-      canonical: parsed && parsed.ok ? (parsed.canonical || normalized) : '',
+      canonical: parsed.ok ? (parsed.canonical || normalized) : '',
       hint: hint,
       error: ''
     });
-    if (parsed && parsed.ok && this.data.preview && this.data.preview.partnerNo !== parsed.canonical) {
+    if (parsed.ok && this.data.preview && this.data.preview.partnerNo !== parsed.canonical) {
       this.setData({ preview: null });
     }
   },

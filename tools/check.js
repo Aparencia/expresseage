@@ -732,16 +732,24 @@ check(28, '绑定方向', 'bind.create 仅 CUSTOMER + 拒自绑；代客单零 b
   const out = [];
   const bindJs = rels('cloudfunctions/api/handlers/bind/').filter((r) => r.endsWith('.js'));
   if (bindJs.length === 0) out.push('handlers/bind 缺失');
-  const roleGuarded = bindJs.some((rel) => {
-    const s = text(rel) || '';
-    return s.indexOf('bind.create') !== -1 && /CUSTOMER/.test(s) && /FORBIDDEN/.test(s);
-  });
-  if (!roleGuarded) out.push('bind.create 未见 CUSTOMER 角色断言 + FORBIDDEN');
-  const selfGuarded = bindJs.some((rel) => {
-    const s = text(rel) || '';
-    return /openid/i.test(s) && /===\s*effectiveOpenid|effectiveOpenid\s*===/.test(s);
-  });
-  if (!selfGuarded) out.push('bind.create 未见自绑拒绝断言');
+  // bind.create 实现文件：去注释后必须同时命中「角色守卫调用 + 真实抛 forbidden + 自绑比较」。
+  // 旧判据只在全文件文本里找 CUSTOMER/FORBIDDEN（文件头注释即可满足）→ 删掉真守卫仍判绿（TD-031 空转）。
+  const bindCreateRel = 'cloudfunctions/api/handlers/bind/create.js';
+  const bindCreateSrc = text(bindCreateRel);
+  if (bindCreateSrc === null) {
+    out.push('bind.create 实现文件缺失: ' + bindCreateRel);
+  } else {
+    const code = F.stripComments(bindCreateSrc);
+    if (!/(?:role\.canInitiateBind\s*\(|ROLES\.CUSTOMER)/.test(code)) {
+      out.push(bindCreateRel + ': 去注释后未见角色守卫（canInitiateBind / ROLES.CUSTOMER 断言）');
+    }
+    if (!/errors\.forbidden\s*\(/.test(code)) {
+      out.push(bindCreateRel + ': 去注释后未见真实抛错 errors.forbidden（注释里的字样不算）');
+    }
+    if (!/partner\.openid\s*===\s*effectiveOpenid/.test(code)) {
+      out.push(bindCreateRel + ': 去注释后未见自绑比较 partner.openid === effectiveOpenid');
+    }
+  }
   const orderJs = rels('cloudfunctions/api/handlers/order/').filter((r) => r.endsWith('.js'));
   orderJs.forEach((rel) => {
     const s = text(rel) || '';

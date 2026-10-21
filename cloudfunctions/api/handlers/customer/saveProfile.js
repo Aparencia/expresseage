@@ -9,6 +9,7 @@ const validate = require('../../shared/validate');
 const { insertUnique, generateCustomerNo } = require('../../lib/id-generator');
 const { customerSelf } = require('../../db/dto/full');
 const { errors } = require('../../lib/errors');
+const tx = require('../../lib/tx');
 const identity = require('../user/_common');
 const uploadCommon = require('../upload/_common');
 const bindCommon = require('../bind/_common');
@@ -192,7 +193,8 @@ async function handler(ctx, payload) {
     if (dormChanged && !partner) {
       throw errors.invalidState('绑定的兼职已不可用，请重新绑定');
     }
-    await ctx.dao.transaction(async (trx) => {
+    // 换宿舍写事务（资料 update + 旧绑定 RELEASED + 新绑定 roomTag）：并发写冲突有界重试
+    await tx.retryOnConflict(ctx.dao, async (trx) => {
       await trx.update(COLLECTIONS.CUSTOMERS, scope.openid, patch);
       if (dormChanged) {
         await bindCommon.releaseBindingInTx(trx, binding, {
@@ -209,7 +211,7 @@ async function handler(ctx, payload) {
           nowDate
         });
       }
-    });
+    }, { requestId: ctx.requestId });
   }
 
   // 资料落库成功后授予 CUSTOMER 角色（首次保存的关键一步；失败让请求整体失败，重试幂等）

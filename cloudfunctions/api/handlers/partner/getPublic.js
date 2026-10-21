@@ -5,6 +5,7 @@
 
 const { COLLECTIONS } = require('../../shared/collections');
 const enums = require('../../shared/enums');
+const ids = require('../../shared/ids');
 const validate = require('../../shared/validate');
 const { partnerPublic } = require('../../db/dto/full');
 const { errors } = require('../../lib/errors');
@@ -15,7 +16,8 @@ async function handler(ctx, payload) {
   const input = payload && typeof payload === 'object' ? payload : {};
   const codeResult = validate.validatePartnerNo(input.partnerNo);
   if (!codeResult.ok) {
-    throw errors.validation('partnerNo', '兼职编号格式不正确，请核对后重试');
+    // 与 bind.create 同源：C 开头/DEV 开头/其他格式三句只取 shared/error-copy（不暴露存在性）。
+    throw errors.validation('partnerNo', ids.prefixHint(input.partnerNo).message);
   }
   const partner = await ctx.dao.findOne(COLLECTIONS.PARTNERS, { where: { partnerNo: codeResult.canonical } });
   if (!partner) {
@@ -25,7 +27,8 @@ async function handler(ctx, payload) {
   if (partnerUser && partnerUser.isTestAccount === true && !scope.testWrite) {
     throw errors.notFound('该兼职编号不存在，请核对后重试');
   }
-  if (partner.status === enums.PARTNER_STATUS.CLOSED) {
+  // 已注销（deletedAt）与 CLOSED 同样不可预览：编号存在性仍是 NOT_FOUND（文案与"不存在"一致）
+  if (partner.deletedAt || partner.status === enums.PARTNER_STATUS.CLOSED) {
     throw errors.notFound('该兼职编号不存在，请核对后重试');
   }
   let bound = false;

@@ -11,7 +11,8 @@ const time = require('../lib/time');
 const audit = require('./audit');
 const errors = require('../lib/errors');
 
-// 切换会话读白名单（两模式共用；其余读动作一律 FORBIDDEN）
+// 切换会话读白名单（READONLY 全量适用：白名单内的读动作放行，其余读动作一律 FORBIDDEN；
+// TEST_WRITE 另外放行 TEST_WRITE_READ_ALLOW，见下）
 const VIEW_READ_WHITELIST = Object.freeze([
   'user.bootstrap',
   'customer.getProfile',
@@ -24,6 +25,11 @@ const VIEW_READ_WHITELIST = Object.freeze([
   'order.imageUrl',
   'config.getPublic'
 ]);
+
+// TEST_WRITE 专属额外读放行（READONLY 不放行）：开发者在测试顾客会话里走绑定流程时，
+// 绑定卡落地/确认页要凭完整 partnerNo 预览兼职公开资料；DATA_MODEL §2.3/§7.6 口径为
+// 「测试账号对真实顾客 NOT_FOUND，仅同一 TEST_WRITE 会话内可预览」——handler 侧 scope.testWrite 闸不动。
+const TEST_WRITE_READ_ALLOW = Object.freeze(['partner.getPublic']);
 
 // TEST_WRITE 白名单外禁止项（业务写动作仍只作用于目标测试账号）
 const TEST_WRITE_BLOCKED_ACTIONS = Object.freeze([
@@ -131,7 +137,8 @@ function assertModeScope(state, mode, spec) {
   if (TEST_WRITE_BLOCKED_ACTIONS.indexOf(action) >= 0) {
     throw errors.forbidden('测试会话不支持该操作');
   }
-  if (!spec.write && !isWhitelistedRead(action)) {
+  const testWriteReadAllow = mode === VIEW_MODE.TEST_WRITE && TEST_WRITE_READ_ALLOW.indexOf(action) >= 0;
+  if (!spec.write && !isWhitelistedRead(action) && !testWriteReadAllow) {
     throw errors.forbidden('测试会话不支持该操作');
   }
 }
