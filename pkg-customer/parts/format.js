@@ -39,6 +39,13 @@ function formatTimeAgo(value, now) {
   return formatDateTime(date);
 }
 
+/** 时刻（HH:mm:ss）：详情「最近更新 HH:mm:ss」用；解析失败返回空串 */
+function clock(value) {
+  const date = toDate(value);
+  if (!date) return '';
+  return pad(date.getHours()) + ':' + pad(date.getMinutes()) + ':' + pad(date.getSeconds());
+}
+
 /** 剩余时长：{text, urgent, expired} */
 function countdown(deadline, now) {
   const end = toDate(deadline);
@@ -66,6 +73,7 @@ module.exports = {
   toDate,
   formatDateTime,
   formatTimeAgo,
+  clock,
   countdown,
   announcementText
 };

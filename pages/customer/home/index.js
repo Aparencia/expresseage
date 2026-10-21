@@ -6,6 +6,7 @@ const store = require('../../../store/index');
 const bindApi = require('../../../api/modules/bind');
 const orderApi = require('../../../api/modules/order');
 const configApi = require('../../../api/modules/config');
+const messageApi = require('../../../api/modules/message');
 const route = require('../../../config/route');
 const format = require('../parts/format');
 
@@ -63,6 +64,7 @@ Page({
     this.guard();
     this.sync();
     this.refresh();
+    this.loadUnread();
   },
 
   onHide() {
@@ -152,6 +154,19 @@ Page({
       if (!this.data.order) return;
       this.setData({ waitedText: '更新于 ' + format.formatTimeAgo(this.data.order.statusUpdatedAt) });
     }, 30000);
+  },
+
+  // 未读消息红点（E13）：message.list({limit:1}) 的 unread → store.badges.messages；失败静默不阻断首页
+  loadUnread() {
+    messageApi.list({ limit: 1 }).then((data) => {
+      const unread = Number(data && data.unread);
+      const messages = isFinite(unread) && unread > 0 ? Math.floor(unread) : 0;
+      const badges = store.snapshot().badges || {};
+      if (badges.messages === messages) return;
+      store.patch({ badges: Object.assign({ workbenchPending: 0 }, badges, { messages: messages }) });
+    }).catch(function ignore() {
+      // 红点读取失败不影响首页浏览，下次 onShow 再试
+    });
   },
 
   clearTicker() {

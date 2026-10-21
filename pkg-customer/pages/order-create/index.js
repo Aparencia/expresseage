@@ -3,12 +3,12 @@
 'use strict';
 
 const store = require('../../../store/index');
-const bindApi = require('../../../api/modules/bind');
-const configApi = require('../../../api/modules/config');
 const orderApi = require('../../../api/modules/order');
 const route = require('../../../config/route');
 const model = require('./parts/model');
 const ocrFlow = require('./parts/ocr-flow');
+const bootstrap = require('./parts/bootstrap');
+const reorder = require('./parts/reorder');
 
 const DETAIL_PAGE = '/pkg-customer/pages/order-detail/index';
 const HOME_PAGE = '/pages/customer/home/index';
@@ -46,13 +46,16 @@ Page({
     resultBatch: false,
     // 提交幂等键（clientRequestId）：进入 Step4 生成、失败重试复用、内容变更重生成、成功清空（UX §4.8）
     submission: null,
+    // 再次下单预填快照（只含 serviceCode/stationId/stationName；见 parts/reorder）
+    reorderPrefill: null,
     // 用户已取消识别改手填：迟到的识别结果不得覆盖手填内容（§4.3.1）
     manualPicked: false
   },
 
-  onLoad() {
+  onLoad(options) {
     const snapshot = store.snapshot();
     const readonly = !!(snapshot.viewContext && snapshot.viewContext.viewMode === 'READONLY');
+    this._reorderNo = reorder.orderNoOf(options);
     this.setData({
       readonly: readonly,
       stations: model.stationOptions(),
@@ -60,8 +63,8 @@ Page({
       profileReady: !!(snapshot.customer && snapshot.customer.profileComplete),
       bindingReady: !!snapshot.binding
     });
-    this.loadConfig();
-    this.loadPartner();
+    this.loadBootstrap();
+    if (this._reorderNo) this.loadReorder();
   },
 
   onShow() {
@@ -70,44 +73,26 @@ Page({
     if (snapshot.activeRole !== 'CUSTOMER') wx.reLaunch({ url: route.ROLE_PAGE });
   },
 
-  loadConfig() {
-    const cached = store.snapshot().config;
-    if (cached && cached.privacyVersion) {
-      this.applyServices(cached);
-      return;
-    }
-    configApi.getPublic().then((config) => {
-      store.patch({ config: config });
-      this.applyServices(config);
-    }).catch(function ignore() {
-      // 配置读取失败时服务类型退化为空列表，页面仍可手填下单
+  // 配置 + 对方公开资料 + 服务类型选项（装配在 parts/bootstrap，页面只 setData）
+  loadBootstrap() {
+    return bootstrap.load().then((state) => {
+      this.setData({
+        partnerPublic: state.partnerPublic,
+        services: state.services,
+        items: bootstrap.serviceIndexes(this.data.items, state.services)
+      });
     });
   },
 
-  loadPartner() {
-    bindApi.getCurrent().then((data) => {
-      const partnerPublic = (data && data.partnerPublic) || null;
-      this.setData({ partnerPublic: partnerPublic });
-      this.applyServices(store.snapshot().config);
-    }).catch(function ignore() {});
-  },
-
-  applyServices(config) {
-    const services = model.serviceOptions(config || {}, this.data.partnerPublic);
-    this.setData({ services: services });
-    if (services.length > 0) {
-      const items = this.data.items.map(function map(item) {
-        if (!item.serviceCode) item.serviceCode = services[0].code;
-        let index = -1;
-        for (let i = 0; i < services.length; i += 1) {
-          if (services[i].code === item.serviceCode) index = i;
-        }
-        item.serviceIndex = index >= 0 ? index : 0;
-        item.serviceCode = services[item.serviceIndex].code;
-        return item;
+  // 再次下单：order.get 归属校验在服务端；失败静默回普通下单，只预填服务类型/站点（不复制取件码等 L3）
+  loadReorder() {
+    return reorder.load({ orderNo: this._reorderNo, getOrder: orderApi.get }).then((prefill) => {
+      if (!prefill) return;
+      this.setData({
+        reorderPrefill: prefill,
+        items: reorder.applyToItems(this.data.items, prefill, this.data.services)
       });
-      this.setData({ items: items });
-    }
+    });
   },
 
   async onPickFile(e) {
@@ -180,7 +165,7 @@ Page({
   },
 
   applyIdentify(result) {
-    const defaults = { serviceCode: (this.data.services[0] || {}).code || '' };
+    const defaults = this.itemDefaults();
     if (result && result.file) {
       this.setData({
         file: result.file,
@@ -237,11 +222,12 @@ Page({
     this.onPickFile({ detail: { files: [this.data.file] } });
   },
 
-  // 新增件的默认值：服务/预约/备注继承第一件；没有第一件时用服务目录第一项
+  // 新增件的默认值：服务/预约/备注继承第一件；没有第一件时用服务目录第一项；
+  // 再次下单场景再叠加预填（服务类型仍启用才用、站点在正式值域才用，取件字段绝不动）
   itemDefaults() {
     const inherited = model.inheritedDefaults(this.data.items);
     if (!inherited.serviceCode) inherited.serviceCode = (this.data.services[0] || {}).code || '';
-    return inherited;
+    return reorder.defaultsFor(inherited, this.data.reorderPrefill, this.data.services);
   },
 
   // §4.3.1 ③：识别/兜底进行中即可「先手动填写」——不阻塞手填，迟到的识别结果不再覆盖

@@ -84,12 +84,23 @@ Page({
   },
 
   markRead() {
-    messageApi.markRead({ scope: 'ALL' }).then((data) => {
+    return messageApi.markRead({ scope: 'ALL' }).then((data) => {
       if (data && data.messageReadAt) store.patch({ messageReadAt: data.messageReadAt });
       this.markAllReadLocally();
+      this.clearBadge();
+      return true;
     }).catch(function ignore() {
       // 水位上报失败不影响浏览，下次进入会再次上报
+      return false;
     });
+  },
+
+  // 全部已读后红点归零（E13 / UX §8.2）：badges.messages 是首页铃铛红点的唯一来源
+  clearBadge() {
+    const snapshot = store.snapshot();
+    const badges = snapshot.badges || {};
+    if (!badges.messages) return;
+    store.patch({ badges: Object.assign({ workbenchPending: 0 }, badges, { messages: 0 }) });
   },
 
   markAllReadLocally() {
@@ -113,7 +124,8 @@ Page({
   },
 
   onAllRead() {
-    this.markRead();
-    wx.showToast({ title: '已标为已读', icon: 'none' });
+    this.markRead().then((ok) => {
+      wx.showToast({ title: ok ? '已标为已读' : '标记失败，请稍后重试', icon: 'none' });
+    });
   }
 });

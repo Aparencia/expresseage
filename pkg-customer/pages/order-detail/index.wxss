@@ -5,6 +5,31 @@
   font-weight: 600;
 }
 
+.order-no-row {
+  gap: 16rpx;
+}
+
+.copy-link {
+  color: var(--v4-brand);
+  padding: 4rpx 8rpx;
+}
+
+.last-updated {
+  margin: 0 8rpx 16rpx;
+}
+
+.error-bar {
+  border-left: 6rpx solid var(--v4-warning);
+}
+
+.notice-bar {
+  background: #FFF8E6;
+}
+
+.notice-text {
+  color: var(--v4-readonly-text);
+}
+
 .progress {
   margin-top: 24rpx;
 }
@@ -29,6 +54,14 @@
   background: var(--v4-customer);
 }
 
+.progress-dot.exception {
+  background: var(--v4-danger);
+}
+
+.progress-dot.cancelled {
+  background: #C9CED6;
+}
+
 .progress-label {
   font-size: 22rpx;
   color: var(--v4-text-3);
@@ -41,6 +74,34 @@
 
 .progress-label.done {
   color: var(--v4-brand);
+}
+
+.progress-label.exception {
+  color: var(--v4-danger);
+  font-weight: 600;
+}
+
+.progress-label.cancelled {
+  color: var(--v4-text-3);
+}
+
+.progress-branch {
+  margin-top: 16rpx;
+  padding: 12rpx 16rpx;
+  border-radius: 8rpx;
+  background: var(--v4-line);
+}
+
+.progress-branch.exception {
+  background: #FDECEA;
+}
+
+.progress-branch.cancelled {
+  background: #F0F2F5;
+}
+
+.branch-label {
+  margin-bottom: 4rpx;
 }
 
 .order-section .line {
@@ -64,6 +125,20 @@
   margin-bottom: 20rpx;
 }
 
+.cancel-guide {
+  margin-top: 8rpx;
+  line-height: 1.5;
+}
+
+.exception-card {
+  background: #FDECEA;
+}
+
+.image-note {
+  max-width: 420rpx;
+  text-align: right;
+}
+
 .message-item {
   padding: 12rpx 0;
   border-bottom: 1rpx solid var(--v4-line);
@@ -80,6 +155,10 @@
 .message-input-row {
   margin-top: 20rpx;
   gap: 16rpx;
+}
+
+.archive-note {
+  margin-top: 12rpx;
 }
 
 .event-item {

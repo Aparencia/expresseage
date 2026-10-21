@@ -93,6 +93,11 @@ function makeItem(partial, defaults) {
   item.checked = true;
   item.serviceCode = def.serviceCode || '';
   item.serviceIndex = typeof def.serviceIndex === 'number' ? def.serviceIndex : 0;
+  // 再次下单只预填站点（取件码/尾号/柜号绝不继承）；识别已命中的站点优先，不覆盖
+  if (!item.stationId && def.stationId) {
+    item.stationId = def.stationId;
+    item.stationName = def.stationName || stationName(def.stationId);
+  }
   // 每件独立预约/备注（UX §3.7/§4.4）；新增件默认继承第一件，第一件默认尽快/空备注
   item.appointType = def.appointType || 'ASAP';
   item.slotIndex = typeof def.slotIndex === 'number' ? def.slotIndex : -1;

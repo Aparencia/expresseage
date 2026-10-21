@@ -660,10 +660,10 @@ api(event):
 | :-- | :-- | :-- | :-- | :-- |
 | `order.create` | 顾客：`{parcel,serviceCode,appoint,note?,ticket,image}`；兼职 guest：同上+`{guest}` → `{orderNo,order,duplicated?}` | 顾客（本人/资料完整/ACTIVE 绑定）或兼职（ACTIVE/服务范围/guest） | `orders.requestKey`；20 单/日 | `INVALID_STATE`/`VALIDATION_FAILED`/`PARTNER_CLOSED`/`NOT_FOUND`（票据） |
 | `order.createBatch` | `{items:[{parcel,serviceCode,appoint,note?}],ticket,image}`（一图多码≤5） → `{orders[],duplicated?}` | 顾客/兼职（guest） | 每条 `requestKey={identity}:{clientRequestId}:{itemIndex}`；20 单/日（按条计）；**单事务原子创建 N 单** | 同 `order.create`；>5 条或任一非法→`VALIDATION_FAILED`（不建）；`acceptingOrders=false`→`PARTNER_CLOSED`（不建） |
-| `order.get` | `{orderNo}` → `{order,events[]}`（裁剪事件；`order` 含 `customerNo/partnerNo` 快照） | 订单双方/admin/只读视角 | 读 | `FORBIDDEN`/`NOT_FOUND` |
-| `order.listCustomer` | `{status?,keyword?,cursor?,limit?}` → `{list,nextCursor}` | 本人（customerId=me） | 读 | `FORBIDDEN` |
+| `order.get` | `{orderNo}` → `{order,events[]}`（裁剪事件 `{type,at,actorRole,note}`；`order` 含 `customerNo/partnerNo` 快照、服务端动作条 `actions[]{key,label}`、`image{hasImage,cleaned}`） | 订单双方/admin/只读视角 | 读 | `FORBIDDEN`/`NOT_FOUND` |
+| `order.listCustomer` | `{status?,keyword?,cursor?,limit?}` → `{list,nextCursor,counts:{ongoing,completed,cancelled}}`（`counts` 为全量口径、不受 `status/keyword` 影响、排除软删、`isTest` 隔离） | 本人（customerId=me） | 读 | `FORBIDDEN` |
 | `order.listPartner` | `{view:'workbench'\|'history',status?,from?,to?,keyword?,cursor?,limit?}` → `{list,nextCursor,counts:{submitted,accepted,picked,delivered,exception,todayCompleted}}` | 该兼职（partnerId=me） | 读 | `FORBIDDEN`/`VALIDATION_FAILED` |
-| `order.imageUrl` | `{orderNo}` → `{url,expiresAt}` | 订单双方/只读视角 | 读（URL 不落库） | `FORBIDDEN`/`NOT_FOUND` |
+| `order.imageUrl` | `{orderNo}` → `{url,expiresAt}`（`image.cleanedAt` 已置 → `NOT_FOUND`「截图已按隐私策略删除（完成/取消 7 天后）」） | 订单双方/只读视角 | 读（URL 不落库） | `FORBIDDEN`/`NOT_FOUND` |
 | `order.accept` | `{orderNo,expectedVersion?}` → `{order}` | 该兼职（SUBMITTED；SUSPENDED/CLOSED 不可） | `order_events.requestKey` | `INVALID_TRANSITION`/`PARTNER_CLOSED` |
 | `order.reject` | `{orderNo,reason}` → `{order}` | 该兼职（SUBMITTED；reason 必填） | 同上 | `INVALID_TRANSITION`/`VALIDATION_FAILED` |
 | `order.markPicked` | `{orderNo,batchActionId?,expectedVersion?}` → `{order}` | 该兼职（ACCEPTED；码非空或 DROP_OFF） | 同上 | `INVALID_TRANSITION` |
@@ -678,12 +678,12 @@ api(event):
 | `order.undo` | `{orderNo,batchActionId?}`（批量由客户端逐单调用、共享 batchActionId） → `{order,undoneAction}` | 该兼职（5 秒窗、无后续状态变化；**仅 markPicked/markDelivered**，接单不可撤销） | 同上（同一 undo 动作） | `INVALID_STATE`/`INVALID_TRANSITION` |
 | `order.deleteRecord` | `{orderNo}` → `{deletedByCustomerAt}` | 顾客（仅 COMPLETED 本人单） | 自然幂等 | `INVALID_STATE`/`FORBIDDEN` |
 
-`order.undo` 可撤销集合：`markPicked`→`PICKED_REVERTED`、`markDelivered`→`DELIVERED_REVERTED`；**接单不可撤销**（误接单走 `order.cancel`）；**不存在任何收款/标记已收/撤销收款动作**；批量动作不设 batch 云函数：客户端逐单调用、共享 `batchActionId`、逐单返回并汇总“成功 N/失败 M”（不得把部分成功显示为全部成功）。**v0.9 订单 DTO/隔离**：`order.get/listCustomer/listPartner` 可内联 `counterpart{displayName,avatarFileId?}`（**仅当前 ACTIVE 绑定关系内**；解绑/停用/注销后不再返回，历史单只留编号）；`orders.isTest`/`impersonatedBy` **服务端派生**、客户端传入忽略；真实用户永不返回测试单；测试单在后台以「测试」标签标识；跨测试/真实的 `order.create/createBatch` 一律 `FORBIDDEN`。`order.create` 的 `order` 出参含 `customerNo/partnerNo` 快照（顾客看自己的 `customerNo`、兼职看 `customerNo`；双方看对方编号），但**编号不可用于越权查询**。
+`order.undo` 可撤销集合：`markPicked`→`PICKED_REVERTED`、`markDelivered`→`DELIVERED_REVERTED`；**接单不可撤销**（误接单走 `order.cancel`）；**不存在任何收款/标记已收/撤销收款动作**；批量动作不设 batch 云函数：客户端逐单调用、共享 `batchActionId`、逐单返回并汇总“成功 N/失败 M”（不得把部分成功显示为全部成功）。**v0.9 订单 DTO/隔离**：`order.get/listCustomer/listPartner` 可内联 `counterpart{displayName,avatarFileId?}`（**仅当前 ACTIVE 绑定关系内**；解绑/停用/注销后不再返回，历史单只留编号）；`orders.isTest`/`impersonatedBy` **服务端派生**、客户端传入忽略；真实用户永不返回测试单；测试单在后台以「测试」标签标识；跨测试/真实的 `order.create/createBatch` 一律 `FORBIDDEN`。`order.create` 的 `order` 出参含 `customerNo/partnerNo` 快照（顾客看自己的 `customerNo`、兼职看 `customerNo`；双方看对方编号），但**编号不可用于越权查询**。**批 5 顾客闭环（只增不改语义）**：①`order.get` 的 `order.actions[]` 由服务端按七状态矩阵下发——顾客 `cancel`（SUBMITTED/ACCEPTED；EXCEPTION 依 `exception.fromStatus`）/`confirm`（DELIVERED）/`deleteRecord`（COMPLETED 且未软删）/`reorder`（COMPLETED、CANCELLED）/`message`（进行中五态，终态无），页面只消费不本地猜；②`order.get/listCustomer` 的 `image` 为 `{hasImage,cleaned}`（`cleaned` 只读 `image.cleanedAt`，写入由批 8 cleanup）；③`order.listCustomer` 增 `counts{ongoing,completed,cancelled}`（分组 tab 计数）；④写动作支持包络 `expectedVersion` 乐观锁（与 `version` 不符 → `CONFLICT`，页面刷新后重试）；⑤`order.correct` 在 `NEED_CODE→OK` 补码时事件 `note='兼职已补齐取件码'`（其余更正 `note` 为空，客户端给通用文案）。
 ### 7.6 `message.*` / `upload.*` / `config.*` / `health.*` / `admin.*`
 
 | action | 入参 → 出参 | 权限 | 幂等/限流 | 特有错误 |
 | :-- | :-- | :-- | :-- | :-- |
-| `message.send` | `{orderNo,text,templateCode?}` → `{message}` | 订单双方 | 同一 `clientRequestId` 不重复写；30 条/日/订单 | `VALIDATION_FAILED`（≤200/内容安全）/`FORBIDDEN` |
+| `message.send` | `{orderNo,text,templateCode?}` → `{message}` | 订单双方（**仅进行中五态** `SUBMITTED/ACCEPTED/PICKED/DELIVERED/EXCEPTION`；`COMPLETED` 只读归档、`CANCELLED` 不可留言 → `INVALID_TRANSITION`） | 同一 `clientRequestId` 不重复写；30 条/日/订单 | `VALIDATION_FAILED`（≤200/内容安全）/`FORBIDDEN`/`INVALID_TRANSITION` |
 | `message.list` | 订单留言：`{orderNo,cursor?,limit?}`；消息中心：`{cursor?,limit?}` → `{list,nextCursor,messageReadAt}` | 订单双方/本人消息中心/只读视角 | 读 | `FORBIDDEN`/`NOT_FOUND` |
 | `message.markRead` | `{scope:'ALL'\|'ORDER',orderNo?}` → `{messageReadAt}` | 本人 | 水位只前进（幂等） | `VALIDATION_FAILED` |
 | `upload.prepare` | `{purpose:'TICKET'\|'AVATAR',draftId,contentType,size}` → `{ticket,cloudPath,expiresAt,draftId,purpose}`（TICKET→`orders/{ticket}/image.jpg`；AVATAR→`avatars/{role}/{random}.jpg`） | 顾客/兼职（资料完整+绑定；**头像上传对本人可用、无需绑定**；切换会话按目标测试账号） | 每次新 ticket；TICKET 30 次/日、**AVATAR 5 次/日/人** | `VALIDATION_FAILED`（类型/大小/用途不符）/`INVALID_STATE` |

@@ -8,7 +8,10 @@
       class="tab-item flex-1 center {{activeKey === item.key ? 'tab-active' : ''}}"
       data-key="{{item.key}}"
       bindtap="onTabTap"
-    >{{item.label}}</view>
+    >
+      <text>{{item.label}}</text>
+      <text class="tab-count" wx:if="{{item.count > 0}}">{{item.count > 99 ? '99+' : item.count}}</text>
+    </view>
   </view>
 
   <view class="card" wx:if="{{error}}">
@@ -17,21 +20,23 @@
   </view>
 
   <view wx:if="{{list.length > 0}}">
-    <view
-      wx:for="{{list}}"
-      wx:key="orderNo"
-      class="list-item"
-      data-order-no="{{item.orderNo}}"
-      bindtap="onOrderTap"
-    >
-      <order-row order="{{item}}" />
+    <view wx:for="{{list}}" wx:key="orderNo" class="list-item">
+      <view data-order-no="{{item.orderNo}}" bindtap="onOrderTap">
+        <order-row order="{{item}}" />
+      </view>
+      <button
+        class="btn btn-ghost btn-small reorder-btn"
+        wx:if="{{item.reorderable}}"
+        data-order-no="{{item.orderNo}}"
+        catchtap="onReorderTap"
+      >再次下单</button>
     </view>
   </view>
 
   <empty-state
     wx:if="{{!loading && list.length === 0 && !error}}"
-    text="{{activeKey === 'ONGOING' ? '这里还没有进行中的订单。' : (activeKey === 'DONE' ? '还没有已完成的订单。' : '没有取消过的订单。')}}"
-    action-text="{{activeKey === 'ONGOING' ? '去下单' : '回首页'}}"
+    text="{{emptyText}}"
+    action-text="{{emptyActionText}}"
     bind:action="onEmptyAction"
   />
 

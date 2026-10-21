@@ -349,8 +349,9 @@ function register(h) {
     t.eq([created.data.order.orderNo, created.data.order.statusText !== '', created.data.order.bucket,
       created.data.order.parcel.codeStatusText], [order.orderNo, true, 'submitted', '取件码可用'],
     'A10 DTO 含 orderNo/statusText/bucket/parcel.codeStatusText（页面只渲染不判状态机）');
-    t.eq([created.data.order.image.hasImage, Object.keys(created.data.order.image)], [true, ['hasImage']],
-      'A11 DTO 图片只回 {hasImage:true}（fileId/cloudPath 不出云）');
+    t.eq([created.data.order.image.hasImage, created.data.order.image.cleaned, Object.keys(created.data.order.image)],
+      [true, false, ['hasImage', 'cleaned']],
+      'A11 DTO 图片只回 {hasImage:true, cleaned:false}（fileId/cloudPath 不出云；批5 契约 B 只增 cleaned 字段）');
     t.eq([order.note, order.appoint.type], ['放门口', 'ASAP'], 'A12 note 去首尾空白、appoint ASAP 快照');
     const stationOnly = await apiOf(db, world.customerOpenid).call('order.create', createPayload({
       parcel: { stationName: '西苑一栋南面快递中心', pickupCode: 'B67890' }

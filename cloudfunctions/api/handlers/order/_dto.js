@@ -22,6 +22,9 @@ const ACTION_LABELS = Object.freeze({
   resolve: '解除异常',
   correct: '改取件码',
   cancel: '取消订单',
+  confirm: '确认已收到',
+  deleteRecord: '删除这条记录',
+  reorder: '再次下单',
   message: '留言'
 });
 
@@ -128,6 +131,17 @@ function buildParcelDto(order) {
   };
 }
 
+// 截图可见性（批 5 契约 B）：cleaned=已按隐私策略清理（cleanup 写 image.cleanedAt）；
+// hasImage=有 fileId 且未被清理。只读投影——DTO 不清理、不改写订单，清理只由 cleanup 任务执行。
+function buildImageDto(order) {
+  const image = (order && order.image) || {};
+  const cleaned = !!image.cleanedAt;
+  return {
+    hasImage: typeof image.fileId === 'string' && image.fileId !== '' && !cleaned,
+    cleaned
+  };
+}
+
 function buildDormDto(dorm) {
   if (!dorm || typeof dorm !== 'object') {
     return null;
@@ -195,6 +209,40 @@ function withinUndoWindow(value, nowMs) {
 }
 
 // 底部动作条：由服务端按状态机 + 身份给出（页面只渲染，不自行判断状态机）
+// 顾客侧矩阵（CONTRACT §5 状态表 / UX_CUSTOMER §5.4）：SUBMITTED/ACCEPTED 取消+留言；PICKED 仅留言；
+// DELIVERED 确认已收到+留言；COMPLETED 删除记录(未软删时)+再次下单；CANCELLED 再次下单；
+// EXCEPTION 留言 +（canCustomerCancel 时）取消。终态只读归档，不再给 message（留言矩阵 §5.4）。
+function pushMessageIfOpen(actions, status) {
+  if (!orderState.isTerminal(status)) {
+    pushAction(actions, 'message');
+  }
+}
+
+function buildCustomerActions(actions, order) {
+  const status = order.status;
+  if (status === enums.ORDER_STATUS.SUBMITTED || status === enums.ORDER_STATUS.ACCEPTED) {
+    pushAction(actions, 'cancel');
+    pushMessageIfOpen(actions, status);
+  } else if (status === enums.ORDER_STATUS.PICKED) {
+    pushMessageIfOpen(actions, status);
+  } else if (status === enums.ORDER_STATUS.DELIVERED) {
+    pushAction(actions, 'confirm');
+    pushMessageIfOpen(actions, status);
+  } else if (status === enums.ORDER_STATUS.COMPLETED) {
+    if (!order.deletedByCustomerAt) {
+      pushAction(actions, 'deleteRecord');
+    }
+    pushAction(actions, 'reorder');
+  } else if (status === enums.ORDER_STATUS.CANCELLED) {
+    pushAction(actions, 'reorder');
+  } else if (status === enums.ORDER_STATUS.EXCEPTION) {
+    pushMessageIfOpen(actions, status);
+    if (orderState.canCustomerCancel(order)) {
+      pushAction(actions, 'cancel');
+    }
+  }
+}
+
 function buildActions(order, side, nowMs) {
   const actions = [];
   const status = order.status;
@@ -229,15 +277,10 @@ function buildActions(order, side, nowMs) {
       pushAction(actions, 'correct');
       pushAction(actions, 'cancel');
     }
+    // 兼职侧沿用现有键；终态（COMPLETED/CANCELLED）不再给 message（只读归档）
+    pushMessageIfOpen(actions, status);
   } else if (side === 'CUSTOMER') {
-    if (status === enums.ORDER_STATUS.SUBMITTED || status === enums.ORDER_STATUS.ACCEPTED) {
-      pushAction(actions, 'cancel');
-    } else if (status === enums.ORDER_STATUS.EXCEPTION && orderState.canCustomerCancel(order)) {
-      pushAction(actions, 'cancel');
-    }
-  }
-  if (side === 'PARTNER' || side === 'CUSTOMER') {
-    pushAction(actions, 'message');
+    buildCustomerActions(actions, order);
   }
   return actions;
 }
@@ -317,7 +360,7 @@ async function buildOrderDto(ctx, order, options) {
     cancelledByText: order.cancelledBy ? enums.CANCELLED_BY_LABELS[order.cancelledBy] || '' : '',
     customerNo: textOf(order.customerNo),
     partnerNo: textOf(order.partnerNo),
-    image: { hasImage: !!(order.image && order.image.fileId) },
+    image: buildImageDto(order),
     counterpart,
     actions: withActions ? buildActions(order, side, nowMs) : [],
     version: numberOrZero(order.version),

@@ -47,6 +47,9 @@
 | TD-037 | **`order.create/createBatch` 严格入参白名单的维护成本**：为满足 DATA_MODEL §12 #12（未知键 → `VALIDATION_FAILED`，不静默丢弃），`_create.js` 维护 `CREATE_FIELDS/BATCH_ITEM_FIELDS/CREATE_BATCH_FIELDS` 三份白名单；后续新增下单入参字段必须同步白名单，否则客户端新字段被拒 | 后续扩展下单字段时易漏改导致 `VALIDATION_FAILED` | 新增字段时同步 `_create.js` 白名单 + `tools/selftest-order.js` 字段闸断言；当前接受（严格优于静默丢弃） | 跟踪中 | cloud-orders task-60 回执 + Lead 裁决 2026-10-22 |
 | TD-038 | **AI 配额计数时点**（实现为「允许后、外呼前 +1」，外呼失败/解析失败也占当日次数） | 失败调用也消耗用户当日 5 次额度 | 待产品确认是否改「成功才计数」；当前按实现钉住并被 `selftest-ai` 断言锁行为，改口径需同步 CONTRACT §4.3 与断言 | 开放 | cloud-core task-61 回执 + Lead 裁决 2026-10-22 |
 | TD-039 | **截图上传失败后是否允许无截图手填提交（[D22] 待用户裁决）**：UX_CUSTOMER §4.5 原则句写「OCR/上传失败都可手填提交」；§4.2/§10 上传失败错误表只给「重试」，页面当前要求 `image/ticket` 才能提交；服务端 `orders.image` 可空（DATA_MODEL §2.5） | 上传失败用户是否被完全阻断下单（体验 vs 兼职无图核对） | 已在 `STATE.md` §4 登记 D22 待用户裁决；裁决前保持「必须截图」现状（不做单方面产品变更） | 开放 | Lead 裁决 2026-10-22 |
+| TD-040 | **`order.listCustomer.counts` 用单次 find（`customerId+isTest`，上限 `MAX_LIST_SCAN=500`）计算**：单顾客历史订单 >500 时 `counts` 会按 500 截断（列表本身分页不截断）；口径与 `listPartner` 现有计数同类 | 极端历史量用户的 tab 计数偏小（不影响列表/详情/动作） | 批 6/8 若真实数据量需要精确，改 `ctx.dao.count` 分桶（+7 查询）；当前接受并在 `selftest-order-lifecycle` 锁行为 | 跟踪中 | cloud-orders task-63 回执 + Lead 裁决 2026-10-22 |
+| TD-041 | **详情页写动作（取消/确认/删除/留言）`clientRequestId` 每次调用自生成**：服务端幂等键仍存在，但同一操作人工重试会换键（成功后立即重绘使重复概率低；失败重试由状态机返回 `INVALID_TRANSITION`/`CONFLICT` 兜底，不会重复写同一状态） | 极端"点两次"场景依赖状态机兜底而非幂等重放；不影响数据正确性 | P1 评估页面级操作 id 生命周期（同操作重试同键，批 4 建单 submission id 的同类模式）；当前接受 | 开放 | v3-lifecycle-flow task-64 回执 + Lead 裁决 2026-10-22 |
+| TD-042 | **补码文案 `CODE_FILLED_NOTE='兼职已补齐取件码'` 跨端重复字面量**：云端 `handlers/order/correct.js` 与端侧 `pkg-customer/parts/status-view.js` 各存一份（`shared/**` 冻结、事件 DTO 只传字符串 note；两端套件分别锁文案与解析行为） | 改文案需同时改两处并同步两套断言，存在漂移风险 | 如后续要单源，在 S1 `shared/` 增常量并同步 `cloudfunctions/api/shared/**` 副本（需 Lead 授权冻结变更）；当前由 `selftest-order-lifecycle`（服务端 note）+`selftest-order-customer`（端侧解析）双向断言锁一致 | 跟踪中 | Lead 裁决 2026-10-22 |
 
 
 

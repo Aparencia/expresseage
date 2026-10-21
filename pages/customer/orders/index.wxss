@@ -19,11 +19,23 @@
   background: #EAF4EF;
 }
 
+.tab-count {
+  margin-left: 8rpx;
+  font-size: 22rpx;
+  font-weight: 600;
+  color: var(--v4-brand);
+}
+
 .list-item {
   background: #FFFFFF;
   border-radius: 16rpx;
   margin-bottom: 20rpx;
   padding: 8rpx 24rpx;
+}
+
+.reorder-btn {
+  margin: 0 0 12rpx auto;
+  display: flex;
 }
 
 .btn-small {

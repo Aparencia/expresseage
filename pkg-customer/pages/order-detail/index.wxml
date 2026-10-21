@@ -1,36 +1,61 @@
 <view class="page-body">
   <switch-bar />
 
-  <view class="card" wx:if="{{loading}}">
+  <view class="card" wx:if="{{loading && !order}}">
     <view class="empty-text">加载中…</view>
   </view>
 
-  <view class="card" wx:if="{{error}}">
+  <view class="card" wx:if="{{error && !order}}">
     <view class="muted">{{error}}</view>
     <button class="btn btn-ghost btn-small" bindtap="onRetry">重新加载</button>
     <button class="btn btn-ghost btn-small" bindtap="onBackToList">回到订单列表</button>
   </view>
 
   <block wx:if="{{order}}">
+    <view class="card error-bar" wx:if="{{pollError}}">
+      <view class="muted">{{pollError}}</view>
+      <view class="small" wx:if="{{lastUpdatedText}}">{{lastUpdatedText}}</view>
+    </view>
+    <view class="small last-updated" wx:elif="{{lastUpdatedText}}">{{lastUpdatedText}}</view>
+
+    <view class="card notice-bar" wx:if="{{notice.text}}">
+      <view class="small notice-text">{{notice.text}}</view>
+    </view>
+
     <view class="card">
       <view class="row between">
         <status-pill status="{{order.status}}" />
-        <view class="small">{{order.orderNo}}</view>
+        <view class="row order-no-row">
+          <view class="small">订单号 {{order.orderNo}}</view>
+          <view class="small copy-link" bindtap="onCopyOrderNo">复制</view>
+        </view>
       </view>
       <view class="status-title">{{statusText}}</view>
+      <view class="subtitle" wx:if="{{statusDesc}}">{{statusDesc}}</view>
       <view class="muted" wx:if="{{waitingHint}}">{{waitingHint}}</view>
       <view class="progress row">
-        <view wx:for="{{progress}}" wx:key="label" class="progress-step flex-1 center">
+        <view wx:for="{{progress.steps}}" wx:key="label" class="progress-step flex-1 center">
           <view class="progress-dot {{item.state}}"></view>
           <view class="progress-label {{item.state}}">{{item.label}}</view>
         </view>
       </view>
+      <view class="progress-branch {{progress.mode}}" wx:if="{{progress.branchText}}">
+        <view class="small branch-label" wx:if="{{progress.branchLabel}}">{{progress.branchLabel}}</view>
+        <view class="small">{{progress.branchText}}</view>
+      </view>
+    </view>
+
+    <view class="card exception-card" wx:if="{{exception}}">
+      <view class="section-title">异常·待处理</view>
+      <view class="small" wx:if="{{exception.label}}">{{exception.label}}</view>
+      <view class="muted">{{exception.text}}</view>
     </view>
 
     <view class="card order-section">
       <view class="row between">
         <view class="section-title">取件信息</view>
-        <view class="small" wx:if="{{actions.image}}" bindtap="onViewImage">查看截图</view>
+        <view class="small" wx:if="{{image.canView}}" bindtap="onViewImage">{{image.text}}</view>
+        <view class="small image-note" wx:else>{{image.text}}</view>
       </view>
       <view class="row between line">
         <view class="muted">站点</view>
@@ -38,7 +63,7 @@
       </view>
       <view class="row between line">
         <view class="muted">取件码</view>
-        <view class="flex-1 right">{{order.parcel.pickupCode || (order.parcel.codeStatus === 'NEED_CODE' ? '需查明（兼职正在查码）' : '—')}}</view>
+        <view class="flex-1 right">{{pickupCodeText}}</view>
       </view>
       <view class="row between line">
         <view class="muted">柜号 / 尾号</view>
@@ -58,7 +83,7 @@
       </view>
       <view class="row between line" wx:if="{{order.appoint.type}}">
         <view class="muted">预约</view>
-        <view class="flex-1 right">{{order.appoint.type === 'ASAP' ? '尽快' : (order.appoint.startAt || '')}}</view>
+        <view class="flex-1 right">{{order.appoint.typeText || order.appoint.type}}</view>
       </view>
       <view class="row between line" wx:if="{{order.note}}">
         <view class="muted">备注</view>
@@ -87,10 +112,13 @@
     </view>
 
     <view class="card actions">
-      <button class="btn btn-danger btn-block" wx:if="{{actions.cancel}}" bindtap="onCancelTap">取消订单</button>
-      <button class="btn btn-primary btn-block" wx:if="{{actions.confirm}}" bindtap="onConfirmDeliveryTap">确认已收到</button>
-      <button class="btn btn-ghost btn-block" wx:if="{{actions.deleteRecord}}" bindtap="onDeleteRecordTap">删除这条记录</button>
-      <view class="small" wx:if="{{readonly}}">开发者只读视角不能操作。</view>
+      <button class="btn btn-primary btn-block" wx:if="{{actions.reorder}}" bindtap="onReorderTap">{{actions.labels.reorder}}</button>
+      <button class="btn btn-danger btn-block" wx:if="{{actions.cancel}}" bindtap="onCancelTap">{{actions.labels.cancel}}</button>
+      <button class="btn btn-primary btn-block" wx:if="{{actions.confirm}}" bindtap="onConfirmDeliveryTap">{{actions.labels.confirm}}</button>
+      <button class="btn btn-ghost btn-block" wx:if="{{actions.deleteRecord}}" bindtap="onDeleteRecordTap">{{actions.labels.deleteRecord}}</button>
+      <view class="small" wx:if="{{actions.readonly}}">{{actions.hint}}</view>
+      <view class="small cancel-guide" wx:if="{{cancelGuide}}">{{cancelGuide}}</view>
+      <view class="small" wx:if="{{!actions.cancel && !actions.confirm && !actions.deleteRecord && !actions.reorder && !actions.message && !actions.readonly}}">这条订单暂时没有可执行的操作，有问题可以在下方留言。</view>
     </view>
 
     <view class="card">
@@ -100,7 +128,8 @@
         <view class="message-text">{{item.text}}</view>
         <view class="small">{{item.time}}</view>
       </view>
-      <view class="row message-input-row" wx:if="{{actions.message}}">
+      <view class="small archive-note" wx:if="{{message.archiveText}}">{{message.archiveText}}</view>
+      <view class="row message-input-row" wx:if="{{message.inputVisible}}">
         <input
           class="form-input"
           value="{{messageText}}"

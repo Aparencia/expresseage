@@ -1,6 +1,7 @@
 // handlers/order/correct.js · order.correct：兼职改码/改站点/改柜号/改运单尾号（不改归属、不改状态）
 // 允许状态：SUBMITTED/ACCEPTED/EXCEPTION 全字段；PICKED 仅 lockerNo/trackingTail（CONTRACT §5.1）。
-// 识别来源：任何手改都记 MANUAL、confidence 清空（DATA_MODEL §4.9）；补码 NEED_CODE→OK 记 codeStatusChanged。
+// 识别来源：任何手改都记 MANUAL、confidence 清空（DATA_MODEL §4.9）；补码 NEED_CODE→OK 记 codeStatusChanged，
+// 并在事件 note 落「兼职已补齐取件码」供流水分辨（其它更正留下空串，客户端有通用文案）。
 'use strict';
 
 const enums = require('../../shared/enums');
@@ -9,6 +10,7 @@ const { errors } = require('../../lib/errors');
 const common = require('./_common');
 
 const PICKED_ALLOWED_FIELDS = ['lockerNo', 'trackingTail'];
+const CODE_FILLED_NOTE = '兼职已补齐取件码';
 
 function applyStationPatch(patch, nextParcel) {
   const stationId = typeof patch.stationId === 'string' ? patch.stationId.trim().toUpperCase() : '';
@@ -114,6 +116,7 @@ module.exports = async function orderCorrect(ctx, payload) {
       return {
         set: { parcel: input.checked.parcel },
         eventType: 'ORDER_CORRECTED',
+        note: input.checked.codeStatusChanged ? CODE_FILLED_NOTE : '',
         payload: eventPayload,
         correctedFields: input.checked.correctedFields
       };

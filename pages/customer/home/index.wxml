@@ -64,7 +64,10 @@
   </button>
 
   <view class="row home-links">
-    <view class="flex-1 center link-item" bindtap="onMessagesTap">消息中心</view>
+    <view class="flex-1 center link-item" bindtap="onMessagesTap">
+      <text>消息中心</text>
+      <view class="red-dot" wx:if="{{vm.badges.messages > 0}}"></view>
+    </view>
     <view class="flex-1 center link-item" bindtap="onProfileTap">我的</view>
   </view>
 </view>

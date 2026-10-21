@@ -34,7 +34,18 @@
 }
 
 .link-item {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
   padding: 24rpx 0;
   color: var(--v4-text-2);
   font-size: 28rpx;
+}
+
+.red-dot {
+  width: 16rpx;
+  height: 16rpx;
+  margin-left: 8rpx;
+  border-radius: 50%;
+  background: var(--v4-danger);
 }

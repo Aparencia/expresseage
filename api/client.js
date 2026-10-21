@@ -97,8 +97,20 @@ function defaultTransport(payload) {
   });
 }
 
-function buildPayload(action, data, explicitRequestId) {
+// expectedVersion 只接受正整数（服务端 shared/validate 同口径）；非法静默丢弃，不改写页面入参。
+function resolveExpectedVersion(value) {
+  if (typeof value !== 'number' || !isFinite(value) || Math.floor(value) !== value || value <= 0) {
+    return null;
+  }
+  return value;
+}
+
+function buildPayload(action, data, explicitRequestId, expectedVersion) {
   const payload = { action, data: data || {}, clientRequestId: resolveClientRequestId(explicitRequestId) };
+  const version = resolveExpectedVersion(expectedVersion);
+  if (version !== null) {
+    payload.expectedVersion = version;
+  }
   const view = store.getViewContext();
   if (view && view.viewTicket) {
     payload.viewTicket = view.viewTicket;
@@ -135,7 +147,7 @@ function sleep(ms) {
 async function call(action, data, opts) {
   const options = opts || {};
   modeGuard.assertWritable(action);
-  const payload = buildPayload(action, data, options.clientRequestId);
+  const payload = buildPayload(action, data, options.clientRequestId, options.expectedVersion);
   const attempts = options.retry === true || (options.retry !== false && isRetryAction(action)) ? 3 : 1;
   let lastError = null;
   for (let i = 0; i < attempts; i += 1) {
@@ -162,6 +174,7 @@ module.exports = {
   isWriteAction,
   createRequestId,
   isValidClientRequestId,
+  resolveExpectedVersion,
   CLIENT_REQUEST_ID_PATTERN,
   RETRYABLE_CODES
 };

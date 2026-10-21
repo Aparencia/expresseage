@@ -1,5 +1,6 @@
 // api/modules/order.js · order 域（19 动作；批量由客户端循环 + 同一 batchActionId）
-// 幂等：create/createBatch 接受 opts.clientRequestId（页面重试复用同一键，防重复建单；UX §4.8）。
+// 幂等：写动作 opts.clientRequestId 透传（页面重试复用同一键，防重复写；UX §4.8）；
+// 乐观锁：写动作 opts.expectedVersion 透传 DTO.version（服务端 CONFLICT → 人话"请刷新后重试"）。
 const client = require('../client');
 
 function call(action, payload, opts) {
@@ -23,44 +24,45 @@ module.exports = {
   listPartner(payload) {
     return client.call('order.listPartner', payload || {}, { retry: true });
   },
-  accept(payload) {
-    return call('order.accept', payload);
+  accept(payload, opts) {
+    return call('order.accept', payload, opts);
   },
-  reject(payload) {
-    return call('order.reject', payload);
+  reject(payload, opts) {
+    return call('order.reject', payload, opts);
   },
-  markPicked(payload) {
-    return call('order.markPicked', payload);
+  markPicked(payload, opts) {
+    return call('order.markPicked', payload, opts);
   },
-  unmarkPicked(payload) {
-    return call('order.unmarkPicked', payload);
+  unmarkPicked(payload, opts) {
+    return call('order.unmarkPicked', payload, opts);
   },
-  markDelivered(payload) {
-    return call('order.markDelivered', payload);
+  markDelivered(payload, opts) {
+    return call('order.markDelivered', payload, opts);
   },
-  unmarkDelivered(payload) {
-    return call('order.unmarkDelivered', payload);
+  unmarkDelivered(payload, opts) {
+    return call('order.unmarkDelivered', payload, opts);
   },
-  reportException(payload) {
-    return call('order.reportException', payload);
+  reportException(payload, opts) {
+    return call('order.reportException', payload, opts);
   },
-  resolveException(payload) {
-    return call('order.resolveException', payload);
+  resolveException(payload, opts) {
+    return call('order.resolveException', payload, opts);
   },
-  cancel(payload) {
-    return call('order.cancel', payload);
+  // 取消/确认送达/删除记录：页面传 opts.expectedVersion=当前 DTO.version（状态竞态双保险）
+  cancel(payload, opts) {
+    return call('order.cancel', payload, opts);
   },
-  confirmDelivery(payload) {
-    return call('order.confirmDelivery', payload);
+  confirmDelivery(payload, opts) {
+    return call('order.confirmDelivery', payload, opts);
   },
-  correct(payload) {
-    return call('order.correct', payload);
+  correct(payload, opts) {
+    return call('order.correct', payload, opts);
   },
-  undo(payload) {
-    return call('order.undo', payload);
+  undo(payload, opts) {
+    return call('order.undo', payload, opts);
   },
-  deleteRecord(payload) {
-    return call('order.deleteRecord', payload);
+  deleteRecord(payload, opts) {
+    return call('order.deleteRecord', payload, opts);
   },
   imageUrl(payload) {
     return client.call('order.imageUrl', payload || {}, { retry: true });

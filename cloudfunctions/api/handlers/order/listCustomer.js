@@ -66,6 +66,33 @@ async function fetchOrders(ctx, customerId, filter, scanLimit) {
   return rows;
 }
 
+// 三桶计数（批 5 契约 C）：进行中=SUBMITTED/ACCEPTED/PICKED/DELIVERED/EXCEPTION；已完成=COMPLETED；
+// 已取消=CANCELLED。均排除 deletedByCustomerAt 软删（列表口径一致）；不受 keyword/status 筛选影响
+// （供列表 tab 角标，切 tab 不变）；与列表同样按 isTest 隔离，测试单不污染真实计数。
+function buildCounts(rows) {
+  const counts = { ongoing: 0, completed: 0, cancelled: 0 };
+  rows.forEach((order) => {
+    if (order.deletedByCustomerAt) {
+      return;
+    }
+    if (order.status === enums.ORDER_STATUS.COMPLETED) {
+      counts.completed += 1;
+    } else if (order.status === enums.ORDER_STATUS.CANCELLED) {
+      counts.cancelled += 1;
+    } else if (enums.ORDER_ACTIVE_STATUSES.indexOf(order.status) >= 0) {
+      counts.ongoing += 1;
+    }
+  });
+  return counts;
+}
+
+async function loadAllOfCustomer(ctx, customerId) {
+  return ctx.dao.find(COLLECTIONS.ORDERS, {
+    where: { customerId, isTest: common.isTestSession(ctx) },
+    limit: common.MAX_LIST_SCAN
+  });
+}
+
 module.exports = async function orderListCustomer(ctx, payload) {
   const customerId = common.customerScope(ctx);
   const filter = resolveFilter(payload || {});
@@ -89,8 +116,10 @@ module.exports = async function orderListCustomer(ctx, payload) {
   const hasMore = candidates.length > paging.limit;
   const list = await dto.buildOrderDtos(ctx, page, 'CUSTOMER');
   const last = page[page.length - 1];
+  const allRows = await loadAllOfCustomer(ctx, customerId);
   return {
     list,
-    nextCursor: hasMore && last ? common.makeCursor(last, filter.sortField) : null
+    nextCursor: hasMore && last ? common.makeCursor(last, filter.sortField) : null,
+    counts: buildCounts(allRows)
   };
 };
