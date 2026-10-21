@@ -17,7 +17,7 @@
         <input class="form-input" value="{{item.name}}" maxlength="{{limits.serviceNameMax}}" placeholder="服务名称" data-index="{{index}}" data-field="name" bindinput="onServiceInput" />
         <input class="form-input" value="{{item.desc}}" maxlength="{{limits.serviceDescMax}}" placeholder="服务说明" data-index="{{index}}" data-field="desc" bindinput="onServiceInput" />
       </view>
-      <view class="small">服务类型只描述“做什么”，不涉及任何费用项。</view>
+      <view class="small">服务类型只描述“做什么”，不含任何计价字段。</view>
     </view>
 
     <view class="card">

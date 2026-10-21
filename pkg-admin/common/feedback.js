@@ -23,30 +23,9 @@ function confirm(options) {
   });
 }
 
-function alert(title, content) {
-  return wx.showModal({
-    title: title || '提示',
-    content: content || '',
-    showCancel: false,
-    confirmText: '知道了'
-  });
-}
-
-function goBack(fallbackUrl) {
-  if (getCurrentPages().length > 1) {
-    wx.navigateBack();
-    return;
-  }
-  wx.reLaunch({ url: fallbackUrl || PAGE_URLS.overview });
-}
-
 function go(url) {
   if (!url) return;
   wx.navigateTo({ url });
-}
-
-function reLaunch(url) {
-  wx.reLaunch({ url });
 }
 
 function redirectOut() {
@@ -69,20 +48,9 @@ function handleError(page, err, fallbackText) {
   });
 }
 
-function recordSuccess(page, err) {
-  if (!err) return;
-  handleError(page, err);
-}
-
 module.exports = {
-  FORBIDDEN_CODE,
   toast,
   confirm,
-  alert,
-  goBack,
   go,
-  reLaunch,
-  redirectOut,
-  handleError,
-  recordSuccess
+  handleError
 };

@@ -242,7 +242,7 @@ Page({
       admin.setPartnerStatus({
         partnerNo: item.partnerNo,
         status: C.PARTNER_STATUS_ACTIVE,
-        reason: '后台恢复'
+        reason: C.RESTORE_REASON_DEFAULT
       }).then(() => {
         this.setData({ submitting: false, expandedNo: '' });
         feedback.toast('已恢复 ' + item.displayName + '（' + item.partnerNo + '）');

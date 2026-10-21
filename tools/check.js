@@ -808,10 +808,23 @@ check(30, '账号切换与测试数据隔离', '会话含 viewMode/targetIsTest�
     const s = text(rel) || '';
     if (!/isTestAccount/.test(s)) out.push(rel + ': TEST_WRITE 签发/校验处未断言 isTestAccount');
   });
-  const statFiles = RELS.filter((r) => /handlers\/admin\/.*\.js$/.test(r) && /stats|list|invite/i.test(r));
-  statFiles.forEach((rel) => {
+  // 统计/列表查询隔离：只扫需要排除测试数据的后台数据面（邀请码/审计/配置等不需要 isTest 过滤）
+  const testFilterTargets = [
+    'cloudfunctions/api/handlers/admin/stats.js',
+    'cloudfunctions/api/handlers/admin/listOrders.js',
+    'cloudfunctions/api/handlers/admin/listCustomers.js',
+    'cloudfunctions/api/handlers/admin/listPartners.js',
+    'cloudfunctions/api/handlers/admin/listTestAccounts.js',
+  ].concat(RELS.filter((r) => /handlers\/order\/.*listPartner.*\.js$/.test(r)));
+  testFilterTargets.forEach((rel) => {
+    if (!exists(rel)) return;
     const s = text(rel) || '';
     if (!/isTest/.test(s)) out.push(rel + ': 统计/列表查询未见 isTest 过滤');
+  });
+  // 兼职统计/红点聚合（若有）：查询须排除 isTest
+  RELS.filter((r) => /handlers\/(partner|order)\/.*(stats|workbench|counts).*\.js$/.test(r)).forEach((rel) => {
+    const s = text(rel) || '';
+    if (/COUNT|count\(|aggregate/.test(s) && !/isTest/.test(s)) out.push(rel + ': 统计聚合未见 isTest 过滤');
   });
   RELS.filter((r) => /handlers\/order\/.*\.js$/.test(r)).forEach((rel) => {
     const s = text(rel) || '';

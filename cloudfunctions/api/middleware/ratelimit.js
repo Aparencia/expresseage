@@ -49,8 +49,8 @@ function counterKey(rule, subject, nowMs) {
   return 'rl:' + rule.scope + ':' + subject + ':' + 'd' + time.dayKey(nowMs);
 }
 
-async function increment(ctx, key, amount) {
-  const step = amount && amount > 0 ? amount : 1;
+async function increment(ctx, key, delta) {
+  const step = delta && delta > 0 ? delta : 1;
   return ctx.dao.transaction(async (trx) => {
     const row = await trx.findOne(COLLECTIONS.COUNTERS, { where: { key } });
     if (!row) {
@@ -63,8 +63,8 @@ async function increment(ctx, key, amount) {
   });
 }
 
-async function decrement(ctx, key, amount) {
-  const step = amount && amount > 0 ? amount : 1;
+async function decrement(ctx, key, delta) {
+  const step = delta && delta > 0 ? delta : 1;
   try {
     await ctx.dao.transaction(async (trx) => {
       const row = await trx.findOne(COLLECTIONS.COUNTERS, { where: { key } });
@@ -121,7 +121,7 @@ async function middleware(state) {
       if (!state.meta.rateRefunds) {
         state.meta.rateRefunds = [];
       }
-      state.meta.rateRefunds.push({ key, amount: itemCount(rule, payload) });
+      state.meta.rateRefunds.push({ key, delta: itemCount(rule, payload) });
     }
   }
   return state;
@@ -131,7 +131,7 @@ async function middleware(state) {
 async function finish(state) {
   const refunds = state.meta.rateRefunds || [];
   for (let i = 0; i < refunds.length; i += 1) {
-    await decrement(state.ctx, refunds[i].key, refunds[i].amount);
+    await decrement(state.ctx, refunds[i].key, refunds[i].delta);
   }
   return state;
 }

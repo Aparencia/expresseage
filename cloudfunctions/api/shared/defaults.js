@@ -68,7 +68,8 @@ const PUBLIC_CONFIG_KEYS = [
   'orderTimeoutMinutes',
   'autoCompleteHours',
   'screenshotRetentionDays',
-  'avatarMaxBytes'
+  'avatarMaxBytes',
+  'viewTicketTtlMinutes'
 ];
 
 // 上传/文件上限（客户端压缩目标与服务端复核共用）

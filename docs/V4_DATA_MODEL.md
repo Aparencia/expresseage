@@ -237,7 +237,7 @@ v0.7 关闭全部非 D 级缺口：零金额（§0.3）、双角色唯一编号�
 | `subscribeTemplates`† [P1] | object | 否 | `{enabled,newOrderTemplateId?,statusTemplateId?,exceptionTemplateId?}`；订阅消息**模板 ID/开关/文案统一存 config**（不放云函数环境变量、不硬编码）；未授权时降级站内轮询 | `admin.updateConfig` | 内部（`config.getPublic` 只下发 `subscribeEnabled`，不下发模板 ID） | L1 |
 | `privacyVersion`/`updatedAt` | string/Date | 是 | 与《隐私保护指引》一致/最近修改 | `admin.updateConfig` | 登录用户（version）/内部 | L1/L1 |
 
-读屏蔽：客户端不直读；`config.getPublic` 返回 `{zoneLabels,serviceCatalog,announcement,maintenance,privacyVersion,orderTimeoutMinutes,autoCompleteHours,screenshotRetentionDays,avatarMaxBytes,subscribeEnabled}`（`serviceCatalog` 无金额；**不含 `viewTicketTtlMinutes`/`recognitionFailureRetentionDays`/`aiFallback`/`testAccountMaxPerRole`/`testDataRetentionDays`/`subscribeTemplates`**）；`user.bootstrap` 内联同一 `configPublic`；admin 读配置由 `admin.stats` 复合返回（§7.6，`aiFallback` 只读展示）。`recognitionFailureRetentionDays`/`avatarMaxBytes`/`testAccountMaxPerRole`/`testDataRetentionDays`/`viewTicketTtlMinutes` 由 `admin.updateConfig` 白名单维护（逐项范围校验，改动落 `admin_audit{CONFIG_UPDATE}`）；**`aiFallback` 的写入不在 `admin.updateConfig` 白名单内**（MVP 只读；改值走部署配置脚本/控制台并同步隐私文本）。
+读屏蔽：客户端不直读；`config.getPublic` 返回 `{zoneLabels,serviceCatalog,announcement,maintenance,privacyVersion,orderTimeoutMinutes,autoCompleteHours,screenshotRetentionDays,avatarMaxBytes,viewTicketTtlMinutes,subscribeEnabled}`（`serviceCatalog` 无金额；**不含 `recognitionFailureRetentionDays`/`aiFallback`/`testAccountMaxPerRole`/`testDataRetentionDays`/`subscribeTemplates`**）；`user.bootstrap` 内联同一 `configPublic`；admin 读配置由 `admin.stats` 复合返回（§7.6，`aiFallback` 只读展示）。`recognitionFailureRetentionDays`/`avatarMaxBytes`/`testAccountMaxPerRole`/`testDataRetentionDays`/`viewTicketTtlMinutes` 由 `admin.updateConfig` 白名单维护（逐项范围校验，改动落 `admin_audit{CONFIG_UPDATE}`）；**`aiFallback` 的写入不在 `admin.updateConfig` 白名单内**（MVP 只读；改值走部署配置脚本/控制台并同步隐私文本）。
 ### 2.11 `admin_audit`（管理操作审计）
 
 | 字段 | 类型 | 必填 | 值域/约束 | 写入方 | 读权限 | 隐私 |
@@ -685,7 +685,7 @@ api(event):
 | `message.markRead` | `{scope:'ALL'\|'ORDER',orderNo?}` → `{messageReadAt}` | 本人 | 水位只前进（幂等） | `VALIDATION_FAILED` |
 | `upload.prepare` | `{purpose:'TICKET'\|'AVATAR',draftId,contentType,size}` → `{ticket,cloudPath,expiresAt,draftId,purpose}`（TICKET→`orders/{ticket}/image.jpg`；AVATAR→`avatars/{role}/{random}.jpg`） | 顾客/兼职（资料完整+绑定；**头像上传对本人可用、无需绑定**；切换会话按目标测试账号） | 每次新 ticket；TICKET 30 次/日、**AVATAR 5 次/日/人** | `VALIDATION_FAILED`（类型/大小/用途不符）/`INVALID_STATE` |
 | `upload.cancel` | `{ticket}` → `{cancelled:true}` | 票据申请者 | 自然幂等 | `NOT_FOUND`/`FORBIDDEN` |
-| `config.getPublic` | `{}` → `{zoneLabels,serviceCatalog(无金额),announcement,maintenance,privacyVersion,orderTimeoutMinutes,autoCompleteHours,screenshotRetentionDays,avatarMaxBytes,subscribeEnabled}` | 任意登录用户 | 读 | — |
+| `config.getPublic` | `{}` → `{zoneLabels,serviceCatalog(无金额),announcement,maintenance,privacyVersion,orderTimeoutMinutes,autoCompleteHours,screenshotRetentionDays,avatarMaxBytes,viewTicketTtlMinutes,subscribeEnabled}` | 任意登录用户 | 读 | — |
 | `health.check` | `{}` → `{ok,version,time}` | **仅内部/部署者**（ADMIN 白名单或部署令牌；不返回业务数据） | 读 | `FORBIDDEN` |
 | **`ai.parseParcel`**（v0.8） | `{ocrTextMasked≤2000, hintTrackingTail?, uploadTicketId, role}` → `{recognized,stationId,stationName,pickupCode,trackingTail,lockerNo,confidence:'HIGH'\|'MEDIUM'\|'LOW',source:'RULE'\|'DEEPSEEK'\|'NONE',needsReview,failureId?}`（**DTO 逐字段=CONTRACT §4.3 格式化块**，§7.9） | 登录顾客（资料完整+绑定）/兼职（ACTIVE） | **写队列→必传 `clientRequestId`**；同 `clientRequestId` 重试幂等返回同一 `failureId`；同图多单逐单调用各传不同 `clientRequestId`（各一条记录）；5 次/人/日+全局日配额；**降级 `ok:true+recognized:false` 不报错**；失败/低置信必写 `recognition_failures` | `FORBIDDEN`（未登录/无业务角色）；**不新增错误码** |
 | `admin.createInvites` | `{count(1~50),expiresInHours(24\|72\|168\|720，默认168),note?}` → `{batchId,expiresAt,codes[]（完整，仅本次）}` | **仅 `ADMIN_OPENIDS`** | `admin_audit.requestKey†`；审计 `INVITE_CREATE` | `VALIDATION_FAILED` |
@@ -789,7 +789,7 @@ payload 约定：`ORDER_CREATED{source,serviceCode,itemIndex?,isTest}`｜`ACCEPT
 ### 8.5 非法流转、乐观锁与四档排序
 非法流转（状态不在矩阵/角色不允许/终态再动）→`INVALID_TRANSITION` 或 `FORBIDDEN`；`EXCEPTION` 必须带 `exception`；`resolveException` 无 exception→`INVALID_TRANSITION`；CLOSED 兼职名下订单只能 admin 处置，兼职本人写动作 `FORBIDDEN`。
 乐观锁：`orders.version` 每次成功写 +1；`expectedVersion` 不匹配→`CONFLICT`（客户端重拉后重试，不自动合并）；不带版本时服务端事务内读最新校验状态，真并发冲突仍返回 `CONFLICT`/`INVALID_TRANSITION`；批量逐单独立校验、逐单返回。
-四档排序：同 `stationId` 内按 ①需查明（`codeStatus=NEED_CODE`）→②快递柜（`lockerNo` 非空）→③分段码（`pickupCode` 含非数字字符）→④其他；同档按码中数字升序→`orderNo` 兜底。排序由 `order.listPartner({view:'workbench'})` 返回，前端不得重排（v3 单一排序源教训）。列表时间序：顾客“进行中”按 `statusUpdatedAt desc`、“已完成/已取消”按 `completedAt/cancelledAt desc`，由服务端排序，客户端不二次排序（§5.2）。
+四档排序：同 `stationId` 内按 ①需查明（`codeStatus=NEED_CODE`）→②快递柜（`lockerNo` 非空）→③分段码（`pickupCode` 含非数字字符）→④其他；同档按码中数字升序→`orderNo` 兜底。排序口径以 CONTRACT §5.2 为准：`order.listPartner({view:'workbench'})` 服务端只做状态桶+站点过滤并返回 list+counts（不保证档内顺序），**四档动线排序在客户端零件层用 `shared/order-view.sortByPickupRoute` 执行**（排序规则只存 shared 纯件一份）；列表时间序由服务端排序（§5.2）。
 ## 9. roomTag（同寝室大写标识 A…Z/AA…）算法与边界
 ### 9.1 后缀映射与分配事务
 

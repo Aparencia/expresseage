@@ -1,6 +1,7 @@
-// handlers/user/bootstrap.js · user.bootstrap（启动唯一水合接口）
-// 返回形状 = ARCHITECTURE §3.4 store 快照（roles/activeRole/isDeveloper/me/customer/partner/binding/config/badges/
-// viewContext/serverTime），另带 DATA_MODEL §2.1 的兼容字段；**永不返回 openid / isTestAccount / 票据**。
+// handlers/user/bootstrap.js · user.bootstrap（启动唯一水合接口，平铺 DTO）
+// 返回形状 = DATA_MODEL §7.1 平铺口径：{roles,status,privacyConsent,messageReadAt,customerProfileCompleted,
+// customerNo?,displayName?,avatarFileId?,partnerStatus,partnerNo?,isDeveloper,viewContext,configPublic,serverTime}
+// + 页面需要的 partner（含 serviceConfig）/customer/binding 子块；**永不返回 openid/_id/isTestAccount**。
 // 切换会话（READONLY/TEST_WRITE）返回目标上下文且 isDeveloper=false，避免客户端再分流到后台。
 'use strict';
 
@@ -48,7 +49,12 @@ function buildPartnerBlock(partner) {
     partnerNo: partner.partnerNo || '',
     displayName: partner.displayName || '',
     avatarFileId: partner.avatarFileId || '',
-    acceptingOrders: serviceConfig.acceptingOrders === true
+    acceptingOrders: serviceConfig.acceptingOrders === true,
+    serviceConfig: {
+      services: Array.isArray(serviceConfig.services) ? serviceConfig.services : [],
+      zones: Array.isArray(serviceConfig.zones) ? serviceConfig.zones : [],
+      acceptingOrders: serviceConfig.acceptingOrders === true
+    }
   };
 }
 
@@ -68,15 +74,6 @@ function buildBindingBlock(binding, partner) {
     block.partnerAvatarFileId = partner.avatarFileId;
   }
   return block;
-}
-
-function buildMe(customer, partner, activeRole) {
-  const source = activeRole === enums.ROLES.PARTNER ? (partner || {}) : (customer || {});
-  const me = { displayName: source.displayName || '' };
-  if (source.avatarFileId) {
-    me.avatarFileId = source.avatarFileId;
-  }
-  return me;
 }
 
 async function handler(ctx) {
@@ -116,20 +113,11 @@ async function handler(ctx) {
   const bindingBlock = activeRole === enums.ROLES.CUSTOMER || !activeRole
     ? buildBindingBlock(binding, boundPartner)
     : null;
+  const meSource = activeRole === enums.ROLES.PARTNER ? (partnerBlock || {}) : (customerBlock || {});
 
-  const result = {
+  return {
+    // DATA_MODEL §7.1 平铺 DTO
     roles,
-    activeRole,
-    isDeveloper,
-    me: buildMe(customerBlock, partnerBlock, activeRole),
-    customer: customerBlock,
-    partner: partnerBlock,
-    binding: bindingBlock,
-    config: await configCommon.loadPublicConfig(ctx),
-    badges: { workbenchPending: 0, messages: 0 },
-    viewContext,
-    serverTime: nowMs,
-    // DATA_MODEL §2.1 兼容字段（页面按需读取）
     status: user ? user.status || enums.USER_STATUS.ACTIVE : enums.USER_STATUS.ACTIVE,
     privacyConsent: user && user.privacyConsent
       ? { version: user.privacyConsent.version || '', at: toMs(user.privacyConsent.at) }
@@ -137,10 +125,21 @@ async function handler(ctx) {
     messageReadAt: user ? toMs(user.messageReadAt) : 0,
     customerProfileCompleted: !!(customer && customer.profileCompleted === true),
     customerNo: customer ? customer.customerNo || '' : '',
+    displayName: meSource.displayName || '',
+    avatarFileId: meSource.avatarFileId || '',
     partnerStatus: partner ? partner.status || '' : '',
-    partnerNo: partner ? partner.partnerNo || '' : ''
+    partnerNo: partner ? partner.partnerNo || '' : '',
+    isDeveloper,
+    viewContext,
+    configPublic: await configCommon.loadPublicConfig(ctx),
+    serverTime: nowMs,
+    // 页面子块（嵌套不替代平铺字段）
+    activeRole,
+    customer: customerBlock,
+    partner: partnerBlock,
+    binding: bindingBlock,
+    badges: { workbenchPending: 0, messages: 0 }
   };
-  return result;
 }
 
 module.exports = { handler };

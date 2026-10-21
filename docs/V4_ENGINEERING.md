@@ -516,7 +516,7 @@ expressage_college_v4/
 - `custom-tab-bar` 组件按 store 渲染：无 `viewContext` 时按 `activeRole` 渲染顾客三格（首页/订单/我的）或兼职三格（工作台/客户/我的）；**有 `viewContext` 时按 `viewContext.role` 渲染目标角色三格（两模式同）**；工作台格显示待处理红点/数字。
 - **开发者无 tabBar**：全部页面在 `pkg-admin` 分包内，用页面内导航/返回栈；从切换会话退出也 `reLaunch` 回 account-switch。
 - 导航：同角色内切格用 `wx.switchTab`；跨角色/角色不匹配守卫用 `wx.reLaunch` 回本角色首页；进入/退出切换会话一律 `wx.reLaunch`（避免 tabBar 顶替与栈残留）；`pages/launch`、`pages/role` 不在 tabBar。
-- **列表与排序（服务端定稿）**：顾客进行中/已完成分列表按 `statusUpdatedAt desc`、`completedAt/cancelledAt desc` 返回；兼职工作台由服务端返回"状态桶+站点+四档动线"视图，客户端只渲染、**不重排**。
+- **列表与排序**：顾客进行中/已完成分列表按 `statusUpdatedAt desc`、`completedAt/cancelledAt desc` 由服务端返回；兼职工作台由服务端返回按"状态桶+站点"过滤的 list+counts（不保证档内顺序），**四档动线排序在客户端零件层由 `shared/order-view.sortByPickupRoute` 执行**（CONTRACT §5.2 为准；排序规则单源，页面不另写）。
 - **文本上限**：`orders.note` ≤200、`deliveryNote` ≤100、`partnerNote` ≤100、`msg.text` ≤200、`exception.text` ≤200、`lockerNo` ≤10（字符串）；超限服务端返回 `VALIDATION_FAILED`（`data.field`），前端只提示不二次截断。
 - **取消原因枚举**：顾客 `CHANGED_MIND/WRONG_INFO/DUPLICATE/PARTNER_UNREACHABLE/OTHER`；兼职 `TOO_BUSY/OUT_OF_RANGE/SERVICE_OFF/OTHER`；系统 `TIMEOUT_UNACCEPTED`；`OTHER` 必填备注；中文文案服务端下发。
 - **结果页**：下单结果内嵌 `pkg-customer/pages/order-create/index` 第 4 步（不新增 result 子页）；一图多码在同一结果块列出 N 张订单号与入口。
@@ -750,8 +750,8 @@ expressage_college_v4/
 | 14 | 客户端禁直连：`wx.cloud.database` 全仓零命中；`callFunction` 仅 `api/client.js`；`uploadFile` 仅 `api/upload.js` | 绕过服务端鉴权 | v4 新增（CONTRACT §4 铁律） |
 | 15 | 本地存储唯一写口：`wx.*Storage*` 仅在 `utils/storage.js`（剥注释后比对；空集判红）；**`viewTicket`/`viewContext`/`viewMode`/`targetIsTest` 不得出现在 storage** | 第二份写盘/票据落盘 | v3 第 11 条改造 + v0.9 |
 | 16 | 云函数依赖白名单：两 `package.json` 依赖只允许 `wx-server-sdk`；非相对 require 只允许 sdk | 引第三方/部署失败 | v4 新增 |
-| 17 | shared 副本对帐：`shared/**` + **`utils/ids.js → shared/ids.js`** + **`utils/room-tag.js → shared/room-tag.js`** 与两云函数 `shared/` 逐字节 hash 相等 | 两端口径漂移（编号/roomTag/错误码） | v4 新增（v0.9 扩围） |
-| 18 | 行数：源码 ≤500、测试 ≤1000（**全文本口径**，全仓库） | 文件过长难审/超预算 | v3 AGENTS §11.1 + 修 TD-062 |
+| 17 | shared 副本对帐：`shared/**` + **`utils/ids.js → shared/ids.js`** + **`utils/room-tag.js → shared/room-tag.js`** + **`config/defaults.js → shared/defaults.js`** 与两云函数 `shared/` 逐字节 hash 相等 | 两端口径漂移（编号/roomTag/错误码/默认配置） | v4 新增（v0.9 扩围） |
+| 18 | 行数：小程序源码（pages/pkg/api/shared/utils/store/config/cloudfunctions）≤500；`tools/*.js` 与测试文件 ≤1000（**全文本口径**；docs 由 check-docs 管） | 文件过长难审/超预算 | v3 AGENTS §11.1 + 修 TD-062 |
 | 19 | 敏感字面量：openid 形态 `o[A-Za-z0-9_-]{27}` 生产代码零命中；云环境 ID 只在 `config/env.js`；`ADMIN_OPENIDS` 只读 `process.env`、不落库/不进前端 | 凭证/身份硬编码 | v4 新增 |
 | 20 | 错误码注册表：代码引用的 code 与 `shared/error-codes.js` 双向相等，且**恰好 = CONTRACT v0.9 §5.3 的 13 码**（旧码 UNAUTHENTICATED/UNKNOWN_ACTION/INVALID_PARAM/VERSION_CONFLICT/CODE_EXPIRED/CODE_USED 等零残留；AI 兜底失败、账号切换/测试账号均不新增码）；`error-copy` 每码有文案 | 未知码上屏/裸英文报错 | v4 新增（v0.9 修） |
 | 21 | 页面层零判据（启发式）：`pages/`、`pkg-*/pages/` 的 .js 不出现 `wx.cloud.*`、不出现七状态字符串字面量、**不出现编号/roomTag 生成或 `random`** | 判据回流页面（TD-016 复发） | v4 新增（v0.9 扩） |

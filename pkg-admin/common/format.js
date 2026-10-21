@@ -62,8 +62,6 @@ function joinParts(parts, separator) {
 }
 
 module.exports = {
-  pad2,
-  toDate,
   formatTime,
   formatClock,
   textOrDash,

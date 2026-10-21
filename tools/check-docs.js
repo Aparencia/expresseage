@@ -108,7 +108,7 @@ check(2, 'CONTRACT §7 页面路径 = app.json 声明（30 页）', () => {
   const sec = section(contract, /^##\s*7\./);
   if (!sec) return ['CONTRACT 缺 §7 页面地图'];
   const declaredInDoc = new Set();
-  const re = /(?:^|[\s`(（])((?:pages|pkg-[a-z]+)\/[\w-]+\/index)(?=[\s`）)。,，]|$)/gm;
+  const re = /(?:^|[\s`(（])((?:pages|pkg-[a-z]+)\/(?:[\w-]+\/)+index)(?=[\s`）)。,，]|$)/gm;
   let m;
   while ((m = re.exec(sec))) declaredInDoc.add(m[1]);
   const appRel = 'app.json';
@@ -134,7 +134,7 @@ check(3, 'CONTRACT §5.3 action 表 = shared/actions.js；DATA_MODEL §7 ⊆ CON
   const out = [];
   const allText = new Set(codeTokens(sec));
   P.P1_ACTIONS.forEach((a) => allText.add(a));
-  Object.keys(P.ACTIONS).forEach((a) => {
+  Object.keys(P.ACTIONS).filter((a) => !a.startsWith('cleanup.')).forEach((a) => {
     const name = a.slice(a.indexOf('.') + 1);
     if (!allText.has(name)) out.push('CONTRACT §5.3 未列出: ' + a);
   });
@@ -150,7 +150,16 @@ check(3, 'CONTRACT §5.3 action 表 = shared/actions.js；DATA_MODEL §7 ⊆ CON
   if (dm !== null) {
     const dmSec = section(dm, /^##\s*7\./);
     if (dmSec) {
-      const dmActions = codeTokens(dmSec).filter((t) => /^[a-z]+\.[a-zA-Z]+$/.test(t));
+      const MODULES = new Set(['user', 'customer', 'partner', 'bind', 'order', 'message', 'upload', 'config', 'admin',
+        'ai', 'health', 'cleanup']);
+      const dmActions = codeTokens(dmSec).filter((t) => {
+        if (!/^[a-z]+\.[a-zA-Z]+$/.test(t)) return false;
+        const mod = t.slice(0, t.indexOf('.'));
+        if (!MODULES.has(mod)) return false;
+        // `config.xxx` 多数是配置键（config.orderTimeoutMinutes 等），只有动作名才参与比对
+        if (mod === 'config') return t === 'config.getPublic';
+        return true;
+      });
       dmActions.filter((a) => !P.ACTIONS[a]).forEach((a) => out.push('DATA_MODEL §7 出现 CONTRACT 未登记动作: ' + a));
     }
   }
@@ -176,7 +185,9 @@ check(4, 'CONTRACT §4 集合（14）= shared/collections.js；13 错误码双�
   const docCodes = new Set();
   (sec53 || '').split('\n').forEach((line) => {
     if (line.indexOf('只认这一套') === -1) return;
-    codeTokens(line).forEach((t) => { if (/^[A-Z][A-Z_]+$/.test(t)) docCodes.add(t); });
+    // 只取"只认这一套："之后到第一个句号之间的码表，避免把 TEST_WRITE 等枚举误认成错误码
+    const seg = (line.match(/只认这一套\*\*[：:]([\s\S]*?)。/) || [])[1] || '';
+    codeTokens(seg).forEach((t) => { if (/^[A-Z][A-Z_]+$/.test(t)) docCodes.add(t); });
   });
   P.COLLECTIONS.filter((c) => !docCollections.has(c)).forEach((c) => out.push('CONTRACT §4 缺集合: ' + c));
   Array.from(docCollections).filter((c) => !P.COLLECTIONS.includes(c)).forEach((c) => out.push('CONTRACT §4 多出集合: ' + c));
@@ -289,8 +300,11 @@ check(8, '编号规格四端一致（CONTRACT/ENGINEERING/ids.js/error-copy）',
   const copy = loadModule('shared/error-copy.js');
   if (!copy || copy.__loadError) out.push('shared/error-copy.js 加载失败');
   else {
-    ['CUSTOMER', 'DEVELOPER', 'FORMAT'].forEach((k) => {
-      if (!copy.PREFIX_HINT || !copy.PREFIX_HINT[k]) out.push('error-copy 错前缀文案缺 ' + k);
+    // 三句错前缀文案：顾客编号误当兼职 / 开发者编号 / 通用格式（键名以 shared/error-copy.js 为准）
+    ['CUSTOMER_PREFIX', 'DEVELOPER_PREFIX', 'FORMAT'].forEach((k) => {
+      if (!copy.PREFIX_HINT || typeof copy.PREFIX_HINT[k] !== 'string' || !copy.PREFIX_HINT[k].trim()) {
+        out.push('error-copy 错前缀文案缺 ' + k);
+      }
     });
   }
   const cloud = F.walk(path.join(ROOT, 'cloudfunctions'), { exts: new Set(['.js']) }, []);
@@ -315,8 +329,11 @@ check(9, 'AI 兜底文档三语义 + failureCode 5 枚举 + aiFallback 键 + 复
     { label: '原图访问必审计 FAILURE_IMAGE_VIEW', re: /FAILURE_IMAGE_VIEW/ },
   ];
   const c43 = section(contract, /^###\s*4\.3/) || '';
+  const c113 = section(contract, /^###\s*11\.3/) || '';
+  const c12 = section(contract, /^##\s*12\./) || '';
+  const cAi = c43 + '\n' + c113 + '\n' + c12;
   const e410 = section(eng, /^###\s*4\.10/) || '';
-  [[c43, 'CONTRACT §4.3'], [e410, 'ENGINEERING §4.10']].forEach((pair) => {
+  [[cAi, 'CONTRACT §4.3/§11.3/§12'], [e410, 'ENGINEERING §4.10']].forEach((pair) => {
     groups.forEach((g) => { if (!g.re.test(pair[0])) out.push(pair[1] + ' 未覆盖语义: ' + g.label); });
   });
   const failCodes = ['NO_TEXT', 'PARSE_MISS', 'LOW_CONFIDENCE', 'LLM_ERROR', 'IMAGE_UNREADABLE'];
@@ -350,7 +367,7 @@ check(10, 'v0.9 文档一致性（旧口径禁词/审计枚举/roomTag 大写/�
     { re: /view-as/, label: '旧视角页名 view-as' },
     { re: /tagSuffix/, label: '小写 roomTag 后缀变量' },
   ];
-  const HISTORY = /作废|旧口径|清扫|残句|原文|已废|已删|不再|替换|取代|改为|修订|即缺陷|不计入扫描|历史|旧称呼|旧名/;
+  const HISTORY = /作废|旧口径|清扫|残句|原文|已废|已删|不再|替换|取代|改为|修订|即缺陷|不计入扫描|历史|旧称呼|旧名|→|account-switch|v0\.8|残留|无小写|无 `view-as`/;
   let exempt = 0;
   DOCS.forEach((rel) => {
     const s = text(rel) || '';

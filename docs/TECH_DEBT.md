@@ -24,6 +24,11 @@
 | TD-015 | **fake DB 与真实云环境行为差异**（事务/唯一索引冲突/分页/时间类型）未对照 | handler 单测可能"假绿" | 批 1 部署后挑关键路径在 dev 对照一次 | 开放 | ENGINEERING §7.3 / R14 |
 | TD-016 | **`docs/lessons/` 目录尚未建立**：踩坑卡应先查重再建（≤12 行/卡） | 教训无法沉淀 | 出现踩坑即建（Lead 域）；v3 框架无关卡按 §9.3 搬迁清单逐步搬 | 开放 | ENGINEERING §9.1/§9.3 |
 
+| TD-017 | **四档排序归属口径冲突**：CONTRACT §5.2 要求客户端零件层排序，DATA_MODEL §5/ENGINEERING §5.1 旧表述为服务端返回并禁止重排；已裁决按 CONTRACT（客户端 `shared/order-view.sortByPickupRoute`），三份文档已回写 | 若实现按旧表述会与 CONTRACT 冲突 | 批 1 收口前由 task-40（workbench 排序修正 + selftest-state 断言）验证；验证后关闭 | 跟踪中 | Lead 裁决 2026-10-21 |
+| TD-018 | **`config.getPublic` 是否含 `viewTicketTtlMinutes`**：DATA_MODEL §2.10 曾写不含，ENGINEERING §3.6 要求含（黄条/蓝条倒计时）；已裁决 **含** 并回写 DATA_MODEL §2.10/§7.5、shared/defaults `PUBLIC_CONFIG_KEYS` | 客户端倒计时缺配置项 | 关闭依据：ENGINEERING §3.6 优先 + DATA_MODEL 已回写 + shared/defaults 补键 | 已关闭 | Lead 裁决 2026-10-21 |
+| TD-019 | **未建单的识别失败记录无原图可看**：`recognition_failures.fileId` 需订单侧回填（fileId='' + uploadTicketId 入队，order.create 带 image.failureId 时用订单 image.fileId 回填）；未建单记录复核页降级为 OCR 文本（DTO `hasImage=false`） | 复核页对"未下单即失败"记录看不到图 | 批 9 QA 点检注明该降级；如产品必须看原图，P1 评估 upload ticket 携带 fileId 通道（需客户端输入白名单扩项） | 跟踪中 | cloud-orders 实现 + Lead 裁决 2026-10-21 |
+| TD-020 | **`config.aiFallback.model` 默认空串**：DATA_MODEL §2.10 写默认 `deepseek-chat`，但该 token 不允许进 shared/客户端；云端 `lib/ai` 在 model 为空时使用自身默认模型名（token 只在 cloudfunctions/api/lib/ai/**） | 配置种子与文档默认值表现不一致（服务端行为一致） | 批 1 收口后由 Lead 回写 DATA_MODEL 该行备注"云侧解析默认值"；不改 aiFallback 只读口径 | 跟踪中 | Lead 裁决 2026-10-21 |
+
 ## 维护规则
 
 1. 新增条目：编号追加、必填"影响/计划/来源"，不得只写空泛口号。
