@@ -545,6 +545,7 @@ startSwitch(ctx, {role,targetNo,mode}):    # 仅白名单开发者；actorOpenid
 ```
 VIEW_READ_WHITELIST=['user.bootstrap','customer.getProfile','partner.listBindings','bind.getCurrent',
   'order.get','order.listCustomer','order.listPartner','message.list','order.imageUrl','config.getPublic']
+TEST_WRITE_READ_ALLOW=['partner.getPublic']   # 仅 TEST_WRITE 放行的读动作（测试兼职预览；READONLY 不放开）
 api(event):
   ctx={openid:getWXContext().OPENID, serverNow:new Date(), requestId:newRequestId()}; if !openid → FORBIDDEN
   action=event.action; data=event.data||{}; reqId=event.clientRequestId; spec=REGISTRY[action]
@@ -555,6 +556,8 @@ api(event):
     if view.expiresAt<=serverNow → auditOnce('ACCOUNT_SWITCH_EXPIRED',view); VIEW_TICKET_EXPIRED
     if view.viewMode=='TEST_WRITE':
       if !view.targetIsTest || spec.permission=='ADMIN' → FORBIDDEN       # 真实账号不可写；后台动作不接受票据
+      if !spec.write && action not in VIEW_READ_WHITELIST
+         && action not in TEST_WRITE_READ_ALLOW → FORBIDDEN            # 读面=白名单+测试预览
     else:                                          # READONLY
       if spec.write || action not in VIEW_READ_WHITELIST → FORBIDDEN
     ctx.identity={role:view.role,targetId:view.targetId,viewTicket:view._id,viewMode:view.viewMode,
@@ -718,7 +721,7 @@ api(event):
 - 开启：`admin.viewAsStart({role,targetNo,mode:'READONLY'|'TEST_WRITE'})` → 校验白名单 → 按**完整编号**查 ACTIVE 目标（顾客=`customerNo`、兼职=`partnerNo`；也可由后台列表选人）→ **`TEST_WRITE` 还须校验目标 `isTestAccount=true`**（真实账号传 `TEST_WRITE` → `FORBIDDEN`；真实账号只能 `READONLY`、测试账号只能 `TEST_WRITE`）→ 生成 32 位随机票据，落 `admin_view_sessions`（`_id=viewTicket`，含 `viewMode/targetIsTest/targetAvatarFileId`）→ **客户端只存内存** `app.globalData.viewContext`（不写本地存储）→ `reLaunch` 目标角色首页；审计 `ACCOUNT_SWITCH_START`（`detail={viewMode,role,targetNo,targetIsTest}`）。
 - 约束：同一开发者**同时只有一个有效票据**（新开覆盖旧的，旧票据立即失效并记 `ACCOUNT_SWITCH_END`，`detail.reason='REPLACED'`）；默认 30 分钟（`config.viewTicketTtlMinutes` 5~60，admin 可配）；不能查看开发者自己/其他开发者；只能选 ACTIVE 顾客与 ACTIVE 兼职（停用/注销不可选）；目标不存在或非 ACTIVE 统一 `NOT_FOUND`（“该用户当前不可查看”，不提供可枚举区分）；**删除测试账号时其相关会话立即 `endedAt`**（`detail.reason='TARGET_DELETED'`）。
 - 读范围（`READONLY`）：与目标本人完全一致（顾客=本人资料/订单/绑定兼职公开资料；兼职=绑定自己的顾客/订单/配置/统计）；**服务端按票据把身份解析为目标并返回同 DTO**；只读白名单：`user.bootstrap`（返回目标上下文且 `isDeveloper=false`+`viewContext`）、`customer.getProfile`、`partner.listBindings`、`bind.getCurrent`、`order.get`、`order.listCustomer`、`order.listPartner`、`message.list`、`order.imageUrl`、`config.getPublic`；其他读接口一概 `FORBIDDEN`；**头像/昵称按目标可见范围返回**（对方头像/昵称仅在目标 ACTIVE 绑定时可见）。
-- 读范围（`TEST_WRITE`）：与目标测试账号本人完全一致（自身 `customers/partners`、测试订单/绑定/留言/配置），业务接口均可读写；`user.bootstrap` 返回目标测试上下文（`isDeveloper=false`、`viewContext.viewMode='TEST_WRITE'`）；**后台动作（`admin.*`）不接受票据**。
+- 读范围（`TEST_WRITE`）：与目标测试账号本人完全一致（自身 `customers/partners`、测试订单/绑定/留言/配置）；**读接口 = §1.2 白名单 + `partner.getPublic`（仅测试兼职预览；READONLY 不放开该动作），其余读接口 `FORBIDDEN`**，写接口 = §1.3 业务写白名单；`user.bootstrap` 返回目标测试上下文（`isDeveloper=false`、`viewContext.viewMode='TEST_WRITE'`）；**后台动作（`admin.*`）不接受票据**。
 - 写限制：`READONLY` 下顾客/兼职的一切写动作（下单、取消、确认、接单、取件、送达、留言、绑定、配置、注销……）**服务端见票据即 `FORBIDDEN`**（前端置灰/隐藏为第一层，服务端拒绝为第二层）；`TEST_WRITE` 下**允许业务写动作但只能落在目标测试账号**（`targetIsTest && viewTicket.targetId===effectiveOpenid`，写动作以目标身份执行并落 `isTest/impersonatedBy`，`users.testLastUsedAt=now`；跨测试/真实或票据挪用→`FORBIDDEN`）；开发者自己的后台写动作（邀请码/停启用/配置/测试账号管理/切换开启结束）不受影响。
 - 页面表现：目标角色三 tab；`READONLY` 顶部常驻**黄条** `开发者只读视角 · 顾客 C-XXXX-XXXX 小王 · 退出`（不可关闭、不遮挡状态栏）；`TEST_WRITE` 顶部常驻**蓝条** `测试账号 · 顾客 C-…（测试） · 由 DEV-01 切换 · 退出` + 页面右上角 `TEST` 角标；`custom-tab-bar` 按 `viewContext.role` 渲染；**两种切换会话都隐藏分享/转发/长按保存入口**（O3）。
 - 结束/过期：黄条/蓝条「退出」→ `admin.viewAsEnd({viewTicket})` 置 `endedAt` → 清内存 → `reLaunch` 回「切换账号」页（`pkg-admin/pages/account-switch/index`）；冷启动/杀进程丢失票据（重新开启）；票据过期后下次请求返回 `VIEW_TICKET_EXPIRED`，并**一次性**写 `admin_audit{action:'ACCOUNT_SWITCH_EXPIRED', target:{type:'view_session',id:viewTicket}, detail:{viewMode,targetIsTest}}`（cleanup 对过期未结束票据同样处理，`endedAt=expiresAt` 幂等）。

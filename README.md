@@ -1,6 +1,6 @@
 # expressage_college_v4 · 校园快递代取（第四次重建 · 面向客户）
 
-> **当前阶段：批 1 完成（2026-10-21 收口）· 工程骨架 + 两个云函数 + 30 页面 + 组件/工具链齐备，`check.ps1` 全绿（4 步、退出码 0）· 待用户闭环 D1/D2/D3/D13（云环境/主体）与 D8（苑名）后进入批 2 真机与云端联调**
+> **当前阶段：批 3 完成（2026-10-22 收口）· 工程骨架 + 两个云函数 + 30 页面 + 组件/工具链齐备，`check.ps1` 全绿（4 步、退出码 0；`check.js` 31/31、`check-docs` 10/10、零金额 0 命中、selftest 10 套 1,418 断言）· 待用户闭环 D1/D2/D3/D13（云环境/主体）与 D8（苑名）后进入真机与云端联调**
 > 本目录从微信小程序默认模板重建；v1 / v2 / v3 已冻结为只读参照：
 > `D:\Code\expresseage\expresseage_college\`（v1）、`D:\Code\expresseage\expresseage_college_v2\`（v2）、`D:\Code\expresseage_college_v3\`（v3）。
 
@@ -56,11 +56,12 @@ v4 把 v3 的「兼职单人台账」升级为 **顾客下单 + 兼职接单履�
 - 新增**微信头像/昵称**（v0.9，仅绑定双方可见、后台不展示、注销删除）与**测试账号可写切换**（v0.9，后台合成账号、与真实数据严格隔离、不计统计）。
 - ⚠️ **隐私承诺变更**：v3 是"数据只存本机、不上传"；v4 面向客户必须存云端账号，并新增开发者后台治理访问（默认脱敏）、只读视角（审计）、**头像/昵称采集与展示**、**第三方 AI 文本处理与识别失败原图复核**。上线前必须先定稿隐私指引与用户协议（先改文本再改代码）。
 
-## 工程现状（批 1 收口 + 批 2 离线收口，2026-10-22）
+## 工程现状（批 1 收口 + 批 2/批 3 离线收口，2026-10-22）
 
-- **代码**：471 个文件 / 46,784 行；小程序端 30 页（主包 7 + `pkg-customer` 5 + `pkg-partner` 7 + `pkg-admin` 11）四件套齐全；`components/` 15 套 + `custom-tab-bar/`（根目录）+ tabbar 资产；`api/`（client 唯一出口 + 10 个域模块 + upload/privacy/mode-guard）、`store/`、`shared/` 13 件口径纯件 + `utils/` 纯件。
+- **代码**：475 个文件（`git ls-files` 计数）；小程序端 30 页（主包 7 + `pkg-customer` 5 + `pkg-partner` 7 + `pkg-admin` 11）四件套齐全；`components/` 15 套 + `custom-tab-bar/`（根目录）+ tabbar 资产；`api/`（client 唯一出口 + 10 个域模块 + upload/privacy/mode-guard）、`store/`、`shared/` 13 件口径纯件 + `utils/` 纯件。
 - **云端**：`cloudfunctions/api`（index/router/app + 7 中间件 + db/dao + lib + 11 域 handlers 66 个 client 动作 + admin.bootstrap/health.check 内部动作）与 `cloudfunctions/cleanup`（13 个幂等 sweep + 独立 dao），依赖只 `wx-server-sdk`；14 集合/13 错误码/审计枚举三端一致。
-- **门禁**（真实输出）：`check.ps1` 4 步全 PASS（退出码 0）——`check.js` 31/31、`check-docs.js --batch 1` 10/10、零金额扫描 0 命中、`selftest.js` 9 套 1,279 条断言全 PASS（core 58 / state 341 / recognize 187 / cloud 168 / ai 86 / bind 48 / profile 98 / switch 140 / testaccount 153）；另有 `tools/mutation.ps1` 变异电池（#29/#30/#31 安全判据已取首红证据，#31 与 #30 有牙、M21 复验修复后的 #29 有牙）。
+- **门禁**（真实输出）：`check.ps1` 4 步全 PASS（退出码 0）——`check.js` 31/31、`check-docs.js --batch 1` 10/10、零金额扫描 0 命中、`selftest.js` **10 套 1,418 条断言**全 PASS（core 58 / state 341 / recognize 187 / cloud 168 / ai 86 / bind 79 / **bind-cloud 108** / profile 98 / switch 140 / testaccount 153）；另有 `tools/mutation.ps1` 变异电池（#28/#29/#30/#31 安全判据均有首红证据）。
 - **批 2 离线收口**（提交 `619f39a`/`d79963d`）：账号入口（launch 隐私闸/角色分流/`lastRole` 建议/头像昵称采集/邀请码激活/开发者分流）、切换会话与测试账号（真实只读 + 测试可写 + 四动作 + dryRun 级联 + 审计）、头像上传服务端 size/类型闸（`api/upload` 顺序修正）、`lib/time.isPast` Date 归一；期间修复 2 个真虫（过期邀请码可激活、退出会话必失败）与兼职 READONLY targetId 口径等 10 项缺口。真机项（E12/切换条/测试账号单机双端）待用户点检。
-- **已闭环工程裁决**：`docs/TECH_DEBT.md` TD-017（四档排序归客户端）、TD-018（公开配置含 `viewTicketTtlMinutes`）、TD-007/008/009（upload/privacy 接纯件）等；未闭 TD 为 E5/E12 真机项、D8 苑名、P1 预留与已知口径差异。
+- **批 3 离线收口**：绑定方向固化全链（PARTNER 调用 `FORBIDDEN`/自绑拒绝/真实×测试拒绝/编号归一+错前缀同源提示/roomTag 大写事务分配+并发冲突有界重试/换绑与换宿舍=旧绑定释放+新建/解绑即失联/getPublic 绑定前不回头像/接单开关 `PARTNER_CLOSED`）；绑定卡分享 path 单一来源（`pages/profile/parts/share-card.js`）；新建第 10 套断言套件（`tools/selftest-bind-cloud.js`，拆掉 TD-029 行数红线）；`check.js` #28 改为去注释三条同时命中 + 变异首红（TD-031 关闭）。**真实 bug 2 个**：`order.create/createBatch` 重复预查集合键写小写（`COLLECTIONS.orders`）导致正常下单 100% `INTERNAL_ERROR`（一行修复）；TEST_WRITE 会话未放行 `partner.getPublic` 导致测试账号绑定预览受阻（新增 `TEST_WRITE_READ_ALLOW`，READONLY 不动）。真机绑定/换绑待用户点检。
+- **已闭环工程裁决**：`docs/TECH_DEBT.md` TD-017（四档排序归客户端）、TD-018（公开配置含 `viewTicketTtlMinutes`）、TD-007/008/009（upload/privacy 接纯件）、TD-026（上传服务端闸空转）、TD-029（测试文件行数红线，批 3 拆第 10 套）、TD-031（#28 变异首红+加固）；未闭 TD 为 E5/E12 真机项、D8 苑名、P1 预留、TD-030（后台「测试」行标签）/TD-032（#29 简写静态盲区）/TD-033（真实云事务冲突码待核）与已知口径差异。
 - **尚未执行（只能用户做）**：`git` 已初始化并提交；云开发环境创建、`config/env.js` 回填 envId、14 集合/索引/安全规则、`ADMIN_OPENIDS`/`DEEPSEEK_API_KEY` 环境变量、定时触发器、存储权限、真机点检、隐私后台声明与提审——按 `docs/RUNBOOK.md` 执行并留证据；未部署前云函数未在真实云环境跑过（fake-DB 单测已覆盖核心路径）。

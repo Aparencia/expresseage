@@ -5,11 +5,11 @@
 > 更新时机：每批开工/收口、用户裁决变化、风险新增或关闭、HEAD 变化需回读。
 > 本文只记**状态、待办与下一步**，不重复设计口径（口径看 CONTRACT，工程规则看 ENGINEERING，接口看 ARCHITECTURE）。
 
-**快照时间：2026-10-22（批 2 离线收口）**
+**快照时间：2026-10-22（批 3 离线收口）**
 
 ## 1. 一句话状态
 
-**批 0 设计定稿完成；批 1 工程骨架与云端基础设施完成并收口（`check.ps1` 4 步全 PASS、退出码 0）；批 2 账号入口/切换会话/测试账号/头像采集的离线部分完成并收口（9 套 1,261 断言全 PASS、`check.ps1` 退出码 0）；批 2 真机项与云环境验收待用户。**
+**批 0 设计定稿完成；批 1 工程骨架与云端基础设施完成并收口（`check.ps1` 4 步全 PASS、退出码 0）；批 2 账号入口/切换会话/测试账号/头像采集的离线部分完成并收口（9 套 1,279 断言全 PASS、`check.ps1` 退出码 0）；批 3 绑定与服务配置的离线部分完成并收口（10 套 1,418 断言全 PASS、`check.ps1` 退出码 0；修 2 个真实 P0：下单快乐路径集合键、TEST_WRITE 预览白名单）；批 2/批 3 真机项与云环境验收待用户。**
 用户侧开工门仍未闭环：D1/D2/D3/D13 待用户确认、D8 五苑正式展示名待用户给出；云环境尚未创建、云函数尚未在真实云环境部署、真机项未点检。
 
 ## 2. 批次台账
@@ -19,7 +19,8 @@
 | 批 0 | 设计定稿与开工门 | **设计定稿完成（2026-10-21）** | CONTRACT v0.9、DATA_MODEL、三份 UX、ENGINEERING、DECISIONS、QA_CHECKLIST、ARCHITECTURE、`docs/privacy/` 两件均落盘；D18~D21 四次修订已回写；**用户侧开工门（D1/D2/D3/D13）未闭环** |
 | 批 1 | 工程骨架与云端基础设施 | **完成并收口（2026-10-21）** | 真实证据见 §6：`check.ps1` 退出码 0；`check.js` 31/31、`check-docs` 10/10、零金额 0、`selftest.js` 9 套 1,014 断言全 PASS；sync 16 源×2 套 hash 一致；提交与 gate 见 §7 收口记录 |
 | 批 2 | 账号入口 + 切换会话/测试账号/头像采集 | **离线部分完成并收口（2026-10-22）** | 工程侧（代码/判据/文档）已收口（提交 `619f39a`）：5 个离线工作流见 §3b；9 套 selftest **1,279** 断言全 PASS、`check.ps1` 退出码 0；**真机项（E12 头像/昵称能力、切换条视觉、测试账号单机双端验收、开发者 entry）与云环境验收待用户** |
-| 批 3~批 9 | 见 `docs/V4_ENGINEERING.md` §11 | 未开工 | 范围、依赖与风险以 ENGINEERING §11 为准 |
+| 批 3 | 绑定与服务配置（绑定方向固化） | **离线部分完成并收口（2026-10-22）** | 工程侧（代码/判据/文档）已收口：绑定方向守卫/自绑/真实×测试拒绝、编号归一新探针与错前缀同源提示、roomTag 大写事务分配（含并发冲突有界重试）、换绑/换宿舍/解绑失联、getPublic 绑定前后头像边界、接单开关 `PARTNER_CLOSED`；新增 `tools/selftest-bind-cloud.js`（106+2 断言，TD-029 拆套件）；`tools/check.js` #28 去注释加固 + 变异首红（TD-031 关闭）；真实 bug 2 个（`order/_create.js` 小写集合键、TEST_WRITE 读白名单）；**真机绑定与换绑待用户** |
+| 批 4~批 9 | 见 `docs/V4_ENGINEERING.md` §11 | 未开工 | 范围、依赖与风险以 ENGINEERING §11 为准 |
 
 ## 3. 批 1 并行交付快照（全部收口）
 
@@ -50,6 +51,16 @@
 | 批2-C 切换会话/测试账号 | 修两个真虫：①退出会话必失败（票据只在包络、handler 读 payload + adminScope 拒会话身份）→ 中间件 EXIT 注入 + `requireAdmin(allowViewMode)`；②兼职 READONLY targetId 口径错（`partners.openid` vs `_id`）→ 分模式存 id + 交叉校验 `targetId===effectiveOpenid`。另修 dryRun 条数/真实引用闸/purge 失败原图与会话/审计重放误判/配额错误码/dryRun 二次确认等 8 项；`selftest-switch` 74→140、`selftest-testaccount` 48→153（含后台 DTO 脱敏行为 18 条） | 已交付 |
 | 批2-D 变异电池 | `tools/mutation.ps1`（366 行/BOM/LF，锚点唯一→注入→首红→SHA256 还原→复跑）+#31（页面注入孤立 `TEST`）/#30（删 switch-session 目标 `isTestAccount` 校验）首红证据；M21 复验暴露并修掉**门禁 #29 空集全绿**（check.js 脱敏件路径写死不存在 → 缺失判红 + `_dto.js` 禁词 + admin handler 键扫描；selftest-testaccount +18 行为断言）；TD-002 关闭 | 已交付 |
 | 批2-E 上传/时间闸 | `api/upload.js` 顺序改「本地校验/压缩 → `upload.prepare({purpose,size,contentType})` → 上传」，关闭「服务端 size/类型闸空转」（TD-026）；`lib/time.isPast` 归一 Date/字符串；变异电池 5/5 红、SHA256 还原复跑全绿；`selftest-cloud` 166→168、`selftest-profile` 92→98 | 已交付 |
+
+## 3c. 批 3 离线交付快照（工程侧收口）
+
+| 工作流 | 交付摘要 | 状态 |
+| :-- | :-- | :-- |
+| 批3-A 云端绑定域 | `bind.create`/`partner.getPublic` 非法编号改「同源错前缀三句提示」（`shared/error-copy.PREFIX_HINT`，C→顾客编号 / DEV→开发者编号 / 其它→格式）；新建 `lib/tx.js`（`retryOnConflict` 默认 3 次、只重试事务冲突、非冲突立即抛；唯一索引冲突显式排除不重试），`bind.create` 与 `customer.saveProfile` 换宿舍事务接入；`getPublic` 补 `deletedAt` 判空；核对 `acceptingOrders` 写读口径 | 已交付 |
+| 批3-B 云端绑定域断言套件 | 新建 `tools/selftest-bind-cloud.js`（TD-029 行数红线拆分；A~H 共 108 断言：方向守卫/自绑/真实×测试、编号归一+错前缀、roomTag 大写/顺序/隔离/不复用/tagKey 唯一、换绑/换宿舍、解绑失联 DTO、getPublic 头像边界与 TEST_WRITE 路由级放行、接单开关 `PARTNER_CLOSED`、事务冲突重试 3 vs 1 边界、`COLLECTIONS.<小写>` 静态回归闸）；`tools/selftest.js` 注册为第 10 套 | 已交付 |
+| 批3-C 端侧绑定/分享卡 | 新建纯件 `pages/profile/parts/share-card.js`（绑定卡分享 path 单一来源、统一 `encodeURIComponent`、标题零 PII）；`pages/profile` 与 `pages/partner/customers` 分享改调纯件；修 bind 页 `prefixHint` 返回对象被直接塞进 data 的真实 bug（改取 `.message`，与云端同句）；READONLY 按钮 disabled + 事件层再挡；`selftest-bind` 48→79 断言（含全页面层零自拼分享 path 静态扫描） | 已交付 |
+| 批3-D 判据取证与加固 | `tools/mutation.ps1` 对 #28 两轮变异：M1（删角色守卫）加固前 check.js 与行为套**双绿=空转**（旧判据被文件头注释里的 CUSTOMER/FORBIDDEN 满足）；加固 `check.js` #28 为「去注释后同时命中 角色守卫调用 + 真实 `errors.forbidden(` + 自绑比较」，M1/M2 复验 check.js 首红 + SHA256 还原 + 复跑全绿；新增踩坑卡 | 已交付 |
+| 批3-E 真实 bug 修复（跨域） | ①`handlers/order/_create.js:239` `COLLECTIONS.orders`（小写=undefined）→ `order.create/createBatch` 重复预查 100% `INTERNAL_ERROR`，一行修复；②`middleware/switch-session.js` TEST_WRITE 未放行 `partner.getPublic` → 开发者测试会话无法预览兼职（绑定流程受阻），新增 `TEST_WRITE_READ_ALLOW`（READONLY 不动）；由新套件首红定位后修复并复验 | 已交付 |
 
 ## 4. 用户待办（阻塞项）
 
@@ -114,6 +125,23 @@
 - 关闭债务：TD-002（#28~#31 判据必须有牙，批 2 取 #29/#30/#31；#28 转 TD-031）、TD-008 剩余项（lastRole 生产接入）、TD-010（privacyConsent 进 store）、TD-017/020/021（排序/模型/隐私 DTO）、TD-026（上传服务端闸空转）、TD-028（DATA_MODEL 事务措辞）；新增 TD-027（票据一次性 vs 幂等重放，接受为预期）、TD-029（selftest-cloud 999/1000 行红线）、TD-030（后台「测试」行标签待批 8 补）、TD-031（#28 变异留批 3）、TD-032（#29 静态扫描 `{ avatarFileId }` 简写盲区，行为套兜底）。
 - 文档回写：ARCHITECTURE §3.3 上传顺序 + §3.6 reason/导出；DATA_MODEL §2.10/§7.3/§7.7 + 23 处「测试」标签口径；CONTRACT §1.3 后台行标签裁决；UX_CUSTOMER §3.1 分流顺序；UX_DEVELOPER/QA_CHECKLIST 同步。
 
+## 6c. 批 3 离线收口证据（真实输出）
+
+| 命令 | 结果 |
+| :-- | :-- |
+| `powershell -File check.ps1` | **4 步全 PASS，退出码 0** |
+| `node tools/check.js` | 通过 **31 项**；失败 0 项 |
+| `node tools/check-docs.js --batch 1` | 通过 **10 项**；失败 0 项 |
+| `node tools/zero-money-scan.js` | **0 命中**（白名单 136 项） |
+| `node tools/selftest.js` | 运行 **10 套**；失败 0 套；SKIP 0；**1,418 断言全 PASS**（core 58 / state 341 / recognize 187 / cloud 168 / ai 86 / bind 79 / bind-cloud 108 / profile 98 / switch 140 / testaccount 153） |
+| `node tools/selftest-bind-cloud.js` | 断言 **108/108**；失败 0 项 |
+| `node tools/sync-cloud-shared.js --check` | 16 源 × 2 套 32 件 hash 一致 |
+| 批 3 代码收口提交 | `c5ad0af`（15 文件 +1232/-44；批 3 代码/判据） |
+| 变异电池 #28（M1/M2） | `tools/mutation.ps1` 注入→首红→SHA256 逐字节还原→复跑绿；M1 加固前双绿=判据空转已修 |
+
+- 新增/修改代码文件（批 3）：`cloudfunctions/api/lib/tx.js`（41 行，新）、`handlers/bind/create.js`、`handlers/partner/getPublic.js`、`handlers/customer/saveProfile.js`、`handlers/order/_create.js`（1 行）、`middleware/switch-session.js`、`pages/profile/parts/share-card.js`（32 行，新）、`pages/profile/index.js`、`pages/partner/customers/index.js`、`pkg-customer/pages/bind/*`、`tools/selftest-bind-cloud.js`（939+ 行，新）、`tools/selftest.js`、`tools/selftest-bind.js`、`tools/check.js`（#28 加固 +18/-10）。
+- 关闭债务：TD-029（selftest-cloud 行数红线 → 拆出第 10 套）；TD-031（#28 变异首红取证 + 判据加固）。新增 TD-033（真实云 DB 事务冲突码/重试在真实环境未验证）。
+
 ## 7. 当前风险与红灯（如实记录）
 
 1. **云端一切未执行**：云环境、集合、索引、安全规则、环境变量、触发器、存储权限均未在真实控制台创建；批 1/批 2 的"绿"全部来自 fake-DB/纯件/静态门禁，**不等于云端已跑通**。任何"部署成功/联调成功"必须以 RUNBOOK 证据为准。
@@ -123,9 +151,10 @@
 5. **D8 未给正式苑名期间**：五苑展示名用配置默认值；改名只动 `config.zoneLabels`，不改代码。
 6. **真机项全部未验证**：E5/E12/R2/R3 与 QA_CHECKLIST 人点检均由用户执行，agent 不代勾；批 2 的切换条视觉/退出交互/测试账号单机双端/头像采集需真机点检。
 7. **已知口径差异/欠账**：`docs/TECH_DEBT.md` 开放/跟踪中项（E5/E12/D8、AI 兜底、订阅消息、cleanup 成本、fake DB 差异、TD-019、TD-022~025、TD-027、TD-029、TD-030）均为明账；不阻塞批 2 离线收口。
-8. **TD-029 行数红线**：`tools/selftest-cloud.js` 已 999/1000 行，下批加断言前必须先压减/拆分（批 3 bind 判据需提前规划）。
+8. **TD-029 行数红线已解**：批 3 拆出 `tools/selftest-bind-cloud.js`（第 10 套），`tools/selftest-cloud.js` 保持 999 行不再追加；后续新增断言写新套件或先压减。
 9. **TD-030 后台测试标签**：后台列表行内「测试」标签未实现（仅中文 tab 承载），批 8 后台页收口时补；不涉及安全隔离。
-10. **安全判据自检**：#28（绑定方向）变异首红留批 3（TD-031）；`check.js` #29 admin 静态扫描不覆盖 `{ avatarFileId }` 简写（TD-032，`_dto.js` 整文件禁词 + selftest-testaccount 行为递归键集已覆盖输出面）。
+10. **安全判据自检**：批 3 已取 #28 变异首红（M1 加固前双绿=空转）并加固为「去注释后 角色守卫调用+真实 `errors.forbidden(`+自绑比较」三条同时命中（TD-031 关闭）；`check.js` #29 admin 静态扫描不覆盖 `{ avatarFileId }` 简写（TD-032，`_dto.js` 整文件禁词 + selftest-testaccount 行为递归键集已覆盖输出面）。
+11. **新增 TD-033**：`lib/tx.js` 的「事务冲突」判定依赖错误自述（`-50200x`/conflict 文案），真实云 DB 冲突码未在真实环境核对过；已用 `duplicate key` 排除唯一索引冲突（不重试），部署后按 RUNBOOK 冒烟时核对一次日志。
 
 ## 8. 最近更新
 
@@ -141,14 +170,19 @@
 | 2026-10-22 | **批 2 离线收口提交 `619f39a`**（39 文件 +1740/-286）：修 2 个真虫（activate 过期码可激活、退出会话必失败）+ 兼职 READONLY targetId 口径 + 上传服务端闸空转 + 后台测试账号 8 项缺口；9 套 selftest 1,261 断言、`check.ps1` 退出码 0；文档回写 ARCHITECTURE/DATA_MODEL/CONTRACT/UX_CUSTOMER/UX_DEVELOPER/QA/TECH_DEBT |
 | 2026-10-22 | **批 2 证据回写**（docs-only）：STATE/CHANGELOG 同步 1,261 断言与 TD 关闭；`zero-money-allowlist.json` 压成 138 行以过 gate 500 行门禁；批 2-D 变异电池（task-51）随后补 |
 | 2026-10-22 | **批 2 变异电池 + 门禁 #29 自检修复**：新增 `tools/mutation.ps1`（366 行/BOM/LF，支持 `-File` 逗号串多命令）与 `docs/lessons/` 首卡；#31/#30 首红取证；M21 暴露并修复 **#29 空集全绿**（脱敏件路径 `db/dto/mask.js` 缺失判红 + `_dto.js` 禁词 + admin 键扫描 + selftest-testaccount +18 行为断言，135→153）；`gate.ps1` 行数档对齐 `check.js #18`（`tools/` ≤1000）；TD-002 关闭、TD-031/032 登记；9 套 **1,279** 断言全 PASS、`check.ps1` 退出码 0 |
+| 2026-10-22 | **批 3 离线开工**（Agent Team 并行 task-55/56/57/58/59）：云端绑定域代码、新断言套件、端侧分享卡/绑定页、#28 变异电池、兼职客户页分享收口五个工作流 |
+| 2026-10-22 | **批 3 真实 bug 修复**：①`handlers/order/_create.js:239` `COLLECTIONS.orders` 小写 → undefined，`order.create/createBatch` 重复预查 100% `INTERNAL_ERROR`（新套件 G1/G2/G6 首红定位，一行修复）；②`switch-session.js` TEST_WRITE 未放行 `partner.getPublic` → 测试会话绑定预览受阻（新增 `TEST_WRITE_READ_ALLOW`，READONLY 不动）；③bind 页 `prefixHint` 对象直接进 data（改取 `.message`） |
+| 2026-10-22 | **批 3 #28 判据空转取证与加固（TD-031）**：变异 M1（删角色守卫）加固前 check.js 与行为套双绿=空转（旧判据被文件头注释满足）；`check.js` #28 改「去注释后 守卫调用 + 真实 `errors.forbidden(` + 自绑比较」三条同时命中；M1/M2 复验首红 + SHA256 还原 + 复跑绿 |
+| 2026-10-22 | **批 3 离线收口**：`check.ps1` 4 步全 PASS（退出码 0）——check.js 31/31、check-docs 10/10、零金额 0 命中、selftest **10 套 1,418 断言**全 PASS（新增 `selftest-bind-cloud` 108）；TD-029/TD-031 关闭、新增 TD-033；CONTRACT/DATA_MODEL/ENGINEERING/README/TECH_DEBT/lessons 回写 |
 
 ## 9. 下一步（按序）
 
 1. **用户闭环开工门**：D1/D2/D3/D13 + D8；创建云开发环境与 14 集合/索引/安全规则，配置 `ADMIN_OPENIDS`、存储权限、定时触发器（可选 `DEEPSEEK_API_KEY`）；证据按 `docs/RUNBOOK.md` 采集。
 2. **首次部署冒烟**：`node tools/sync-cloud-shared.js` → 部署 `api`/`cleanup` → `health.check`/`admin.bootstrap` → 单条 10 分钟定时触发器 → RUNBOOK「首次部署」清单。
 3. **批 2 真机点检**（只能用户）：E12 头像/昵称能力、隐私弹窗、切换条黄/蓝与退出、测试账号单机双端（绑定→下单→确认）、邀请码负向、开发者 entry；按 `docs/QA_CHECKLIST.md` 批 2 分区（A1~A10、A13~A14、B1~B5、Q5、Q7、P9、P13~P14）取证。
-4. **批 3 离线收口**（agent，不依赖云环境）：`bind.create` 角色守卫/自绑/真实×测试拒绝、`partnerNo` 归一与错前缀、roomTag 大写事务分配/并发/换绑/解绑失联、`partner.getPublic` 绑定前不回头像、`saveServiceConfig` 接单开关 → `selftest-bind`（新增判据需先处理 TD-029 行数红线）+ `tools/mutation.ps1` 对 #28 变异首红（TD-031）。
-5. **批 4~批 9** 按 ENGINEERING §11 推进；每批 DoD = `check.ps1` 退出码 0 + 真实输出 + 本批验收逐条打勾 + 文档回写；真机/控制台项由用户执行。
+4. **批 3 离线收口已完成**（`tools/selftest-bind-cloud.js` 第 10 套；check.js 31/31、check-docs 10/10、零金额 0、selftest 1,418 断言、check.ps1 exit 0）；真实 bug 2 个（`COLLECTIONS.orders` 小写、TEST_WRITE 读白名单）已修。
+5. **批 4 离线收口**（agent，不依赖云环境）：`order.create/createBatch` 快乐路径与批量原子性（新套件 G 组已首红并修，但还要补幂等/批量/ticket 路径判据）、顾客下单四步与多码拆单、识别层移植与手填兜底、`ai.parseParcel` 链路（兜底/降级/入队/配额）、服务类型选择只有类型名（零金额扫描继续 0 命中）。
+6. **批 4~批 9** 按 ENGINEERING §11 推进；每批 DoD = `check.ps1` 退出码 0 + 真实输出 + 本批验收逐条打勾 + 文档回写；真机/控制台项由用户执行。
 
 ## 10. 维护规则
 

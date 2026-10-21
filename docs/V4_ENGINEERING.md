@@ -271,7 +271,7 @@ expressage_college_v4/
 
 - 写动作必传 `clientRequestId`（缺失/格式错 → `VALIDATION_FAILED`）；读动作不需要；`cleanup.*` 只允许定时触发器调用（客户端调用 → `FORBIDDEN`）。
 - 限流配额来源 `config`（默认取 CONTRACT §10）；限流/审计基础设施失败时**失败关闭**（拒绝写）并记日志。
-- **切换会话读白名单（v0.9 两模式共用，CONTRACT §1.2）**：`user.bootstrap`、`customer.getProfile`、`partner.listBindings`、`bind.getCurrent`、`order.get`、`order.listCustomer`、`order.listPartner`、`message.list`、`order.imageUrl`、`config.getPublic`；其他读动作一律拒绝（含 admin 动作：**票据不能当后台凭据**）；**TEST_WRITE 额外允许 §4.2 的业务写白名单**。
+- **切换会话读白名单（v0.9，CONTRACT §1.2/§1.3）**：`user.bootstrap`、`customer.getProfile`、`partner.listBindings`、`bind.getCurrent`、`order.get`、`order.listCustomer`、`order.listPartner`、`message.list`、`order.imageUrl`、`config.getPublic`；其他读动作一律拒绝（含 admin 动作：**票据不能当后台凭据**）。`READONLY` 只走上列白名单；**`TEST_WRITE` 额外放行读动作 `partner.getPublic`**（测试兼职预览，真实顾客仍 `NOT_FOUND`；`switch-session.js` 的 `TEST_WRITE_READ_ALLOW` 单源）**+ §4.2 的业务写白名单**。
 - **身份传播（v0.9）**：`admin_audit.adminOpenid` = `actorOpenid`；业务/限流/`upload_tickets.openid`/`order_messages.fromId`/`order_events.actorId` = `effectiveOpenid`；`impersonatedBy=developerNo` 只落订单与事件；**handler 只读 `ctx.identity`，不得自行解析票据或写"if 视角"分支**。
 - **绑定方向角色守卫（v0.9）**：`auth` 后由 `guard-bind` 断言 `bind.create` 的业务角色 = CUSTOMER（TEST_WRITE 下取目标测试账号角色）；PARTNER 调用一律 `FORBIDDEN`；守卫在 validate 前执行（先拒后校验，避免通过报错差异探测）。
 - **AI 兜底的链路差异（v0.8）**：`ai.parseParcel` 同样走 trace/auth/validate/handler/respond，但 **`ratelimit` 中间件不对它抛 `RATE_LIMITED`**——配额在 handler 内用 `counters.rl:ai:{openid}:{day}` 与 `counters.rl:ai:global:{day}` 判定，超限**不发外呼**、直接降级并写队列（用户侧静默）；`validate` 剥离未知字段，`ocrTextMasked` 超长 → `VALIDATION_FAILED`；**READONLY/TEST_WRITE 调 `ai.parseParcel` → `FORBIDDEN`**（写队列，不属于读白名单且会污染复核数据）。
@@ -325,7 +325,7 @@ expressage_college_v4/
 | `users` | `_id` 内置（测试账号为合成 `openid='TEST-<random>'`） | `idx_deletion(deletionRequestedAt)`（注销 30 天排期）、**`idx_test_account(isTestAccount,testLastUsedAt)`（测试数据 30 天清理）** |
 | `customers` | `_id` 内置、**`uk_customer_no(customerNo)`** | `idx_zone_building`（后台按苑/楼栋筛选） |
 | `partners` | `uk_openid(openid)`、**`uk_partner_no(partnerNo)`** | `idx_status` |
-| `bindings` | `uk_active_key(activeKey)` | `idx_partner_status`、`idx_customer_status` |
+| `bindings` | `uk_active_key(activeKey)`、`uk_tag_key(tagKey)` | `idx_partner_status`、`idx_customer_status` |
 | `orders` | `uk_order_no(orderNo)`、`uk_request_key(requestKey)` | `idx_status_created`、`idx_finalized`、`idx_deleted_customer`、`idx_image_file`、`idx_customer`/`idx_partner`（归属查询）、**`idx_istest_created(isTest,createdAt)`（测试数据排除与清理）** |
 | `order_events` | `uk_request_key(requestKey)` | `idx_order_at`、`idx_orderNo_at` |
 | `order_messages` | — | `idx_order_created`、`idx_order_read` |
@@ -761,11 +761,12 @@ expressage_college_v4/
 | 25 | **AI 外发白名单**（v0.8）：`https`/`fetch`/`api.deepseek.com` 只允许在 `cloudfunctions/api/lib/ai/deepseek.js`；外发请求体只能由 `buildAiPayload()` 构造且键集合 === `AI_PAYLOAD_KEYS`；`lib/ai/**` 零 `fileId`/`openid`/`orderId` 字面量 | 原图/身份/归属外泄 | v4 新增（v0.8） |
 | 26 | **失败必入队**（v0.8）：`handlers/ai/**` 每个 `recognized:false` 返回点都必须有 `recordFailure(`（失败分支数 ≤ 入队调用数，少一个即红）；`catch` 不得空吞直接 return；`shared/collections.js` 必须含 `recognition_failures` | 失败静默丢弃、无法复核 | v4 新增（v0.8） |
 | 27 | **复核原图访问必审计**（v0.8）：`admin.getRecognitionFailure` 内 `getTempFileURL` 与 `FAILURE_IMAGE_VIEW` 审计同函数出现；复核页零 `getTempFileURL`（只经 `api/`）；`fix/ignore` 必写 `FAILURE_FIX`/`FAILURE_IGNORE` | 原图被无审计读取 | v4 新增（v0.8） |
-| 28 | **绑定方向（v0.9）**：`bind.create` handler 出现 CUSTOMER 角色断言（关键词扫描）且自绑拒绝；代客单路径零 `bindings` 集合访问；`pkg-partner/**` 零 `bind.create`/`bind.release` 调用与"绑定顾客/添加顾客/导入顾客"文案；业务写点为 `handlers/bind`（测试数据清理走 `handlers/admin/testAccounts` 专用 purge，不经业务路径） | 兼职越权绑定/代客单隐式绑定 | v4 新增（v0.9，CONTRACT §12） |
+| 28 | **绑定方向（v0.9）**：`bind.create` handler **去注释后必须同时命中**「角色守卫调用（`canInitiateBind`/`ROLES.CUSTOMER`）」「真实 `errors.forbidden(`」「自绑比较 `partner.openid === effectiveOpenid`」，实现文件缺失判红（批 3 加固：旧口径被文件头注释里的 CUSTOMER/FORBIDDEN 字样满足 → 删真守卫仍全绿）；代客单路径零 `bindings` 集合访问；`pkg-partner/**` 零 `bind.create`/`bind.release` 调用与"绑定顾客/添加顾客/导入顾客"文案；业务写点为 `handlers/bind`（测试数据清理走 `handlers/admin/testAccounts` 专用 purge，不经业务路径） | 兼职越权绑定/代客单隐式绑定 | v4 新增（v0.9，CONTRACT §12）；批 3 修空转（TD-031） |
 | 29 | **头像昵称（v0.9）**：`avatars/` 路径只在 `handlers/upload` 与 `api/upload.js`，模板 `avatars/{role}/{random}.jpg`（**零 openid**）；`avatarFileId` 不出现于**脱敏单源 `cloudfunctions/api/db/dto/mask.js`（文件缺失即判红，缺失≠跳过）**、`handlers/admin/_dto.js`（去注释后整文件禁词）、其它 admin handler 的返回/赋值键（`avatarFileId: ''` 默认空头像写入豁免）、`pkg-admin/**`；昵称截断 + `msgSecCheck` 在 customer/partner 保存路径；roomTag 落库前 `^[A-Z]+$`、`utils/room-tag.js` 零 `random` | 头像外泄/昵称违规/小写 tag | v4 新增（v0.9）；批 2 修 #29 空集全绿 |
 | 30 | **账号切换与测试数据隔离（v0.9）**：`admin_view_sessions` 写入含 `viewMode/targetIsTest`；TEST_WRITE 签发处断言 `isTestAccount`；统计/红点/邀请码/后台列表查询含 `isTest`/`isTestAccount` 过滤；`orders` 写入含 `isTest` 派生与 `impersonatedBy`；`shared/audit-actions.js` 枚举 = 本文 §4.9 列表（`ACCOUNT_SWITCH_*`/`TEST_ACCOUNT_*`/`TEST_DATA_PURGE` 在册，`VIEW_AS_*` 零残留） | 测试数据污染真实统计 | v4 新增（v0.9，CONTRACT §12） |
 | 31 | **测试视觉（v0.9）**：`TEST` 字面量只允许在 `components/test-badge`；蓝条/黄条颜色常量只在 `components/switch-bar` wxss；`pkg-admin/**` 零引用两组件；角标渲染受 `viewMode=TEST_WRITE` 条件控制 | 测试会话视觉混入真实页面 | v4 新增（v0.9） |
 
+- **批 3 补充的行为/静态回归判据**（`tools/selftest-bind-cloud.js`，第 10 套；`check.js` 仍 31 条不扩容）：A 方向守卫（顾客基线/PARTNER→`FORBIDDEN`/自绑→`FORBIDDEN`/真实×测试→`FORBIDDEN`）；B 编号归一并复用 `shared/error-copy.PREFIX_HINT` 三句同源提示（`data.field='partnerNo'`）；C roomTag 大写/顺序/隔离/旧号不复用/`tagKey` 唯一；D 换绑与换宿舍（旧 ACTIVE→RELEASED+新 binding）；E 解绑失联与通知；F `partner.getPublic`/`bind.getCurrent`/`listBindings` 头像昵称边界与 TEST_WRITE 路由级放行（READONLY 仍拒）；G 接单开关 `PARTNER_CLOSED` + **全仓 `cloudfunctions/**/*.js` 去注释后 `COLLECTIONS.<小写键>` 零命中**（批 3 P0 回归闸：`handlers/order/_create.js` 曾写 `COLLECTIONS.orders`，下单快乐路径全挂）；H 事务冲突重试边界（默认 3 次、只重试冲突、唯一索引冲突不重试）。
 - 汇总行必须存在（"通过 N 项；失败 M 项"）；**没有汇总输出 = 读数作废**，不许当红/绿用（v3 教训）。
 ### 8.3 `tools/check-docs.js`（设计阶段门禁）
 1. 文档地图列出的文件**按批次分阶段校验**：**批 0 豁免**"批 1 才建立"的 `AGENTS.md`、`STATE.md`、`CHANGELOG.md`、`docs/ARCHITECTURE.md`、`docs/RUNBOOK.md`、`docs/V4_FIXTURES.md`（六件批 1 收口时必须存在）；批 0 必须存在 = `V4_REBUILD_SPEC.md`、`docs/V4_CONTRACT.md`、`docs/V4_DATA_MODEL.md`、三份 UX（含 **`docs/V4_UX_DEVELOPER.md`**）、本文、`docs/V4_DECISIONS.md`、`docs/QA_CHECKLIST.md`、`docs/privacy/*`；**批 ≥1 不豁免**。批次由显式参数 `--batch N` 传入（**默认 1 = 严格不豁免**；批 0 必须显式传 `--batch 0`）。
