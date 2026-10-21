@@ -199,7 +199,7 @@ if (require.main === module) {
     'selftest-partner-customers', 'selftest-partner-orders', 'selftest-partner-pages', 'selftest-partner-stats',
     'selftest-profile', 'selftest-switch', 'selftest-testaccount',
     'selftest-admin', 'selftest-messages', 'selftest-cleanup', 'selftest-admin-pages',
-    'selftest-message-pages', 'selftest-privacy-text'];
+    'selftest-message-pages', 'selftest-privacy-text', 'selftest-deletion'];
   const agg = { count: 0, passed: 0, failures: 0 };
   installCrashGuard(() => ({ count: agg.count, passed: agg.passed, failures: agg.failures }), 'selftest');
   (async () => {

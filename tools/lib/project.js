@@ -158,6 +158,8 @@ const DESIGN_DOCS = [
   'docs/ARCHITECTURE.md',
   'docs/RUNBOOK.md',
   'docs/V4_FIXTURES.md',
+  'docs/V4_REVIEW_MATERIALS.md',
+  'docs/V4_V3_PARITY.md',
 ];
 
 const BATCH0_EXEMPT = ['AGENTS.md', 'STATE.md', 'CHANGELOG.md', 'docs/ARCHITECTURE.md', 'docs/RUNBOOK.md',

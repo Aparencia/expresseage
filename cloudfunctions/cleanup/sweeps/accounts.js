@@ -56,6 +56,51 @@ async function endSessionsOfTarget(ctx, targetId) {
   return ended;
 }
 
+// §10.3：顾客注销删 partnerNote（含历史已释放行；按需清空，二次运行 0 变化）
+async function clearPartnerNotesOfCustomer(ctx, openid) {
+  const C = util.collectionsOf(ctx);
+  const rows = await ctx.dao.find(C.BINDINGS, {
+    where: { customerId: openid },
+    orderBy: [['boundAt', 'asc']],
+    limit: util.BATCH
+  });
+  let changed = 0;
+  for (let i = 0; i < rows.length; i += 1) {
+    if (!rows[i].partnerNote) {
+      continue;
+    }
+    await ctx.dao.update(C.BINDINGS, rows[i]._id, { partnerNote: '', updatedAt: util.nowDateOf(ctx) });
+    changed += 1;
+  }
+  return changed;
+}
+
+// §10.3 / CONTRACT §11.4：上传者注销时清 uploaderOpenid 与 fileId，原图按引用计数删除（订单侧规则先行）。
+// 逐行处理而非整批 updateWhere：只有真正带有 fileId 的行才需要删文件，且 100 条/轮可重入。
+async function anonymizeFailuresOfUploader(ctx, openid) {
+  const C = util.collectionsOf(ctx);
+  const rows = await ctx.dao.find(C.RECOGNITION_FAILURES, {
+    where: { uploaderOpenid: openid },
+    orderBy: [['createdAt', 'asc']],
+    limit: util.BATCH
+  });
+  let changed = 0;
+  for (let i = 0; i < rows.length; i += 1) {
+    const failure = rows[i];
+    const fileId = typeof failure.fileId === 'string' ? failure.fileId : '';
+    await ctx.dao.update(C.RECOGNITION_FAILURES, failure._id, {
+      uploaderOpenid: '',
+      fileId: '',
+      updatedAt: util.nowDateOf(ctx)
+    });
+    if (fileId) {
+      await util.deleteFileIfUnreferenced(ctx, fileId);
+    }
+    changed += 1;
+  }
+  return changed;
+}
+
 // customers 匿名化（§10.3：清 PII 含 displayName/avatarFileId/phoneTail/宿舍，写 deletedAt/anonymizedAt/purgeAt）
 async function anonymizeCustomer(ctx, customer) {
   const C = util.collectionsOf(ctx);
@@ -125,13 +170,8 @@ async function anonymizeAccount(ctx, user) {
   }
   changed += await anonymizeOrdersOfCustomer(ctx, openid);
   changed += await endSessionsOfTarget(ctx, openid);
-  const failures = await ctx.dao.updateWhere(C.RECOGNITION_FAILURES, { uploaderOpenid: openid }, {
-    uploaderOpenid: '',
-    updatedAt: util.nowDateOf(ctx)
-  });
-  if (failures.updated > 0) {
-    changed += 1;
-  }
+  changed += await clearPartnerNotesOfCustomer(ctx, openid);
+  changed += await anonymizeFailuresOfUploader(ctx, openid);
   const tickets = await ctx.dao.removeWhere(C.UPLOAD_TICKETS, { openid });
   if (tickets.removed > 0) {
     changed += 1;
@@ -147,8 +187,7 @@ async function deleteAccount(ctx, user) {
   const avatarFileId = customer && typeof customer.avatarFileId === 'string' ? customer.avatarFileId : '';
   await ctx.dao.removeWhere(C.BINDINGS, { customerId: openid });
   await ctx.dao.removeWhere(C.UPLOAD_TICKETS, { openid });
-  await ctx.dao.updateWhere(C.RECOGNITION_FAILURES, { uploaderOpenid: openid },
-    { uploaderOpenid: '', updatedAt: util.nowDateOf(ctx) });
+  await anonymizeFailuresOfUploader(ctx, openid);
   await endSessionsOfTarget(ctx, openid);
   await ctx.dao.remove(C.CUSTOMERS, openid);
   await ctx.dao.remove(C.USERS, openid);

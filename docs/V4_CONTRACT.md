@@ -516,8 +516,8 @@ v3 是"数据只存本机、不上传、无账号"；v4 必须改为"**订单与
 - **AI 兜底安全（v0.8）**：`DEEPSEEK_API_KEY` 只存云函数环境变量，客户端包内零出现；外发 payload 白名单（`ocrTextMasked/hintTrackingTail/role`）+ 服务端二次去敏；原图与 openid 不外发；响应不整段落日志；失败入队可追溯；复核页原图临时 URL 5 分钟且每次审计。
 
 ### 11.4 注销与删除
-- 顾客注销：检查无进行中订单 → 删除 `customers`/`users` 资料（含**头像文件**）、截图、留言；订单匿名化后 30 天内物理删除；解绑；`customerNo` 作废不再分配。
-- 兼职注销：需先处理完未完成订单并解除全部绑定；删除 `partners` 与配置（含**头像文件**），订单匿名化同上；邀请码记录保留（`usedBy` 置空/哈希保留审计）；`partnerNo` 作废不再分配。
+- 顾客注销：检查无进行中订单 → 删除 `customers`/`users` 资料（含**头像文件**）、截图、留言；订单匿名化后 30 天内物理删除；解绑；`customerNo` 作废不再分配。**执行时点（批 9 澄清）**：注销事务只做「绑定释放 + `users` 置 DEACTIVATED」，PII 匿名化、截图与头像文件删除由**下一轮 cleanup（≤10 分钟）**执行（`user.deleteAccount` + `cleanup.accountDeletion` 两阶段链路，见 DATA_MODEL §10.4）。
+- 兼职注销：由开发者后台 `admin.setPartnerStatus(CLOSED)` 执行（无自助入口；需先处理完未完成订单并解除全部绑定）：释放绑定并清 `partnerNote`、进行中订单转 `EXCEPTION` 待后台处置；`partners` PII 匿名化（**`displayName`/`avatarFileId`/停用与关闭原因清空**）并**删除头像文件**；`invitation_codes.usedBy` 置空（保留 `usedAt`/`batchId` 审计）；识别失败记录清 `uploaderOpenid`/`fileId` 并按引用计数删原图；**`partners` 文档保留审计不物理删**（`openid` 保留作「不可再激活」身份锚点，待 `docs/TECH_DEBT.md` TD-053 收敛）；已终态订单仍按终态留存口径（180 天后匿名化），不随 CLOSED 立即匿名化；`partnerNo` 作废不再分配。
 - 顾客可删除单条已完成订单记录（软删，7 天后物理删除）。
 - **测试账号（v0.9）**：`admin.deleteTestAccount` 删除账号 + 头像 + 全部测试数据（含测试订单、留言、绑定），并写审计；`admin.purgeTestData` 只清数据保留账号；cleanup 清理超 30 天未使用的测试数据；测试账号不涉及对真实用户的隐私披露（无真实微信资料）。
 - **识别失败记录（v0.8）**：上传者注销 → 清 `uploaderOpenid`（匿名化）、原图按引用计数删除、`ocrTextMasked` 随记录保留至到期（默认 30 天）后物理删；兼职 CLOSED 同口径（记录保留至到期，供复核审计）；复核审计日志按审计策略保留。
@@ -549,6 +549,8 @@ v3 是"数据只存本机、不上传、无账号"；v4 必须改为"**订单与
   - `docs/V4_ENGINEERING.md`（工程结构/环境/测试/门禁/部署）
   - `docs/V4_DECISIONS.md`（裁决卡；D1~D22）
   - `docs/QA_CHECKLIST.md`（真机/双机人工点检清单，人执行）
+  - `docs/V4_REVIEW_MATERIALS.md`（批 9：审核材料与提审体验路径，用户执行；agent 不代提审）
+  - `docs/V4_V3_PARITY.md`（批 9：v3→v4 功能对照验收表，用户勾选底稿）
   - `docs/privacy/`（隐私指引草案 + 发布前填写清单，上线前人执行）
   - `docs/ARCHITECTURE.md`、`docs/RUNBOOK.md`（批 1 建立）
   - `docs/lessons/`（v4 新踩坑）

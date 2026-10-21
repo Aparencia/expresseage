@@ -37,6 +37,8 @@ async function handler(ctx, payload) {
         releasedBy: enums.CANCELLED_BY.CUSTOMER,
         nowDate
       });
+      // DATA_MODEL §10.3：顾客注销删 partnerNote（兼职私有备注，历史行保留但内容清空）
+      await trx.update(COLLECTIONS.BINDINGS, binding._id, { partnerNote: '', updatedAt: nowDate });
     }
     await trx.update(COLLECTIONS.USERS, scope.openid, {
       status: enums.USER_STATUS.DEACTIVATED,
