@@ -399,6 +399,11 @@ Page({
     wx.switchTab({ url: CUSTOMER_ORDERS_PAGE });
   },
 
+  onReplayGuide() {
+    storage.clearGuideSeen(this.data.isCustomer ? 'CUSTOMER_HOME_V1' : 'PARTNER_WORKBENCH_V1');
+    ui.toast(this.data.isCustomer ? '已重置，回首页可重看引导' : '已重置，回工作台可重看引导');
+  },
+
   // 隐私政策/用户协议/帮助/联系开发者统一走帮助页的 doc 参数（?doc=privacy|terms|about）
   onDocTap(event) {
     const dataset = (event.currentTarget && event.currentTarget.dataset) || {};

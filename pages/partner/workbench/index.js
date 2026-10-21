@@ -1,83 +1,86 @@
-// pages/partner/workbench/index.js · 取件清单（服务端给状态桶+站点过滤后的 list/counts；四档动线排序在 parts/group-view.js）
-// 批量=客户端循环 + 同一 batchActionId；本页只做加载/筛选/交互，不复制排序与状态判定。
+// pages/partner/workbench/index.js · 取件清单（工作台）· 页面只做取参/接线/setData，判据与流程在 parts/*
+// 口径：UX_PARTNER §4（工作台专章）、§6（READONLY/TEST_WRITE）。数据源 order.listPartner；
+// 行级动作只消费服务端行内 actions[]（批6-A），页面零七状态字面量、零 wx.cloud、零编号生成。
+'use strict';
+
 const orderApi = require('../../../api/modules/order');
 const store = require('../../../store/index');
-const client = require('../../../api/client');
 const modeGuard = require('../../../api/mode-guard');
-const storage = require('../../../utils/storage');
+const filterView = require('./parts/filter-view');
 const groupView = require('./parts/group-view');
+const batchView = require('./parts/batch-view');
+const selectionFlow = require('./parts/selection-flow');
+const actionFlow = require('./parts/action-flow');
+const loadView = require('./parts/load-view');
+const historyView = require('./parts/history-view');
+const guideView = require('./parts/guide-view');
 
-const POLL_MS = 30 * 1000;
-const SEARCH_DEBOUNCE_MS = 300;
-const UNDO_SECONDS = 5;
-const GUIDE_KEY = 'PARTNER_WORKBENCH_V1';
-const GUIDE_STEPS = [
-  { title: '按站点看', text: '跑站先按站点看；点「多选」可一次标记一批已取件。' },
-  { title: '先补码', text: '有「需查明」标记的件还没取件码，先补码再取。' },
-  { title: '可撤销', text: '标错了别慌，5 秒内点「撤销」可以退回来。' }
-];
-const FILTERS = [
-  { key: 'all', label: '全部' },
-  { key: 'submitted', label: '待接单' },
-  { key: 'accepted', label: '待取件' },
-  { key: 'picked', label: '已取件' },
-  { key: 'delivered', label: '已送达' },
-  { key: 'exception', label: '异常' }
-];
-const BATCH_ACTIONS = [
-  { key: 'accept', label: '接单', confirmText: '顾客会看到进度到「已接单」。' },
-  { key: 'pick', label: '已取件', confirmText: '顾客会看到「已取件·配送中」。', undoable: true },
-  { key: 'deliver', label: '送达', confirmText: '顾客可确认；24h 未确认自动完成。', undoable: true },
-  { key: 'undoPick', label: '撤销已取件', confirmText: '顾客会看到进度回退。' }
-];
+const DETAIL_PAGE = '/pkg-partner/pages/order-detail/index?orderNo=';
+const ACCOUNT_SWITCH_PAGE = '/pkg-admin/pages/account-switch/index';
+const CHUNK_DELAY_MS = 16;
 
-// 切换会话（TEST_WRITE）下写操作的成功提示必须点明"测试数据"（避免误以为动了真实单）
-function writeHint(text) {
-  return modeGuard.isTestWrite() ? text + '（将写入测试数据）' : text;
-}
-
-function nowText() {
-  const date = new Date();
-  const pad = (value) => (value < 10 ? '0' + value : String(value));
-  return pad(date.getHours()) + ':' + pad(date.getMinutes());
-}
-
-Page({
+const base = {
   data: {
-    filters: FILTERS,
-    filter: 'all',
+    filters: filterView.FILTERS,
+    filter: filterView.FILTER_ALL,
+    filterDesc: '',
     keyword: '',
-    counts: { submitted: 0, accepted: 0, picked: 0, delivered: 0, exception: 0, todayCompleted: 0 },
+    counts: loadView.COUNTS_FALLBACK,
     groups: [],
     totalRows: 0,
-    loading: true,
-    error: '',
+    nextCursor: null,
+    stage: 'skeleton',
+    errorText: '',
+    syncError: '',
     updatedAtText: '',
+    lastSuccessText: '',
+    loadingMore: false,
     readonly: false,
+    testWrite: false,
+    sessionView: false,
     selecting: false,
-    selected: {},
     selectedCount: 0,
-    batchActions: BATCH_ACTIONS,
+    selectableCount: 0,
+    selectionText: '',
+    batchActions: batchView.toolbarOf(),
     batchRunning: false,
-    undo: { visible: false, remaining: 0, label: '', orderNos: [] },
-    guide: { visible: false, step: 0, total: GUIDE_STEPS.length, title: '', text: '' }
+    batchResult: null,
+    panel: null,
+    undo: actionFlow.closedUndo(),
+    banner: { visible: false, pendingNew: 0, text: '', actionText: '去看看' },
+    completed: { text: '', expanded: false, loading: false, sections: [], moreText: '', hasMore: false, nextCursor: null },
+    guide: guideView.closedState(),
+    empty: { title: '', text: '', actions: guideView.emptyActions() },
+    partnerNoText: ''
   },
 
   onLoad() {
-    this.setData({ readonly: !modeGuard.canRenderWriteButton() });
+    this._list = [];
+    this._page1Keys = [];
+    this._historyRows = [];
+    this._olderCursor = null;
+    this._ack = null;
+    this._chunkToken = 0;
+    this._lastBatch = null;
+    this.setData({ empty: Object.assign({}, this.data.empty, filterView.emptyOf({ filter: this.data.filter })) });
+    this.syncMode();
     this.watchStore();
     this.loadGuide();
   },
 
   onShow() {
-    this.setData({ readonly: !modeGuard.canRenderWriteButton() });
-    this.load();
+    this.syncMode();
+    // onShow 也走增量：已加载过就只发变化行补丁，不整页重拉（UX §4.11）
+    this.load({ poll: this.data.stage === 'ready' }).then(() => this.loadHistorySummary());
     this.startPolling();
   },
 
   onHide() {
     this.stopPolling();
     this.clearUndoTimer();
+    if (this.data.undo.visible) {
+      this.setData({ undo: actionFlow.closedUndo() });
+    }
   },
 
   onUnload() {
@@ -89,11 +92,75 @@ Page({
     }
   },
 
+  onPullDownRefresh() {
+    this.load({ silent: true }).then(() => {
+      this.loadHistorySummary();
+      wx.stopPullDownRefresh();
+    }).catch(() => wx.stopPullDownRefresh());
+  },
+
+  onReachBottom() {
+    if (this.data.loadingMore || !this.data.nextCursor) {
+      return;
+    }
+    const prev = { list: this._list, page1Keys: this._page1Keys, groups: this.data.groups, counts: this.data.counts };
+    const payload = loadView.queryOf({ filterKey: this.data.filter, keyword: this.data.keyword, cursor: this.data.nextCursor });
+    this.setData({ loadingMore: true });
+    orderApi.listPartner(payload).then((data) => {
+      const plan = loadView.applyAppend(prev, data, {
+        filterKey: this.data.filter,
+        keyword: this.data.keyword,
+        selectedMap: this.data.selecting ? groupView.selectionMapOf(this.data.groups) : null
+      });
+      this._list = plan.list;
+      const patch = {
+        groups: plan.groups,
+        counts: plan.counts,
+        totalRows: plan.totalRows,
+        nextCursor: plan.nextCursor,
+        loadingMore: false
+      };
+      if (this.data.selecting) {
+        const applied = groupView.applySelection(plan.groups, groupView.selectionMapOf(plan.groups));
+        patch.selectedCount = applied.selectedCount;
+        patch.selectableCount = applied.selectableCount;
+        patch.selectionText = batchView.selectionText(applied.selectedCount, applied.selectableCount);
+      }
+      this.setData(patch);
+    }).catch((err) => {
+      this.setData({ loadingMore: false });
+      this.toastMsg((err && err.message) || '下一批订单没加载出来，检查网络后重试');
+    });
+  },
+
+  onShareAppMessage() {
+    const partnerNo = this.partnerNo();
+    return {
+      title: '我在做校园代取，凭兼职编号找我下单',
+      path: '/pages/role/index' + (partnerNo ? '?bind=' + encodeURIComponent(partnerNo) : '')
+    };
+  },
+
+  partnerNo() {
+    const snapshot = store.snapshot();
+    return (snapshot.partner && snapshot.partner.partnerNo) || '';
+  },
+
+  syncMode() {
+    this.setData({
+      readonly: !modeGuard.canRenderWriteButton(),
+      testWrite: modeGuard.isTestWrite(),
+      sessionView: !!store.getViewContext(),
+      partnerNoText: guideView.partnerLine(this.partnerNo())
+    });
+  },
+
   watchStore() {
-    this.offStore = store.subscribe((snapshot) => {
+    this.offStore = store.subscribe(() => {
       const readonly = !modeGuard.canRenderWriteButton();
-      if (readonly !== this.data.readonly) {
-        this.setData({ readonly: readonly });
+      const sessionView = !!store.getViewContext();
+      if (readonly !== this.data.readonly || sessionView !== this.data.sessionView) {
+        this.syncMode();
       }
     });
   },
@@ -101,10 +168,10 @@ Page({
   startPolling() {
     this.stopPolling();
     this.poller = setInterval(() => {
-      if (!this.batchRunning) {
-        this.load(true);
+      if (!this.data.batchRunning) {
+        this.load({ poll: true });
       }
-    }, POLL_MS);
+    }, loadView.POLL_MS);
   },
 
   stopPolling() {
@@ -114,61 +181,155 @@ Page({
     }
   },
 
-  onPullDownRefresh() {
-    this.load().then(() => wx.stopPullDownRefresh());
+  load(options) {
+    const opts = options || {};
+    if (!opts.poll && this.data.stage !== 'ready') {
+      this.setData({ stage: 'skeleton', errorText: '' });
+    }
+    const payload = loadView.queryOf({ filterKey: this.data.filter, keyword: this.data.keyword });
+    return orderApi.listPartner(payload).then((data) => this.applyResult(data, opts)).catch((err) => this.loadError(err, opts));
   },
 
-  load(silent) {
-    if (!silent) {
-      this.setData({ loading: true, error: '' });
-    }
-    const payload = { view: 'workbench', limit: 100 };
-    if (this.data.keyword) {
-      payload.keyword = this.data.keyword;
-    }
-    return orderApi
-      .listPartner(payload)
-      .then((data) => {
-        const groups = groupView.toGroups(data);
-        const viewGroups = groupView.filterRows(groups, this.data.filter);
-        let total = 0;
-        viewGroups.forEach((group) => {
-          total += group.rows.length;
-        });
-        this.setData({
-          groups: viewGroups,
-          counts: Object.assign({}, this.data.counts, (data && data.counts) || {}),
-          totalRows: total,
-          loading: false,
-          updatedAtText: nowText()
-        });
-        this.syncSelected(viewGroups);
-      })
-      .catch((err) => {
-        this.setData({ loading: false, error: (err && err.message) || '订单没加载出来，检查网络后重试' });
+  loadError(err, opts) {
+    if (err && err.code === 'VIEW_TICKET_EXPIRED') {
+      wx.showModal({
+        title: '切换会话已过期',
+        content: '请回「切换账号」重新开启。',
+        showCancel: false,
+        success: () => wx.reLaunch({ url: ACCOUNT_SWITCH_PAGE })
       });
+      return;
+    }
+    const text = loadView.errorTextOf(this.data.lastSuccessText);
+    if (opts.poll || this.data.stage === 'ready') {
+      this.setData({ syncError: text });
+      return;
+    }
+    this.setData({ stage: 'error', errorText: text, empty: filterView.emptyOf({ filter: this.data.filter }) });
   },
 
-  syncSelected(groups) {
-    const visible = {};
-    groups.forEach((group) => {
-      group.rows.forEach((row) => {
-        if (this.data.selected[row.orderNo]) {
-          visible[row.orderNo] = true;
-        }
-      });
+  applyResult(data, options) {
+    const opts = options || {};
+    const prev = { list: this._list, page1Keys: this._page1Keys, groups: this.data.groups, counts: this.data.counts };
+    const plan = loadView.applyRefresh(prev, data, {
+      filterKey: this.data.filter,
+      keyword: this.data.keyword,
+      selectedMap: this.data.selecting ? groupView.selectionMapOf(this.data.groups) : null
     });
-    const selectedCount = groupView.countSelected(visible);
-    this.setData({ selected: visible, selectedCount: selectedCount });
+    this._list = plan.list;
+    this._page1Keys = plan.page1Keys;
+    const result = loadView.resultPatch(plan, {
+      filterKey: this.data.filter,
+      poll: opts.poll,
+      selecting: this.data.selecting
+    });
+    this.setData(result.setData);
+    if (result.chunk) {
+      this.appendChunks(result.chunk.rest);
+    }
+    this.syncBadge(plan.counts);
+    this.syncBanner(plan.counts);
+  },
+
+  appendChunks(chunks) {
+    if (!chunks || !chunks.length) {
+      return;
+    }
+    const token = (this._chunkToken || 0) + 1;
+    this._chunkToken = token;
+    const step = (rest) => {
+      if (this._chunkToken !== token || !rest.length) {
+        return;
+      }
+      this.setData({ groups: (this.data.groups || []).concat(rest[0]) });
+      if (rest.length > 1) {
+        setTimeout(() => step(rest.slice(1)), CHUNK_DELAY_MS);
+      }
+    };
+    setTimeout(() => step(chunks), CHUNK_DELAY_MS);
+  },
+
+  syncBadge(counts) {
+    store.patch({ badges: loadView.badgePatch(counts, store.get('badges') || {}) });
+  },
+
+  syncBanner(counts) {
+    if (this._ack === null) {
+      this._ack = counts.submitted;
+    }
+    this.setData({ banner: loadView.bannerOf(counts, this._ack) });
+  },
+
+  loadHistorySummary() {
+    return orderApi.listPartner(historyView.summaryQuery(Date.now())).then((data) => {
+      this.setData({ 'completed.text': historyView.collapsedState(data).text });
+    }).catch(() => {});
+  },
+
+  onRefreshTap() {
+    this.load({ silent: true }).then(() => {
+      this.loadHistorySummary();
+      this.toastMsg('已刷新');
+    });
+  },
+
+  onRetryTap() {
+    this.load({ silent: true }).then(() => this.loadHistorySummary());
+  },
+
+  onBannerTap() {
+    this._ack = this.data.counts.submitted;
+    this.setData({ banner: loadView.bannerOf(this.data.counts, this._ack) });
+    this.applyFilter('submitted');
   },
 
   onFilterTap(event) {
-    const filter = event.currentTarget.dataset.filter;
-    if (!filter || filter === this.data.filter) {
+    const key = event.currentTarget.dataset.filter;
+    if (!key) {
       return;
     }
-    this.setData({ filter: filter, selecting: false, selected: {}, selectedCount: 0 });
-    this.load();
+    if (filterView.isHistory(key)) {
+      this.onCompletedToggle();
+      return;
+    }
+    if (key !== this.data.filter) {
+      this.applyFilter(key);
+    }
+  },
+
+  applyFilter(key) {
+    this._list = [];
+    this._page1Keys = [];
+    this.setData({
+      filter: key,
+      groups: [],
+      stage: 'skeleton',
+      selecting: false,
+      selectedCount: 0,
+      selectableCount: 0,
+      selectionText: '',
+      batchResult: null,
+      panel: null,
+      totalRows: 0,
+      nextCursor: null,
+      filterDesc: filterView.describe(key),
+      empty: filterView.emptyOf({ filter: key, keyword: this.data.keyword })
+    });
+    this.load({ silent: true });
+  },
+
+  onCountTap(event) {
+    const target = filterView.countTargetOf(event.currentTarget.dataset.count);
+    if (!target) {
+      return;
+    }
+    if (target.history) {
+      if (!this.data.completed.expanded) {
+        this.onCompletedToggle();
+      }
+      return;
+    }
+    this.applyFilter(target.filter);
   },
 
   onKeywordInput(event) {
@@ -178,271 +339,93 @@ Page({
       clearTimeout(this.searchTimer);
     }
     this.searchTimer = setTimeout(() => {
-      this.load();
-    }, SEARCH_DEBOUNCE_MS);
+      this._list = [];
+      this._page1Keys = [];
+      this.load({ silent: true });
+    }, loadView.SEARCH_DEBOUNCE_MS);
+  },
+
+  onClearKeyword() {
+    if (!this.data.keyword) {
+      return;
+    }
+    this.setData({ keyword: '' });
+    this._list = [];
+    this._page1Keys = [];
+    this.load({ silent: true });
   },
 
   onToggleSelecting() {
     if (this.data.readonly) {
-      wx.showToast({ title: '开发者只读视角不能操作', icon: 'none' });
+      this.toastMsg(actionFlow.READONLY_COPY);
       return;
     }
-    const next = !this.data.selecting;
-    this.setData({ selecting: next, selected: {}, selectedCount: 0 });
+    const state = selectionFlow.toggle(this.data.groups);
+    this.setData({
+      selecting: !this.data.selecting,
+      panel: null,
+      batchResult: null,
+      groups: state.groups,
+      selectedCount: state.selectedCount,
+      selectableCount: state.selectableCount,
+      selectionText: state.selectionText
+    });
+  },
+
+  applySelection(state) {
+    this.setData({
+      groups: state.groups,
+      selectedCount: state.selectedCount,
+      selectableCount: state.selectableCount,
+      selectionText: state.selectionText
+    });
   },
 
   onToggleRow(event) {
     if (!this.data.selecting) {
       return;
     }
-    const orderNo = event.currentTarget.dataset.orderNo;
-    if (!orderNo) {
-      return;
+    const result = selectionFlow.toggleRow(this.data.groups, event.currentTarget.dataset.orderNo);
+    if (!result.ok) {
+      this.toastMsg(result.message);
     }
-    const selected = Object.assign({}, this.data.selected);
-    selected[orderNo] = !selected[orderNo];
-    this.setData({ selected: selected, selectedCount: groupView.countSelected(selected) });
+    this.applySelection(result.state);
   },
 
-  onSelectGroup(event) {
-    const index = Number(event.currentTarget.dataset.index);
-    const group = this.data.groups[index];
-    if (!group) {
-      return;
-    }
-    const selected = Object.assign({}, this.data.selected);
-    let allSelected = true;
-    group.rows.forEach((row) => {
-      if (!selected[row.orderNo]) {
-        allSelected = false;
-      }
-    });
-    group.rows.forEach((row) => {
-      selected[row.orderNo] = !allSelected;
-    });
-    this.setData({ selected: selected, selectedCount: groupView.countSelected(selected) });
+  onSelectAll() {
+    this.applySelection(selectionFlow.selectAll(this.data.groups));
+  },
+
+  onClearSelection() {
+    this.applySelection(selectionFlow.clear(this.data.groups));
+  },
+
+  onSelectStation(event) {
+    this.applySelection(selectionFlow.toggleStation(this.data.groups, event.currentTarget.dataset.stationId));
   },
 
   onRowTap(event) {
-    const orderNo = event.currentTarget.dataset.orderNo;
-    if (!orderNo) {
+    if (!event.currentTarget.dataset.orderNo) {
       return;
     }
     if (this.data.selecting) {
       this.onToggleRow(event);
       return;
     }
-    wx.navigateTo({ url: '/pkg-partner/pages/order-detail/index?orderNo=' + orderNo });
+    wx.navigateTo({ url: DETAIL_PAGE + event.currentTarget.dataset.orderNo });
   },
 
-  onNeedCodeTap(event) {
-    const orderNo = event.currentTarget.dataset.orderNo;
-    if (!orderNo) {
-      return;
-    }
-    wx.navigateTo({ url: '/pkg-partner/pages/order-detail/index?orderNo=' + orderNo });
+
+  toastMsg(title) {
+    wx.showToast({ title: title, icon: 'none' });
   },
 
-  onBatchTap(event) {
-    if (this.data.readonly || this.data.batchRunning) {
-      return;
-    }
-    const key = event.currentTarget.dataset.key;
-    const action = this.data.batchActions.filter((item) => item.key === key)[0];
-    if (!action) {
-      return;
-    }
-    const rows = groupView.selectedRows(this.data.groups, this.data.selected);
-    if (!rows.length) {
-      wx.showToast({ title: '先勾选要处理的订单', icon: 'none' });
-      return;
-    }
-    // 取件前必须已有取件码（服务端同判据）；这里先挡全选都缺码的情况，避免整批失败
-    if (key === 'pick') {
-      const blocked = rows.filter((row) => row.needCode);
-      if (blocked.length === rows.length) {
-        wx.showToast({ title: '这些单还没有取件码，先补码再标记已取件', icon: 'none' });
-        return;
-      }
-      if (blocked.length) {
-        wx.showToast({ title: '有 ' + blocked.length + ' 单缺取件码，将跳过', icon: 'none' });
-      }
-    }
-    wx.showModal({
-      title: action.label,
-      content: writeHint('将 ' + rows.length + ' 单标记为「' + action.label + '」。' + action.confirmText),
-      confirmText: '确认',
-      success: (res) => {
-        if (res.confirm) {
-          this.runBatch(action, rows);
-        }
-      }
-    });
+  writeHint(text) {
+    return modeGuard.isTestWrite() ? text + '（将写入测试数据）' : text;
   },
 
-  runBatch(action, rows) {
-    this.batchRunning = true;
-    this.setData({ batchRunning: true });
-    const batchActionId = client.createRequestId();
-    const queue = action.key === 'pick' ? rows.filter((row) => !row.needCode) : rows;
-    const results = [];
-    const runNext = (index) => {
-      if (index >= queue.length) {
-        this.finishBatch(action, results);
-        return;
-      }
-      this.callBatchAction(action.key, queue[index].orderNo, batchActionId)
-        .then(() => {
-          results.push({ orderNo: queue[index].orderNo, ok: true, message: '' });
-          runNext(index + 1);
-        })
-        .catch((err) => {
-          results.push({
-            orderNo: queue[index].orderNo,
-            ok: false,
-            message: (err && err.message) || '失败'
-          });
-          runNext(index + 1);
-        });
-    };
-    runNext(0);
-  },
+  // 浮层/遮罩上的 catchtap/catchtouchmove 空处理（阻止穿透到行点击）
+  noop() {}
+};
 
-  callBatchAction(key, orderNo, batchActionId) {
-    if (key === 'accept') {
-      return orderApi.accept({ orderNo: orderNo });
-    }
-    if (key === 'pick') {
-      return orderApi.markPicked({ orderNo: orderNo, batchActionId: batchActionId });
-    }
-    if (key === 'deliver') {
-      return orderApi.markDelivered({ orderNo: orderNo, batchActionId: batchActionId });
-    }
-    if (key === 'undoPick') {
-      return orderApi.unmarkPicked({ orderNo: orderNo, batchActionId: batchActionId });
-    }
-    return Promise.reject(new Error('未知动作'));
-  },
-
-  finishBatch(action, results) {
-    this.batchRunning = false;
-    const okRows = results.filter((item) => item.ok);
-    const failRows = results.filter((item) => !item.ok);
-    this.setData({ batchRunning: false, selecting: false, selected: {}, selectedCount: 0 });
-    const content =
-      '成功 ' + okRows.length + ' · 失败 ' + failRows.length + (failRows.length ? '（失败项已保留，可重试）' : '');
-    wx.showModal({
-      title: '批量结果',
-      content: writeHint(content),
-      showCancel: false,
-      success: () => {
-        if (action.undoable && okRows.length) {
-          this.startUndo(action.label, okRows.map((item) => item.orderNo));
-        }
-        this.load();
-        this.flashFailures(failRows);
-      }
-    });
-  },
-
-  flashFailures(failRows) {
-    if (!failRows.length) {
-      return;
-    }
-    const first = failRows[0];
-    wx.showToast({
-      title: first.orderNo + ' ' + first.message,
-      icon: 'none'
-    });
-  },
-
-  startUndo(label, orderNos) {
-    this.clearUndoTimer();
-    this.setData({ undo: { visible: true, remaining: UNDO_SECONDS, label: label, orderNos: orderNos } });
-    this.undoTimer = setInterval(() => {
-      const remaining = this.data.undo.remaining - 1;
-      if (remaining <= 0) {
-        this.hideUndo();
-        return;
-      }
-      this.setData({ 'undo.remaining': remaining });
-    }, 1000);
-  },
-
-  hideUndo() {
-    this.clearUndoTimer();
-    this.setData({ undo: { visible: false, remaining: 0, label: '', orderNos: [] } });
-  },
-
-  clearUndoTimer() {
-    if (this.undoTimer) {
-      clearInterval(this.undoTimer);
-      this.undoTimer = null;
-    }
-  },
-
-  onUndoTap() {
-    if (!this.data.undo.visible || this.data.readonly) {
-      return;
-    }
-    const orderNos = this.data.undo.orderNos.slice();
-    this.hideUndo();
-    const results = [];
-    const runNext = (index) => {
-      if (index >= orderNos.length) {
-        const okCount = results.filter((item) => item.ok).length;
-        const failCount = results.length - okCount;
-        wx.showToast({
-          title: writeHint('撤销成功 ' + okCount + (failCount ? ' · 失败 ' + failCount : '')),
-          icon: 'none'
-        });
-        this.load();
-        return;
-      }
-      orderApi
-        .undo({ orderNo: orderNos[index] })
-        .then(() => {
-          results.push({ ok: true });
-          runNext(index + 1);
-        })
-        .catch(() => {
-          results.push({ ok: false });
-          runNext(index + 1);
-        });
-    };
-    runNext(0);
-  },
-
-  loadGuide() {
-    const done = storage.isGuideSeen(GUIDE_KEY);
-    if (done) {
-      return;
-    }
-    this.setData({
-      guide: { visible: true, step: 0, total: GUIDE_STEPS.length, title: GUIDE_STEPS[0].title, text: GUIDE_STEPS[0].text }
-    });
-  },
-
-  onGuideNext() {
-    const next = this.data.guide.step + 1;
-    if (next >= GUIDE_STEPS.length) {
-      this.finishGuide();
-      return;
-    }
-    this.setData({ guide: { visible: true, step: next, total: GUIDE_STEPS.length, title: GUIDE_STEPS[next].title, text: GUIDE_STEPS[next].text } });
-  },
-
-  onGuideSkip() {
-    this.finishGuide();
-  },
-
-  finishGuide() {
-    storage.markGuideSeen(GUIDE_KEY);
-    this.setData({ guide: { visible: false, step: 0, total: GUIDE_STEPS.length, title: '', text: '' } });
-  },
-
-  onRefreshTap() {
-    this.load();
-    wx.showToast({ title: '已刷新', icon: 'none' });
-  }
-});
+Page(Object.assign(base, require('./parts/page-actions')));

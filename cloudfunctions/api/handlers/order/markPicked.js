@@ -9,6 +9,7 @@ const common = require('./_common');
 module.exports = async function orderMarkPicked(ctx, payload) {
   return common.runOrderAction(ctx, payload, {
     action: 'order.markPicked',
+    acceptsBatchActionId: true,
     guard(input) {
       const order = input.order;
       const parcel = order.parcel || {};

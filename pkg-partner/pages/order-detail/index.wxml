@@ -1,4 +1,4 @@
-<!-- pkg-partner/pages/order-detail/index.wxml · 兼职订单详情（动作可见性来自服务端 order.actions） -->
+<!-- pkg-partner/pages/order-detail/index.wxml · 兼职订单详情（动作可见性来自服务端 order.actions；面板数据全部来自 parts 视图件） -->
 <view class="page-body detail-body">
   <switch-bar />
   <view wx:if="{{loading}}" class="empty-text">加载中…</view>
@@ -7,6 +7,7 @@
   </view>
 
   <block wx:elif="{{order}}">
+    <!-- 状态卡：状态文案/编号/动作全部来自服务端 DTO -->
     <view class="card head-card">
       <view class="row between">
         <view class="row">
@@ -15,7 +16,12 @@
         </view>
         <status-pill status="{{order.status}}" />
       </view>
-      <view wx:if="{{order.isGuest}}" class="row guest-row">
+      <view class="row between status-sub">
+        <text class="small">{{order.statusText}}</text>
+        <text wx:if="{{deliveredChip}}" class="tag guest-chip">{{deliveredChip}}</text>
+      </view>
+
+      <view wx:if="{{isGuest}}" class="row guest-row">
         <avatar-view size="{{48}}" />
         <view class="tag guest-tag">代客单</view>
         <text class="small">顾客未绑定，进度需线下告知</text>
@@ -27,40 +33,50 @@
           <view class="small" bindtap="onCopyCustomerNo">顾客编号 {{customerNoText || '—'}} · 复制</view>
         </view>
       </view>
-      <view wx:else class="small">顾客编号 {{customerNoText || '—'}}<text wx:if="{{customerNoText}}" bindtap="onCopyCustomerNo"> · 复制</text></view>
+      <view wx:else class="small customer-no-line" bindtap="onCopyCustomerNo">
+        顾客编号 {{customerNoText || '—'}}<text wx:if="{{customerNoText}}"> · 复制</text>
+      </view>
+      <view wx:if="{{guestAutoHint}}" class="small auto-hint">{{guestAutoHint}}</view>
     </view>
 
+    <!-- 取件信息（L3 只在原位展示，不拼进任何 URL） -->
     <view class="card">
-      <view class="section-title">取件信息</view>
+      <view class="row between">
+        <view class="section-title">取件信息</view>
+        <text wx:if="{{order.codeStatusText}}" class="tag {{order.needCode ? 'tag-test' : ''}}">{{order.codeStatusText}}</text>
+      </view>
       <view class="form-row">
         <view class="form-label">站点</view>
-        <view class="form-input">{{order.parcel.stationName || '还未指定站点'}}</view>
+        <view class="form-input">{{order.stationText}}</view>
       </view>
       <view class="form-row">
         <view class="form-label">取件码</view>
-        <view class="form-input">{{order.parcel.pickupCode || '需查明'}}</view>
+        <view class="form-input">{{order.pickupCodeText || '需查明'}}</view>
       </view>
       <view class="form-row">
         <view class="form-label">柜号</view>
-        <view class="form-input">{{order.parcel.lockerNo || '—'}}</view>
+        <view class="form-input">{{order.lockerNoText || '—'}}</view>
       </view>
       <view class="form-row">
         <view class="form-label">运单尾号</view>
-        <view class="form-input">{{order.parcel.trackingTail || '—'}}</view>
+        <view class="form-input">{{order.trackingTailText || '—'}}</view>
       </view>
       <view wx:if="{{order.needCode}}" class="flag-tip">这张单还缺取件码，先补码再取件</view>
       <view wx:if="{{order.failureHint}}" class="flag-tip">识别失败已反馈开发者复核，可手填补码</view>
-      <view wx:if="{{order.exceptionText}}" class="flag-tip">当前异常：{{order.exceptionText}}</view>
+      <view wx:if="{{order.exceptionText || order.exceptionCodeText}}" class="flag-tip">
+        当前异常：{{order.exceptionCodeText}}{{order.exceptionText ? ' · ' + order.exceptionText : ''}}
+      </view>
       <view wx:if="{{order.hasImage}}" class="row image-row">
         <view class="btn btn-ghost mini-btn" bindtap="onViewImage">查看取件截图</view>
       </view>
     </view>
 
+    <!-- 服务与备注（服务类型只表达"做什么"，零费用语义） -->
     <view class="card">
       <view class="section-title">服务与备注</view>
       <view class="form-row">
         <view class="form-label">服务类型</view>
-        <view class="form-input">{{(order.service && order.service.name) || '—'}}</view>
+        <view class="form-input">{{order.serviceName || '—'}}</view>
       </view>
       <view class="form-row">
         <view class="form-label">预约</view>
@@ -68,11 +84,26 @@
       </view>
       <view class="form-row">
         <view class="form-label">备注</view>
-        <view class="form-input">{{order.note || '—'}}</view>
+        <view class="form-input">{{order.noteText || '—'}}</view>
       </view>
-      <view wx:if="{{order.deliveryNote}}" class="small">送达备注：{{order.deliveryNote}}</view>
+      <view wx:if="{{order.cancelReasonText}}" class="flag-tip">
+        已取消 · 原因：{{order.cancelReasonText}}{{order.cancelledByText ? '（' + order.cancelledByText + '）' : ''}}
+      </view>
     </view>
 
+    <!-- 履约凭证（MVP：订单号 + 事件流水 + deliveryNote；本单不可删除） -->
+    <view class="card">
+      <view class="section-title">{{voucher.title}}</view>
+      <view wx:for="{{voucher.rows}}" wx:key="label" class="form-row">
+        <view class="form-label">{{item.label}}</view>
+        <view class="form-input">{{item.value}}</view>
+      </view>
+      <view wx:if="{{voucher.partnerNo}}" class="small voucher-no">兼职编号：{{voucher.partnerNo}}</view>
+      <view wx:if="{{voucher.guestAuto}}" class="small">{{voucher.guestAuto}}</view>
+      <view class="small voucher-footer">{{voucher.footer}}</view>
+    </view>
+
+    <!-- 时间线 -->
     <view class="card">
       <view class="section-title">时间线</view>
       <view wx:if="{{!events.length}}" class="small">还没有状态记录</view>
@@ -82,10 +113,11 @@
       </view>
     </view>
 
+    <!-- 留言 -->
     <view class="card">
       <view class="row between">
         <view class="section-title">留言</view>
-        <view class="btn btn-ghost mini-btn" bindtap="onOpenMessage">写留言</view>
+        <view wx:if="{{!readonly}}" class="btn btn-ghost mini-btn" bindtap="onOpenMessage">写留言</view>
       </view>
       <view wx:if="{{!messages.length}}" class="small">还没有留言，有问题可以直接问顾客</view>
       <view wx:for="{{messages}}" wx:key="id" class="message-row">
@@ -96,6 +128,7 @@
 
     <view class="bottom-safe"></view>
 
+    <!-- 底部操作条：只渲染服务端 order.actions[]；READONLY 全部置灰（点击只 toast、不发请求） -->
     <view wx:if="{{actions.length}}" class="action-bar">
       <view
         wx:for="{{actions}}"
@@ -107,65 +140,111 @@
       >{{item.label}}</view>
     </view>
 
-    <view wx:if="{{undo.visible}}" class="undo-bar">
-      <text>{{undo.label}} · 可撤销 {{undo.remaining}}s</text>
-      <view class="btn btn-ghost mini-btn" bindtap="onUndoTap">撤销</view>
+    <!-- 撤销条：仅服务端 actions 给出 undoPick/undoDeliver 时出现，5 秒倒计时 -->
+    <view wx:if="{{undoBar.visible}}" class="undo-bar">
+      <text>{{undoBar.label}} · 可撤销 {{undoBar.remaining}}s</text>
+      <view class="btn btn-ghost mini-btn" bindtap="onUndoTap">{{undoBar.undoLabel}}</view>
     </view>
   </block>
 
-  <view wx:if="{{panel === 'code'}}" class="panel-mask" bindtap="onPanelClose">
+  <!-- 补码/改站点面板：站点 picker 值域 = correctPanel.stationOptions（共享 P1~P8） -->
+  <view wx:if="{{panel === 'correct'}}" class="panel-mask" bindtap="onPanelClose">
     <view class="panel" catchtap="noop">
-      <view class="section-title">改码 / 改站点</view>
-      <view class="form-row">
+      <view class="section-title">{{correctPanel.title}}</view>
+      <view wx:if="{{correctPanel.picked}}" class="small">{{correctPanel.hint}}</view>
+      <view wx:if="{{correctPanel.showStation}}" class="form-row">
+        <view class="form-label">站点</view>
+        <picker class="flex-1" range="{{correctPanel.stationOptions}}" range-key="name" value="{{correctPanel.stationIndex}}" bindchange="onStationChange">
+          <view class="form-input picker-value">{{correctPanel.stationText}}</view>
+        </picker>
+      </view>
+      <view wx:if="{{correctPanel.showPickupCode}}" class="form-row">
         <view class="form-label">取件码</view>
-        <input class="form-input" maxlength="40" value="{{codeEditor.pickupCode}}" data-field="pickupCode" bindinput="onCodeInput" />
+        <input class="form-input" maxlength="{{correctPanel.pickupCodeMax}}" value="{{correctEditor.pickupCode}}" data-field="pickupCode" bindinput="onCorrectInput" />
       </view>
-      <view class="form-row">
+      <view wx:if="{{correctPanel.showLockerNo}}" class="form-row">
         <view class="form-label">柜号</view>
-        <input class="form-input" maxlength="10" value="{{codeEditor.lockerNo}}" data-field="lockerNo" bindinput="onCodeInput" />
+        <input class="form-input" maxlength="{{correctPanel.lockerNoMax}}" value="{{correctEditor.lockerNo}}" data-field="lockerNo" bindinput="onCorrectInput" />
       </view>
-      <view class="form-row">
+      <view wx:if="{{correctPanel.showTrackingTail}}" class="form-row">
         <view class="form-label">运单尾号</view>
-        <input class="form-input" maxlength="5" type="number" value="{{codeEditor.trackingTail}}" data-field="trackingTail" bindinput="onCodeInput" />
+        <input class="form-input" maxlength="{{correctPanel.trackingTailLength}}" type="number" value="{{correctEditor.trackingTail}}" data-field="trackingTail" bindinput="onCorrectInput" />
       </view>
-      <view class="small">一次保存记一条更正记录；只改自己订单，不改状态与归属。</view>
+      <view class="small">{{correctPanel.saveCopy}}</view>
+      <view wx:if="{{correctError}}" class="error-text">{{correctError}}</view>
       <view class="row panel-actions">
         <view class="btn btn-ghost mini-btn" bindtap="onPanelClose">取消</view>
-        <view class="btn btn-primary mini-btn" bindtap="onCodeSave">保存</view>
+        <view class="btn btn-primary mini-btn" bindtap="onCorrectSave">{{sending ? '保存中…' : '保存'}}</view>
       </view>
     </view>
   </view>
 
-  <view wx:if="{{panel === 'cancel' || panel === 'reject'}}" class="panel-mask" bindtap="onPanelClose">
-    <view class="panel" catchtap="noop">
-      <view class="section-title">{{panel === 'reject' ? '拒单原因' : '取消原因'}}</view>
-      <picker range="{{cancelReasons}}" range-key="label" value="{{reasonIndex}}" bindchange="onReasonChange">
-        <view class="form-input picker-value">{{cancelReasons[reasonIndex].label}}</view>
-      </picker>
-      <textarea class="panel-textarea" maxlength="100" placeholder="备注（选「其他」时必填，≤100 字）" value="{{reasonNote}}" bindinput="onReasonNoteInput" />
-      <view class="small">提交后订单结束，顾客会看到取消原因。</view>
-      <view class="row panel-actions">
-        <view class="btn btn-ghost mini-btn" bindtap="onPanelClose">返回</view>
-        <view class="btn btn-danger mini-btn" bindtap="onCancelReasonSubmit">提交</view>
-      </view>
-    </view>
-  </view>
-
+  <!-- 异常上报面板：六原因 + 备注 ≤200（OTHER 必填） -->
   <view wx:if="{{panel === 'exception'}}" class="panel-mask" bindtap="onPanelClose">
     <view class="panel" catchtap="noop">
-      <view class="section-title">上报异常</view>
-      <picker range="{{exceptionReasons}}" range-key="label" value="{{exceptionIndex}}" bindchange="onExceptionChange">
-        <view class="form-input picker-value">{{exceptionReasons[exceptionIndex].label}}</view>
-      </picker>
-      <textarea class="panel-textarea" maxlength="200" placeholder="备注（选「其他」时必填，≤200 字）" value="{{exceptionNote}}" bindinput="onExceptionNoteInput" />
-      <view class="small">上报后顾客会看到「异常待处理」，你可以在解决后恢复。</view>
+      <view class="section-title">{{exceptionPanel.title}}</view>
+      <view class="reason-list">
+        <view
+          wx:for="{{exceptionPanel.reasons}}"
+          wx:key="code"
+          class="reason-chip {{index === exceptionIndex ? 'reason-chip-active' : ''}}"
+          data-index="{{index}}"
+          bindtap="onExceptionReasonTap"
+        >{{item.label}}</view>
+      </view>
+      <textarea class="panel-textarea" maxlength="{{exceptionPanel.noteMax}}" placeholder="{{exceptionPanel.placeholder}}" value="{{exceptionNote}}" bindinput="onExceptionNoteInput" />
+      <view class="small">{{exceptionPanel.confirmText}}</view>
+      <view wx:if="{{exceptionError}}" class="error-text">{{exceptionError}}</view>
       <view class="row panel-actions">
         <view class="btn btn-ghost mini-btn" bindtap="onPanelClose">返回</view>
-        <view class="btn btn-primary mini-btn" bindtap="onExceptionSubmit">上报</view>
+        <view class="btn btn-danger mini-btn" bindtap="onExceptionSubmit">{{sending ? '上报中…' : '上报异常'}}</view>
       </view>
     </view>
   </view>
 
+  <!-- 送达浮层：deliveryNote ≤100 + 快捷标签；guest 单确认框换成 24h 自动完成文案 -->
+  <view wx:if="{{panel === 'deliver'}}" class="panel-mask" bindtap="onPanelClose">
+    <view class="panel" catchtap="noop">
+      <view class="section-title">{{deliveryPanel.title}}</view>
+      <view wx:if="{{deliveryPanel.guest}}" class="small">{{deliveryPanel.guestHint}}</view>
+      <view class="small">{{deliveryPanel.confirmText}}</view>
+      <view class="small quick-title">{{deliveryPanel.quickTitle}}</view>
+      <view class="reason-list">
+        <view
+          wx:for="{{deliveryPanel.quickTags}}"
+          wx:key="*this"
+          class="reason-chip"
+          data-tag="{{item}}"
+          bindtap="onQuickTag"
+        >{{item}}</view>
+      </view>
+      <textarea class="panel-textarea" maxlength="{{deliveryPanel.noteMax}}" placeholder="{{deliveryPanel.placeholder}}" value="{{deliveryNote}}" bindinput="onDeliveryNoteInput" />
+      <view wx:if="{{deliveryError}}" class="error-text">{{deliveryError}}</view>
+      <view class="row panel-actions">
+        <view class="btn btn-ghost mini-btn" bindtap="onPanelClose">返回</view>
+        <view class="btn btn-primary mini-btn" bindtap="onDeliverySubmit">{{sending ? '提交中…' : '确认送达'}}</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 取消/拒单面板：原因枚举（OTHER 必填备注）+ 二次确认后果 -->
+  <view wx:if="{{panel === 'reason'}}" class="panel-mask" bindtap="onPanelClose">
+    <view class="panel" catchtap="noop">
+      <view class="section-title">{{cancelPanel.title}}</view>
+      <picker range="{{cancelPanel.reasons}}" range-key="label" value="{{reasonIndex}}" bindchange="onReasonChange">
+        <view class="form-input picker-value">{{cancelPanel.reasons[reasonIndex].label}}</view>
+      </picker>
+      <textarea class="panel-textarea" maxlength="{{cancelPanel.noteMax}}" placeholder="{{cancelPanel.placeholder}}" value="{{reasonNote}}" bindinput="onReasonNoteInput" />
+      <view class="small">提交后订单结束，顾客会看到原因；取消后不可恢复。</view>
+      <view wx:if="{{reasonError}}" class="error-text">{{reasonError}}</view>
+      <view class="row panel-actions">
+        <view class="btn btn-ghost mini-btn" bindtap="onPanelClose">返回</view>
+        <view class="btn btn-danger mini-btn" bindtap="onReasonSubmit">{{sending ? '提交中…' : '提交'}}</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 留言面板：≤200 字，说清下一步 -->
   <view wx:if="{{panel === 'message'}}" class="panel-mask" bindtap="onPanelClose">
     <view class="panel" catchtap="noop">
       <view class="section-title">给顾客留言</view>

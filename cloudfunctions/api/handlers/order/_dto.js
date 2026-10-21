@@ -28,13 +28,27 @@ const ACTION_LABELS = Object.freeze({
   message: '留言'
 });
 
+// 时间归一：只接受 number/Date/非空字符串；null/undefined/'' 一律视为「没有这个时间」。
+// 不能直接调 lib/time.toMs 兜底：它对非 number/Date 返回 Date.now()，会把「已清空的时间戳」序列化成
+// 当前真实时钟（撤销后 deliveredAt/pickedAt 变成看起来刚发生的时间），列表/详情出现假时间。
 function isoOf(value) {
-  const ms = time.toMs(value);
+  const ms = msOf(value);
   return ms > 0 ? new Date(ms).toISOString() : '';
 }
 
 function msOf(value) {
-  return time.toMs(value) || 0;
+  if (typeof value === 'number') {
+    return isFinite(value) && value > 0 ? value : 0;
+  }
+  if (value instanceof Date) {
+    const ms = value.getTime();
+    return isFinite(ms) && ms > 0 ? ms : 0;
+  }
+  if (typeof value === 'string' && value !== '') {
+    const ms = time.toMs(value);
+    return isFinite(ms) && ms > 0 ? ms : 0;
+  }
+  return 0;
 }
 
 function textOf(value) {
@@ -270,7 +284,8 @@ function buildActions(order, side, nowMs) {
         pushAction(actions, 'undoDeliver');
       }
       pushAction(actions, 'exception');
-      pushAction(actions, 'correct');
+      // DELIVERED 及之后不可补码（DATA_MODEL §7.5 order.correct 起始状态不含 DELIVERED / UX §4.4），
+      // 动作条只下发状态机允许的动作，页面不再展示必然失败的按钮。
       pushAction(actions, 'cancel');
     } else if (status === enums.ORDER_STATUS.EXCEPTION) {
       pushAction(actions, 'resolve');

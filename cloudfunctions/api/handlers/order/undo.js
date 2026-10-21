@@ -26,6 +26,7 @@ async function findLatestEvent(ctx, orderId) {
 module.exports = async function orderUndo(ctx, payload) {
   return common.runOrderAction(ctx, payload, {
     action: 'order.undo',
+    acceptsBatchActionId: true,
     async guard(input) {
       const undo = orderState.UNDO_TARGETS[input.order.status];
       if (!undo) {
@@ -45,6 +46,11 @@ module.exports = async function orderUndo(ctx, payload) {
     build(input) {
       const set = {};
       set[input.checked.clearField] = null;
+      // 撤销送达=回到 PICKED：deliveryNote 属送达步骤的副产物，与 unmarkDelivered 同口径清空，
+      // 否则「已取件」状态会残留上一轮送达备注（DTO 会把过期备注当当前值下发）。
+      if (input.order.status === enums.ORDER_STATUS.DELIVERED) {
+        set.deliveryNote = '';
+      }
       return {
         set,
         toStatus: input.checked.undo.to,

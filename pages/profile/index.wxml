@@ -211,6 +211,10 @@
             <text>帮助与反馈</text>
             <text class="row-arrow">›</text>
           </view>
+          <view class="row-item" bindtap="onReplayGuide">
+            <text>重新看新手引导</text>
+            <text class="row-arrow">›</text>
+          </view>
           <view wx:if="{{isCustomer && canEdit}}" class="row-item" bindtap="onDeleteAccount">
             <text class="link-danger">注销账号</text>
             <text class="row-arrow">›</text>

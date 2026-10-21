@@ -102,6 +102,7 @@ function snapshotOf(parcel) {
 module.exports = async function orderCorrect(ctx, payload) {
   return common.runOrderAction(ctx, payload, {
     action: 'order.correct',
+    acceptsBatchActionId: true,
     guard(input) {
       return applyPatch(input);
     },

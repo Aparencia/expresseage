@@ -1,6 +1,7 @@
-// pkg-partner/pages/order-detail/parts/order-view.js · 订单详情视图模型（真实 DTO → 页面字段；纯件零 wx）
-// 数据：order.get 的 {order, events}（order/_dto.buildOrderDto：service/appoint/parcel/counterpart/actions/image/needCode）
-// 边界：本文件只做展示字段适配（不改状态判定、不复制状态机；动作可见性一律来自 order.actions）。
+// pkg-partner/pages/order-detail/parts/order-view.js · 订单详情视图模型（真实 DTO → 页面稳定字段；纯件零 wx）
+// 数据来源：order.get 的 {order, events}（_dto.buildOrderDto：status/statusText/parcel/service/appoint/
+//           counterpart/guest/exception/image/needCode/failureHint/version/时间戳 ISO）。
+// 边界：本文件只做展示字段适配（不判断状态机、不拼动作、不派生 codeStatus——以服务端 codeStatus/Text 为准）。
 const enums = require('../../../../shared/enums');
 
 function textOf(value) {
@@ -11,7 +12,7 @@ function pad2(value) {
   return value < 10 ? '0' + value : String(value);
 }
 
-// 服务端时间是 ISO 字符串（toIso）；兼容毫秒/Date
+// 服务端时间是 ISO 字符串（_dto.isoOf）；兼容毫秒/Date
 function clockTextOf(value) {
   if (!value) {
     return '';
@@ -45,38 +46,37 @@ function buildDetail(order) {
   const parcel = item.parcel || {};
   const exception = item.exception || {};
   const image = item.image || {};
+  const service = item.service || {};
   return {
     isGuest: textOf(item.source) === enums.ORDER_SOURCE.PARTNER,
     counterpartName: textOf(counterpart.displayName),
     counterpartAvatarFileId: textOf(counterpart.avatarFileId),
     customerNoText: textOf(item.customerNo),
+    partnerNoText: textOf(item.partnerNo),
     appointText: appointTextOf(appoint),
     hasImage: image.hasImage === true,
-    serviceName: textOf(item.service && item.service.name),
+    imageCleaned: image.cleaned === true,
+    serviceName: textOf(service.name),
+    stationText: textOf(parcel.stationName) || '还未指定站点',
+    pickupCodeText: textOf(parcel.pickupCode),
+    lockerNoText: textOf(parcel.lockerNo),
+    trackingTailText: textOf(parcel.trackingTail),
     codeStatusText: textOf(parcel.codeStatusText),
-    exceptionText: textOf(exception.text) || textOf(exception.codeText)
+    codeStatus: textOf(parcel.codeStatus),
+    needCode: item.needCode === true,
+    failureHint: item.failureHint === true,
+    exceptionCodeText: textOf(exception.codeText),
+    exceptionText: textOf(exception.text),
+    exceptionFromText: textOf(exception.fromStatus),
+    deliveryNoteText: textOf(item.deliveryNote),
+    noteText: textOf(item.note),
+    cancelReasonText: textOf(item.cancelReasonText),
+    cancelledByText: textOf(item.cancelledByText)
   };
-}
-
-// 改码面板 → 只提交"确实变化"的字段（已取件单服务端只允许柜号/运单尾号；
-// 未变化字段带上去会被判成非法字段，所以差异提交是本页的硬要求）
-function diffPatch(editor, parcel) {
-  const input = editor || {};
-  const current = parcel || {};
-  const patch = {};
-  ['pickupCode', 'lockerNo', 'trackingTail'].forEach((field) => {
-    const next = textOf(input[field]);
-    const before = textOf(current[field]);
-    if (next !== before) {
-      patch[field] = next;
-    }
-  });
-  return patch;
 }
 
 module.exports = {
   appointTextOf,
   buildDetail,
-  diffPatch,
   clockTextOf
 };

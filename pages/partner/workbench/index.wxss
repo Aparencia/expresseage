@@ -1,4 +1,4 @@
-/* pages/partner/workbench/index.wxss · 工作台局部样式 */
+/* pages/partner/workbench/index.wxss · 工作台局部样式（骨架屏/筛选/行/浮层/批量条/撤销条/引导/已完结分区） */
 .workbench-body {
   padding-bottom: 220rpx;
 }
@@ -12,8 +12,27 @@
 
 .mini-btn {
   min-height: 64rpx;
+  line-height: 64rpx;
   padding: 0 20rpx;
   font-size: 26rpx;
+  margin-left: 16rpx;
+}
+
+/* 页内新订单横幅：只提示不抢操作 */
+.new-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18rpx 24rpx;
+  margin-bottom: 16rpx;
+  border-radius: 12rpx;
+  background: #E8F0FF;
+  color: #2B6DE5;
+  font-size: 26rpx;
+}
+
+.new-banner-action {
+  font-weight: 600;
   margin-left: 16rpx;
 }
 
@@ -43,9 +62,18 @@
   margin-top: 8rpx;
 }
 
+.warn-card {
+  background: #FFF4CE;
+}
+
+.warn-text {
+  color: #8A6D00;
+  font-size: 24rpx;
+}
+
 .filter-scroll {
   white-space: nowrap;
-  margin-bottom: 16rpx;
+  margin-bottom: 8rpx;
 }
 
 .filter-row {
@@ -60,7 +88,7 @@
   background: #FFFFFF;
   color: #666666;
   font-size: 26rpx;
-  margin-right: 16rpx;
+  margin: 0 16rpx 8rpx 0;
 }
 
 .chip-active {
@@ -68,8 +96,69 @@
   color: #FFFFFF;
 }
 
+.filter-desc {
+  padding: 0 8rpx 12rpx;
+  font-size: 24rpx;
+  color: #8A6D00;
+}
+
 .search-card {
   padding: 8rpx 24rpx;
+}
+
+/* 骨架屏：3 张站点卡占位，不转圈 */
+.skeleton-card {
+  padding: 28rpx 24rpx;
+}
+
+.skeleton-line {
+  height: 24rpx;
+  margin: 12rpx 0;
+  border-radius: 12rpx;
+  background: #EEF1F5;
+}
+
+.skeleton-title {
+  width: 40%;
+  height: 32rpx;
+}
+
+.skeleton-short {
+  width: 60%;
+}
+
+.empty-card {
+  padding: 36rpx 28rpx;
+}
+
+.empty-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  margin-bottom: 12rpx;
+}
+
+.empty-sub {
+  font-size: 26rpx;
+  color: #666666;
+  line-height: 1.6;
+}
+
+.partner-line {
+  margin-top: 16rpx;
+  padding: 16rpx;
+  border-radius: 12rpx;
+  background: #F3F7FF;
+  font-size: 24rpx;
+  color: #2B6DE5;
+}
+
+.empty-actions {
+  margin-top: 24rpx;
+  flex-wrap: wrap;
+}
+
+.share-hint {
+  margin-top: 12rpx;
 }
 
 .station-card {
@@ -105,14 +194,24 @@
   border-color: #2B6DE5;
 }
 
+.check-dot-disabled {
+  background: #F0F2F5;
+  border-color: #E5E8EC;
+}
+
 .line-main {
   min-width: 0;
+}
+
+.line-title {
+  align-items: center;
+  flex-wrap: wrap;
 }
 
 .code-text {
   font-size: 32rpx;
   font-weight: 600;
-  margin-right: 12rpx;
+  margin: 0 12rpx;
 }
 
 .code-locker {
@@ -128,13 +227,17 @@
   margin-top: 6rpx;
 }
 
+.line-tags {
+  flex-wrap: wrap;
+}
+
 .need-code-tag {
   padding: 4rpx 12rpx;
   border-radius: 8rpx;
   background: #FFF4CE;
   color: #8A6D00;
   font-size: 22rpx;
-  margin-right: 12rpx;
+  margin: 8rpx 12rpx 0 0;
 }
 
 .review-tag {
@@ -143,12 +246,7 @@
   background: #F0F2F5;
   color: #666666;
   font-size: 22rpx;
-  margin-right: 12rpx;
-}
-
-.detail-arrow {
-  color: #999999;
-  font-size: 30rpx;
+  margin: 8rpx 12rpx 0 0;
 }
 
 .exception-text {
@@ -157,10 +255,140 @@
   color: #E54D42;
 }
 
+/* 行工具条：动作键全部来自服务端 actions[] */
+.row-tools {
+  flex-wrap: wrap;
+  margin-top: 12rpx;
+}
+
+.tool-btn {
+  min-height: 64rpx;
+  line-height: 64rpx;
+  padding: 0 20rpx;
+  margin: 8rpx 16rpx 0 0;
+  border-radius: 10rpx;
+  border: 2rpx solid #D9DEE5;
+  font-size: 24rpx;
+  color: #333333;
+}
+
+.tool-primary {
+  border-color: #2B6DE5;
+  color: #2B6DE5;
+  font-weight: 600;
+}
+
+.tool-danger {
+  border-color: #E54D42;
+  color: #E54D42;
+}
+
+.tool-detail {
+  border-color: transparent;
+  color: #999999;
+}
+
+.line-readonly {
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  color: #999999;
+}
+
+/* 行内浮层（补码/原因/异常/送达备注/批量改站点） */
+.panel-card {
+  margin-top: 16rpx;
+  padding: 20rpx;
+  border-radius: 14rpx;
+  background: #F8FAFD;
+  border: 1rpx solid #E1E7F0;
+}
+
+.panel-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  margin-bottom: 12rpx;
+}
+
+.panel-options {
+  flex-wrap: wrap;
+  margin-bottom: 12rpx;
+}
+
+.form-textarea {
+  width: 100%;
+  min-height: 120rpx;
+  padding: 16rpx;
+  box-sizing: border-box;
+  border-radius: 10rpx;
+  background: #FFFFFF;
+  font-size: 26rpx;
+}
+
+.panel-error {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  color: #E54D42;
+}
+
+.panel-actions {
+  margin-top: 16rpx;
+  justify-content: flex-end;
+}
+
+/* 批量改站点浮层挂在页级（不属于某一行） */
+.panel-page-card {
+  padding: 20rpx 24rpx;
+  border: 1rpx solid #E1E7F0;
+  background: #F8FAFD;
+}
+
+/* 已完结自然日分区 */
+.completed-fold {
+  padding: 24rpx;
+  color: #2B6DE5;
+  font-size: 28rpx;
+}
+
+.completed-card {
+  padding: 20rpx 24rpx 24rpx;
+}
+
+.completed-head {
+  padding-bottom: 12rpx;
+}
+
+.section-label {
+  padding: 16rpx 0 8rpx;
+  font-size: 24rpx;
+  color: #999999;
+}
+
+.history-line {
+  padding: 16rpx 0;
+  border-bottom: 1rpx solid #EEEEEE;
+}
+
+.history-muted {
+  opacity: 0.72;
+}
+
+.cancel-text {
+  margin-top: 6rpx;
+  color: #E54D42;
+}
+
+.more-btn {
+  padding: 20rpx 0 8rpx;
+  text-align: center;
+  font-size: 26rpx;
+  color: #2B6DE5;
+}
+
 .bottom-safe {
   height: 120rpx;
 }
 
+/* 批量操作条 */
 .batch-bar {
   position: fixed;
   left: 0;
@@ -171,7 +399,8 @@
   box-shadow: 0 -2rpx 12rpx rgba(0, 0, 0, 0.06);
 }
 
-.batch-count {
+.batch-head {
+  flex-wrap: wrap;
   padding-bottom: 8rpx;
 }
 
@@ -185,6 +414,7 @@
   margin: 0 8rpx 8rpx 0;
 }
 
+/* 撤销条：浮在 tabBar 上方，不遮挡底部操作 */
 .undo-bar {
   position: fixed;
   left: 24rpx;
@@ -200,6 +430,13 @@
   font-size: 26rpx;
 }
 
+.undo-btn {
+  background: #FFFFFF;
+  color: #1A1A1A;
+  border-color: #FFFFFF;
+}
+
+/* 首用引导 */
 .guide-mask {
   position: fixed;
   left: 0;
@@ -214,16 +451,25 @@
 }
 
 .guide-box {
-  width: 560rpx;
+  width: 600rpx;
   padding: 32rpx;
   border-radius: 20rpx;
   background: #FFFFFF;
 }
 
 .guide-text {
-  margin: 16rpx 0 24rpx;
+  margin: 16rpx 0 20rpx;
   font-size: 28rpx;
   color: #666666;
+}
+
+.guide-partner {
+  margin-bottom: 20rpx;
+  padding: 14rpx 16rpx;
+  border-radius: 10rpx;
+  background: #F3F7FF;
+  font-size: 24rpx;
+  color: #2B6DE5;
 }
 
 .guide-actions {

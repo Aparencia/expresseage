@@ -2,25 +2,14 @@
 // 文案单源：状态类事件用 shared/order-state 的 statusText；其余事件用本表（页面不判断状态机，只做展示映射）。
 const orderState = require('../../../../shared/order-state');
 const enums = require('../../../../shared/enums');
+const format = require('../../../../shared/format');
 
 function textOf(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-function pad2(value) {
-  return value < 10 ? '0' + value : String(value);
-}
-
 function clockTextOf(value) {
-  if (!value) {
-    return '';
-  }
-  const ms = typeof value === 'number' ? value : Date.parse(value);
-  if (!ms || Number.isNaN(ms)) {
-    return '';
-  }
-  const date = new Date(ms);
-  return pad2(date.getHours()) + ':' + pad2(date.getMinutes());
+  return format.formatTime(value);
 }
 
 // 事件类型 → 人话；状态类键用 orderState.STATUS 计算，避免页面层出现七状态字面量
@@ -42,6 +31,7 @@ EVENT_LABELS[orderState.STATUS.PICKED] = orderState.statusText(orderState.STATUS
 EVENT_LABELS[orderState.STATUS.DELIVERED] = orderState.statusText(orderState.STATUS.DELIVERED);
 EVENT_LABELS[orderState.STATUS.COMPLETED] = orderState.statusText(orderState.STATUS.COMPLETED);
 EVENT_LABELS[orderState.STATUS.CANCELLED] = orderState.statusText(orderState.STATUS.CANCELLED);
+EVENT_LABELS[orderState.STATUS.EXCEPTION] = orderState.statusText(orderState.STATUS.EXCEPTION);
 
 const ACTOR_TEXT = {
   [enums.ROLES.CUSTOMER]: '顾客',
@@ -57,7 +47,7 @@ function labelOf(event) {
   if (!note || base === note) {
     return base;
   }
-  // 取消/异常/更正的备注信息量大，拼在事件名后就够用（不展开 payload）
+  // 取消/异常/更正的备注信息量大，拼在事件名后就够用（不展开 payload/L3）
   return base + '：' + note;
 }
 

@@ -7,6 +7,7 @@ const common = require('./_common');
 module.exports = async function orderMarkDelivered(ctx, payload) {
   return common.runOrderAction(ctx, payload, {
     action: 'order.markDelivered',
+    acceptsBatchActionId: true,
     guard(input) {
       const result = common.passOrThrow(
         common.validate.validateDeliveryNote(input.payload.deliveryNote)

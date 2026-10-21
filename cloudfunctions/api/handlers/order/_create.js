@@ -303,6 +303,8 @@ async function backfillFailureRecords(ctx, associations) {
 
 async function createOne(ctx, payload) {
   assertKnownFields(payload, CREATE_FIELDS);
+  // 批量分组标识按统一形态闸校验后再落库（DATA_MODEL §4.1：≤32 随机；不静默接收任意客户端串）。
+  const batchActionId = common.readBatchActionId(payload);
   const context = await prepareContext(ctx);
   const clientRequestId = ctx.clientRequestId || '';
   const fields = buildItemFields(context, payload, itemRecognitionSource(null, payload, 0));
@@ -329,7 +331,7 @@ async function createOne(ctx, payload) {
         image,
         clientRequestId,
         nowDate,
-        batchActionId: typeof payload.batchActionId === 'string' ? payload.batchActionId : ''
+        batchActionId
       });
       const added = await trx.add(COLLECTIONS.ORDERS, doc);
       const order = Object.assign({}, doc, { _id: added._id });
@@ -356,6 +358,7 @@ async function createOne(ctx, payload) {
 
 async function createBatch(ctx, payload) {
   assertKnownFields(payload, CREATE_BATCH_FIELDS);
+  const batchActionId = common.readBatchActionId(payload);
   const context = await prepareContext(ctx);
   const clientRequestId = ctx.clientRequestId || '';
   const items = Array.isArray(payload.items) ? payload.items : [];
@@ -403,7 +406,8 @@ async function createBatch(ctx, payload) {
           fields: fieldsList[i],
           image: images[i],
           clientRequestId,
-          nowDate
+          nowDate,
+          batchActionId
         });
         const added = await trx.add(COLLECTIONS.ORDERS, doc);
         const order = Object.assign({}, doc, { _id: added._id });

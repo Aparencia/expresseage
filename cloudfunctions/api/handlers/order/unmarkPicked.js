@@ -13,7 +13,7 @@ module.exports = async function orderUnmarkPicked(ctx, payload) {
         set: { pickedAt: null },
         toStatus: enums.ORDER_STATUS.ACCEPTED,
         eventType: 'PICKED_REVERTED',
-        payload: { undoneAction: 'order.unmarkPicked', previousAt: previousAt ? new Date(input.order.pickedAt) : null }
+        payload: { undoneAction: 'order.markPicked', previousAt: previousAt ? new Date(input.order.pickedAt) : null }
       };
     }
   });

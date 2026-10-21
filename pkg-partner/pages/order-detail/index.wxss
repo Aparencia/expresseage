@@ -153,3 +153,62 @@
 .picker-value {
   min-height: 40rpx;
 }
+
+.status-sub {
+  margin-top: 12rpx;
+}
+
+.guest-chip {
+  background: #E8F0FF;
+  color: #2B6DE5;
+}
+
+.customer-no-line {
+  margin-top: 12rpx;
+}
+
+.auto-hint {
+  margin-top: 8rpx;
+  color: #2B6DE5;
+}
+
+.voucher-no {
+  margin-top: 12rpx;
+}
+
+.voucher-footer {
+  display: block;
+  margin-top: 12rpx;
+  color: #8A8F99;
+}
+
+.error-text {
+  margin-top: 12rpx;
+  color: #D93026;
+  font-size: 26rpx;
+}
+
+.reason-list {
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: 12rpx;
+}
+
+.reason-chip {
+  margin: 0 12rpx 12rpx 0;
+  padding: 12rpx 20rpx;
+  border: 1rpx solid #E3E5E9;
+  border-radius: 999rpx;
+  background: #FAFBFC;
+  font-size: 26rpx;
+}
+
+.reason-chip-active {
+  border-color: #1F7A5C;
+  background: #E8F5F0;
+  color: #1F7A5C;
+}
+
+.quick-title {
+  margin-top: 16rpx;
+}

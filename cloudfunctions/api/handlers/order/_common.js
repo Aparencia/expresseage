@@ -25,6 +25,29 @@ function isAdmin(ctx) {
   return scopeOf(ctx).role === enums.CANCELLED_BY.ADMIN;
 }
 
+// 批量动作分组标识（DATA_MODEL §2.5/§4.1：`orders.batchActionId` ≤32 随机、批次内、L2 内部、不返回客户端）。
+// 只有 §7.3 标注 `batchActionId?` 的动作（markPicked/markDelivered/correct/undo）接收并落库；
+// 缺省/空串 = 本单最近一次动作不属于任何批量 → 写 '' 清空旧批次归属，避免把后续单次操作误归到旧批次。
+const BATCH_ACTION_ID_PATTERN = /^[A-Za-z0-9_-]{1,32}$/;
+
+function readBatchActionId(payload) {
+  const value = payload && typeof payload === 'object' ? payload.batchActionId : undefined;
+  if (value === undefined || value === null) {
+    return '';
+  }
+  if (typeof value !== 'string') {
+    throw errors.validation('batchActionId', '批量操作标识格式不正确，请刷新页面后重试');
+  }
+  const text = value.trim();
+  if (text === '') {
+    return '';
+  }
+  if (!BATCH_ACTION_ID_PATTERN.test(text)) {
+    throw errors.validation('batchActionId', '批量操作标识格式不正确，请刷新页面后重试');
+  }
+  return text;
+}
+
 function buildEventDocument(options) {
   const opts = options || {};
   return {
@@ -53,6 +76,8 @@ async function runOrderAction(ctx, payload, spec) {
   const now = nowMsOf(ctx);
   const nowDate = toDate(now);
   const orderNo = normalizeOrderNoInput(payload && payload.orderNo);
+  // 入参形态闸先于任何读库/写库：非法 batchActionId 一律 VALIDATION_FAILED（零落库）。
+  const batchActionId = spec.acceptsBatchActionId === true ? readBatchActionId(payload) : null;
   const order = await getOrderByNo(ctx, orderNo);
   if (!order) {
     throw errors.notFound('订单不存在或不可查看');
@@ -92,10 +117,10 @@ async function runOrderAction(ctx, payload, spec) {
     throw errors.invalidTransition('当前订单状态不允许该操作');
   }
   const checked = typeof spec.guard === 'function'
-    ? await spec.guard({ ctx, order, payload, now, actorRole, scope })
+    ? await spec.guard({ ctx, order, payload, now, actorRole, scope, batchActionId })
     : {};
   const built = typeof spec.build === 'function'
-    ? spec.build({ ctx, order, payload, now, nowDate, actorRole, scope, checked })
+    ? spec.build({ ctx, order, payload, now, nowDate, actorRole, scope, checked, batchActionId })
     : {};
   const fromStatus = order.status;
   const toStatus = built.toStatus !== undefined
@@ -123,6 +148,9 @@ async function runOrderAction(ctx, payload, spec) {
         statusUpdatedAt: nowDate,
         updatedAt: nowDate
       });
+      if (batchActionId !== null) {
+        patch.batchActionId = batchActionId;
+      }
       await trx.update(store.COLLECTIONS.ORDERS, order._id, patch);
       await trx.add(store.COLLECTIONS.ORDER_EVENTS, eventDoc);
       if (typeof spec.after === 'function') {
@@ -189,5 +217,6 @@ module.exports = Object.assign({}, store, {
   buildCurrentOrderView,
   passOrThrow,
   assertNotTerminal,
-  isSameTestSide
+  isSameTestSide,
+  readBatchActionId
 });

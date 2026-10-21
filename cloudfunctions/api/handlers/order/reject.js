@@ -12,7 +12,11 @@ module.exports = async function orderReject(ctx, payload) {
       const reasonResult = common.passOrThrow(
         common.validate.validateCancelReason(input.payload.reason, scene)
       );
-      return { reason: reasonResult.value };
+      // OTHER 必填备注（CONTRACT §8.3 取消原因口径）；与 order.cancel 同一校验，不许静默通过。
+      const noteResult = common.passOrThrow(
+        common.validate.validateCancelNote(reasonResult.value, input.payload.note)
+      );
+      return { reason: reasonResult.value, note: noteResult.value };
     },
     build(input) {
       return {
@@ -23,7 +27,7 @@ module.exports = async function orderReject(ctx, payload) {
         },
         toStatus: enums.ORDER_STATUS.CANCELLED,
         eventType: 'REJECTED',
-        note: enums.cancelReasonText(input.checked.reason),
+        note: input.checked.note || enums.cancelReasonText(input.checked.reason),
         payload: { reason: input.checked.reason }
       };
     }
