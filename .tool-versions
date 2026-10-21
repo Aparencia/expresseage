@@ -1,0 +1,4 @@
+node 24.21.0
+npm 11.6.0
+cloudfunction-runtime Nodejs18.15
+miniprogram-lib latest

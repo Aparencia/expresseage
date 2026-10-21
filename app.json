@@ -1,0 +1,118 @@
+{
+  "pages": [
+    "pages/launch/index",
+    "pages/role/index",
+    "pages/customer/home/index",
+    "pages/customer/orders/index",
+    "pages/partner/workbench/index",
+    "pages/partner/customers/index",
+    "pages/profile/index"
+  ],
+  "subPackages": [
+    {
+      "root": "pkg-customer",
+      "pages": [
+        "pages/bind/index",
+        "pages/order-create/index",
+        "pages/order-detail/index",
+        "pages/messages/index",
+        "pages/help/index"
+      ]
+    },
+    {
+      "root": "pkg-partner",
+      "pages": [
+        "pages/activate/index",
+        "pages/order-detail/index",
+        "pages/create-on-behalf/index",
+        "pages/customer-detail/index",
+        "pages/service-settings/index",
+        "pages/stats/index",
+        "pages/messages/index"
+      ]
+    },
+    {
+      "root": "pkg-admin",
+      "pages": [
+        "pages/overview/index",
+        "pages/invite-codes/index",
+        "pages/customers/index",
+        "pages/customer-detail/index",
+        "pages/partners/index",
+        "pages/orders/index",
+        "pages/order-detail/index",
+        "pages/config/index",
+        "pages/account-switch/index",
+        "pages/messages/index",
+        "pages/recognition-review/index"
+      ]
+    }
+  ],
+  "window": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "校园快递代取",
+    "navigationBarBackgroundColor": "#FFFFFF",
+    "backgroundColor": "#F6F7F9",
+    "backgroundTextStyle": "dark"
+  },
+  "tabBar": {
+    "custom": true,
+    "color": "#999999",
+    "selectedColor": "#1F7A5C",
+    "backgroundColor": "#FFFFFF",
+    "borderStyle": "white",
+    "list": [
+      {
+        "pagePath": "pages/customer/home/index",
+        "text": "首页",
+        "iconPath": "assets/tabbar/customer-home.png",
+        "selectedIconPath": "assets/tabbar/customer-home-active.png"
+      },
+      {
+        "pagePath": "pages/customer/orders/index",
+        "text": "订单",
+        "iconPath": "assets/tabbar/customer-orders.png",
+        "selectedIconPath": "assets/tabbar/customer-orders-active.png"
+      },
+      {
+        "pagePath": "pages/partner/workbench/index",
+        "text": "工作台",
+        "iconPath": "assets/tabbar/partner-workbench.png",
+        "selectedIconPath": "assets/tabbar/partner-workbench-active.png"
+      },
+      {
+        "pagePath": "pages/partner/customers/index",
+        "text": "客户",
+        "iconPath": "assets/tabbar/partner-customers.png",
+        "selectedIconPath": "assets/tabbar/partner-customers-active.png"
+      },
+      {
+        "pagePath": "pages/profile/index",
+        "text": "我的",
+        "iconPath": "assets/tabbar/profile.png",
+        "selectedIconPath": "assets/tabbar/profile-active.png"
+      }
+    ]
+  },
+  "usingComponents": {
+    "switch-bar": "/components/switch-bar/index",
+    "test-badge": "/components/test-badge/index",
+    "avatar-view": "/components/avatar-view/index",
+    "id-text": "/components/id-text/index",
+    "room-tag-text": "/components/room-tag-text/index",
+    "failure-image": "/components/failure-image/index",
+    "status-pill": "/components/status-pill/index",
+    "order-row": "/components/order-row/index",
+    "customer-row": "/components/customer-row/index",
+    "image-picker": "/components/image-picker/index",
+    "code-editor": "/components/code-editor/index",
+    "section-card": "/components/section-card/index",
+    "empty-state": "/components/empty-state/index",
+    "form-field": "/components/form-field/index",
+    "role-switch": "/components/role-switch/index"
+  },
+  "style": "v2",
+  "componentFramework": "glass-easel",
+  "sitemapLocation": "sitemap.json",
+  "lazyCodeLoading": "requiredComponents"
+}

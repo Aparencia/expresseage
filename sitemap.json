@@ -1,0 +1,9 @@
+{
+  "desc": "v4 不依赖微信搜索入口，全部页面允许索引；规则变更需同步 docs/ARCHITECTURE.md",
+  "rules": [
+    {
+      "action": "allow",
+      "page": "*"
+    }
+  ]
+}

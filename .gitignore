@@ -1,0 +1,7 @@
+.env*
+project.private.config.json
+node_modules/
+cloudfunctions/*/node_modules/
+.dsh-code-index/
+coverage/
+*.log
