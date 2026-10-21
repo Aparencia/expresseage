@@ -17,7 +17,7 @@
 | 批 | 名称 | 状态 | 说明/证据 |
 | :-- | :-- | :-- | :-- |
 | 批 0 | 设计定稿与开工门 | **设计定稿完成（2026-10-21）** | CONTRACT v0.9、DATA_MODEL、三份 UX、ENGINEERING、DECISIONS、QA_CHECKLIST、ARCHITECTURE、`docs/privacy/` 两件均落盘；D18~D21 四次修订已回写；**用户侧开工门（D1/D2/D3/D13）未闭环** |
-| 批 1 | 工程骨架与云端基础设施 | **完成并收口（2026-10-21）** | 真实证据见 §6：`check.ps1` 退出码 0；`check.js` 31/31、`check-docs` 10/10、零金额 0、`selftest.js` 9 套 1,011 断言全 PASS；sync 16 源×2 套 hash 一致；提交与 gate 见 §7 收口记录 |
+| 批 1 | 工程骨架与云端基础设施 | **完成并收口（2026-10-21）** | 真实证据见 §6：`check.ps1` 退出码 0；`check.js` 31/31、`check-docs` 10/10、零金额 0、`selftest.js` 9 套 1,014 断言全 PASS；sync 16 源×2 套 hash 一致；提交与 gate 见 §7 收口记录 |
 | 批 2 | 账号入口 + 切换会话/测试账号/头像采集 | **未开工** | 代码骨架已在批 1 前置落地（identity/切换会话/测试账号/头像/account-switch 页均实现），待用户闭环开工门后做真机联调与细化 |
 | 批 3~批 9 | 见 `docs/V4_ENGINEERING.md` §11 | 未开工 | 范围、依赖与风险以 ENGINEERING §11 为准 |
 
@@ -39,7 +39,7 @@
 | S8 云订单与兜底 | 19 订单动作 + message + ai + `lib/ai/**` + `cleanup/sweeps` 13 个幂等 sweep | 已交付 |
 | S9 云后台 | `handlers/admin/**` 23 动作（邀请码/脱敏查看/配置/统计/切换会话/测试账号/复核） | 已交付 |
 | S10 组件与资产 | `components/**` 15 套 + `custom-tab-bar/` + tabbar 10 张 PNG | 已交付 |
-| S12~S16 测试与细化 | 9 套 selftest（1,011 断言）、launch/profile 隐私闸与资料编辑细化、双端页面按真实 DTO 对齐、order.listPartner 隐私修复 | 已交付 |
+| S12~S16 测试与细化 | 9 套 selftest（1,014 断言）、launch/profile 隐私闸与资料编辑细化、双端页面按真实 DTO 对齐、order.listPartner 隐私修复 | 已交付 |
 
 ## 4. 用户待办（阻塞项）
 
@@ -79,7 +79,7 @@
 | `node tools/check.js` | 通过 **31 项**；失败 0 项 |
 | `node tools/check-docs.js --batch 1` | 通过 **10 项**；失败 0 项 |
 | `node tools/zero-money-scan.js` | **0 命中**（白名单 136 项精确项） |
-| `node tools/selftest.js` | 运行 **9 套**；失败 0 套；SKIP 0；**1,011 断言全 PASS** |
+| `node tools/selftest.js` | 运行 **9 套**；失败 0 套；SKIP 0；**1,014 断言全 PASS**（core 58 / state 341 / recognize 187 / cloud 125 / ai 86 / bind 48 / profile 47 / switch 74 / testaccount 48） |
 | `node tools/sync-cloud-shared.js` | 16 源 × 2 套逐字节 hash 一致 |
 | `node tools/doctor.ps1` | 通过 15 / 告警 1（envId 占位待回填）/ 失败 0 |
 | `gate.ps1 -Anchor 71341c9`（提交 `d125b42` 后回读） | 红色 **0** 项；黄色 **0** 项（退出码 0） |
@@ -105,7 +105,8 @@
 | 2026-10-21 | 批 0 设计定稿（CONTRACT v0.9 及全部设计文档；D18~D21 四次修订回写；隐私两件升草案） |
 | 2026-10-21 | 批 1 开工提交 `d5ad214`：app.json 页面地图冻结、ARCHITECTURE 接口冻结、根配置改造 |
 | 2026-10-21 | 批 1 并行开发（S0~S16）：云端/页面/组件/工具链/测试全部落盘；期间关闭多项门禁裁决与 bug（fake-db 三处、listPartner raw 文档泄露、saveProfile 角色死锁、bind 幂等、四档排序归属等） |
-| 2026-10-21 | **批 1 收口提交 `d125b42`**：`check.ps1` 4 步全 PASS（退出码 0）、9 套 selftest 1,011 断言全 PASS、`gate.ps1` 红色 0 / 黄色 0（退出码 0）、`doctor.ps1` 15 通过 1 告警 0 失败；批 2 未开工 |
+| 2026-10-21 | **批 1 收口提交 `d125b42`**：`check.ps1` 4 步全 PASS（退出码 0）、9 套 selftest 1,014 断言全 PASS、`gate.ps1` 红色 0 / 黄色 0（退出码 0）、`doctor.ps1` 15 通过 1 告警 0 失败；批 2 未开工 |
+| 2026-10-21 | **计数勘误（仅文档）**：收口条目首版误记 selftest 合计 1,011（cloud 122）；按 `node tools/selftest.js` 实跑与 `d125b42` 内 `tools/selftest-cloud.js`（`EXPECTED_ASSERTIONS=125`）修正为 **1,014**（cloud 125），STATE/README/CHANGELOG 三处同步；代码与门禁结论不变 |
 
 ## 9. 下一步（按序）
 

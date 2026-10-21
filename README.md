@@ -60,6 +60,6 @@ v4 把 v3 的「兼职单人台账」升级为 **顾客下单 + 兼职接单履�
 
 - **代码**：471 个文件 / 46,784 行；小程序端 30 页（主包 7 + `pkg-customer` 5 + `pkg-partner` 7 + `pkg-admin` 11）四件套齐全；`components/` 15 套 + `custom-tab-bar/`（根目录）+ tabbar 资产；`api/`（client 唯一出口 + 10 个域模块 + upload/privacy/mode-guard）、`store/`、`shared/` 13 件口径纯件 + `utils/` 纯件。
 - **云端**：`cloudfunctions/api`（index/router/app + 7 中间件 + db/dao + lib + 11 域 handlers 66 个 client 动作 + admin.bootstrap/health.check 内部动作）与 `cloudfunctions/cleanup`（13 个幂等 sweep + 独立 dao），依赖只 `wx-server-sdk`；14 集合/13 错误码/审计枚举三端一致。
-- **门禁**（真实输出）：`check.ps1` 4 步全 PASS（退出码 0）——`check.js` 31/31、`check-docs.js --batch 1` 10/10、零金额扫描 0 命中、`selftest.js` 9 套 1,011 条断言全 PASS（core 58 / state 341 / recognize 187 / cloud 122 / ai 86 / bind 48 / profile 47 / switch 74 / testaccount 48）。
+- **门禁**（真实输出）：`check.ps1` 4 步全 PASS（退出码 0）——`check.js` 31/31、`check-docs.js --batch 1` 10/10、零金额扫描 0 命中、`selftest.js` 9 套 1,014 条断言全 PASS（core 58 / state 341 / recognize 187 / cloud 125 / ai 86 / bind 48 / profile 47 / switch 74 / testaccount 48）。
 - **已闭环工程裁决**：`docs/TECH_DEBT.md` TD-017（四档排序归客户端）、TD-018（公开配置含 `viewTicketTtlMinutes`）、TD-007/008/009（upload/privacy 接纯件）等；未闭 TD 为 E5/E12 真机项、D8 苑名、P1 预留与已知口径差异。
 - **尚未执行（只能用户做）**：`git` 已初始化并提交；云开发环境创建、`config/env.js` 回填 envId、14 集合/索引/安全规则、`ADMIN_OPENIDS`/`DEEPSEEK_API_KEY` 环境变量、定时触发器、存储权限、真机点检、隐私后台声明与提审——按 `docs/RUNBOOK.md` 执行并留证据；未部署前云函数未在真实云环境跑过（fake-DB 单测已覆盖核心路径）。
