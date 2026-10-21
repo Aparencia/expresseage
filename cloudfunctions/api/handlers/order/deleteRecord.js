@@ -15,6 +15,7 @@ module.exports = async function orderDeleteRecord(ctx, payload) {
   if (!order) {
     throw errors.notFound('订单不存在或不可查看');
   }
+  common.assertTestOrderVisible(ctx, order);
   if (scope.role !== enums.ROLES.CUSTOMER || order.customerId !== scope.openid) {
     throw errors.forbidden('只有下单顾客可以删除自己的已完成订单');
   }

@@ -63,10 +63,11 @@ function matchKeyword(order, keyword) {
 }
 
 async function fetchOrders(ctx, partnerId, filter, scanLimit) {
+  const isTest = common.isTestSession(ctx);
   const rows = [];
   for (let i = 0; i < filter.statuses.length; i += 1) {
     const part = await ctx.dao.find(COLLECTIONS.ORDERS, {
-      where: { partnerId, status: filter.statuses[i] },
+      where: { partnerId, status: filter.statuses[i], isTest },
       orderBy: [[filter.sortField, 'desc'], ['orderNo', 'desc']],
       limit: scanLimit
     });
@@ -76,6 +77,7 @@ async function fetchOrders(ctx, partnerId, filter, scanLimit) {
 }
 
 async function buildCounts(ctx, partnerId, nowMs) {
+  const isTest = common.isTestSession(ctx);
   const counts = orderView.countsTemplate();
   const mapping = [
     ['submitted', enums.ORDER_STATUS.SUBMITTED],
@@ -86,12 +88,12 @@ async function buildCounts(ctx, partnerId, nowMs) {
   ];
   for (let i = 0; i < mapping.length; i += 1) {
     counts[mapping[i][0]] = await ctx.dao.count(COLLECTIONS.ORDERS, {
-      where: { partnerId, status: mapping[i][1] }
+      where: { partnerId, status: mapping[i][1], isTest }
     });
   }
   const todayStart = nowMs - ((nowMs + time.TZ_OFFSET_MS) % YESTERDAY_MS);
   const completed = await ctx.dao.find(COLLECTIONS.ORDERS, {
-    where: { partnerId, status: enums.ORDER_STATUS.COMPLETED },
+    where: { partnerId, status: enums.ORDER_STATUS.COMPLETED, isTest },
     orderBy: [['completedAt', 'desc']],
     limit: 100
   });

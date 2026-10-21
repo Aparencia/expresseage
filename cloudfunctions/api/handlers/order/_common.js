@@ -60,6 +60,7 @@ async function runOrderAction(ctx, payload, spec) {
   if (!side) {
     throw errors.forbidden('无权操作该订单');
   }
+  store.assertTestOrderVisible(ctx, order);
   const rule = orderState.actionRule(spec.action);
   if (!rule) {
     throw errors.internalError('订单动作未登记');
@@ -116,6 +117,7 @@ async function runOrderAction(ctx, payload, spec) {
   try {
     await ctx.dao.transaction(async (trx) => {
       const patch = Object.assign({}, built.set || {}, {
+        status: toStatus || fromStatus,
         version: order.version + 1,
         statusUpdatedAt: nowDate,
         updatedAt: nowDate

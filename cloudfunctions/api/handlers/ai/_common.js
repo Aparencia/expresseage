@@ -67,13 +67,14 @@ function normalizePayload(payload, scope) {
     throw errors.validation('ocrTextMasked', '识别文本过长，请重新拍摄截图');
   }
   const role = typeof input.role === 'string' ? input.role.trim().toUpperCase() : '';
+  if (enums.ROLE_LIST.indexOf(role) < 0) {
+    throw errors.forbidden('请先选择顾客或兼职身份后再使用识别兜底');
+  }
   if (role !== scope.role) {
     throw errors.validation('role', '识别角色与当前身份不一致，请重新进入下单页');
   }
-  const ticketCheck = validate.validateToken(input.uploadTicketId, 'uploadTicketId');
-  if (!ticketCheck.ok) {
-    throw errors.validation('uploadTicketId', '上传凭证格式不正确，请重新上传截图');
-  }
+  // 票据归属/有效期校验失败不拒绝（记 ruleResult.ticketInvalid=true 供后台排查），只要求是字符串
+  const uploadTicketId = typeof input.uploadTicketId === 'string' ? input.uploadTicketId.trim() : '';
   let hintTrackingTail = '';
   if (input.hintTrackingTail !== undefined && input.hintTrackingTail !== null && input.hintTrackingTail !== '') {
     const tailCheck = validate.validateTrackingTail(input.hintTrackingTail);
@@ -85,7 +86,7 @@ function normalizePayload(payload, scope) {
   return {
     ocrTextMasked: rawText,
     hintTrackingTail,
-    uploadTicketId: ticketCheck.value,
+    uploadTicketId,
     role
   };
 }

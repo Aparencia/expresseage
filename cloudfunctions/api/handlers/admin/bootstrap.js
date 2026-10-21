@@ -50,9 +50,11 @@ async function ensureConfig(scope) {
     await scope.dao.add(COLLECTIONS.CONFIG, seed);
     return { configSeeded: true, filledKeys: Object.keys(DEFAULT_CONFIG) };
   }
+  // 已落库时按「原始文档」检查缺键（readConfig 会把默认值补齐，不能用合并结果判断）
+  const raw = await scope.dao.get(COLLECTIONS.CONFIG, CONFIG_DOC_ID);
   const missingPatch = {};
   Object.keys(DEFAULT_CONFIG).forEach((key) => {
-    if (scope.config[key] === undefined) {
+    if (!raw || raw[key] === undefined) {
       missingPatch[key] = cloneDefault()[key];
     }
   });

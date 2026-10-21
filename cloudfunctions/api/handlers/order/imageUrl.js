@@ -30,6 +30,7 @@ module.exports = async function orderImageUrl(ctx, payload) {
   const orderNo = common.normalizeOrderNoInput(payload && payload.orderNo);
   const order = await common.getOrderByNo(ctx, orderNo);
   const side = common.assertOrderVisible(ctx, order);
+  common.assertTestOrderVisible(ctx, order);
   if (side === 'ADMIN') {
     throw errors.forbidden('后台请通过开发者只读视角查看原图');
   }

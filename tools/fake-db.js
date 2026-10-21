@@ -122,7 +122,11 @@ function createFakeDb(options) {
   }
 
   function uniqueError(collection, fields, value) {
-    const err = new Error('唯一索引冲突: ' + collection + '.' + fields.join('+') + ' = ' + JSON.stringify(value));
+    const detail = collection + '.' + fields.join('+') + ' = ' + JSON.stringify(value);
+    const err = new Error('唯一索引冲突: ' + detail);
+    // 与真实云 DB 的错误形状对齐：errMsg 含 "duplicate key error"（db/dao.js 的 isDuplicateError 靠它识别），
+    // 否则"唯一冲突 → CONFLICT"的 handler 分支在 fake DB 下永远走不到（假红）。
+    err.errMsg = 'document.add:fail duplicate key error: ' + detail;
     err.code = 'UNIQUE_CONFLICT';
     err.errCode = -502001;
     err.collection = collection;
@@ -165,9 +169,12 @@ function createFakeDb(options) {
 
   function makeApi(getStore, tx) {
     function collection(name) {
+      // 真实云 DB 在首次写入时自动建集合；fake DB 必须同样"未 seed 也建"，
+      // 否则 add 写进游离 Map（丢了）、count/get 仍读旧 Map（读不到）——这是与环境的行为差异。
       const docsOf = () => {
-        const docs = getStore().get(name) || new Map();
-        return docs;
+        const s = getStore();
+        if (!s.has(name)) s.set(name, new Map());
+        return s.get(name);
       };
       function filter(cond) {
         const out = [];

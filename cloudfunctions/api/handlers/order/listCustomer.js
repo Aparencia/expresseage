@@ -53,10 +53,11 @@ function matchKeyword(order, keyword) {
 }
 
 async function fetchOrders(ctx, customerId, filter, scanLimit) {
+  const isTest = common.isTestSession(ctx);
   const rows = [];
   for (let i = 0; i < filter.statuses.length; i += 1) {
     const part = await ctx.dao.find(COLLECTIONS.ORDERS, {
-      where: { customerId, status: filter.statuses[i] },
+      where: { customerId, status: filter.statuses[i], isTest },
       orderBy: [[filter.sortField, 'desc'], ['orderNo', 'desc']],
       limit: scanLimit
     });

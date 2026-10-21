@@ -102,7 +102,7 @@ const ALL_COLLECTION_NAMES = Object.keys(COLLECTIONS).map((key) => COLLECTIONS[k
 // tools/fake-db.js 只在 seed 过的集合上持久化写入（未 seed 集合的写入落入临时 Map）；
 // 测试库统一预建 14 个集合，避免"写入静默丢失"导致的假红。
 function createTestDb() {
-  const db = createTestDb();
+  const db = createFakeDb({ uniqueIndexes: uniqueIndexesForApi() });
   ALL_COLLECTION_NAMES.forEach((name) => db.seed(name, []));
   return db;
 }
@@ -157,7 +157,10 @@ function writeAction(action) {
 }
 
 function register(h) {
-  const asyncSection = (title, fn) => h.section(title, (t) => serial(() => fn(t)));
+  const asyncSection = (title, fn) => h.section(title, (t) => serial(() => {
+    h.sectionTitle = title;
+    return fn(t);
+  }));
 
   // ---------------------------------------------------------------- §7.3 dao 返回形状与事务
   asyncSection('§7.3 dao 返回形状 / 事务 / 唯一冲突', async (t) => {

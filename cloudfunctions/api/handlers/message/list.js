@@ -10,6 +10,7 @@ async function listOrderMessages(ctx, payload) {
   const orderNo = common.normalizeOrderNoInput(payload.orderNo);
   const order = await common.getOrderByNo(ctx, orderNo);
   const side = common.assertParticipant(ctx, order);
+  common.assertTestOrderVisible(ctx, order);
   const limit = common.parseLimit(payload);
   const cursor = common.parseCursor(payload);
   const rows = await ctx.dao.find(common.COLLECTIONS.ORDER_MESSAGES, {
@@ -56,9 +57,10 @@ function itemTime(item) {
 }
 
 async function myOrders(ctx, scope) {
+  const isTest = scope.testWrite;
   if (scope.role === common.enums.ROLES.CUSTOMER) {
     return ctx.dao.find(common.COLLECTIONS.ORDERS, {
-      where: { customerId: scope.openid },
+      where: { customerId: scope.openid, isTest },
       orderBy: [['statusUpdatedAt', 'desc']],
       limit: common.MAX_ORDERS_SCAN
     });
@@ -71,7 +73,7 @@ async function myOrders(ctx, scope) {
       return [];
     }
     return ctx.dao.find(common.COLLECTIONS.ORDERS, {
-      where: { partnerId: partner._id },
+      where: { partnerId: partner._id, isTest },
       orderBy: [['statusUpdatedAt', 'desc']],
       limit: common.MAX_ORDERS_SCAN
     });
@@ -109,6 +111,7 @@ async function systemNoticeItems(ctx, scope) {
     limit: 30
   });
   return rows
+    .filter((row) => (row.isTest === true) === common.isTestSession(ctx))
     .filter((row) => partnerOpenids.indexOf(row.fromId) >= 0)
     .map((row) => common.buildMessageItem(scope, '', row));
 }

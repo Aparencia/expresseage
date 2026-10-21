@@ -110,6 +110,18 @@ function assertParticipant(ctx, order) {
   return side;
 }
 
+// 测试数据隔离：真实会话（含 READONLY）不得看到测试订单/测试通知；TEST_WRITE 会话只看测试单
+function isTestSession(ctx) {
+  return scopeOf(ctx).testWrite;
+}
+
+function assertTestOrderVisible(ctx, order) {
+  const expectTest = isTestSession(ctx);
+  if ((order.isTest === true) !== expectTest) {
+    throw errors.notFound('订单不存在或不可查看');
+  }
+}
+
 // 内容安全：微信 msgSecCheck v2（未过→VALIDATION_FAILED，data.field 指向文本字段）；
 // 本地/单测无 openapi 时跳过（部署环境由 wx-server-sdk 提供，跳过不影响业务主流程）。
 async function checkContentSecurity(ctx, text, field) {
@@ -295,6 +307,8 @@ module.exports = {
   normalizeOrderNoInput,
   orderSideOf,
   assertParticipant,
+  isTestSession,
+  assertTestOrderVisible,
   checkContentSecurity,
   buildMessageItem,
   buildEventItem,

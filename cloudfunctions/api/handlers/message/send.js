@@ -11,6 +11,7 @@ module.exports = async function messageSend(ctx, payload) {
   const orderNo = common.normalizeOrderNoInput(input.orderNo);
   const order = await common.getOrderByNo(ctx, orderNo);
   const side = common.assertParticipant(ctx, order);
+  common.assertTestOrderVisible(ctx, order);
   if (side === 'ADMIN') {
     throw common.errors.forbidden('后台不能代发订单留言');
   }

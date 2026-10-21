@@ -10,6 +10,7 @@ module.exports = async function orderGet(ctx, payload) {
   const orderNo = common.normalizeOrderNoInput(payload && payload.orderNo);
   const order = await common.getOrderByNo(ctx, orderNo);
   const side = common.assertOrderVisible(ctx, order);
+  common.assertTestOrderVisible(ctx, order);
   const events = await ctx.dao.find(COLLECTIONS.ORDER_EVENTS, {
     where: { orderId: order._id },
     orderBy: [['at', 'asc']],

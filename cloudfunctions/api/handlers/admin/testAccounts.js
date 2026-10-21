@@ -123,6 +123,7 @@ async function deleteTestAccount(ctx, payload) {
     throw errors.validation('confirmText', '请二次确认删除（确认文案需为「删除」）');
   }
   const user = await helpers.resolveTestUser(scope, identifier);
+  await helpers.assertNoRealReference(scope, user);
   const data = await helpers.countCascade(scope, user);
   if (dryRun) {
     return {
@@ -133,8 +134,8 @@ async function deleteTestAccount(ctx, payload) {
         bindings: data.bindings.length,
         failures: data.failures.length,
         tickets: data.tickets,
-        events: 0,
-        messages: 0,
+        events: data.events,
+        messages: data.messages,
         avatarFiles: 0
       },
       willDelete: true
@@ -145,8 +146,8 @@ async function deleteTestAccount(ctx, payload) {
     bindings: data.bindings.length,
     failures: data.failures.length,
     tickets: data.tickets,
-    events: 0,
-    messages: 0,
+    events: data.events,
+    messages: data.messages,
     avatarFiles: 0
   };
   const removed = await helpers.cascadeDelete(scope, user, data);
@@ -189,14 +190,15 @@ async function purgeTestData(ctx, payload) {
   const openids = users.map(function openidOf(user) {
     return user._id;
   });
+  await helpers.assertNoRealReferenceToOpenids(scope, openids);
   const data = await helpers.collectTestData(scope, openids);
   if (dryRun) {
     return {
       dryRun: true,
       counts: {
         orders: data.orders.length,
-        events: 0,
-        messages: 0,
+        events: data.events,
+        messages: data.messages,
         bindings: data.bindings.length,
         failures: data.failures.length,
         tickets: data.tickets

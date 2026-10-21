@@ -45,7 +45,7 @@ function parseTargetNo(role, raw) {
 async function resolveTarget(scope, role, targetNo, mode) {
   if (role === enums.ROLES.CUSTOMER) {
     const customer = await getCustomerByNo(scope, targetNo);
-    if (!customer) {
+    if (!customer || customer.deletedAt || customer.anonymizedAt) {
       throw errors.notFound('该用户当前不可查看');
     }
     const user = await getUserByOpenid(scope, customer._id);
