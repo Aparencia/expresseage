@@ -160,6 +160,7 @@
       <view class="empty-text" wx:if="{{purgeLoading}}">正在统计将清理的条数…</view>
       <block wx:if="{{!purgeLoading && purgeCounts}}">
         <view class="danger-text">将清空全部测试数据：测试订单 {{purgeCounts.orders}} 条、留言 {{purgeCounts.messages}} 条、绑定 {{purgeCounts.bindings}} 条、识别失败 {{purgeCounts.failures}} 条；测试账号保留。此操作不可恢复。</view>
+        <view class="danger-text" wx:if="{{purgeSessionsEnded > 0}}">另有 {{purgeSessionsEnded}} 个活跃切换会话会被结束（不留悬空会话）。</view>
         <view class="row between detail-row">
           <text class="muted">我已知晓清理不可恢复</text>
           <switch checked="{{purgeCheck}}" color="#E54D42" bindchange="onPurgeCheck" />

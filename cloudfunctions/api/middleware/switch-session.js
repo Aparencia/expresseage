@@ -1,6 +1,8 @@
 // middleware/switch-session.js · 开发者切换会话（READONLY 真实账号只读 / TEST_WRITE 测试账号可写）
 // 口径：CONTRACT v0.9 §1.2/§1.3、ENGINEERING §4.8、ARCHITECTURE §4.1/§4.3。
 // 身份传播：actorOpenid=开发者真实 openid（审计/白名单）；effectiveOpenid=业务身份（查询/写入归属）。
+// 退出会话（admin.viewAsEnd）：票据从请求包络补进 payload（客户端只在包络带票据，data 不带），
+//   身份仍保留 viewMode（供后端审计/会话归属），由 viewAsEnd 的 adminScope 放宽处理。
 const { COLLECTIONS } = require('../db/collections');
 const { ROLES, ROLE_LIST, USER_STATUS, VIEW_MODE, VIEW_MODE_LIST } = require('../shared/enums');
 const { AUDIT_ACTIONS } = require('../shared/audit-actions');
@@ -158,13 +160,28 @@ async function middleware(state) {
   if (VIEW_MODE_LIST.indexOf(session.viewMode) < 0 || ROLE_LIST.indexOf(session.role) < 0 || !session.targetId) {
     throw invalidTicket('切换会话参数不完整，请重新开启');
   }
+  const isExit = state.action === EXIT_ACTION;
+  if (isExit) {
+    // 客户端退出只把票据放包络（data 为空对象），handler 校验的是 payload.viewTicket —— 这里补注入。
+    const clean = state.payload && typeof state.payload === 'object' && !Array.isArray(state.payload)
+      ? Object.assign({}, state.payload)
+      : {};
+    if (clean.viewTicket === undefined || clean.viewTicket === '') {
+      clean.viewTicket = viewTicket;
+    }
+    state.payload = clean;
+  }
   const target = session.viewMode === VIEW_MODE.READONLY
     ? await resolveReadonlyTarget(ctx, session)
     : await resolveTestWriteTarget(ctx, session);
   if (!!session.targetIsTest !== target.isTestAccount) {
     throw invalidTicket('切换会话状态不一致，请重新开启');
   }
-  if (state.action !== EXIT_ACTION) {
+  // TEST_WRITE 防票据挪用：票据 targetId 必须就是本次生效身份（合成 openid）
+  if (session.viewMode === VIEW_MODE.TEST_WRITE && session.targetId !== target.effectiveOpenid) {
+    throw invalidTicket('切换会话状态不一致，请重新开启');
+  }
+  if (!isExit) {
     assertModeScope(state, session.viewMode, spec);
   }
   ctx.identity = {
@@ -176,7 +193,7 @@ async function middleware(state) {
     viewTicketId: viewTicket,
     developerNo: ctx.identity.developerNo
   };
-  if (spec.write && session.viewMode === VIEW_MODE.TEST_WRITE) {
+  if (!isExit && spec.write && session.viewMode === VIEW_MODE.TEST_WRITE) {
     try {
       await ctx.dao.update(COLLECTIONS.USERS, target.effectiveOpenid, { testLastUsedAt: ctx.now, updatedAt: ctx.now });
     } catch (error) {

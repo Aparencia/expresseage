@@ -1,4 +1,6 @@
 // handlers/admin/_test-account-ops.js · 测试账号删除/清空的级联操作（专供 testAccounts.js；不进业务路径）
+// 口径：ENGINEERING §4.11、DATA_MODEL §2.13⑥/§4.10/§7.8——双条件安全闸、真实引用即拒、
+// 级联删账号+资料+订单/事件/留言/绑定/失败记录+头像文件、先结束会话再删数据、审计记前后条数。
 'use strict';
 
 const { COLLECTIONS } = require('../../shared/collections');
@@ -9,11 +11,14 @@ const {
   getUserByOpenid,
   getCustomerByNo,
   getPartnerByNo,
-  getPartnerByOpenid
+  getPartnerByOpenid,
+  getPartnerById
 } = require('./_common');
 const accounts = require('./_test-accounts');
 
 const SCAN_LIMIT = 200;
+const REAL_REFERENCE_DELETE = '该测试账号存在真实数据引用，不能删除';
+const REAL_REFERENCE_PURGE = '测试数据存在真实数据引用，不能清空';
 
 async function resolveTestUser(scope, identifier) {
   const raw = typeof identifier === 'string' ? identifier.trim().toUpperCase() : '';
@@ -42,27 +47,63 @@ async function resolveTestUser(scope, identifier) {
   return user;
 }
 
-async function assertNoRealReference(scope, user) {
+async function isTestUserOf(scope, openid) {
+  const user = await getUserByOpenid(scope, openid);
+  return !!(user && user.isTestAccount === true);
+}
+
+// 参与真实数据的判定：订单 isTest 非 true、绑定的对侧账号非测试、留言挂在非测试订单上。
+async function realReferenceOf(scope, user) {
   const partner = await getPartnerByOpenid(scope, user._id);
-  const asCustomer = await scope.dao.count(COLLECTIONS.ORDERS, { where: { customerId: user._id, isTest: false } });
+  const asCustomer = await scope.dao.find(COLLECTIONS.ORDERS, { where: { customerId: user._id }, limit: SCAN_LIMIT });
   const asPartner = partner
-    ? await scope.dao.count(COLLECTIONS.ORDERS, { where: { partnerId: partner._id, isTest: false } })
-    : 0;
-  if (asCustomer > 0 || asPartner > 0) {
-    throw errors.invalidState('该测试账号存在真实数据引用，不能删除');
+    ? await scope.dao.find(COLLECTIONS.ORDERS, { where: { partnerId: partner._id }, limit: SCAN_LIMIT })
+    : [];
+  const orders = asCustomer.concat(asPartner);
+  for (let i = 0; i < orders.length; i += 1) {
+    if (orders[i].isTest !== true) {
+      return true;
+    }
+  }
+  const bindings = await bindingsOfAccount(scope, user);
+  for (let i = 0; i < bindings.length; i += 1) {
+    const binding = bindings[i];
+    if (binding.customerId === user._id) {
+      const other = binding.partnerId ? await getPartnerById(scope, binding.partnerId) : null;
+      if (!other || !(await isTestUserOf(scope, other.openid))) {
+        return true;
+      }
+    } else if (!(await isTestUserOf(scope, binding.customerId))) {
+      return true;
+    }
+  }
+  const messages = await scope.dao.find(COLLECTIONS.ORDER_MESSAGES, {
+    where: { fromId: user._id },
+    limit: SCAN_LIMIT
+  });
+  for (let i = 0; i < messages.length; i += 1) {
+    const order = messages[i].orderId ? await scope.dao.get(COLLECTIONS.ORDERS, messages[i].orderId) : null;
+    if (!order || order.isTest !== true) {
+      return true;
+    }
+  }
+  return false;
+}
+
+async function assertNoRealReference(scope, user) {
+  if (await realReferenceOf(scope, user)) {
+    throw errors.invalidState(REAL_REFERENCE_DELETE);
   }
 }
 
 async function assertNoRealReferenceToOpenids(scope, openids) {
   for (let i = 0; i < openids.length; i += 1) {
-    const openid = openids[i];
-    const partner = await getPartnerByOpenid(scope, openid);
-    const asCustomer = await scope.dao.count(COLLECTIONS.ORDERS, { where: { customerId: openid, isTest: false } });
-    const asPartner = partner
-      ? await scope.dao.count(COLLECTIONS.ORDERS, { where: { partnerId: partner._id, isTest: false } })
-      : 0;
-    if (asCustomer > 0 || asPartner > 0) {
-      throw errors.invalidState('测试数据存在真实数据引用，不能清空');
+    const user = await getUserByOpenid(scope, openids[i]);
+    if (!user) {
+      continue;
+    }
+    if (await realReferenceOf(scope, user)) {
+      throw errors.invalidState(REAL_REFERENCE_PURGE);
     }
   }
 }
@@ -86,7 +127,11 @@ async function bindingsOfAccount(scope, user) {
   const asPartner = partner
     ? await scope.dao.find(COLLECTIONS.BINDINGS, { where: { partnerId: partner._id }, limit: SCAN_LIMIT })
     : [];
-  return asCustomer.concat(asPartner);
+  const map = {};
+  asCustomer.concat(asPartner).forEach((binding) => {
+    map[binding._id] = binding;
+  });
+  return Object.keys(map).map((key) => map[key]);
 }
 
 async function childCountsOfOrders(scope, orders) {
@@ -122,19 +167,23 @@ async function countCascade(scope, user) {
   };
 }
 
-function profileFiles(data) {
+// 待删文件：头像（顾客/兼职各一）+ 失败记录原图（同图多单共享 fileId 时去重）
+function filesOf(data) {
+  const seen = {};
   const files = [];
-  if (data.customer && data.customer.avatarFileId) {
-    files.push(data.customer.avatarFileId);
-  }
-  if (data.partner && data.partner.avatarFileId) {
-    files.push(data.partner.avatarFileId);
-  }
-  data.failures.forEach((failure) => {
-    if (failure.fileId) {
-      files.push(failure.fileId);
+  const push = (fileId) => {
+    if (typeof fileId === 'string' && fileId !== '' && !seen[fileId]) {
+      seen[fileId] = true;
+      files.push(fileId);
     }
-  });
+  };
+  if (data.customer) {
+    push(data.customer.avatarFileId);
+  }
+  if (data.partner) {
+    push(data.partner.avatarFileId);
+  }
+  (data.failures || []).forEach((failure) => push(failure.fileId));
   return files;
 }
 
@@ -158,11 +207,25 @@ async function deleteFiles(ctx, fileIds) {
   }
 }
 
-async function endSessionsOfAccount(scope, user) {
-  const rows = await scope.dao.find(COLLECTIONS.ADMIN_VIEW_SESSIONS, {
-    where: { targetId: user._id, endedAt: null },
-    limit: SCAN_LIMIT
-  });
+async function sessionsOfTargets(scope, targetIds) {
+  const rows = [];
+  for (let i = 0; i < targetIds.length; i += 1) {
+    const found = await scope.dao.find(COLLECTIONS.ADMIN_VIEW_SESSIONS, {
+      where: { targetId: targetIds[i], endedAt: null },
+      limit: SCAN_LIMIT
+    });
+    found.forEach((row) => rows.push(row));
+  }
+  return rows;
+}
+
+async function countSessionsOfTargets(scope, targetIds) {
+  const rows = await sessionsOfTargets(scope, targetIds);
+  return rows.length;
+}
+
+async function endSessionsOfTargets(scope, targetIds, reason) {
+  const rows = await sessionsOfTargets(scope, targetIds);
   for (let i = 0; i < rows.length; i += 1) {
     const session = rows[i];
     await scope.dao.update(COLLECTIONS.ADMIN_VIEW_SESSIONS, session._id, {
@@ -176,13 +239,17 @@ async function endSessionsOfAccount(scope, user) {
         viewMode: session.viewMode || '',
         role: session.role || '',
         targetNo: session.targetNo || '',
-        targetIsTest: true,
-        reason: 'TEST_ACCOUNT_DELETED'
+        targetIsTest: !!session.targetIsTest,
+        reason: reason || 'TARGET_DELETED'
       },
       'switch-end:' + session._id
     );
   }
   return rows.length;
+}
+
+async function endSessionsOfAccount(scope, user) {
+  return endSessionsOfTargets(scope, [user._id], 'TARGET_DELETED');
 }
 
 function zeroCounts() {
@@ -217,7 +284,7 @@ async function cascadeDelete(scope, user, data) {
     await scope.dao.remove(COLLECTIONS.PARTNERS, data.partner._id);
   }
   await scope.dao.remove(COLLECTIONS.USERS, user._id);
-  const removedFiles = await deleteFiles(scope.ctx, profileFiles(data));
+  const removedFiles = await deleteFiles(scope.ctx, filesOf(data));
   return {
     orders: data.orders.length,
     events: removedEvents,
@@ -275,15 +342,68 @@ async function collectTestData(scope, openids) {
   };
 }
 
+// 清空测试业务数据（账号保留）：订单+事件/留言、绑定、失败记录+原图、上传票据；
+// 最后结束这些测试账号的活跃切换会话（审计 ACCOUNT_SWITCH_END，reason=TEST_DATA_PURGED）。
+async function purgeCollectedData(scope, openids, data) {
+  let removedEvents = 0;
+  let removedMessages = 0;
+  for (let i = 0; i < data.orders.length; i += 1) {
+    const order = data.orders[i];
+    const eventResult = await scope.dao.removeWhere(COLLECTIONS.ORDER_EVENTS, { orderId: order._id });
+    const messageResult = await scope.dao.removeWhere(COLLECTIONS.ORDER_MESSAGES, { orderId: order._id });
+    removedEvents += eventResult.removed;
+    removedMessages += messageResult.removed;
+    await scope.dao.remove(COLLECTIONS.ORDERS, order._id);
+  }
+  let removedBindings = 0;
+  for (let i = 0; i < data.bindings.length; i += 1) {
+    const result = await scope.dao.remove(COLLECTIONS.BINDINGS, data.bindings[i]._id);
+    removedBindings += result.removed;
+  }
+  let removedFailures = 0;
+  const failureFiles = [];
+  for (let i = 0; i < data.failures.length; i += 1) {
+    const failure = data.failures[i];
+    const result = await scope.dao.remove(COLLECTIONS.RECOGNITION_FAILURES, failure._id);
+    removedFailures += result.removed;
+    if (failure.fileId) {
+      failureFiles.push(failure.fileId);
+    }
+  }
+  let removedTickets = 0;
+  for (let i = 0; i < openids.length; i += 1) {
+    const result = await scope.dao.removeWhere(COLLECTIONS.UPLOAD_TICKETS, { openid: openids[i] });
+    removedTickets += result.removed;
+  }
+  const removedFiles = await deleteFiles(scope.ctx, failureFiles);
+  const sessionsEnded = await endSessionsOfTargets(scope, openids, 'TEST_DATA_PURGED');
+  return {
+    orders: data.orders.length,
+    events: removedEvents,
+    messages: removedMessages,
+    bindings: removedBindings,
+    failures: removedFailures,
+    tickets: removedTickets,
+    files: removedFiles,
+    sessionsEnded: sessionsEnded
+  };
+}
+
 module.exports = {
   SCAN_LIMIT,
+  REAL_REFERENCE_DELETE,
+  REAL_REFERENCE_PURGE,
   resolveTestUser,
   assertNoRealReference,
   assertNoRealReferenceToOpenids,
   countCascade,
   cascadeDelete,
   collectTestData,
+  purgeCollectedData,
   endSessionsOfAccount,
+  endSessionsOfTargets,
+  countSessionsOfTargets,
   deleteFiles,
+  filesOf,
   zeroCounts
 };

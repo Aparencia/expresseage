@@ -81,7 +81,9 @@ async function resolveTarget(scope, role, targetNo, mode) {
     throw errors.notFound('该用户当前不可查看');
   }
   return {
-    targetId: partner.openid,
+    // v0.9 targetId 口径（DATA_MODEL §2.13）：顾客=openid；兼职真实账号=partners._id（只读解析 partner 行），
+    // 测试兼职=合成 openid（=users._id=partners.openid；TEST_WRITE 每请求交叉校验 targetId===effectiveOpenid）。
+    targetId: mode === enums.VIEW_MODE.TEST_WRITE ? partner.openid : partner._id,
     targetNo: partner.partnerNo || targetNo,
     targetDisplayName: partner.displayName || '',
     targetAvatarFileId: partner.avatarFileId || '',
@@ -200,7 +202,9 @@ async function handler(ctx, payload) {
       updatedAt: scope.nowDate
     });
   }
-  const ttlMinutes = Number(scope.config.viewTicketTtlMinutes) || 30;
+  // TTL 取 config（默认 30，范围 5~60；库值异常时收敛到合法区间，避免票据过短/过长）
+  const rawTtl = Number(scope.config.viewTicketTtlMinutes);
+  const ttlMinutes = rawTtl > 0 ? Math.min(60, Math.max(5, Math.round(rawTtl))) : 30;
   const sessionDoc = {
     adminOpenid: scope.actorOpenid,
     developerNo: scope.developerNo,

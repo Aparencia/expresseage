@@ -8,7 +8,6 @@ const { COLLECTIONS } = require('../../shared/collections');
 const enums = require('../../shared/enums');
 const zones = require('../../shared/zones');
 const validate = require('../../shared/validate');
-const time = require('../../lib/time');
 const { insertUnique, generatePartnerNo } = require('../../lib/id-generator');
 const { errors } = require('../../lib/errors');
 const identity = require('../user/_common');
@@ -112,7 +111,11 @@ async function activateInTransaction(ctx, options) {
         if (invitation.status === enums.INVITATION_STATUS.USED) {
           throw errors.inviteUsed('邀请码已被使用，请向开发者索取新的邀请码');
         }
-        if (invitation.status === enums.INVITATION_STATUS.EXPIRED || time.isPast(invitation.expiresAt, opts.nowMs)) {
+        // 惰性过期判定（DATA_MODEL §4.3：激活时也判定）：admin.createInvites 落库的 expiresAt 是 Date，
+        // 而 time.isPast 只接受毫秒数——这里显式归一 Date/number，否则 Date 直传恒判"未过期"（expiresAt 缺失不判过期）。
+        const expiresAtMs = invitation.expiresAt instanceof Date ? invitation.expiresAt.getTime()
+          : (typeof invitation.expiresAt === 'number' && isFinite(invitation.expiresAt) ? invitation.expiresAt : 0);
+        if (invitation.status === enums.INVITATION_STATUS.EXPIRED || (expiresAtMs > 0 && expiresAtMs <= opts.nowMs)) {
           throw errors.inviteExpired('邀请码已过期，请向开发者索取新的邀请码');
         }
         const doc = buildPartnerDoc(opts.scope.openid, { displayName: opts.displayName, avatarFileId: opts.avatarFileId }, opts.nowDate);

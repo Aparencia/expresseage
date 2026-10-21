@@ -35,7 +35,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const ADMIN_OPENID = 'openid-admin-dev01';
 const ADMIN_ENV = { ADMIN_OPENIDS: JSON.stringify({ [ADMIN_OPENID]: 'DEV-01' }) };
 
-const EXPECTED_ASSERTIONS = 125;
+const EXPECTED_ASSERTIONS = 168;
 
 const API_PENDING_ASSERTS = 22;
 const CLEANUP_PENDING_ASSERTS = 14;
@@ -850,6 +850,123 @@ function register(h) {
     t.eq(db.dump('admin_audit').filter((row) => row.action === AUDIT_ACTIONS.ACCOUNT_SWITCH_EXPIRED).length, 1,
       '重跑不重复写过期审计（每票至多一条）');
     t.notEmpty(db.dump('orders'), 'cleanup 样本非空');
+  });
+
+  // ---------------------------------------------------------------- §7.3 身份域（批 2-A：身份/编号/邀请码/头像票据）
+  asyncSection('§7.3 身份域（批2-A bootstrap/隐私同意/资料编号/邀请码激活/头像票据）', async (t) => {
+    const app = require(path.join(API, 'app.js'));
+    const apiOf = (db, openid, cloud) => app.createApi({ db, now: () => NOW, openid, env: ADMIN_ENV, cloud: cloud || cloudStub('pass') });
+    const userOf = (id, roles, extra) => Object.assign({ _id: id, roles: roles || [], status: USER_STATUS.ACTIVE, isTestAccount: false, privacyConsent: { version: 'v4.0', at: NOW } }, extra || {});
+    // 1) user.bootstrap：平铺 DTO / isDeveloper 白名单 / viewContext / 首登 roles=[] 不报错
+    const bDb = createTestDb();
+    const bFlat = await apiOf(bDb, 'openid-boot-new').call('user.bootstrap', {});
+    t.eq([bFlat.data.roles, bFlat.data.status, bFlat.data.privacyConsent, bFlat.data.messageReadAt, bFlat.data.customerProfileCompleted, bFlat.data.partnerStatus, bFlat.data.isDeveloper, bFlat.data.viewContext],
+      [[], USER_STATUS.ACTIVE, null, 0, false, '', false, null], '§7.3 首登（无 users 行）bootstrap 不报错：平铺 roles/status/privacyConsent/messageReadAt/customerProfileCompleted/partnerStatus/isDeveloper/viewContext 均为初始值');
+    t.check(JSON.stringify(bFlat.data).indexOf('openid-boot-new') < 0, '§7.3 bootstrap 永不返回 openid（全响应递归无本次 openid）');
+    t.eq((await apiOf(bDb, ADMIN_OPENID).call('user.bootstrap', {})).data.isDeveloper, true, '§7.3 isDeveloper 只由 ADMIN_OPENIDS 环境映射决定（白名单内 true，不看 users.roles）');
+    bDb.seed('users', [userOf(ADMIN_OPENID, []), userOf('openid-view-c', [ROLES.CUSTOMER])]);
+    bDb.seed('customers', [{ _id: 'openid-view-c', customerNo: 'CABCDEFGH', displayName: '小王', profileCompleted: true, dormKey: 'D4-522' }]);
+    bDb.seed('admin_view_sessions', [{ _id: 'TK-VIEW1', requestKey: ADMIN_OPENID + ':vs-view1', adminOpenid: ADMIN_OPENID, developerNo: 'DEV-01', viewMode: VIEW_MODE.READONLY, role: ROLES.CUSTOMER, targetId: 'openid-view-c', targetNo: 'CABCDEFGH', targetDisplayName: '小王', targetIsTest: false, createdAt: NOW, expiresAt: NOW + 3600000, endedAt: 0 }]);
+    const bView = await apiOf(bDb, ADMIN_OPENID).call('user.bootstrap', {}, { viewTicket: 'TK-VIEW1' });
+    t.eq(bView.data.viewContext, { viewMode: VIEW_MODE.READONLY, role: ROLES.CUSTOMER, targetNo: 'CABCDEFGH', targetDisplayName: '小王', targetIsTest: false, expiresAt: NOW + 3600000 }, '§7.3 viewContext 形状={viewMode,role,targetNo,targetDisplayName,targetIsTest,expiresAt}（切换会话目标上下文）');
+    t.eq([bView.data.roles, bView.data.activeRole, bView.data.isDeveloper], [[ROLES.CUSTOMER], ROLES.CUSTOMER, false], '§7.3 切换会话 bootstrap 返回目标角色且 isDeveloper=false（不再分流后台）');
+    // 2) user.acceptPrivacy：版本闸 / 同版本幂等 / users.privacyConsent 落库（与 saveProfile/upload 共用一库）
+    const sDb = createTestDb();
+    sDb.seed('config', [{ _id: 'global', privacyVersion: 'v4.0', avatarMaxBytes: 102400 }]);
+    sDb.seed('users', [userOf('openid-privacy', [], { privacyConsent: null }), userOf('openid-sp-a'), userOf('openid-sp-b'), userOf('openid-up-c', [ROLES.CUSTOMER]), userOf('openid-up-p', [ROLES.PARTNER]), userOf('openid-up-victim'), userOf('openid-up-lim', [ROLES.CUSTOMER])]);
+    sDb.seed('partners', [{ _id: 'partner-up-p', openid: 'openid-up-p', partnerNo: 'PABC23', displayName: '小李', status: PARTNER_STATUS.ACTIVE, serviceConfig: { acceptingOrders: true } }]);
+    sDb.seed('upload_tickets', [{ _id: 'ut-victim', ticket: 'VICTIMTICKET00000000000000000001', openid: 'openid-victim', purpose: 'AVATAR', cloudPath: 'avatars/customer/victimavatar00000000.jpg', size: 1000, contentType: 'image/jpeg', expiresAt: NOW + 60000, usedAt: null, createdAt: NOW },
+      { _id: 'ut-used', ticket: 'USEDTICKET0000000000000000000001', openid: 'openid-up-c', purpose: 'AVATAR', cloudPath: 'avatars/customer/usedavatar000000000000.jpg', usedAt: NOW, expiresAt: NOW + 60000, createdAt: NOW }]);
+    const pApi = apiOf(sDb, 'openid-privacy');
+    const pBad = await pApi.call('user.acceptPrivacy', { version: 'v3.9' });
+    t.check(pBad.ok === false && pBad.code === 'VALIDATION_FAILED' && pBad.data.field === 'version', '§7.3 acceptPrivacy 非法版本 → VALIDATION_FAILED(data.field=version)');
+    const pOk = await pApi.call('user.acceptPrivacy', { version: 'v4.0' });
+    t.check(pOk.ok === true && pOk.data.duplicated === false && pOk.data.privacyConsent.version === 'v4.0', '§7.3 acceptPrivacy 当前版本成功：ok:true、duplicated=false、回读 privacyConsent.version');
+    const pDoc = sDb.dump('users').filter((row) => row._id === 'openid-privacy')[0].privacyConsent;
+    t.check(!!pDoc && pDoc.version === 'v4.0' && pDoc.at instanceof Date, '§7.3 acceptPrivacy 落库 users.privacyConsent{version,at}（at 为 Date）');
+    const pAgain = await pApi.call('user.acceptPrivacy', { version: 'v4.0' });
+    t.check(pAgain.ok === true && pAgain.data.duplicated === true, '§7.3 同版本重复同意幂等：duplicated=true、不报错');
+    // 3) customer.saveProfile：首存编号 / 不换号 / 重放 / 昵称截断与内容安全 / 头像票据归属
+    const sApi = apiOf(sDb, 'openid-sp-a');
+    const spDoc = () => sDb.dump('customers').filter((row) => row._id === 'openid-sp-a')[0] || {};
+    const spFirst = await sApi.call('customer.saveProfile', { displayName: 'A'.repeat(25), zone: 'D', buildingNo: 4, room: '522' }, { clientRequestId: 'sp-replay-000000000001' });
+    t.check(spFirst.ok === true && /^C[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{8}$/.test(spFirst.data.customerNo), '§7.3 saveProfile 首存生成 customerNo=C+8 位 32 字母表');
+    t.eq([spDoc().displayName.length, spDoc().profileCompleted, sDb.dump('customers').length], [20, true, 1], '§7.3 25 字昵称截断为 20 字；首存只建 1 条 customers 且 profileCompleted=true');
+    t.eq(sDb.dump('users').filter((row) => row._id === 'openid-sp-a')[0].roles, [ROLES.CUSTOMER], '§7.3 首存成功 union 授予 CUSTOMER 角色（原 roles 为空）');
+    const spReplay = await sApi.call('customer.saveProfile', { displayName: spDoc().displayName, zone: 'D', buildingNo: 4, room: '522' }, { clientRequestId: 'sp-replay-000000000001' });
+    t.check(spReplay.ok === true && spReplay.data.customerNo === spFirst.data.customerNo && sDb.dump('customers').length === 1, '§7.3 同 clientRequestId 重放幂等：ok:true、customerNo 不变、不新建文档');
+    const spRisky = await apiOf(sDb, 'openid-sp-b', cloudStub('risky')).call('customer.saveProfile', { displayName: '坏昵称', zone: 'D', buildingNo: 4, room: '522' }, { clientRequestId: 'sp-replay-000000000002' });
+    t.check(spRisky.ok === false && spRisky.code === 'VALIDATION_FAILED' && spRisky.data.field === 'displayName' && sDb.dump('customers').length === 1, '§7.3 昵称 msgSecCheck=risky → VALIDATION_FAILED(displayName) 且零落库');
+    t.eq((await sApi.call('customer.saveProfile', { displayName: spDoc().displayName, avatarFileId: 'cloud://env/avatars/customer/HACKED0000000000000.jpg' }, { clientRequestId: 'sp-replay-000000000003' })).data.avatarFileId, '', '§7.3 无 AVATAR 票据直接传 avatarFileId 不被采信（归属只认票据一条路）');
+    t.eq((await sApi.call('customer.saveProfile', { displayName: spDoc().displayName, avatarTicket: 'VICTIMTICKET00000000000000000001', avatarFileId: 'cloud://env/avatars/customer/victimavatar00000000.jpg' }, { clientRequestId: 'sp-replay-000000000004' })).code, 'NOT_FOUND', '§7.3 用他人 AVATAR 票据 → NOT_FOUND（票据归属 effectiveOpenid 校验）');
+    const spPrep = await sApi.call('upload.prepare', { purpose: 'AVATAR', size: 50000 }, { clientRequestId: 'sp-avatar-000000000001' });
+    const spFile = 'cloud://env.avatars/' + spPrep.data.cloudPath;
+    const spAvatar = await sApi.call('customer.saveProfile', { displayName: spDoc().displayName, avatarTicket: spPrep.data.ticket, avatarFileId: spFile }, { clientRequestId: 'sp-replay-000000000005' });
+    t.check(spAvatar.ok === true && spAvatar.data.avatarFileId === spFile, '§7.3 本人 AVATAR 票据消费成功：路径/归属/大小校验通过并写 avatarFileId');
+    const spTicketUsedAt = sDb.dump('upload_tickets').filter((row) => row.ticket === spPrep.data.ticket)[0].usedAt;
+    const spUsedAtMs = spTicketUsedAt instanceof Date ? spTicketUsedAt.getTime() : spTicketUsedAt;
+    t.eq([spTicketUsedAt instanceof Date, spUsedAtMs], [true, NOW], '§7.3 头像票据消费后写 usedAt=Date（与订单截图票据 usedAt 同字段口径；一次性）');
+    t.eq((await sApi.call('customer.saveProfile', { displayName: spDoc().displayName, avatarTicket: spPrep.data.ticket, avatarFileId: spFile }, { clientRequestId: 'sp-replay-000000000006' })).code, 'INVALID_STATE', '§7.3 头像票据二次消费 → INVALID_STATE（票据一次性）');
+    // 4) partner.activate：邀请码状态机 / 角色追加 / 开发者与切换会话分流 / 内容安全零消耗
+    const aDb = createTestDb();
+    const actIds = ['openid-act-fmt', 'openid-act-nf', 'openid-act-used', 'openid-act-rev', 'openid-act-exp', 'openid-act-ok', 'openid-act-dual', 'openid-act-risky', 'openid-act-limit', 'openid-act-closed'];
+    aDb.seed('users', [userOf(ADMIN_OPENID, [])].concat(actIds.map((id) => userOf(id, id === 'openid-act-dual' ? [ROLES.CUSTOMER] : (id === 'openid-act-closed' ? [ROLES.PARTNER] : [])))));
+    aDb.seed('customers', [{ _id: 'openid-act-nf', customerNo: 'CABCDEFGJ', displayName: '小王', profileCompleted: true, dormKey: 'D4-522' }]);
+    aDb.seed('partners', [{ _id: 'partner-act-closed', openid: 'openid-act-closed', partnerNo: 'PABC24', displayName: '老李', status: PARTNER_STATUS.CLOSED, serviceConfig: {} }]);
+    const invDoc = (id, code, extra) => Object.assign({ _id: id, code, status: 'UNUSED', expiresAt: NOW + 3600000, usedBy: '', usedAt: 0, batchId: 'b1', createdBy: 'DEV-01', createdAt: NOW, note: '' }, extra || {});
+    aDb.seed('invitation_codes', [invDoc('inv-ok', 'ABCD2345EFGH'), invDoc('inv-used', 'JKMN6789PQRS', { status: 'USED', usedBy: 'partner-x', usedAt: NOW - 1000 }), invDoc('inv-revoked', 'TUVW2345XYZA', { status: 'REVOKED' }), invDoc('inv-expired', 'BCDE3456FGHJ', { expiresAt: new Date(NOW - 1000) }), invDoc('inv-risky', 'CDEF4567GHJK'), invDoc('inv-dual', 'EFGH6789JKMN')]);
+    aDb.seed('admin_view_sessions', [{ _id: 'TK-ACT-RO', requestKey: ADMIN_OPENID + ':vs-act-ro', adminOpenid: ADMIN_OPENID, developerNo: 'DEV-01', viewMode: VIEW_MODE.READONLY, role: ROLES.CUSTOMER, targetId: 'openid-act-nf', targetNo: 'CABCDEFGJ', targetDisplayName: '小王', targetIsTest: false, createdAt: NOW, expiresAt: NOW + 3600000, endedAt: 0 }]);
+    const actCall = (openid, payload, extra, cloud) => apiOf(aDb, openid, cloud).call('partner.activate', payload, extra);
+    const actFmt = await actCall('openid-act-fmt', { invitationCode: 'bad', displayName: '小李' }, { clientRequestId: 'act-fmt-000000000001' });
+    t.check(actFmt.ok === false && actFmt.code === 'VALIDATION_FAILED' && actFmt.data.field === 'invitationCode', '§7.3 activate 邀请码格式错 → VALIDATION_FAILED(data.field=invitationCode)');
+    const codeSeq = [(await actCall('openid-act-nf', { invitationCode: 'NPQR2345STUV', displayName: '小李' }, { clientRequestId: 'act-nf-0000000000001' })).code, (await actCall('openid-act-rev', { invitationCode: 'TUVW-2345-XYZA', displayName: '小李' }, { clientRequestId: 'act-rev-000000000001' })).code, (await actCall('openid-act-used', { invitationCode: 'JKMN-6789-PQRS', displayName: '小李' }, { clientRequestId: 'act-used-00000000001' })).code, (await actCall('openid-act-exp', { invitationCode: 'BCDE-3456-FGHJ', displayName: '小李' }, { clientRequestId: 'act-exp-000000000001' })).code];
+    t.eq(codeSeq, ['NOT_FOUND', 'NOT_FOUND', 'INVITE_USED', 'INVITE_EXPIRED'], '§7.3 activate 错误映射：不存在/已作废→NOT_FOUND、已用→INVITE_USED、过期→INVITE_EXPIRED（过期用例 expiresAt 用 admin.createInvites 的生产形状 Date，回归惰性过期判定）');
+    t.eq(aDb.dump('partners').filter((row) => row.openid === 'openid-act-exp').length, 0, '§7.3 过期邀请码零建号（Date expiresAt 惰性过期判定先于事务写入）');
+    const timeLib = require(path.join(API, 'lib/time.js'));
+    t.eq([timeLib.isPast(new Date(NOW + 60000), NOW), timeLib.isPast(new Date(NOW - 1000), NOW), timeLib.isPast('2026-10-21T11:59:00+08:00', NOW), timeLib.isPast('2026-10-21T12:01:00+08:00', NOW)], [false, true, true, false], '§7.3 time.isPast 归一 Date/可解析字符串（生产 expiresAt 常为 Date）：过去→true、未来→false');
+    t.eq([timeLib.isPast(NOW + 60000, NOW), timeLib.isPast(NOW - 1000, NOW), timeLib.isPast('not-a-date', NOW), timeLib.isPast(undefined, NOW), timeLib.isPast(0, NOW), timeLib.isPast(NaN, NOW)], [false, true, false, false, false, false], '§7.3 time.isPast number 基线不变；无值/非法/非正数 → false（不误判过期）');
+    const actOk = await actCall('openid-act-ok', { invitationCode: 'ABCD-2345-EFGH', displayName: '小李' }, { clientRequestId: 'act-ok-0000000000001' });
+    t.check(actOk.ok === true && /^P[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{6}$/.test(actOk.data.partnerNo) && actOk.data.partner.status === PARTNER_STATUS.ACTIVE && actOk.data.roles.indexOf(ROLES.PARTNER) >= 0, '§7.3 activate 成功：ok:true、partnerNo=P+6 位 32 字母表、partner.status=ACTIVE、roles 含 PARTNER');
+    const invOk = aDb.dump('invitation_codes').filter((row) => row.code === 'ABCD2345EFGH')[0];
+    const partnerOk = aDb.dump('partners').filter((row) => row.openid === 'openid-act-ok')[0];
+    t.eq([invOk.status, invOk.usedBy, invOk.usedAt instanceof Date], ['USED', partnerOk._id, true], '§7.3 激活成功原子消耗邀请码：status=USED、usedBy=partnerId、usedAt 落库（审计链）');
+    t.eq(aDb.dump('users').filter((row) => row._id === 'openid-act-ok')[0].roles, [ROLES.PARTNER], '§7.3 激活成功 users.roles 追加 PARTNER');
+    const actReplay = await actCall('openid-act-ok', { invitationCode: 'ABCD-2345-EFGH', displayName: '小李' }, { clientRequestId: 'act-ok-0000000000001' });
+    t.check(actReplay.code === 'CONFLICT' && aDb.dump('partners').filter((row) => row.openid === 'openid-act-ok').length === 1, '§7.3 activate 重放 → CONFLICT 且不重复建 partners（邀请码状态机+openid 唯一双闸）');
+    const actDual = await actCall('openid-act-dual', { invitationCode: 'EFGH-6789-JKMN', displayName: '小双' }, { clientRequestId: 'act-dual-00000000001' });
+    t.eq(actDual.data.roles.slice().sort(), [ROLES.CUSTOMER, ROLES.PARTNER], '§7.3 双角色：激活追加 PARTNER 不覆盖原 CUSTOMER');
+    t.eq((await actCall('openid-act-closed', { invitationCode: 'ABCD-2345-EFGH', displayName: '小李' }, { clientRequestId: 'act-closed-0000000001' })).code, 'CONFLICT', '§7.3 已是兼职（含 CLOSED）重复激活 → CONFLICT');
+    t.eq((await actCall(ADMIN_OPENID, { invitationCode: 'ABCD-2345-EFGH', displayName: '小李' }, { clientRequestId: 'act-dev-000000000001' })).code, 'FORBIDDEN', '§7.3 开发者账号不激活兼职业务身份 → FORBIDDEN');
+    t.eq((await actCall(ADMIN_OPENID, { invitationCode: 'ABCD-2345-EFGH', displayName: '小李' }, { viewTicket: 'TK-ACT-RO', clientRequestId: 'act-ro-000000000001' })).code, 'FORBIDDEN', '§7.3 切换会话（READONLY）调 activate → FORBIDDEN');
+    const riskyAct = await actCall('openid-act-risky', { invitationCode: 'CDEF-4567-GHJK', displayName: '坏昵称' }, { clientRequestId: 'act-risky-0000000001' }, cloudStub('risky'));
+    t.check(riskyAct.code === 'VALIDATION_FAILED' && aDb.dump('invitation_codes').filter((row) => row.code === 'CDEF4567GHJK')[0].status === 'UNUSED' && aDb.dump('partners').filter((row) => row.openid === 'openid-act-risky').length === 0, '§7.3 激活昵称内容安全不过 → VALIDATION_FAILED 且邀请码不消耗、零建号（准入闸先于事务）');
+    const actLimit = [];
+    for (let i = 0; i < 6; i += 1) actLimit.push((await actCall('openid-act-limit', { invitationCode: 'bad' + i, displayName: '小李' }, { clientRequestId: 'act-limit-0000000000' + i })).code);
+    t.eq([actLimit[4], actLimit[5]], ['VALIDATION_FAILED', 'RATE_LIMITED'], '§7.3 activate 5 次失败/日/openid：第 6 次 RATE_LIMITED');
+    // 5) upload.prepare(AVATAR) 路径/零 openid/类型/大小/限流 + upload.cancel 自然幂等
+    const uApi = apiOf(sDb, 'openid-up-c');
+    const uPrep1 = await uApi.call('upload.prepare', { purpose: 'AVATAR' }, { clientRequestId: 'up-path-000000000001' });
+    const uPrep2 = await uApi.call('upload.prepare', { purpose: 'AVATAR' }, { clientRequestId: 'up-path-000000000002' });
+    t.check(/^avatars\/customer\/[A-Za-z0-9]{20}\.jpg$/.test(uPrep1.data.cloudPath) && uPrep1.data.cloudPath.indexOf('openid-up-c') < 0, '§7.3 upload.prepare(AVATAR) 路径 avatars/customer/{20 位随机}.jpg 且零 openid');
+    t.check(uPrep1.data.cloudPath !== uPrep2.data.cloudPath && sDb.dump('upload_tickets').filter((row) => row.ticket === uPrep1.data.ticket)[0].openid === 'openid-up-c', '§7.3 头像路径随机值由服务端生成（两次不同）且票据 openid=effectiveOpenid');
+    t.eq((await uApi.call('upload.prepare', { purpose: 'AVATAR', contentType: 'image/gif' }, { clientRequestId: 'up-type-000000000001' })).data.field, 'contentType', '§7.3 AVATAR 只允许 jpg/png：image/gif → VALIDATION_FAILED(contentType)');
+    const uMax = await uApi.call('upload.prepare', { purpose: 'AVATAR', size: 102400 }, { clientRequestId: 'up-size-000000000001' });
+    const uBig = await uApi.call('upload.prepare', { purpose: 'AVATAR', size: 102401 }, { clientRequestId: 'up-size-000000000002' });
+    t.check(uMax.ok === true && uBig.code === 'VALIDATION_FAILED' && uBig.data.field === 'size', '§7.3 头像大小闸=config.avatarMaxBytes（102400 通过、102401 → VALIDATION_FAILED(size)）');
+    t.check(/^avatars\/partner\/[A-Za-z0-9]{20}\.jpg$/.test((await apiOf(sDb, 'openid-up-p').call('upload.prepare', { purpose: 'AVATAR' }, { clientRequestId: 'up-path-000000000003' })).data.cloudPath), '§7.3 兼职身份头像路径 avatars/partner/…（role 由服务端身份判定）');
+    const uCancel1 = await uApi.call('upload.cancel', { uploadTicketId: uPrep1.data.ticket });
+    const uCancel2 = await uApi.call('upload.cancel', { uploadTicketId: uPrep1.data.ticket });
+    const uCancelMissing = await uApi.call('upload.cancel', { uploadTicketId: 'NOSUCHTICKET00000000000000000001' });
+    t.check(uCancel1.data.cancelled === true && uCancel2.ok === true && uCancel2.data.cancelled === false && uCancelMissing.ok === true, '§7.3 upload.cancel 自然幂等：首次 cancelled=true、重复/不存在均 ok:true+cancelled=false');
+    t.eq((await apiOf(sDb, 'openid-up-victim').call('upload.cancel', { uploadTicketId: uPrep2.data.ticket })).code, 'NOT_FOUND', '§7.3 非本人撤销票据 → NOT_FOUND（不暴露存在性）');
+    t.eq((await uApi.call('upload.cancel', { uploadTicketId: 'USEDTICKET0000000000000000000001' })).code, 'INVALID_STATE', '§7.3 已消费票据撤销 → INVALID_STATE');
+    const limApi = apiOf(sDb, 'openid-up-lim');
+    const limCodes = [];
+    for (let i = 0; i < 6; i += 1) {
+      const res = await limApi.call('upload.prepare', { purpose: 'AVATAR' }, { clientRequestId: 'up-limit-0000000000' + i });
+      limCodes.push(res.ok ? 'OK' : res.code);
+    }
+    t.eq(limCodes, ['OK', 'OK', 'OK', 'OK', 'OK', 'RATE_LIMITED'], '§7.3 头像上传 5 次/日/人：第 6 次 RATE_LIMITED');
   });
 
   // ---------------------------------------------------------------- §7.3 router 注册表（需 11 域齐）

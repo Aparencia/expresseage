@@ -36,11 +36,28 @@ function addDays(nowMs, days) {
   return toMs(nowMs) + days * DAY_MS;
 }
 
+// 生产数据里的 expiresAt 可能是 Date（createInvites/activate）或可解析字符串；统一归一为毫秒。
+// 无值/非法一律归 0（isPast 对 <=0 恒 false，保持"没有期限不算过期"的既有 number 语义）。
+function deadlineMsOf(value) {
+  if (typeof value === 'number') {
+    return isFinite(value) ? value : 0;
+  }
+  if (value instanceof Date) {
+    return isFinite(value.getTime()) ? value.getTime() : 0;
+  }
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Date.parse(value);
+    return isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
 function isPast(deadlineMs, nowMs) {
-  if (typeof deadlineMs !== 'number' || !isFinite(deadlineMs) || deadlineMs <= 0) {
+  const deadline = deadlineMsOf(deadlineMs);
+  if (deadline <= 0) {
     return false;
   }
-  return deadlineMs <= toMs(nowMs);
+  return deadline <= toMs(nowMs);
 }
 
 function elapsedMs(startMs, endMs) {

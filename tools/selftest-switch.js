@@ -5,9 +5,15 @@
  *
  * 覆盖：
  *   §2.13  viewContext 形状与内存态：票据只在 store 内存，本地存储白名单不吐 viewTicket/viewMode/targetIsTest
+ *   §2.13  服务端签发（fake DB 端到端）：viewAsStart 的 targetId 口径（顾客 openid/兼职 partners._id/测试合成 openid）、
+ *          READONLY×TEST_WRITE 双保险、单活票据覆盖 + END 审计、同 requestKey 幂等
  *   §4.1   VIEW_MODE 恰两种 + validateViewMode / validateToken 的票据形态闸
- *   §10    客户端二道闸：READONLY 写全拦、TEST_WRITE 禁 admin.* 与三项写动作、viewAsEnd 放行、会话条数据
- *   §7.2   api/client：viewTicket 注入、VIEW_TICKET_EXPIRED 清会话、读重试/写不重试（transport 注入，不 mock wx）
+ *   §4.8.2 服务端每请求校验（fake DB）：READONLY 写拒/读白名单、TEST_WRITE 四项禁、跨人/篡改/过期拒绝、
+ *          actorOpenid/effectiveOpenid 分离与 testLastUsedAt 更新
+ *   §4.8.3 退出会话（fake DB）：包络票据注入 payload、END 审计 reason=EXIT、重复结束幂等、非本人票据拒
+ *   §10    客户端二道闸：READONLY 写全拦、TEST_WRITE 禁 admin.* 与三项写动作、viewAsEnd 放行、会话条数据、
+ *          黄条/蓝条颜色与 TEST 角标数据源、账号切换页两 tab/代理切换文案/管理入口
+ *   §7.2   api/client：viewTicket 注入、VIEW_TICKET_EXPIRED 清会话、读重试/写不重试、二道闸已接线（本地即拒不触达 transport）
  *   §3.6   config/route 启动分流：有会话→目标角色首页（优先于开发者后台）；无会话→activeRole/角色页
  *   §4.3   审计动作集合：ACCOUNT_SWITCH_* 在册、旧 VIEW_AS_* 零残留（读侧换算、写侧零旧名）
  *
@@ -28,12 +34,121 @@ const modeGuard = require(path.join(ROOT, 'api/mode-guard.js'));
 const client = require(path.join(ROOT, 'api/client.js'));
 const route = require(path.join(ROOT, 'config/route.js'));
 const adminDto = require(path.join(ROOT, 'cloudfunctions/api/handlers/admin/_dto.js'));
+const fake = require(path.join(ROOT, 'tools/fake-db.js'));
+const daoModule = require(path.join(ROOT, 'cloudfunctions/api/db/dao.js'));
+const cloudActions = require(path.join(ROOT, 'cloudfunctions/api/shared/actions.js'));
+const cloudEnums = require(path.join(ROOT, 'cloudfunctions/api/shared/enums.js'));
+const viewAsStart = require(path.join(ROOT, 'cloudfunctions/api/handlers/admin/viewAsStart.js'));
+const viewAsEnd = require(path.join(ROOT, 'cloudfunctions/api/handlers/admin/viewAsEnd.js'));
+const switchSession = require(path.join(ROOT, 'cloudfunctions/api/middleware/switch-session.js'));
 
-const EXPECTED_ASSERTIONS = 74;
+const EXPECTED_ASSERTIONS = 140;
 
 const VIEW_TICKET = 'T'.repeat(enums.TOKEN_LENGTH);
 // 旧审计名用拼接构造：本文件不出现旧名字面量（门禁 #30 / 文档纪律）
 const LEGACY_AUDIT_PREFIX = 'VIEW' + '_' + 'AS' + '_';
+
+// ── 服务端切换会话样本（fake DB；ctx = app.js 注入形状）────────────────────────
+const SWITCH_NOW = Date.UTC(2026, 9, 22, 0, 0, 0);
+const SWITCH_FUTURE = SWITCH_NOW + 30 * 60 * 1000;
+const ADMIN_OPENID = 'admin-openid';
+const TEST_PARTNER_OPENID = 'TEST-PARTNER000001';
+const SWITCH_UNIQUE = {
+  admin_view_sessions: [['requestKey']],
+  customers: [['customerNo']],
+  partners: [['partnerNo']],
+  admin_audit: [['requestKey']],
+  orders: [['orderNo'], ['requestKey']],
+  bindings: [['activeKey']]
+};
+
+function requestKeyOf(index) {
+  return 'ABCDEFGHIJKLMNOPQRST' + String(1000 + index);
+}
+
+function switchCtx(db, options) {
+  const opts = options || {};
+  const openid = opts.openid || ADMIN_OPENID;
+  return {
+    dao: daoModule.createDao(db),
+    ids: {},
+    now: SWITCH_NOW,
+    env: {},
+    cloud: opts.cloud,
+    openid: openid,
+    identity: {
+      actorOpenid: openid,
+      effectiveOpenid: openid,
+      role: '',
+      isTestAccount: false,
+      viewMode: '',
+      viewTicketId: '',
+      developerNo: opts.developerNo === undefined ? 'DEV-01' : opts.developerNo
+    },
+    requestId: 'req-switch-001',
+    clientRequestId: opts.clientRequestId || requestKeyOf(0),
+    expectedVersion: undefined,
+    config: {}
+  };
+}
+
+function switchState(ctx, action, payload, extraMeta) {
+  return {
+    action: action,
+    payload: payload || {},
+    ctx: ctx,
+    meta: Object.assign({ spec: cloudActions.ACTION_MAP[action] }, extraMeta || {})
+  };
+}
+
+async function switchResult(fn) {
+  try {
+    return { ok: true, value: await fn() };
+  } catch (err) {
+    return { ok: false, code: err && err.code, message: err && err.message };
+  }
+}
+
+function switchSessionRow(ticket, viewMode, role, targetId, targetNo, targetIsTest, expiresAt) {
+  return {
+    _id: ticket,
+    requestKey: 'rk-' + ticket,
+    adminOpenid: ADMIN_OPENID,
+    developerNo: 'DEV-01',
+    viewMode: viewMode,
+    role: role,
+    targetId: targetId,
+    targetNo: targetNo,
+    targetDisplayName: '目标账号',
+    targetAvatarFileId: '',
+    targetIsTest: targetIsTest,
+    createdAt: new Date(SWITCH_NOW),
+    expiresAt: expiresAt || SWITCH_FUTURE,
+    endedAt: null
+  };
+}
+
+function seedSwitchBase(db) {
+  const active = cloudEnums.USER_STATUS.ACTIVE;
+  const nowDate = new Date(SWITCH_NOW);
+  db.seed('users', [
+    { _id: ADMIN_OPENID, roles: [], status: active, isTestAccount: false, createdByDeveloperNo: '', testLastUsedAt: 0, messageReadAt: 0, privacyConsent: null, deletionRequestedAt: 0, createdAt: nowDate, updatedAt: nowDate },
+    { _id: 'openid-real-c', roles: [cloudEnums.ROLES.CUSTOMER], status: active, isTestAccount: false, createdAt: nowDate, updatedAt: nowDate },
+    { _id: 'openid-real-p', roles: [cloudEnums.ROLES.PARTNER], status: active, isTestAccount: false, createdAt: nowDate, updatedAt: nowDate },
+    { _id: TEST_PARTNER_OPENID, roles: [cloudEnums.ROLES.PARTNER], status: active, isTestAccount: true, createdByDeveloperNo: 'DEV-01', testLastUsedAt: 0, createdAt: nowDate, updatedAt: nowDate }
+  ]);
+  db.seed('customers', [
+    { _id: 'openid-real-c', customerNo: 'CABCDEFGH', displayName: '顾客甲', avatarFileId: '', zone: 'D', buildingNo: 4, room: '522', dormKey: 'D4-522', profileCompleted: true, createdAt: nowDate, updatedAt: nowDate }
+  ]);
+  db.seed('partners', [
+    { _id: 'partner-real-1', openid: 'openid-real-p', partnerNo: 'PABC23D', displayName: '兼职乙', avatarFileId: '', status: cloudEnums.PARTNER_STATUS.ACTIVE, serviceConfig: { services: [], zones: [], acceptingOrders: true }, stats: {}, createdAt: nowDate, updatedAt: nowDate },
+    { _id: 'partner-test-1', openid: TEST_PARTNER_OPENID, partnerNo: 'PTEST23', displayName: '测试兼职', avatarFileId: '', status: cloudEnums.PARTNER_STATUS.ACTIVE, serviceConfig: { services: [], zones: [], acceptingOrders: true }, stats: {}, createdAt: nowDate, updatedAt: nowDate }
+  ]);
+}
+
+function sessionDocOf(db, ticket) {
+  return db.dump('admin_view_sessions').filter((row) => row._id === ticket)[0] || null;
+}
 
 function readText(rel) {
   return fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -169,6 +284,27 @@ function register(h) {
     'TEST_WRITE：蓝条数据（targetIsTest=true）');
     t.check(modeGuard.isWriteAction('order.accept') && !modeGuard.isWriteAction('order.listCustomer')
       && !modeGuard.isWriteAction('not.registered'), '写标记取自 action 注册表；未登记动作不当写处理');
+
+    // 黄条/蓝条/TEST 角标与账号切换页文案（UI 判据；颜色常量单源在 switch-bar 组件内）
+    const switchBarCss = readText('components/switch-bar/index.wxss');
+    t.check(switchBarCss.indexOf('#FFF4CE') !== -1, '黄条颜色常量 #FFF4CE（READONLY）');
+    t.check(switchBarCss.indexOf('#E8F0FF') !== -1, '蓝条颜色常量 #E8F0FF（TEST_WRITE）');
+    const switchBarWxml = readText('components/switch-bar/index.wxml');
+    t.check(switchBarWxml.indexOf('开发者只读视角') !== -1 && switchBarWxml.indexOf('测试账号') !== -1,
+      '切换条两种模式文案（黄条只读/蓝条测试账号）');
+    t.check(switchBarWxml.indexOf('<test-badge') !== -1, '蓝条渲染 TEST 角标组件');
+    const badgeJs = readText('components/test-badge/index.js');
+    t.check(/viewMode === 'TEST_WRITE'/.test(badgeJs), 'TEST 角标受 viewMode=TEST_WRITE 控制');
+    const accountPageWxml = readText('pkg-admin/pages/account-switch/index.wxml');
+    t.check(accountPageWxml.indexOf('应用内账号代理切换') !== -1,
+      '账号切换页文案：仅应用内代理切换（小程序不能切微信登录账号）');
+    const adminConstants = readText('pkg-admin/common/constants.js');
+    t.check(adminConstants.indexOf('真实账号（只读）') !== -1 && adminConstants.indexOf('测试账号（可写）') !== -1,
+      '账号切换页两 tab（真实只读 / 测试可写）');
+    t.check(accountPageWxml.indexOf('新建测试账号') !== -1, '测试账号管理入口（新建）');
+    const accountPageJs = readText('pkg-admin/pages/account-switch/index.js');
+    t.check(accountPageJs.indexOf('dryRun: true') !== -1, '删除测试账号前先 dryRun 拿将删除条数');
+    t.check(accountPageJs.indexOf('avatarFiles') !== -1, '删除预览展示头像/原图文件数（级联删范围可见）');
     store.reset();
   });
 
@@ -245,6 +381,38 @@ function register(h) {
         '写动作不自动重试（重复提交风险由 clientRequestId/服务端幂等兜）');
       t.check(/^[A-Za-z0-9_-]{24}$/.test(String(writePayload && writePayload.clientRequestId)),
         '写包络 clientRequestId 24 位（重试不换键）');
+
+      // 二道闸接线：api/client 在组装包络前先过 mode-guard（本地即拒不触达 transport）
+      store.reset();
+      let guardTransportCalls = 0;
+      client.setTransport(() => {
+        guardTransportCalls += 1;
+        return Promise.resolve({ ok: true, data: {}, serverTime: Date.now() });
+      });
+      store.setViewContext(sampleViewContext());
+      let guardErr = null;
+      try {
+        await client.call('order.accept', {});
+      } catch (err) {
+        guardErr = err;
+      }
+      t.eq(guardErr && guardErr.code, 'FORBIDDEN', 'READONLY 写动作在 api/client 被二道闸拦（FORBIDDEN）');
+      t.eq(guardTransportCalls, 0, 'READONLY 写动作未触达 transport（本地即拒）');
+      store.setViewContext(sampleViewContext({
+        viewMode: enums.VIEW_MODE.TEST_WRITE,
+        targetIsTest: true,
+        targetNo: 'C-TEST-0001'
+      }));
+      guardErr = null;
+      try {
+        await client.call('admin.purgeTestData', {});
+      } catch (err) {
+        guardErr = err;
+      }
+      t.eq(guardErr && guardErr.code, 'FORBIDDEN', 'TEST_WRITE admin.* 在 api/client 被拦（票据不当后台凭据）');
+      t.eq(guardTransportCalls, 0, 'TEST_WRITE 禁项未触达 transport');
+      await client.call('order.create', {});
+      t.eq(guardTransportCalls, 1, 'TEST_WRITE 普通业务写放行并触达 transport');
     } finally {
       client.restoreTransport();
       store.reset();
@@ -310,6 +478,171 @@ function register(h) {
     t.check(endSrc.indexOf('ACCOUNT_SWITCH_END') !== -1, '结束会话：写 ACCOUNT_SWITCH_END');
     t.check(switchSrc.indexOf('ACCOUNT_SWITCH_EXPIRED') !== -1, '票据过期：写 ACCOUNT_SWITCH_EXPIRED');
   });
+
+  // ---------------------------------------------------------------- §2.13 服务端签发（fake DB 端到端）
+  h.section('§2.13 admin.viewAsStart 签发（targetId 口径/双保险/单活票据/幂等）', async (t) => {
+    const db = fake.createFakeDb({ uniqueIndexes: SWITCH_UNIQUE });
+    seedSwitchBase(db);
+
+    const first = await viewAsStart(switchCtx(db, { clientRequestId: requestKeyOf(1) }), {
+      role: cloudEnums.ROLES.CUSTOMER, targetNo: 'CABCDEFGH', mode: cloudEnums.VIEW_MODE.READONLY
+    });
+    t.eq(first.viewMode, cloudEnums.VIEW_MODE.READONLY, '顾客 READONLY：返回 viewMode=READONLY');
+    t.eq(first.targetNo, 'CABCDEFGH', '顾客 READONLY：返回 canonical 编号（展示层再分组）');
+    t.eq(first.targetIsTest, false, '顾客 READONLY：targetIsTest=false');
+    const firstDoc = sessionDocOf(db, first.viewTicket);
+    t.eq(firstDoc && firstDoc.targetId, 'openid-real-c', '顾客 READONLY：targetId=顾客 openid（主键）');
+    t.eq(firstDoc && firstDoc.adminOpenid, ADMIN_OPENID, '会话落发起人 openid（每次请求校验归属）');
+    t.eq(firstDoc && firstDoc.developerNo, 'DEV-01', '会话落 developerNo（impersonatedBy 来源）');
+    t.eq(firstDoc ? Number(firstDoc.expiresAt) - new Date(firstDoc.createdAt).getTime() : 0,
+      30 * 60 * 1000, '票据默认 TTL=30 分钟（config 未落库走默认值）');
+
+    const partner = await viewAsStart(switchCtx(db, { clientRequestId: requestKeyOf(2) }), {
+      role: cloudEnums.ROLES.PARTNER, targetNo: 'PABC23D', mode: cloudEnums.VIEW_MODE.READONLY
+    });
+    const partnerDoc = sessionDocOf(db, partner.viewTicket);
+    t.eq(partnerDoc && partnerDoc.targetId, 'partner-real-1', '兼职 READONLY：targetId=partners._id（不是 openid）');
+    t.check(sessionDocOf(db, first.viewTicket).endedAt !== null, '新开覆盖旧票：旧票 endedAt 已写（同一开发者单活）');
+    const replacedAudits = db.dump('admin_audit').filter((row) => row.action === audit.AUDIT_ACTIONS.ACCOUNT_SWITCH_END);
+    t.eq(replacedAudits.length, 1, '覆盖旧票记 1 条 ACCOUNT_SWITCH_END');
+    t.eq(replacedAudits[0] && replacedAudits[0].detail && replacedAudits[0].detail.reason, 'REPLACED',
+      '覆盖旧票结束原因=REPLACED');
+    t.eq(db.dump('admin_view_sessions').filter((row) => row.endedAt === null).length, 1, '有效票据始终 ≤1（单活）');
+
+    const partnerState = switchState(switchCtx(db), 'partner.listBindings', {}, { viewTicket: partner.viewTicket });
+    await switchSession.middleware(partnerState);
+    t.eq(partnerState.ctx.identity.effectiveOpenid, 'openid-real-p',
+      '兼职 READONLY 票据按 partners._id 解析出 partners.openid');
+
+    const replay = await viewAsStart(switchCtx(db, { clientRequestId: requestKeyOf(2) }), {
+      role: cloudEnums.ROLES.PARTNER, targetNo: 'PABC23D', mode: cloudEnums.VIEW_MODE.READONLY
+    });
+    t.eq(replay.duplicated, true, '同一 clientRequestId 重复开启：duplicated=true');
+    t.eq(replay.viewTicket, partner.viewTicket, '同一 clientRequestId 重复开启：票据不变（幂等）');
+    t.eq(db.dump('admin_view_sessions').filter((row) => row.endedAt === null).length, 1, '重复开启不产生第二张有效票据');
+
+    const testWrite = await viewAsStart(switchCtx(db, { clientRequestId: requestKeyOf(3) }), {
+      role: cloudEnums.ROLES.PARTNER, targetNo: 'PTEST23', mode: cloudEnums.VIEW_MODE.TEST_WRITE
+    });
+    const testDoc = sessionDocOf(db, testWrite.viewTicket);
+    t.eq(testDoc && testDoc.targetId, TEST_PARTNER_OPENID, '测试兼职 TEST_WRITE：targetId=合成 openid（users._id=partners.openid）');
+    t.eq(testDoc && testDoc.targetIsTest, true, '测试兼职 TEST_WRITE：targetIsTest=true');
+    const testState = switchState(switchCtx(db), 'order.create', {}, { viewTicket: testWrite.viewTicket });
+    await switchSession.middleware(testState);
+    t.eq(testState.ctx.identity.effectiveOpenid, TEST_PARTNER_OPENID,
+      'TEST_WRITE 票据：effectiveOpenid 必须等于 targetId（防票据挪用交叉校验）');
+
+    const realTarget = await switchResult(() => viewAsStart(switchCtx(db, { clientRequestId: requestKeyOf(4) }), {
+      role: cloudEnums.ROLES.PARTNER, targetNo: 'PABC23D', mode: cloudEnums.VIEW_MODE.TEST_WRITE
+    }));
+    t.eq(realTarget.code, 'FORBIDDEN', '真实账号传 TEST_WRITE → FORBIDDEN（服务端判定，前端隐藏不算）');
+    const testTarget = await switchResult(() => viewAsStart(switchCtx(db, { clientRequestId: requestKeyOf(5) }), {
+      role: cloudEnums.ROLES.PARTNER, targetNo: 'PTEST23', mode: cloudEnums.VIEW_MODE.READONLY
+    }));
+    t.eq(testTarget.code, 'NOT_FOUND', '测试账号传 READONLY → NOT_FOUND（两种模式互斥）');
+    const wrongPrefix = await switchResult(() => viewAsStart(switchCtx(db, { clientRequestId: requestKeyOf(6) }), {
+      role: cloudEnums.ROLES.CUSTOMER, targetNo: 'PABC23D', mode: cloudEnums.VIEW_MODE.READONLY
+    }));
+    t.eq(wrongPrefix.code, 'VALIDATION_FAILED', '角色与编号前缀不符 → VALIDATION_FAILED');
+  });
+
+  // ---------------------------------------------------------------- §4.8.2 每请求校验（fake DB 端到端）
+  h.section('§4.8.2 switch-session 每请求校验与身份传播（READONLY/TEST_WRITE）', async (t) => {
+    const db = fake.createFakeDb({ uniqueIndexes: SWITCH_UNIQUE });
+    seedSwitchBase(db);
+    db.seed('admin_view_sessions', [
+      switchSessionRow('TK-RO', cloudEnums.VIEW_MODE.READONLY, cloudEnums.ROLES.CUSTOMER, 'openid-real-c', 'CABCDEFGH', false),
+      switchSessionRow('TK-RO-P', cloudEnums.VIEW_MODE.READONLY, cloudEnums.ROLES.PARTNER, 'partner-real-1', 'PABC23D', false),
+      switchSessionRow('TK-TW', cloudEnums.VIEW_MODE.TEST_WRITE, cloudEnums.ROLES.PARTNER, TEST_PARTNER_OPENID, 'PTEST23', true),
+      switchSessionRow('TK-EXPIRED', cloudEnums.VIEW_MODE.READONLY, cloudEnums.ROLES.CUSTOMER, 'openid-real-c', 'CABCDEFGH', false, SWITCH_NOW - 1000),
+      switchSessionRow('TK-TAMPER', cloudEnums.VIEW_MODE.TEST_WRITE, cloudEnums.ROLES.CUSTOMER, 'openid-real-c', 'CABCDEFGH', true),
+      switchSessionRow('TK-BADMODE', 'READWRITE', cloudEnums.ROLES.CUSTOMER, 'openid-real-c', 'CABCDEFGH', false),
+      Object.assign(switchSessionRow('TK-OTHER', cloudEnums.VIEW_MODE.READONLY, cloudEnums.ROLES.CUSTOMER, 'openid-real-c', 'CABCDEFGH', false), { adminOpenid: 'other-admin', developerNo: 'DEV-02' })
+    ]);
+
+    const readState = switchState(switchCtx(db), 'order.listCustomer', {}, { viewTicket: 'TK-RO' });
+    await switchSession.middleware(readState);
+    t.eq(readState.ctx.identity.actorOpenid, ADMIN_OPENID, 'READONLY：actorOpenid=开发者真实 openid（审计用）');
+    t.eq(readState.ctx.identity.effectiveOpenid, 'openid-real-c', 'READONLY：effectiveOpenid=目标真实 openid');
+    t.eq(readState.ctx.identity.viewMode, cloudEnums.VIEW_MODE.READONLY, 'READONLY：viewMode 透传（黄条数据源）');
+    t.eq(readState.ctx.identity.isTestAccount, false, 'READONLY：isTestAccount=false');
+
+    const roWrite = await switchResult(() => switchSession.middleware(switchState(switchCtx(db), 'order.accept', {}, { viewTicket: 'TK-RO' })));
+    t.eq(roWrite.code, 'FORBIDDEN', 'READONLY：写动作一律 FORBIDDEN（服务端双保险）');
+    const roRead = await switchResult(() => switchSession.middleware(switchState(switchCtx(db), 'order.get', {}, { viewTicket: 'TK-RO' })));
+    t.check(roRead.ok, 'READONLY：读白名单动作放行（order.get）');
+    const roOutside = await switchResult(() => switchSession.middleware(switchState(switchCtx(db), 'partner.getPublic', {}, { viewTicket: 'TK-RO' })));
+    t.eq(roOutside.code, 'FORBIDDEN', 'READONLY：读白名单外动作 FORBIDDEN');
+
+    const roPartnerState = switchState(switchCtx(db), 'partner.listBindings', {}, { viewTicket: 'TK-RO-P' });
+    await switchSession.middleware(roPartnerState);
+    t.eq(roPartnerState.ctx.identity.effectiveOpenid, 'openid-real-p', 'READONLY 兼职目标：effectiveOpenid=partners.openid');
+
+    const twState = switchState(switchCtx(db), 'order.create', {}, { viewTicket: 'TK-TW' });
+    await switchSession.middleware(twState);
+    t.eq(twState.ctx.identity.effectiveOpenid, TEST_PARTNER_OPENID, 'TEST_WRITE：effectiveOpenid=目标合成 openid');
+    t.eq(twState.ctx.identity.viewMode, cloudEnums.VIEW_MODE.TEST_WRITE, 'TEST_WRITE：viewMode 透传（蓝条+TEST 角标数据源）');
+    t.eq(twState.ctx.identity.isTestAccount, true, 'TEST_WRITE：isTestAccount=true');
+    const twUser = db.dump('users').filter((row) => row._id === TEST_PARTNER_OPENID)[0];
+    t.eq(twUser && twUser.testLastUsedAt, SWITCH_NOW, 'TEST_WRITE 写请求：更新 testLastUsedAt（30 天清理依据）');
+
+    const blockedCodes = [];
+    ['admin.stats', 'partner.activate', 'user.deleteAccount', 'ai.parseParcel'].forEach((action) => {
+      blockedCodes.push(action);
+    });
+    for (let i = 0; i < blockedCodes.length; i += 1) {
+      blockedCodes[i] = (await switchResult(() => switchSession.middleware(
+        switchState(switchCtx(db), blockedCodes[i], {}, { viewTicket: 'TK-TW' })
+      ))).code;
+    }
+    t.eq(blockedCodes, ['FORBIDDEN', 'FORBIDDEN', 'FORBIDDEN', 'FORBIDDEN'],
+      'TEST_WRITE 禁四项：admin.* / partner.activate / user.deleteAccount / ai.parseParcel');
+
+    const otherTicket = await switchResult(() => switchSession.middleware(switchState(switchCtx(db), 'order.listCustomer', {}, { viewTicket: 'TK-OTHER' })));
+    t.eq(otherTicket.code, 'FORBIDDEN', '跨人票据 → FORBIDDEN（不泄露存在性）');
+    const missing = await switchResult(() => switchSession.middleware(switchState(switchCtx(db), 'order.listCustomer', {}, { viewTicket: 'TK-NONE' })));
+    t.eq(missing.code, 'FORBIDDEN', '不存在的票据 → FORBIDDEN');
+    const expired = await switchResult(() => switchSession.middleware(switchState(switchCtx(db), 'order.listCustomer', {}, { viewTicket: 'TK-EXPIRED' })));
+    t.eq(expired.code, 'VIEW_TICKET_EXPIRED', '过期票据 → VIEW_TICKET_EXPIRED');
+    t.check(sessionDocOf(db, 'TK-EXPIRED').endedAt !== null, '过期票据补写 endedAt（不再可用）');
+    t.eq(db.dump('admin_audit').filter((row) => row.action === audit.AUDIT_ACTIONS.ACCOUNT_SWITCH_EXPIRED).length, 1,
+      '过期票据写 1 条 ACCOUNT_SWITCH_EXPIRED（每票至多一条）');
+    const tamper = await switchResult(() => switchSession.middleware(switchState(switchCtx(db), 'order.accept', {}, { viewTicket: 'TK-TAMPER' })));
+    t.check(!tamper.ok && ['FORBIDDEN', 'NOT_FOUND'].indexOf(tamper.code) >= 0,
+      '伪造 targetIsTest（会话标测试但目标真实）→ 拒绝');
+    const badMode = await switchResult(() => switchSession.middleware(switchState(switchCtx(db), 'order.listCustomer', {}, { viewTicket: 'TK-BADMODE' })));
+    t.eq(badMode.code, 'FORBIDDEN', '会话 viewMode 非法（篡改模式）→ 拒绝');
+  });
+
+  // ---------------------------------------------------------------- §4.8.3 退出会话（fake DB 端到端）
+  h.section('§4.8.3 退出会话 admin.viewAsEnd（包络票据注入/END 审计/幂等）', async (t) => {
+    const db = fake.createFakeDb({ uniqueIndexes: SWITCH_UNIQUE });
+    seedSwitchBase(db);
+    const exitTicket = 'E'.repeat(enums.TOKEN_LENGTH);
+    const otherExitTicket = 'O'.repeat(enums.TOKEN_LENGTH);
+    db.seed('admin_view_sessions', [
+      switchSessionRow(exitTicket, cloudEnums.VIEW_MODE.READONLY, cloudEnums.ROLES.CUSTOMER, 'openid-real-c', 'CABCDEFGH', false)
+    ]);
+    const exitState = switchState(switchCtx(db), 'admin.viewAsEnd', {}, { viewTicket: exitTicket, hasViewTicket: true });
+    await switchSession.middleware(exitState);
+    t.eq(exitState.payload.viewTicket, exitTicket, '退出会话：中间件把包络票据补进 payload（客户端 data 不带票据）');
+    t.eq(exitState.ctx.identity.viewMode, cloudEnums.VIEW_MODE.READONLY, '退出会话：身份仍保留 viewMode（审计/会话归属）');
+    const ended = await viewAsEnd(exitState.ctx, exitState.payload);
+    t.check(ended && (typeof ended.endedAt === 'number' || ended.endedAt instanceof Date), 'viewAsEnd 返回 endedAt（幂等接口形状）');
+    t.check(sessionDocOf(db, exitTicket).endedAt !== null, '退出会话：票据 endedAt 已写');
+    const endAudits = db.dump('admin_audit').filter((row) => row.action === audit.AUDIT_ACTIONS.ACCOUNT_SWITCH_END);
+    t.eq(endAudits.length, 1, '退出会话：写 1 条 ACCOUNT_SWITCH_END');
+    t.eq(endAudits[0] && endAudits[0].detail && endAudits[0].detail.reason, 'EXIT', '退出会话：结束原因=EXIT');
+    const again = await viewAsEnd(switchCtx(db), { viewTicket: exitTicket });
+    t.eq(again.duplicated, true, '重复结束：幂等返回 duplicated=true');
+    t.eq(db.dump('admin_audit').filter((row) => row.action === audit.AUDIT_ACTIONS.ACCOUNT_SWITCH_END).length, 1,
+      '重复结束不重复写审计');
+    db.seed('admin_view_sessions', [
+      Object.assign(switchSessionRow(otherExitTicket, cloudEnums.VIEW_MODE.READONLY, cloudEnums.ROLES.CUSTOMER, 'openid-real-c', 'CABCDEFGH', false), { adminOpenid: 'other-admin', developerNo: 'DEV-02' })
+    ]);
+    const foreign = await switchResult(() => viewAsEnd(switchCtx(db), { viewTicket: otherExitTicket }));
+    t.eq(foreign.code, 'FORBIDDEN', '非本人票据结束 → FORBIDDEN（不泄露存在性）');
+  });
 }
 
 module.exports = { EXPECTED_ASSERTIONS, register };
@@ -323,3 +656,6 @@ if (require.main === module) {
   const ret = h.finish();
   if (ret && typeof ret.then === 'function') ret.then(() => {});
 }
+
+
+

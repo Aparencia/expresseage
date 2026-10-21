@@ -11,6 +11,7 @@ const bindApi = require('../../api/modules/bind');
 const userApi = require('../../api/modules/user');
 const uploadApi = require('../../api/upload');
 const route = require('../../config/route');
+const storage = require('../../utils/storage');
 const enums = require('../../shared/enums');
 const vm = require('./parts/view-model');
 const ui = require('./parts/ui');
@@ -228,6 +229,12 @@ Page({
     ui.toast('已选择默认头像，保存后生效');
   },
 
+  // 预览断图（临时文件读失败/坏图）：清掉预览回到默认头像，不裂图不空白
+  onAvatarPreviewError() {
+    this.setData({ 'form.avatarPreview': '' });
+    ui.toast('头像加载失败，已改用默认头像；可重新选择或稍后再传');
+  },
+
   onZoneChange(event) {
     this.applyDormPatch({ zoneIndex: Number(event.detail.value) });
   },
@@ -402,11 +409,14 @@ Page({
     if (!this.data.canEdit || this.data.viewSession) {
       return;
     }
+    const currentRole = this.data.isCustomer ? enums.ROLES.CUSTOMER : enums.ROLES.PARTNER;
     wx.showModal({
       title: '切换身份',
       content: '切换后回到身份选择页，未提交的操作会丢失。',
       success(res) {
         if (res.confirm) {
+          // 记下「上一次使用的角色」供角色页给建议（只经 utils/storage 白名单）
+          storage.setLastRole(currentRole);
           wx.reLaunch({ url: route.ROLE_PAGE });
         }
       }

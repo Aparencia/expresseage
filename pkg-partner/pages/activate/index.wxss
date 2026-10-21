@@ -14,8 +14,74 @@
 .avatar-btn {
   min-height: 72rpx;
   padding: 0 20rpx;
-  margin: 0 16rpx;
   font-size: 26rpx;
+}
+
+.avatar-line {
+  align-items: center;
+}
+
+.avatar-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  margin-left: 20rpx;
+  gap: 8rpx;
+}
+
+.avatar-skip {
+  font-size: 24rpx;
+  color: #2B6DE5;
+  padding: 8rpx 0;
+}
+
+/* 激活成功结果块 */
+.result-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.result-head {
+  align-items: center;
+  margin-bottom: 24rpx;
+}
+
+.result-main {
+  margin-left: 24rpx;
+  display: flex;
+  flex-direction: column;
+}
+
+.result-title {
+  font-size: 34rpx;
+  font-weight: 600;
+  color: #1A1A1A;
+  margin-bottom: 8rpx;
+}
+
+.result-label {
+  font-size: 26rpx;
+  color: #999999;
+  margin-bottom: 8rpx;
+}
+
+.result-no {
+  font-family: monospace;
+  font-size: 40rpx;
+  font-weight: 600;
+  letter-spacing: 2rpx;
+  color: #1A1A1A;
+  padding: 16rpx 0;
+}
+
+.result-hint {
+  margin-bottom: 24rpx;
+}
+
+.result-actions {
+  display: flex;
+  flex-direction: row;
+  gap: 16rpx;
 }
 
 .agree-row {

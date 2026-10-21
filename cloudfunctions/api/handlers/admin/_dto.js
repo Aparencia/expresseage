@@ -245,7 +245,8 @@ function testAccountBrief(user, profile) {
     displayName: profileDoc.displayName || '',
     createdByDeveloperNo: doc.createdByDeveloperNo || '',
     testLastUsedAt: dateValue(doc.testLastUsedAt),
-    createdAt: dateValue(doc.createdAt)
+    createdAt: dateValue(doc.createdAt),
+    isTestAccount: true
   };
 }
 

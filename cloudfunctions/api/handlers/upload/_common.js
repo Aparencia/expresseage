@@ -78,9 +78,9 @@ function assertAvatarFile(fileId, ticket, maxBytes) {
   return value;
 }
 
-// 消费票据（一次性）：资料保存成功后写 usedAt
+// 消费票据（一次性）：资料保存成功后写 usedAt（与订单截图票据 usedAt 同字段口径：Date，DATA_MODEL §2.12）
 async function consumeTicket(ctx, ticket, nowMs) {
-  await ctx.dao.update(COLLECTIONS.UPLOAD_TICKETS, ticket._id, { usedAt: nowMs });
+  await ctx.dao.update(COLLECTIONS.UPLOAD_TICKETS, ticket._id, { usedAt: new Date(nowMs) });
 }
 
 module.exports = {

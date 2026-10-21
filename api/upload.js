@@ -1,6 +1,8 @@
 // api/upload.js · 唯一 wx.cloud.uploadFile 出口（票据→本地校验/压缩→上传）
 // 口径：ARCHITECTURE §3.3 / CONTRACT §4.1；头像上限判定/类型校验/压缩计划一律走 utils/avatar.js 纯件
-// （阈值与质量阶梯单源，TD-007 关闭依据）。平台能力（getImageInfo/compressImage/getFileSystemManager）
+// （阈值与质量阶梯单源，TD-007 关闭依据）。顺序铁律：本地校验/压缩 → upload.prepare({purpose,size,contentType})
+// → wx.cloud.uploadFile：服务端 size/类型闸必须收到真实入参（AVATAR 用压缩后 size + 扩展名派生 contentType；
+// TICKET 只传 size、不传 contentType，兼容聊天来源 gif）。平台能力（getImageInfo/compressImage/getFileSystemManager）
 // 由本层注入纯件，纯件不直接吃全局 wx；uploadFile 仍只在本文件出现（门禁 #14）。
 const client = require('./client');
 const store = require('../store/index');
@@ -11,6 +13,15 @@ const uploadModule = require('./modules/upload');
 const MAX_TICKET_BYTES = 500 * 1024;
 const DEFAULT_AVATAR_BYTES = avatar.DEFAULT_MAX_BYTES;
 const TICKET_LONG_SIDE_LIMIT = 1440;
+
+// upload.prepare 的 contentType 只由本地已校验文件的扩展名派生（客户端不自报 MIME）：
+// AVATAR 仅 jpg/jpeg→image/jpeg、png→image/png；压缩产物丢失扩展名时回退原始路径（原始路径已过类型闸）。
+const MIME_BY_EXTENSION = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png' };
+
+function contentTypeOf(filePath, fallbackPath) {
+  const extension = avatar.extensionOf(filePath) || avatar.extensionOf(fallbackPath);
+  return MIME_BY_EXTENSION[extension] || '';
+}
 
 function platformNow() {
   return typeof wx !== 'undefined' ? wx : null;
@@ -164,16 +175,21 @@ async function prepareAndUpload(options) {
   if (!sourcePath) {
     throw new client.CallError('VALIDATION_FAILED', '请先选择文件');
   }
-  const prepared = await uploadModule.prepare({ purpose });
+  // 先本地校验/压缩，再向服务端申请票据：prepare 必须收到真实 size/contentType，否则服务端闸空转。
+  const platform = platformNow();
+  const local = purpose === 'AVATAR'
+    ? await prepareAvatar(platform, sourcePath)
+    : await prepareTicket(platform, sourcePath);
+  const preparePayload = { purpose, size: local.size };
+  if (purpose === 'AVATAR') {
+    preparePayload.contentType = contentTypeOf(local.filePath, sourcePath);
+  }
+  const prepared = await uploadModule.prepare(preparePayload);
   const cloudPath = prepared.cloudPath || prepared.path;
   const uploadTicketId = prepared.uploadTicketId || prepared.ticket || prepared.ticketId;
   if (!cloudPath || !uploadTicketId) {
     throw new client.CallError('DEPENDENCY_FAILED', '上传票据异常，请重试');
   }
-  const platform = platformNow();
-  const local = purpose === 'AVATAR'
-    ? await prepareAvatar(platform, sourcePath)
-    : await prepareTicket(platform, sourcePath);
   const fileId = await uploadFile(cloudPath, local.filePath);
   return {
     uploadTicketId,

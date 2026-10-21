@@ -6,13 +6,10 @@ const {
   enums,
   errors,
   sharedValidate,
-  getCustomerByNo,
-  getPartnerByNo,
   getPartnerByOpenid,
   MAX_UNIQUE_ATTEMPTS
 } = require('./_common');
 const idGenerator = require('../../lib/id-generator');
-const dto = require('./_dto');
 
 const TOTAL_TEST_ACCOUNT_LIMIT = 6;
 const TEST_OPENID_PREFIX = 'TEST-';
@@ -180,13 +177,13 @@ async function replayCreate(scope, replay) {
     return null;
   }
   const role = replay.detail.role;
-  const profile = role === enums.ROLES.CUSTOMER
-    ? await getCustomerByNo(scope, replay.detail.targetNo)
-    : await getPartnerByNo(scope, replay.detail.targetNo);
+  const targetNo = replay.detail.targetNo;
   return {
-    targetNo: replay.detail.targetNo,
+    targetNo: targetNo,
+    customerNo: role === enums.ROLES.CUSTOMER ? targetNo : '',
+    partnerNo: role === enums.ROLES.PARTNER ? targetNo : '',
     role: role,
-    displayName: replay.detail.displayNameMasked || (profile ? dto.maskedName(profile.displayName) : ''),
+    displayName: replay.detail.displayNameMasked || '',
     isTestAccount: true,
     duplicated: true
   };

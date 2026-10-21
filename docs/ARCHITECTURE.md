@@ -75,7 +75,7 @@ const data = await call('order.accept', { orderNo, expectedVersion }, { retry: f
 
 ### 3.3 `api/upload.js`
 
-- `prepareAndUpload({ purpose, filePath })` → `{ uploadTicketId, cloudPath, fileId }`；内部：`upload.prepare` → 压缩（头像按 `store.config.avatarMaxBytes`，截图长边 1440/≤500KB）→ `wx.cloud.uploadFile`（唯一上传出口）。失败抛 `CallError`，可重试至票据过期。
+- `prepareAndUpload({ purpose, filePath })` → `{ uploadTicketId, cloudPath, fileId }`；内部：**本地校验/压缩（头像按 `store.config.avatarMaxBytes`，截图长边 1440/≤500KB，走 `utils/avatar` 纯件）→ `upload.prepare({purpose,size,contentType})`（服务端 size/类型闸必须收到真实入参：AVATAR 传压缩后 size + 派生 contentType；TICKET 只传 size、不传 contentType 以兼容聊天 gif）→ `wx.cloud.uploadFile`（唯一上传出口）**。失败抛 `CallError`，可重试至票据过期。
 - `cancelTicket(uploadTicketId)` 调 `upload.cancel`。
 
 ### 3.4 `store/index.js`（内存快照，唯一全局状态）
@@ -137,6 +137,9 @@ const off = store.subscribe((snapshot) => { this.setData({ vm: snapshot }); });
 ### 3.6 `config/route.js` 的 snapshot 形状（供 launch/profile 使用）
 
 `{ hasRole, isDeveloper, activeRole, customer:{profileComplete}, partner:{profileComplete,status}, viewContext }` → `decideLaunchRoute(snapshot)` 返回 `{url, reason}`。
+
+- `reason` 枚举：`VIEW_CONTEXT`（切换会话优先）→ `DEVELOPER` → `NO_ROLE` → `CHOOSE_ROLE`（双角色且无 `activeRole`，回 `role` 由用户选择）→ `CUSTOMER_PROFILE` / `CUSTOMER_READY` / `PARTNER_PROFILE` / `PARTNER_INACTIVE` / `PARTNER_ACTIVE`（单业务角色直进该角色）。
+- `config/route.js` 导出（纯函数、零 `wx`/零 storage）：`resolveLaunchRole`、`suggestedRoleOf`（`role` 页「上次使用」建议）、`roleOfDecision`（进入角色后写 `lastRole`，只经 `utils/storage` 白名单键）、`decideLaunchRoute`、`isRolePageAllowed`；**`roles`/`lastRole` 不改变 snapshot 形状、不进 URL**。
 
 ## 4. 云函数冻结接口
 

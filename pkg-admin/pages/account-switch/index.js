@@ -47,6 +47,7 @@ Page({
     showPurge: false,
     purgeLoading: false,
     purgeCounts: null,
+    purgeSessionsEnded: 0,
     purgeCheck: false,
     purgeText: '',
     purgeError: ''
@@ -353,7 +354,7 @@ Page({
     this.setData({ creating: true });
     admin.createTestAccount({ role: role, displayName: displayName }).then((account) => {
       this.setData({ creating: false, showCreate: false });
-      const targetNo = (account && (account.customerNo || account.partnerNo)) || '';
+      const targetNo = (account && (account.customerNo || account.partnerNo || account.targetNo)) || '';
       feedback.toast('已创建测试账号 ' + targetNo + '（' + vm.roleLabel(role) + '）。');
       if (autoSwitch && targetNo) {
         this.startView({
@@ -376,21 +377,37 @@ Page({
   onDeleteTest(event) {
     const index = Number(event.currentTarget.dataset.index);
     const account = this.data.testAccounts[index];
-    if (!account) return;
-    feedback.confirm({
-      title: '删除测试账号',
-      content: '删除测试账号 ' + account.targetNo + '（' + account.displayName + '）后，其全部测试订单、留言、绑定与头像将一并删除，并结束该账号的活跃切换会话，不可恢复。确定删除？',
-      confirmText: '确认删除',
-      danger: true,
-      editable: true,
-      placeholderText: '请输入“删除”确认'
+    if (!account || this.data.submitting) return;
+    // 先 dryRun 拿将删除条数（含活跃会话数），再二次确认；真实引用时服务端直接拒绝并显示其原因。
+    this.setData({ submitting: true });
+    admin.deleteTestAccount({ targetNo: account.targetNo, dryRun: true }).then((preview) => {
+      this.setData({ submitting: false });
+      const counts = (preview && preview.removedCounts) || {};
+      const sessionsEnded = F.numOrZero(preview && preview.sessionsEnded);
+      const content = '删除测试账号 ' + account.targetNo + '（' + account.displayName + '）将级联删除：测试订单 ' +
+        F.numOrZero(counts.orders) + ' 条、事件 ' + F.numOrZero(counts.events) + ' 条、留言 ' +
+        F.numOrZero(counts.messages) + ' 条、绑定 ' + F.numOrZero(counts.bindings) + ' 条、识别失败 ' +
+        F.numOrZero(counts.failures) + ' 条、头像/原图 ' + F.numOrZero(counts.avatarFiles) + ' 个' +
+        (sessionsEnded > 0 ? '，并结束 ' + sessionsEnded + ' 个活跃切换会话' : '') +
+        '。不可恢复，输入“删除”确认。';
+      return feedback.confirm({
+        title: '删除测试账号',
+        content: content,
+        confirmText: '确认删除',
+        danger: true,
+        editable: true,
+        placeholderText: '请输入“删除”确认'
+      });
     }).then((res) => {
-      if (!res.confirm) return;
+      if (!res || !res.confirm) return;
       if (String(res.content || '').trim() !== '删除') {
         feedback.toast('请输入“删除”两个字后再确认。');
         return;
       }
       this.submitDelete(account);
+    }).catch((err) => {
+      this.setData({ submitting: false });
+      feedback.toast((err && err.message) || '操作失败，请稍后重试。');
     });
   },
 
@@ -407,9 +424,13 @@ Page({
   },
 
   onOpenPurge() {
-    this.setData({ showPurge: true, purgeLoading: true, purgeCounts: null, purgeCheck: false, purgeText: '', purgeError: '' });
+    this.setData({ showPurge: true, purgeLoading: true, purgeCounts: null, purgeSessionsEnded: 0, purgeCheck: false, purgeText: '', purgeError: '' });
     admin.purgeTestData({ dryRun: true }).then((result) => {
-      this.setData({ purgeLoading: false, purgeCounts: (result && result.counts) || {} });
+      this.setData({
+        purgeLoading: false,
+        purgeCounts: (result && result.counts) || {},
+        purgeSessionsEnded: F.numOrZero(result && result.sessionsEnded)
+      });
     }).catch((err) => {
       this.setData({ purgeLoading: false, purgeError: (err && err.message) || '统计失败，请重试。' });
     });
@@ -452,7 +473,7 @@ Page({
   submitPurge() {
     this.setData({ submitting: true });
     admin.purgeTestData({ dryRun: false, confirmText: '清空' }).then(() => {
-      this.setData({ submitting: false, showPurge: false, purgeCounts: null, purgeCheck: false, purgeText: '' });
+      this.setData({ submitting: false, showPurge: false, purgeCounts: null, purgeSessionsEnded: 0, purgeCheck: false, purgeText: '' });
       feedback.toast('已清空测试数据，已记审计。');
       this.loadTestAccounts();
     }).catch((err) => {

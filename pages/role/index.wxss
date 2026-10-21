@@ -15,12 +15,35 @@
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+  position: relative;
+}
+
+/* 「上次使用」建议：lastRole 只来自 utils/storage，仅做视觉提示，点卡片仍走同一条进入逻辑 */
+.role-card-suggested {
+  border: 2rpx solid var(--v4-brand);
+}
+
+.role-suggest {
+  position: absolute;
+  top: 16rpx;
+  right: 16rpx;
+  padding: 4rpx 12rpx;
+  border-radius: 24rpx;
+  background: #E8F0EA;
+  color: var(--v4-brand);
+  font-size: 22rpx;
+  line-height: 1.6;
 }
 
 .role-action {
   margin-top: 24rpx;
   font-size: 26rpx;
   color: var(--v4-brand);
+}
+
+.role-suggest-tip {
+  margin: 16rpx 0 0;
+  text-align: center;
 }
 
 .role-tip {

@@ -8,6 +8,7 @@ const userApi = require('../../api/modules/user');
 const configApi = require('../../api/modules/config');
 const privacy = require('../../utils/privacy-policy');
 const launchRoute = require('../../config/route');
+const storage = require('../../utils/storage');
 
 const HELP_PRIVACY_PAGE = '/pkg-customer/pages/help/index?doc=privacy';
 const MAX_ATTEMPTS = 3;
@@ -192,9 +193,18 @@ Page({
     });
   },
 
+  // 进入角色：分流只用 config/route.js 纯函数；角色与落地页由纯件判定，页面只做 reLaunch。
+  // 顺便把「本次进入的角色」记到本地偏好 lastRole（utils/storage 白名单；双角色下次在角色页给建议）。
+  // 切换会话/开发者不进业务角色，不写 lastRole（票据与视角一律不落盘，ENGINEERING §5.6）。
   route() {
-    const decision = launchRoute.decideLaunchRoute(store.snapshot());
+    const snapshot = store.snapshot();
+    const decision = launchRoute.decideLaunchRoute(snapshot);
     const url = decision && decision.url ? decision.url : launchRoute.ROLE_PAGE;
+    const sessionOrAdmin = !!(snapshot.viewContext || snapshot.isDeveloper);
+    const enteredRole = sessionOrAdmin ? '' : launchRoute.roleOfDecision(decision);
+    if (enteredRole) {
+      storage.setLastRole(enteredRole);
+    }
     wx.reLaunch({ url: url });
   }
 });

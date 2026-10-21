@@ -6,6 +6,7 @@ const store = require('../../store/index');
 const userApi = require('../../api/modules/user');
 const partnerApi = require('../../api/modules/partner');
 const route = require('../../config/route');
+const storage = require('../../utils/storage');
 
 const ACTIVATE_PAGE = '/pkg-partner/pages/activate/index';
 const BIND_PAGE = '/pkg-customer/pages/bind/index';
@@ -23,6 +24,12 @@ function pickVm() {
   };
 }
 
+// 「上次使用」建议由显示层读取（lastRole 只经 utils/storage，不进 store/URL/请求体）；
+// lastRole 不在当前角色列表里时不给建议（换账号/清缓存后不自作主张）。
+function readSuggestedRole(vm) {
+  return route.suggestedRoleOf(vm && vm.roles, storage.getLastRole());
+}
+
 function redirect(url) {
   wx.reLaunch({ url: url });
 }
@@ -30,6 +37,7 @@ function redirect(url) {
 Page({
   data: {
     vm: pickVm(),
+    suggestedRole: readSuggestedRole(pickVm()),
     bindNo: '',
     bindLoading: false,
     bindCard: null,
@@ -70,7 +78,8 @@ Page({
   },
 
   sync() {
-    this.setData({ vm: pickVm() });
+    const vm = pickVm();
+    this.setData({ vm: vm, suggestedRole: readSuggestedRole(vm) });
   },
 
   hydrateBootstrap() {
@@ -109,13 +118,15 @@ Page({
 
   onCustomerTap() {
     const customer = this.data.vm.customer || {};
-    store.set('activeRole', 'CUSTOMER');
+    store.set('activeRole', route.ROLES.CUSTOMER);
+    storage.setLastRole(route.ROLES.CUSTOMER);
     redirect(customer.profileComplete ? route.CUSTOMER_HOME : route.PROFILE_PAGE);
   },
 
   onPartnerTap() {
     const partner = this.data.vm.partner || {};
-    store.set('activeRole', 'PARTNER');
+    store.set('activeRole', route.ROLES.PARTNER);
+    storage.setLastRole(route.ROLES.PARTNER);
     if (partner.status === 'SUSPENDED' || partner.status === 'CLOSED') {
       wx.reLaunch({ url: route.PROFILE_PAGE });
       return;
@@ -134,7 +145,8 @@ Page({
   onBindTap() {
     const card = this.data.bindCard;
     if (!card) return;
-    store.set('activeRole', 'CUSTOMER');
+    store.set('activeRole', route.ROLES.CUSTOMER);
+    storage.setLastRole(route.ROLES.CUSTOMER);
     const customer = this.data.vm.customer || {};
     if (!customer.profileComplete) {
       const target = route.PROFILE_PAGE + '?bind=' + encodeURIComponent(card.partnerNo || '');

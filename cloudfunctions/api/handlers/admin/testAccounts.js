@@ -1,5 +1,6 @@
 // handlers/admin/testAccounts.js · 测试账号四动作专用 handler（#28：删除/清空只走本文件，不进业务路径）
 // createTestAccount / listTestAccounts / deleteTestAccount / purgeTestData；不与真实治理动作混用。
+// 口径：ENGINEERING §4.11、DATA_MODEL §2.1/§4.10/§7.6/§7.7。
 'use strict';
 
 const { COLLECTIONS } = require('../../shared/collections');
@@ -27,6 +28,48 @@ function confirmedBy(input, expected) {
   return sharedValidate.validateConfirmText(input.confirmText, expected).ok;
 }
 
+// admin_audit.requestKey 唯一，但同一 requestKey 也可能来自其它 admin 动作；
+// 重放判定必须核对动作名，否则会把别人的审计当成本动作的重放（假 duplicated、真实写入丢失）。
+async function replayOf(scope, action) {
+  const record = await scope.findAudit(scope.auditKey());
+  if (!record || record.action !== action) {
+    return null;
+  }
+  return record;
+}
+
+function roleOfUser(user) {
+  const roles = helpers.rolesOf(user);
+  return roles.indexOf(enums.ROLES.CUSTOMER) >= 0 ? enums.ROLES.CUSTOMER : enums.ROLES.PARTNER;
+}
+
+function deleteCountsOf(data, files) {
+  return {
+    orders: data.orders.length,
+    events: data.events,
+    messages: data.messages,
+    bindings: data.bindings.length,
+    failures: data.failures.length,
+    tickets: data.tickets,
+    avatarFiles: files
+  };
+}
+
+function purgeCountsOf(data) {
+  return {
+    orders: data.orders.length,
+    events: data.events,
+    messages: data.messages,
+    bindings: data.bindings.length,
+    failures: data.failures.length,
+    tickets: data.tickets
+  };
+}
+
+function zeroPurgeCounts() {
+  return { orders: 0, events: 0, messages: 0, bindings: 0, failures: 0, tickets: 0 };
+}
+
 async function createTestAccount(ctx, payload) {
   const scope = await createAdminScope(ctx);
   requireClientRequestId(ctx);
@@ -37,13 +80,14 @@ async function createTestAccount(ctx, payload) {
   const displayName = nameCheck.value;
   await helpers.checkTextSecurity(ctx, displayName);
   const requestKey = auditKeyOf(ctx);
-  const replay = await helpers.replayCreate(scope, await scope.findAudit(requestKey));
+  const replay = await helpers.replayCreate(scope, await replayOf(scope, AUDIT_ACTIONS.TEST_ACCOUNT_CREATE));
   if (replay) {
     return replay;
   }
   const quota = await helpers.quotaOf(scope);
   if (quota.perRole[role] >= quota.maxPerRole || quota.total >= helpers.TOTAL_TEST_ACCOUNT_LIMIT) {
-    throw errors.invalidState('测试账号数量已达上限（每角色 ' + quota.maxPerRole + ' 个、合计 6 个）');
+    // 配额超限按 DATA_MODEL §4.10/§7.6 映射 VALIDATION_FAILED（不新增错误码）
+    throw errors.validation('role', '测试账号数量已达上限（每角色 ' + quota.maxPerRole + ' 个、合计 6 个）');
   }
   const created = await helpers.createOnce(scope, role, displayName);
   await scope.writeAudit(
@@ -59,6 +103,8 @@ async function createTestAccount(ctx, payload) {
   );
   return {
     targetNo: created.targetNo,
+    customerNo: role === enums.ROLES.CUSTOMER ? created.targetNo : '',
+    partnerNo: role === enums.ROLES.PARTNER ? created.targetNo : '',
     role: role,
     displayName: displayName,
     isTestAccount: true
@@ -111,10 +157,11 @@ async function deleteTestAccount(ctx, payload) {
   const identifier = input.testAccountId || input.targetNo || '';
   const dryRun = input.dryRun === true;
   const requestKey = auditKeyOf(ctx);
-  const replay = await scope.findAudit(requestKey);
+  const replay = await replayOf(scope, AUDIT_ACTIONS.TEST_ACCOUNT_DELETE);
   if (replay && !dryRun) {
     return {
       deleted: true,
+      targetNo: (replay.target && replay.target.id) || identifier,
       removedCounts: (replay.detail && replay.detail.before) || ops.zeroCounts(),
       sessionsEnded: (replay.detail && replay.detail.sessionsEnded) || 0,
       duplicated: true
@@ -126,47 +173,43 @@ async function deleteTestAccount(ctx, payload) {
   const user = await ops.resolveTestUser(scope, identifier);
   await ops.assertNoRealReference(scope, user);
   const data = await ops.countCascade(scope, user);
+  const files = ops.filesOf(data).length;
+  const sessionsEnded = await ops.countSessionsOfTargets(scope, [user._id]);
+  const counts = deleteCountsOf(data, files);
+  const role = roleOfUser(user);
+  const targetNo = role === enums.ROLES.CUSTOMER
+    ? (data.customer && data.customer.customerNo) || ''
+    : (data.partner && data.partner.partnerNo) || '';
   if (dryRun) {
     return {
       dryRun: true,
       deleted: false,
-      removedCounts: {
-        orders: data.orders.length,
-        bindings: data.bindings.length,
-        failures: data.failures.length,
-        tickets: data.tickets,
-        events: data.events,
-        messages: data.messages,
-        avatarFiles: 0
-      },
+      targetNo: targetNo || identifier,
+      removedCounts: counts,
+      sessionsEnded: sessionsEnded,
       willDelete: true
     };
   }
-  const before = {
-    orders: data.orders.length,
-    bindings: data.bindings.length,
-    failures: data.failures.length,
-    tickets: data.tickets,
-    events: data.events,
-    messages: data.messages,
-    avatarFiles: 0
-  };
   const removed = await ops.cascadeDelete(scope, user, data);
-  const roles = helpers.rolesOf(user);
-  const role = roles.indexOf(enums.ROLES.CUSTOMER) >= 0 ? enums.ROLES.CUSTOMER : enums.ROLES.PARTNER;
   await scope.writeAudit(
     AUDIT_ACTIONS.TEST_ACCOUNT_DELETE,
-    { type: 'test_account', id: identifier },
+    { type: 'test_account', id: targetNo || identifier },
     {
       role: role,
-      before: before,
+      targetNo: targetNo,
+      before: counts,
       after: ops.zeroCounts(),
       sessionsEnded: removed.sessionsEnded,
       dryRun: false
     },
     requestKey
   );
-  return { deleted: true, removedCounts: removed, sessionsEnded: removed.sessionsEnded };
+  return {
+    deleted: true,
+    targetNo: targetNo || identifier,
+    removedCounts: removed,
+    sessionsEnded: removed.sessionsEnded
+  };
 }
 
 async function purgeTestData(ctx, payload) {
@@ -175,12 +218,13 @@ async function purgeTestData(ctx, payload) {
   const input = payload || {};
   const dryRun = input.dryRun === true;
   const requestKey = auditKeyOf(ctx);
-  const replay = await scope.findAudit(requestKey);
+  const replay = await replayOf(scope, AUDIT_ACTIONS.TEST_DATA_PURGE);
   if (replay && !dryRun) {
     return {
       dryRun: false,
       purged: true,
-      counts: (replay.detail && replay.detail.before) || { orders: 0, events: 0, messages: 0, bindings: 0, failures: 0 },
+      counts: (replay.detail && replay.detail.before) || zeroPurgeCounts(),
+      sessionsEnded: (replay.detail && replay.detail.sessionsEnded) || 0,
       duplicated: true
     };
   }
@@ -193,53 +237,36 @@ async function purgeTestData(ctx, payload) {
   });
   await ops.assertNoRealReferenceToOpenids(scope, openids);
   const data = await ops.collectTestData(scope, openids);
+  const sessionsEnded = await ops.countSessionsOfTargets(scope, openids);
+  const before = purgeCountsOf(data);
   if (dryRun) {
     return {
       dryRun: true,
-      counts: {
-        orders: data.orders.length,
-        events: data.events,
-        messages: data.messages,
-        bindings: data.bindings.length,
-        failures: data.failures.length,
-        tickets: data.tickets
-      },
-      purged: false
+      purged: false,
+      accounts: openids.length,
+      counts: before,
+      sessionsEnded: sessionsEnded
     };
   }
-  let removedEvents = 0;
-  let removedMessages = 0;
-  for (let i = 0; i < data.orders.length; i += 1) {
-    const order = data.orders[i];
-    const eventResult = await scope.dao.removeWhere(COLLECTIONS.ORDER_EVENTS, { orderId: order._id });
-    const messageResult = await scope.dao.removeWhere(COLLECTIONS.ORDER_MESSAGES, { orderId: order._id });
-    removedEvents += eventResult.removed;
-    removedMessages += messageResult.removed;
-    await scope.dao.remove(COLLECTIONS.ORDERS, order._id);
-  }
-  for (let i = 0; i < data.bindings.length; i += 1) {
-    await scope.dao.remove(COLLECTIONS.BINDINGS, data.bindings[i]._id);
-  }
-  for (let i = 0; i < data.failures.length; i += 1) {
-    await scope.dao.remove(COLLECTIONS.RECOGNITION_FAILURES, data.failures[i]._id);
-  }
-  for (let i = 0; i < openids.length; i += 1) {
-    await scope.dao.removeWhere(COLLECTIONS.UPLOAD_TICKETS, { openid: openids[i] });
-  }
-  const before = {
-    orders: data.orders.length,
-    events: removedEvents,
-    messages: removedMessages,
-    bindings: data.bindings.length,
-    failures: data.failures.length
-  };
+  const removed = await ops.purgeCollectedData(scope, openids, data);
   await scope.writeAudit(
     AUDIT_ACTIONS.TEST_DATA_PURGE,
     { type: 'test_account', id: 'ALL' },
-    { before: before, after: { orders: 0, events: 0, messages: 0, bindings: 0, failures: 0 }, dryRun: false },
+    {
+      accounts: openids.length,
+      before: before,
+      after: zeroPurgeCounts(),
+      sessionsEnded: removed.sessionsEnded,
+      dryRun: false
+    },
     requestKey
   );
-  return { dryRun: false, purged: true, counts: before };
+  return {
+    dryRun: false,
+    purged: true,
+    counts: before,
+    sessionsEnded: removed.sessionsEnded
+  };
 }
 
 module.exports = {

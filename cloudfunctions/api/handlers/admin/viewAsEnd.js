@@ -12,7 +12,9 @@ const {
 } = require('./_common');
 
 async function handler(ctx, payload) {
-  const scope = await createAdminScope(ctx);
+  // 退出会话是唯一允许「带切换会话身份」执行的 admin 动作：只结束本开发者自己的票据，
+  // 不写任何业务数据（其余 admin 动作仍由 requireAdmin 默认拒绝票据身份）。
+  const scope = await createAdminScope(ctx, { allowViewMode: true });
   const input = payload || {};
   const ticketCheck = assertValid(sharedValidate.validateToken(input.viewTicket, 'viewTicket'), '会话标识不正确');
   const viewTicket = ticketCheck.value;

@@ -28,17 +28,21 @@
   </view>
 
   <view class="role-cards">
-    <view class="card role-card" bindtap="onCustomerTap">
+    <view class="card role-card {{suggestedRole === 'CUSTOMER' ? 'role-card-suggested' : ''}}" bindtap="onCustomerTap">
+      <view wx:if="{{suggestedRole === 'CUSTOMER'}}" class="role-suggest">上次使用</view>
       <view class="section-title">我是顾客</view>
       <view class="subtitle">上传取件码，请兼职代取。</view>
       <view class="role-action">进入顾客端</view>
     </view>
-    <view class="card role-card" bindtap="onPartnerTap">
+    <view class="card role-card {{suggestedRole === 'PARTNER' ? 'role-card-suggested' : ''}}" bindtap="onPartnerTap">
+      <view wx:if="{{suggestedRole === 'PARTNER'}}" class="role-suggest">上次使用</view>
       <view class="section-title">我是兼职</view>
       <view class="subtitle">凭邀请码开通，接单取件。</view>
       <view class="role-action">进入兼职端</view>
     </view>
   </view>
+
+  <view wx:if="{{suggestedRole}}" class="muted role-suggest-tip">上次使用的是{{suggestedRole === 'CUSTOMER' ? '顾客' : '兼职'}}身份，点对应卡片继续。</view>
 
   <view class="muted role-tip">同一个微信号可以同时是顾客和兼职，两边的数据互相隔离。</view>
 

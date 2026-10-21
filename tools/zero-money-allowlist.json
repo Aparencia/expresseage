@@ -281,7 +281,7 @@
   },
   {
     "file": "docs/V4_DATA_MODEL.md",
-    "string": "`order.undo` 可撤销集合：`markPicked`→`PICKED_REVERTED`、`markDelivered`→`DELIVERED_REVERTED`；**接单不可撤销**（误接单走 `order.cancel`）；**不存在任何收款/标记已收/撤销收款动作**；批量动作不设 batch 云函数：客户端逐单调用、共享 `batchActionId`、逐单返回并汇总“成功 N/失败 M”（不得把部分成功显示为全部成功）。**v0.9 订单 DTO/隔离**：`order.get/listCustomer/listPartner` 可内联 `counterpart{displayName,avatarFileId?}`（**仅当前 ACTIVE 绑定关系内**；解绑/停用/注销后不再返回，历史单只留编号）；`orders.isTest`/`impersonatedBy` **服务端派生**、客户端传入忽略；真实用户永不返回测试单；测试单在后台以 `TEST` 标签标识；跨测试/真实的 `order.create/createBatch` 一律 `FORBIDDEN`。`order.create` 的 `order` 出参含 `customerNo/partnerNo` 快照（顾客看自己的 `customerNo`、兼职看 `customerNo`；双方看对方编号），但**编号不可用于越权查询**。",
+    "string": "`order.undo` 可撤销集合：`markPicked`→`PICKED_REVERTED`、`markDelivered`→`DELIVERED_REVERTED`；**接单不可撤销**（误接单走 `order.cancel`）；**不存在任何收款/标记已收/撤销收款动作**；批量动作不设 batch 云函数：客户端逐单调用、共享 `batchActionId`、逐单返回并汇总“成功 N/失败 M”（不得把部分成功显示为全部成功）。**v0.9 订单 DTO/隔离**：`order.get/listCustomer/listPartner` 可内联 `counterpart{displayName,avatarFileId?}`（**仅当前 ACTIVE 绑定关系内**；解绑/停用/注销后不再返回，历史单只留编号）；`orders.isTest`/`impersonatedBy` **服务端派生**、客户端传入忽略；真实用户永不返回测试单；测试单在后台以「测试」标签标识；跨测试/真实的 `order.create/createBatch` 一律 `FORBIDDEN`。`order.create` 的 `order` 出参含 `customerNo/partnerNo` 快照（顾客看自己的 `customerNo`、兼职看 `customerNo`；双方看对方编号），但**编号不可用于越权查询**。",
     "reason": "口径声明：不涉及金额/无金额语义的声明行"
   },
   {
@@ -301,7 +301,7 @@
   },
   {
     "file": "docs/V4_DATA_MODEL.md",
-    "string": "| `aiFallback` | object | 是 | **v0.8**：`{enabled,model,timeoutMs,maxPerUserPerDay,dailyQuota,cooldownMinutes}`；默认 `{enabled:true,model:'deepseek-chat',timeoutMs:8000,maxPerUserPerDay:5,dailyQuota:200,cooldownMinutes:10}`；值只含布尔/字符串/整数次数与毫秒，**无金额字段、无 API Key**（`DEEPSEEK_API_KEY` 只在云函数环境变量，§7.9）；`enabled=false` 即整体关停（不调、直接入队）；**MVP 后台只读展示、不开放编辑**——`admin.updateConfig` 白名单**不含该键**（P1 再开），改值走部署配置脚本/控制台，且必须与隐私文本同步、落 `admin_audit`；**不下发客户端** | 部署配置脚本/控制台（MVP 不开放后台编辑） | 仅 admin（只读展示）/内部 | L1 |",
+    "string": "| `aiFallback` | object | 是 | **v0.8**：`{enabled,model,timeoutMs,maxPerUserPerDay,dailyQuota,cooldownMinutes}`；默认 `{enabled:true,model:'deepseek-chat',timeoutMs:8000,maxPerUserPerDay:5,dailyQuota:200,cooldownMinutes:10}`；值只含布尔/字符串/整数次数与毫秒，**无金额字段、无 API Key**（`DEEPSEEK_API_KEY` 只在云函数环境变量，§7.9）；`enabled=false` 即整体关停（不调、直接入队）；**MVP 后台只读展示、不开放编辑**——`admin.updateConfig` 白名单**不含该键**（P1 再开），改值走部署配置脚本/控制台，且必须与隐私文本同步、落 `admin_audit`；**不下发客户端**；**`model` 为空串时由云侧 `lib/ai` 解析默认模型名（token 只在 `cloudfunctions/api/lib/ai/**`，不进 shared/客户端；TD-020 关闭依据）** | 部署配置脚本/控制台（MVP 不开放后台编辑） | 仅 admin（只读展示）/内部 | L1 |",
     "reason": "口径声明：不涉及金额/无金额语义的声明行"
   },
   {

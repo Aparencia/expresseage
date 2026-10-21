@@ -93,7 +93,7 @@
 - **身份传播（关键）**：`TEST_WRITE` 下云函数同时持有 `actorOpenid`（真实开发者 openid，用于白名单/会话/审计）+ `effectiveOpenid`（测试账号合成 openid，用于业务身份）；`upload_tickets.openid`、`order_messages.fromId`、`order_events.actorId`、业务限流键 `rl:{scope}` 均用 **effectiveOpenid**；`admin_audit.adminOpenid`、切换开启限流、白名单校验用 **actorOpenid**；任何写动作必须 `targetIsTest=true` 且 `viewTicket.targetId === effectiveOpenid` 交叉校验，不一致 `FORBIDDEN`（防票据挪用）。
 - **TEST_WRITE 写白名单**：允许 `customer.saveProfile`、`partner.saveProfile/saveServiceConfig`、`bind.create/release`（仅测试×测试）、`order.*`（创建/接单/取件/送达/取消/确认/改码/撤销）、`message.send`、`upload.prepare`（TICKET/AVATAR）；**禁止** `admin.*`（后台治理不受会话影响）、`partner.activate`、`user.deleteAccount`、`ai.parseParcel`（测试走手填，避免消耗 AI 配额）；白名单外一律 `FORBIDDEN`。
 - **写行为**：以目标测试账号身份执行；`orders.isTest=true`、`orders/order_events` 记 `impersonatedBy=developerNo`；后台订单列表默认**过滤测试数据**（可切换查看）；`stats`/单量统计**排除测试账号与 `isTest` 订单**；后台红点不计测试数据。
-- **后台列表口径**：顾客/兼职列表默认**排除测试账号**（可切换"含测试账号"查看并带 `TEST` 标签）；测试账号**不可执行真实治理动作**（停用/解绑/通知等仅测试内部生效）。
+- **后台列表口径**：顾客/兼职列表默认**排除测试账号**（可切换"含测试账号"查看并带「测试」标签）；测试账号**不可执行真实治理动作**（停用/解绑/通知等仅测试内部生效）。**行标签用中文「测试」；`TEST` 字面量/角标只允许在客户端 `test-badge` 组件（ARCHITECTURE §3.5、门禁 #31），后台页面零 `TEST` 引用。**
 - **页面表现**：目标角色三 tab 正常可用；顶部常驻**蓝色测试条**：`测试账号 · 顾客 C-…（测试） · 由 DEV-01 切换 · 退出`；页面右上角常驻 `TEST` 角标；所有页面隐藏分享/转发入口。
 - **入口/结束**：后台总览 →「切换账号」→ 测试账号 tab → 选择账号 → 确认（说明"将写入测试数据，不影响真实用户"）→ 进入；蓝条「退出」→ 回「切换账号」页。**切换会话默认 30 分钟**（`viewTicketTtlMinutes`，5~60 可配）；同一开发者同时只有一个切换会话（新开覆盖旧的）。
 - **测试账号管理**：新建/查看（编号、昵称、角色、最近使用）/删除（连同测试数据与头像）；`deleteTestAccount`/`purgeTestData` 必须**双条件**（`isTestAccount` + 关联数据 `isTest`）+ **dry-run 计数** + 二次确认 + 审计前后条数，**发现任何真实数据引用即拒绝**；**删除测试账号时必须把该账号相关活跃会话置 `endedAt` 并记 `ACCOUNT_SWITCH_END`**。

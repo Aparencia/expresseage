@@ -56,17 +56,22 @@ function readTrimmedText(value, maxLength) {
 }
 
 // ── 管理员闸（fail-closed：中间件之外再保一道）────────────────────────────────
-function requireAdmin(ctx) {
+// allowViewMode：仅 admin.viewAsEnd（退出切换会话）使用——退出动作必须允许带会话身份执行，
+// 否则开发者永远退不出视角；业务/查询类 admin 动作仍一律拒绝票据身份。
+function requireAdmin(ctx, options) {
+  const opts = options || {};
   const identity = (ctx && ctx.identity) || {};
   const actorOpenid = identity.actorOpenid || (ctx && ctx.openid) || '';
   if (!identity.developerNo || !actorOpenid) {
     throw errors.forbidden('当前身份无权使用开发者后台');
   }
-  if (identity.viewMode || identity.viewTicketId) {
-    throw errors.forbidden('切换会话不能执行开发者后台动作');
-  }
-  if (identity.effectiveOpenid && identity.effectiveOpenid !== actorOpenid) {
-    throw errors.forbidden('切换会话不能执行开发者后台动作');
+  if (!opts.allowViewMode) {
+    if (identity.viewMode || identity.viewTicketId) {
+      throw errors.forbidden('切换会话不能执行开发者后台动作');
+    }
+    if (identity.effectiveOpenid && identity.effectiveOpenid !== actorOpenid) {
+      throw errors.forbidden('切换会话不能执行开发者后台动作');
+    }
   }
   return { actorOpenid, developerNo: identity.developerNo };
 }
@@ -171,8 +176,8 @@ function buildScope(ctx, configResult, admin) {
   return scope;
 }
 
-async function createAdminScope(ctx) {
-  const admin = requireAdmin(ctx);
+async function createAdminScope(ctx, options) {
+  const admin = requireAdmin(ctx, options);
   const configResult = await loadConfigOf(ctx);
   return buildScope(ctx, configResult, admin);
 }

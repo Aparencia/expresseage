@@ -1,4 +1,4 @@
-<!-- pkg-partner/pages/activate/index.wxml · 邀请码激活 -->
+<!-- pkg-partner/pages/activate/index.wxml · 邀请码激活（成功后结果块给兼职编号，可复制） -->
 <view class="page-body">
   <switch-bar />
   <view class="activate-head">
@@ -6,7 +6,27 @@
     <view class="subtitle">邀请码由开发者发放，一次性有效；没有邀请码请联系开发者。</view>
   </view>
 
-  <view class="card">
+  <!-- 成功结果块：头像/昵称 + 兼职编号（等宽独立行、可复制）；1.5s 后自动去配置服务类型 -->
+  <block wx:if="{{activated}}">
+    <view class="card result-card">
+      <view class="row result-head">
+        <avatar-view fileId="{{activated.avatarFileId}}" name="{{activated.displayName}}" size="{{96}}" />
+        <view class="result-main">
+          <view class="result-title">成为兼职成功</view>
+          <view class="muted">{{activated.displayName || '未设置昵称'}}</view>
+        </view>
+      </view>
+      <view class="result-label">你的兼职编号</view>
+      <view class="result-no">{{activated.partnerNoDisplay}}</view>
+      <view class="muted result-hint">可复制，顾客凭它绑定你；分享卡片只带编号，不含头像/昵称。</view>
+      <view class="result-actions">
+        <button class="btn btn-ghost flex-1" bindtap="onCopyPartnerNo">复制编号</button>
+        <button class="btn btn-primary flex-1" bindtap="onGoServiceSettings">去配置服务类型</button>
+      </view>
+    </view>
+  </block>
+
+  <view wx:else class="card">
     <view class="form-row">
       <view class="form-label">邀请码</view>
       <input
@@ -15,6 +35,7 @@
         maxlength="14"
         placeholder="XXXX-XXXX-XXXX"
         value="{{codeDisplay}}"
+        disabled="{{submitting}}"
         bindinput="onCodeInput"
         bindconfirm="onCodeConfirm"
       />
@@ -27,23 +48,26 @@
         maxlength="20"
         placeholder="一键取微信昵称，也可以自己填"
         value="{{displayName}}"
+        disabled="{{submitting}}"
         bindinput="onNameInput"
       />
     </view>
     <view class="form-row avatar-row">
       <view class="form-label">头像</view>
-      <view class="row flex-1">
+      <view class="row flex-1 avatar-line">
         <avatar-view fileId="{{avatarFileId}}" name="{{displayName}}" size="{{96}}" />
-        <button class="btn btn-ghost avatar-btn" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">
-          {{uploadAvataring ? '上传中…' : '选择头像'}}
-        </button>
-        <text class="muted">可跳过，默认头像</text>
+        <view class="avatar-actions">
+          <button class="btn btn-ghost avatar-btn" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar" disabled="{{submitting}}">
+            {{uploadAvataring ? '上传中…' : '选择头像'}}
+          </button>
+          <text class="avatar-skip" bindtap="onUseDefaultAvatar">跳过，用默认头像</text>
+        </view>
       </view>
     </view>
     <view class="agree-row">
       <checkbox-group bindchange="onAgreeChange">
         <label class="agree-label">
-          <checkbox value="agree" checked="{{agreed}}" />
+          <checkbox value="agree" checked="{{agreed}}" disabled="{{submitting}}" />
           <text>我已阅读《用户协议》《隐私政策》</text>
         </label>
       </checkbox-group>

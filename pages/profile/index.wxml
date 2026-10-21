@@ -41,7 +41,7 @@
         <view class="form-row avatar-row">
           <view class="form-label">头像</view>
           <view class="form-input avatar-pick">
-            <image wx:if="{{form.avatarPreview}}" class="avatar-preview" src="{{form.avatarPreview}}" mode="aspectFill" />
+            <image wx:if="{{form.avatarPreview}}" class="avatar-preview" src="{{form.avatarPreview}}" mode="aspectFill" binderror="onAvatarPreviewError" />
             <avatar-view wx:else fileId="{{form.avatarFileId}}" name="{{form.displayName}}" size="88" />
             <view class="avatar-actions">
               <button class="mini-btn" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">{{uploadingAvatar ? '上传中…' : '选择微信头像'}}</button>
