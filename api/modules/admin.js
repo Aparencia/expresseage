@@ -46,9 +46,6 @@ module.exports = {
   stats(payload) {
     return read('admin.stats', payload);
   },
-  bootstrap() {
-    return call('admin.bootstrap', {});
-  },
   viewAsStart(payload) {
     return call('admin.viewAsStart', payload);
   },

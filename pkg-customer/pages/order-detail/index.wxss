@@ -95,6 +95,12 @@
   flex-shrink: 0;
 }
 
+.event-text {
+  font-size: 26rpx;
+  color: var(--v4-text-2);
+  line-height: 1.5;
+}
+
 .btn-small {
   min-height: 64rpx;
   font-size: 26rpx;

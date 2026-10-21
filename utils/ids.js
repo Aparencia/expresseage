@@ -28,7 +28,8 @@ function kindOfCanonical(canonical) {
   if (canonical === '') {
     return NO_KIND.UNKNOWN;
   }
-  if (canonical.indexOf(enums.DEVELOPER_NO_PREFIX) === 0) {
+  // canonical 已去掉连字符（DEV-01 → DEV01），故按去掉连字符后的前缀判定
+  if (canonical.slice(0, enums.DEVELOPER_NO_PREFIX.length - 1) === 'DEV') {
     return NO_KIND.DEVELOPER;
   }
   if (canonical.charAt(0) === enums.CUSTOMER_NO_PREFIX) {

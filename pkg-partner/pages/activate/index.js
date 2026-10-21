@@ -2,19 +2,10 @@
 const partnerApi = require('../../../api/modules/partner');
 const upload = require('../../../api/upload');
 const store = require('../../../store/index');
+const validate = require('../../../shared/validate');
 
-const CODE_LENGTH = 12;
 const CODE_GROUP = 4;
-const NAME_MAX = 20;
-const CODE_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
-
-function normalizeCode(raw) {
-  const source = typeof raw === 'string' ? raw : '';
-  return source
-    .replace(/[Ａ-Ｚａ-ｚ０-９]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 65248))
-    .replace(/[－—–\s]/g, '')
-    .toUpperCase();
-}
+const CODE_LENGTH = 12;
 
 function groupCode(code) {
   const parts = [];
@@ -22,23 +13,6 @@ function groupCode(code) {
     parts.push(code.slice(index, index + CODE_GROUP));
   }
   return parts.join('-');
-}
-
-function validCode(code) {
-  if (code.length !== CODE_LENGTH) {
-    return false;
-  }
-  for (let index = 0; index < code.length; index += 1) {
-    if (CODE_ALPHABET.indexOf(code.charAt(index)) < 0) {
-      return false;
-    }
-  }
-  return true;
-}
-
-function trimName(raw) {
-  const name = typeof raw === 'string' ? raw.trim() : '';
-  return name.length > NAME_MAX ? name.slice(0, NAME_MAX) : name;
 }
 
 Page({
@@ -80,21 +54,18 @@ Page({
   },
 
   updateSubmit() {
-    const enabled =
-      !this.data.submitting &&
-      this.data.agreed &&
-      validCode(this.data.codeRaw) &&
-      this.data.displayName.length > 0 &&
-      this.data.displayName.length <= NAME_MAX;
+    const codeOk = validate.validateInvitationCode(this.data.codeRaw).ok;
+    const nameOk = validate.validateDisplayName(this.data.displayName).ok;
+    const enabled = !this.data.submitting && this.data.agreed && codeOk && nameOk;
     if (enabled !== this.data.canSubmit) {
       this.setData({ canSubmit: enabled });
     }
   },
 
   onCodeInput(event) {
-    const raw = normalizeCode((event.detail && event.detail.value) || '');
-    const limited = raw.slice(0, CODE_LENGTH);
-    this.setData({ codeRaw: limited, codeDisplay: groupCode(limited), errorText: '' });
+    const result = validate.validateInvitationCode((event.detail && event.detail.value) || '');
+    const canonical = (result.canonical || '').slice(0, CODE_LENGTH);
+    this.setData({ codeRaw: canonical, codeDisplay: groupCode(canonical), errorText: '' });
     this.updateSubmit();
   },
 
@@ -103,8 +74,9 @@ Page({
   },
 
   onNameInput(event) {
-    const name = trimName((event.detail && event.detail.value) || '');
-    this.setData({ displayName: name, errorText: '' });
+    const result = validate.validateDisplayName((event.detail && event.detail.value) || '');
+    const value = result.ok ? result.value : ((event.detail && event.detail.value) || '').slice(0, validate.TEXT_LIMITS.displayName);
+    this.setData({ displayName: value, errorText: '' });
     this.updateSubmit();
   },
 
@@ -121,7 +93,7 @@ Page({
     }
     this.setData({ uploadAvataring: true });
     try {
-      const uploaded = await upload.prepareAndUpload({ purpose: 'AVATAR', filePath });
+      const uploaded = await upload.prepareAndUpload({ purpose: 'AVATAR', filePath: filePath });
       this.setData({
         avatarFileId: uploaded.fileId || '',
         avatarTicket: uploaded.uploadTicketId || '',
@@ -137,20 +109,21 @@ Page({
     if (!this.data.canSubmit || this.data.submitting) {
       return;
     }
-    const code = this.data.codeRaw;
-    if (!validCode(code)) {
+    const codeResult = validate.validateInvitationCode(this.data.codeRaw);
+    if (!codeResult.ok) {
       this.setData({ errorText: '邀请码是 12 位字母数字，形如 XXXX-XXXX-XXXX。' });
       return;
     }
-    if (!this.data.displayName) {
+    const nameResult = validate.validateDisplayName(this.data.displayName);
+    if (!nameResult.ok) {
       this.setData({ errorText: '昵称是顾客确认你的标识，填一个吧（≤20 字）。' });
       return;
     }
     this.setData({ submitting: true, errorText: '' });
     partnerApi
       .activate({
-        invitationCode: code,
-        displayName: this.data.displayName,
+        invitationCode: codeResult.canonical,
+        displayName: nameResult.value,
         avatarTicket: this.data.avatarTicket || undefined
       })
       .then(() => {

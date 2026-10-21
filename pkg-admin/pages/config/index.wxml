@@ -1,0 +1,113 @@
+<view class="page-body">
+  <view class="empty-text" wx:if="{{loading}}">加载中…</view>
+
+  <view class="card" wx:if="{{error}}" bindtap="onRetry">
+    <text class="muted">没连上服务器，先检查网络；刚才的数据是 {{errorAt}} 的。</text>
+    <text class="link"> 点此重试</text>
+  </view>
+
+  <block wx:if="{{!loading && !error}}">
+    <view class="card">
+      <text class="section-title">服务类型模板</text>
+      <view class="service-row" wx:for="{{form.services}}" wx:key="code">
+        <view class="row between">
+          <text class="muted">{{item.code}}</text>
+          <switch checked="{{item.enabled}}" data-index="{{index}}" color="#1F7A5C" bindchange="onServiceToggle" />
+        </view>
+        <input class="form-input" value="{{item.name}}" maxlength="{{limits.serviceNameMax}}" placeholder="服务名称" data-index="{{index}}" data-field="name" bindinput="onServiceInput" />
+        <input class="form-input" value="{{item.desc}}" maxlength="{{limits.serviceDescMax}}" placeholder="服务说明" data-index="{{index}}" data-field="desc" bindinput="onServiceInput" />
+      </view>
+      <view class="small">服务类型只描述“做什么”，不涉及任何费用项。</view>
+    </view>
+
+    <view class="card">
+      <text class="section-title">苑名</text>
+      <view class="form-row" wx:for="{{form.zones}}" wx:key="key">
+        <text class="form-label">{{item.key}}</text>
+        <input class="form-input" value="{{item.value}}" maxlength="10" placeholder="{{item.placeHolder}}" data-index="{{index}}" bindinput="onZoneInput" />
+      </view>
+    </view>
+
+    <view class="card">
+      <text class="section-title">公告</text>
+      <view class="row between toggle-row">
+        <text class="muted">启用公告</text>
+        <switch checked="{{form.announcement.enabled}}" color="#1F7A5C" bindchange="onAnnouncementToggle" />
+      </view>
+      <view class="form-row">
+        <text class="form-label">标题</text>
+        <input class="form-input" value="{{form.announcement.title}}" maxlength="{{limits.announcementTitleMax}}" placeholder="公告标题" data-field="title" bindinput="onAnnouncementInput" />
+      </view>
+      <view class="form-block">
+        <text class="form-label">正文</text>
+        <textarea class="form-textarea" value="{{form.announcement.text}}" maxlength="{{limits.announcementTextMax}}" placeholder="公告正文" data-field="text" bindinput="onAnnouncementInput" />
+      </view>
+    </view>
+
+    <view class="card">
+      <text class="section-title">时长与留存</text>
+      <view class="form-row">
+        <text class="form-label">接单超时</text>
+        <input class="form-input" type="number" value="{{form.orderTimeoutMinutes}}" data-field="orderTimeoutMinutes" bindinput="onNumberInput" />
+        <text class="muted">分钟</text>
+      </view>
+      <view class="form-row">
+        <text class="form-label">自动完成</text>
+        <input class="form-input" type="number" value="{{form.autoCompleteHours}}" data-field="autoCompleteHours" bindinput="onNumberInput" />
+        <text class="muted">小时</text>
+      </view>
+      <view class="form-row">
+        <text class="form-label">截图留存</text>
+        <input class="form-input" type="number" value="{{form.screenshotRetentionDays}}" data-field="screenshotRetentionDays" bindinput="onNumberInput" />
+        <text class="muted">天</text>
+      </view>
+      <view class="form-row">
+        <text class="form-label">切换会话</text>
+        <input class="form-input" type="number" value="{{form.viewTicketTtlMinutes}}" data-field="viewTicketTtlMinutes" bindinput="onNumberInput" />
+        <text class="muted">分钟</text>
+      </view>
+      <view class="form-row">
+        <text class="form-label">头像上限</text>
+        <input class="form-input" type="number" value="{{form.avatarMaxKb}}" data-field="avatarMaxKb" bindinput="onNumberInput" />
+        <text class="muted">KB</text>
+      </view>
+      <view class="small">截图留存最多 7 天；切换会话 5~60 分钟；头像大小上限 100~200KB。</view>
+    </view>
+
+    <view class="card">
+      <text class="section-title">维护模式</text>
+      <view class="row between toggle-row">
+        <text class="muted">开启维护</text>
+        <switch checked="{{form.maintenance.enabled}}" color="#E54D42" bindchange="onMaintenanceToggle" />
+      </view>
+      <view class="form-row">
+        <text class="form-label">维护说明</text>
+        <input class="form-input" value="{{form.maintenance.text}}" maxlength="{{limits.maintenanceTextMax}}" placeholder="维护说明" bindinput="onMaintenanceInput" />
+      </view>
+      <view class="small">开启后顾客/兼职端会看到维护公告，写操作被拒绝；后台不受影响。</view>
+    </view>
+
+    <view class="card">
+      <text class="section-title">只读项</text>
+      <view class="row between info-row">
+        <text class="muted">智能识别兜底</text>
+        <text>{{readonlyInfo.aiFallbackText}}</text>
+      </view>
+      <view class="row between info-row">
+        <text class="muted">识别失败留存天数</text>
+        <text>{{readonlyInfo.recognitionFailureRetentionDays}}</text>
+      </view>
+      <view class="row between info-row">
+        <text class="muted">测试账号上限（每角色）</text>
+        <text>{{readonlyInfo.testAccountMaxPerRole}}</text>
+      </view>
+      <view class="row between info-row">
+        <text class="muted">测试数据保留天数</text>
+        <text>{{readonlyInfo.testDataRetentionDays}}</text>
+      </view>
+      <view class="small">智能识别兜底与测试账号上限不在本页开放编辑；需要调整请联系部署侧。</view>
+    </view>
+
+    <view class="btn btn-primary btn-block save-action" bindtap="onSave">{{saving ? '保存中…' : '保存配置'}}</view>
+  </block>
+</view>

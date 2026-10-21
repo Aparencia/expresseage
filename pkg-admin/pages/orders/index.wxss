@@ -1,0 +1,42 @@
+/* pkg-admin/pages/orders/index.wxss · 订单总览页页面级样式 */
+
+.filter-block {
+  padding-bottom: 12rpx;
+}
+
+.filter-row {
+  display: flex;
+  flex-direction: row;
+  white-space: nowrap;
+  margin-bottom: 16rpx;
+}
+
+.filter-chip {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 72rpx;
+  padding: 0 20rpx;
+  margin-right: 8rpx;
+  font-size: 26rpx;
+  color: var(--v4-text-2);
+  justify-content: center;
+}
+
+.chip-bar {
+  width: 100%;
+  height: 4rpx;
+  margin-top: 8rpx;
+  border-radius: 2rpx;
+  background: var(--v4-brand);
+}
+
+.danger-text {
+  margin-top: 8rpx;
+  font-size: 26rpx;
+  color: var(--v4-danger);
+}
+
+.link {
+  color: var(--v4-brand);
+}

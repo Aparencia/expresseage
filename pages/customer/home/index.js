@@ -196,7 +196,9 @@ Page({
   },
 
   onOrderTap(e) {
-    const orderNo = (e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.orderNo) || '';
+    const order = (e.detail && e.detail.order) || null;
+    const dataset = (e.currentTarget && e.currentTarget.dataset) || {};
+    const orderNo = dataset.orderNo || (order && order.orderNo) || '';
     if (!orderNo) return;
     wx.navigateTo({ url: DETAIL_PAGE + '?orderNo=' + encodeURIComponent(orderNo) });
   },

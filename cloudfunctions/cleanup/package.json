@@ -1,0 +1,9 @@
+{
+  "name": "cleanup",
+  "version": "1.0.0",
+  "description": "v4 云函数 cleanup：定时触发器入口 + sweeps 注册表（仅依赖 wx-server-sdk）",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "4.0.2"
+  }
+}

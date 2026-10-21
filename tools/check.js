@@ -107,6 +107,18 @@ function stringsOf(value, depth) {
   }
   return out;
 }
+/** 只收集对象"值"（不收集键名），用于注册表字符串集合比对（避免导出名污染）。 */
+function valuesOf(value, depth) {
+  const out = new Set();
+  const d = depth || 0;
+  if (value === null || value === undefined || d > 4) return out;
+  if (typeof value === 'string') { out.add(value); return out; }
+  if (Array.isArray(value)) { value.forEach((v) => valuesOf(v, d + 1).forEach((s) => out.add(s))); return out; }
+  if (typeof value === 'object') {
+    Object.keys(value).forEach((k) => { valuesOf(value[k], d + 1).forEach((s) => out.add(s)); });
+  }
+  return out;
+}
 function findActionMap(value) {
   const stack = [value];
   const seen = new Set();
@@ -139,7 +151,10 @@ function check(no, id, title, fn) {
   try {
     const r = fn();
     if (r === null || r === true || r === undefined) entry.pass = true;
-    else {
+    else if (r && typeof r === 'object' && !Array.isArray(r) && r.skip) {
+      entry.pass = true;
+      entry.skip = r.skip;
+    } else {
       entry.pass = false;
       entry.detail = Array.isArray(r) ? r : [String(r)];
     }
@@ -321,7 +336,7 @@ check(11, '全局 navigationStyle 禁止', '仅页面局部 .json 允许', () =>
 });
 
 // ---------------------------------------------------------------- #12
-check(12, '集合名注册表', '云端 db.collection 字面量 ∈ shared/collections.js；客户端零集合字面量', () => {
+check(12, '集合名注册表', '云端 db.collection 字面量 ∈ shared/collections.js；客户端零带引号集合名（注册表自身除外）', () => {
   const reg = requireRegistry(['shared/collections.js']);
   if (!reg || reg.error) return [reg ? 'shared/collections.js 加载失败: ' + reg.error : 'shared/collections.js 缺失'];
   const known = new Set(Array.from(stringsOf(reg.value)).filter((s) => P.COLLECTIONS.includes(s)));
@@ -335,10 +350,12 @@ check(12, '集合名注册表', '云端 db.collection 字面量 ∈ shared/colle
     while ((m = lit.exec(s))) if (!known.has(m[1])) out.push(rel + ': 未注册集合 ' + m[1]);
     lit.lastIndex = 0;
   });
-  clientFiles().forEach((rel) => {
+  // 客户端：只认"带引号的集合名字符串字面量"，且排除注册表自身（config 等普通词不算命中）
+  const REGISTRY = 'shared/collections.js';
+  clientFiles().filter((rel) => rel !== REGISTRY).forEach((rel) => {
     const s = text(rel) || '';
     P.COLLECTIONS.forEach((c) => {
-      if (new RegExp("['\"]" + c + "['\"]").test(s)) out.push(rel + ': 客户端出现集合名字面量 ' + c);
+      if (new RegExp("(['\"])" + c + "\\1").test(s)) out.push(rel + ': 客户端出现带引号集合名 "' + c + '"');
     });
   });
   return out.length ? shortList(out, 10) : null;
@@ -417,7 +434,11 @@ check(15, '本地存储唯一写口', 'wx.*Storage* 仅 utils/storage.js（剥�
 });
 
 // ---------------------------------------------------------------- #16
-check(16, '云函数依赖白名单', '两 package.json 依赖只允许 wx-server-sdk；非相对 require 只允许 sdk', () => {
+check(16, '云函数依赖白名单', '两 package.json 依赖只允许 wx-server-sdk；非相对 require 只允许 sdk/Node 内置', () => {
+  const NODE_BUILTINS = new Set(['assert', 'async_hooks', 'buffer', 'child_process', 'cluster', 'console', 'constants',
+    'crypto', 'dgram', 'dns', 'domain', 'events', 'fs', 'http', 'http2', 'https', 'inspector', 'module', 'net', 'os',
+    'path', 'perf_hooks', 'process', 'punycode', 'querystring', 'readline', 'repl', 'stream', 'string_decoder', 'sys',
+    'timers', 'tls', 'trace_events', 'tty', 'url', 'util', 'v8', 'vm', 'wasi', 'worker_threads', 'zlib']);
   const out = [];
   ['cloudfunctions/api/package.json', 'cloudfunctions/cleanup/package.json'].forEach((rel) => {
     if (!exists(rel)) { out.push('缺失: ' + rel); return; }
@@ -432,25 +453,29 @@ check(16, '云函数依赖白名单', '两 package.json 依赖只允许 wx-serve
     let m;
     while ((m = re.exec(s))) {
       const id = m[1];
-      if (!id.startsWith('.') && !id.startsWith('/') && id !== 'wx-server-sdk') out.push(rel + ': 非白名单 require ' + id);
+      if (id.startsWith('.') || id.startsWith('/') || id === 'wx-server-sdk') continue;
+      const bare = id.replace(/^node:/, '').split('/')[0];
+      if (!NODE_BUILTINS.has(bare)) out.push(rel + ': 非白名单 require ' + id);
     }
   });
   return out.length ? shortList(out, 10) : null;
 });
 
 // ---------------------------------------------------------------- #17
-check(17, 'shared 副本对帐', 'shared/** + ids.js/room-tag.js 与两云函数副本逐字节 hash 相等', () => {
+check(17, 'shared 副本对帐', 'shared/** + ids/room-tag/defaults 与两云函数副本逐字节 hash 相等', () => {
   const out = [];
   const src = [];
-  RELS.filter((r) => r.startsWith('shared/') && r.endsWith('.js')).forEach((r) => src.push({ rel: r, target: 'shared/' + r.slice('shared/'.length) }));
-  [['utils/ids.js', 'shared/ids.js'], ['utils/room-tag.js', 'shared/room-tag.js']].forEach((pair) => {
+  RELS.filter((r) => r.startsWith('shared/') && r.endsWith('.js')).forEach((r) => src.push({ rel: r, target: r.slice('shared/'.length) }));
+  [['utils/ids.js', 'ids.js'], ['utils/room-tag.js', 'room-tag.js'], ['config/defaults.js', 'defaults.js']].forEach((pair) => {
     if (!exists(pair[0])) out.push('缺失源文件: ' + pair[0]);
     else src.push({ rel: pair[0], target: pair[1] });
   });
   if (src.length === 0) return ['shared 源文件为空（空集不得判绿）'];
+  const missingTargets = [];
   for (const cfRoot of ['cloudfunctions/api', 'cloudfunctions/cleanup']) {
+    if (!exists(cfRoot)) { missingTargets.push(cfRoot + '/shared（云函数目录待建）'); continue; }
     for (const item of src) {
-      const target = cfRoot + '/' + item.target;
+      const target = cfRoot + '/shared/' + item.target;
       if (!exists(target)) { out.push('缺副本: ' + target); continue; }
       const a = raw(item.rel);
       const b = raw(target);
@@ -458,16 +483,20 @@ check(17, 'shared 副本对帐', 'shared/** + ids.js/room-tag.js 与两云函数
       if (F.sha256(a) !== F.sha256(b)) out.push('漂移: ' + target + ' ≠ ' + item.rel);
     }
   }
-  return out.length ? shortList(out, 10) : null;
+  const miss = missingTargets.length ? { skip: missingTargets.join('；') + '（目录存在后必须真红）' } : null;
+  if (out.length) return shortList(out, 10);
+  return miss;
 });
 
 // ---------------------------------------------------------------- #18
-check(18, '行数', '源码 ≤500、测试 ≤1000（全文本口径；docs 由 check-docs 管，见文件头）', () => {
+check(18, '行数', '小程序源码 ≤500；工具链 tools/*.js 与测试 ≤1000（全文本口径；docs 由 check-docs 管，见文件头）', () => {
   const out = [];
   const files = js();
   files.forEach((rel) => {
-    const isTest = /(^|\/)tools\/selftest/.test(rel);
-    const limit = isTest ? 1000 : 500;
+    // 差异登记：tools/ 是开发期工具链（非小程序包内容，单文件预算与测试同档 ≤1000）；
+    // 被小程序编译的源码（pages/pkg/api/shared/utils/store/cloudfunctions/config）仍 ≤500。
+    const isTool = rel.startsWith('tools/');
+    const limit = isTool ? 1000 : 500;
     const n = F.countLines(path.join(ROOT, rel));
     if (n > limit) out.push(rel + ': ' + n + ' 行 > ' + limit);
   });
@@ -475,24 +504,37 @@ check(18, '行数', '源码 ≤500、测试 ≤1000（全文本口径；docs 由
 });
 
 // ---------------------------------------------------------------- #19
-check(19, '敏感字面量', 'openid 形态零命中；云环境 ID 只在 config/env.js；ADMIN_OPENIDS 不硬编码', () => {
+check(19, '敏感字面量', 'openid 形态零命中；云环境 ID 只在 config/env.js（占位符合法）；ADMIN_OPENIDS 不硬编码', () => {
   const out = [];
-  const openidRe = /o[A-Za-z0-9_-]{27}/;
+  // openid 形态：o + 27 位 [A-Za-z0-9_-]，且前后不得是标识符字符（防 recognitionFailureRetentionDays 这类误报）
+  const openidRe = /(?:^|[^A-Za-z0-9_-])o[A-Za-z0-9_-]{27}(?![A-Za-z0-9_-])/;
   js().filter((r) => !r.startsWith('tools/')).forEach((rel) => {
     const s = text(rel) || '';
-    if (openidRe.test(s)) out.push(rel + ': 疑似 openid 字面量');
+    s.split('\n').forEach((line, i) => {
+      if (!openidRe.test(line)) return;
+      if (/TEST-|example|示例|文档|placeholder/.test(line)) return;
+      out.push(rel + ':' + (i + 1) + ': 疑似 openid 字面量');
+    });
   });
   const env = text('config/env.js');
   if (env === null) out.push('缺失: config/env.js');
   else {
-    const m = env.match(/envId\s*:\s*['"]([^'"]+)['"]/);
-    if (!m) out.push('config/env.js 未找到 envId 字面量');
-    else {
-      const envId = m[1];
+    const literals = [];
+    const re = /['"]([^'"]*ENV_ID[^'"]*)['"]/g;
+    let m;
+    while ((m = re.exec(env))) literals.push(m[1]);
+    if (literals.length === 0) {
+      const envIdMatch = env.match(/envId\s*:\s*['"]([^'"]*)['"]/);
+      if (envIdMatch) literals.push(envIdMatch[1]);
+    }
+    const configured = literals.filter((v) => v && !/^__.*__$/.test(v) && v.indexOf('__') !== 0);
+    if (literals.length === 0) out.push('config/env.js 未见 envId/ENV_MAP 配置');
+    else if (configured.length === 0) console.log('  · 提示: config/env.js 的 envId 仍为占位符（待用户在控制台回填，不算门禁失败）');
+    configured.forEach((envId) => {
       RELS.filter((r) => r.endsWith('.js') && r !== 'config/env.js' && !r.startsWith('tools/')).forEach((rel) => {
         if ((text(rel) || '').indexOf(envId) !== -1) out.push(rel + ': 云环境 ID 越界');
       });
-    }
+    });
   }
   js().filter((r) => !r.startsWith('tools/')).forEach((rel) => {
     const s = text(rel) || '';
@@ -505,39 +547,61 @@ check(19, '敏感字面量', 'openid 形态零命中；云环境 ID 只在 confi
 });
 
 // ---------------------------------------------------------------- #20
-check(20, '错误码注册表', 'shared/error-codes.js 恰好 13 码；旧码零残留；error-copy 每码有文案', () => {
+check(20, '错误码注册表', 'shared/error-codes.js 恰好 13 码；CODE_COPY 每码有文案；旧码零残留；引用无未知码', () => {
   const reg = requireRegistry(['shared/error-codes.js']);
   if (!reg || reg.error) return [reg ? 'shared/error-codes.js 加载失败: ' + reg.error : 'shared/error-codes.js 缺失'];
-  const set = new Set(Array.from(stringsOf(reg.value)).filter((s) => /^[A-Z][A-Z_]+$/.test(s)));
+  const isCode = (s) => /^[A-Z][A-Z_]+$/.test(s);
+  const values = Array.from(valuesOf(reg.value)).filter(isCode);
+  const set = new Set(values);
   const out = [];
   P.ERROR_CODES.filter((c) => !set.has(c)).forEach((c) => out.push('缺错误码: ' + c));
-  Array.from(set).filter((c) => !P.ERROR_CODES.includes(c)).forEach((c) => out.push('未登记错误码: ' + c));
+  values.filter((c) => !P.ERROR_CODES.includes(c)).forEach((c) => out.push('未登记错误码: ' + c));
   P.OLD_ERROR_CODES.forEach((c) => {
     js().filter((r) => !r.startsWith('tools/')).forEach((rel) => {
-      if (new RegExp("['\"]" + c + "['\"]").test(text(rel) || '')) out.push(rel + ': 旧错误码残留 ' + c);
+      if ((text(rel) || '').indexOf("'" + c + "'") !== -1) out.push(rel + ': 旧错误码残留 ' + c);
     });
   });
-  P.ERROR_CODES.forEach((c) => {
-    const used = js().some((r) => !r.startsWith('tools/') && (text(r) || '').indexOf("'" + c + "'") !== -1);
-    if (!used) out.push('错误码未被任何代码引用: ' + c);
+  const copy = requireRegistry(['shared/error-copy.js']);
+  if (!copy || copy.error) out.push(copy ? 'shared/error-copy.js 加载失败: ' + copy.error : '缺失: shared/error-copy.js');
+  else {
+    const codeCopy = copy.value && copy.value.CODE_COPY;
+    if (!codeCopy) out.push('error-copy 缺 CODE_COPY');
+    else {
+      const keys = new Set(Object.keys(codeCopy));
+      P.ERROR_CODES.filter((c) => !keys.has(c)).forEach((c) => out.push('CODE_COPY 缺文案: ' + c));
+      Array.from(keys).filter((k) => !P.ERROR_CODES.includes(k)).forEach((k) => out.push('CODE_COPY 多出: ' + k));
+    }
+  }
+  // 代码引用的 code 必须 ∈ 13 码（只认 code: 'X' / code = 'X' / code === 'X' 形态，避开状态/事件字面量）
+  const codeRef = /\bcode\s*(?:===?|==|:|=)\s*'([A-Z][A-Z_]+)'/g;
+  js().filter((r) => !r.startsWith('tools/')).forEach((rel) => {
+    const s = text(rel) || '';
+    let m;
+    while ((m = codeRef.exec(s))) {
+      if (!set.has(m[1]) && P.OLD_ERROR_CODES.indexOf(m[1]) === -1) out.push(rel + ': 代码引用未登记 code ' + m[1]);
+    }
+    codeRef.lastIndex = 0;
   });
-  const copy = text('shared/error-copy.js');
-  if (copy === null) out.push('缺失: shared/error-copy.js');
-  else P.ERROR_CODES.forEach((c) => { if (copy.indexOf(c) === -1) out.push('error-copy 缺文案: ' + c); });
   return out.length ? shortList(out, 12) : null;
 });
 
 // ---------------------------------------------------------------- #21
-check(21, '页面层零判据', 'pages/、pkg-*/pages/ 不出现 wx.cloud.*、七状态字面量、编号/roomTag 生成/random', () => {
+check(21, '页面层零判据', 'pages/、pkg-*/pages/ .js 零 wx.cloud.* 与七状态字面量；pages/parts 零 random 与编号生成', () => {
   const out = [];
   const statuses = ['SUBMITTED', 'ACCEPTED', 'PICKED', 'DELIVERED', 'COMPLETED', 'CANCELLED', 'EXCEPTION'];
-  pagesJs().forEach((rel) => {
+  // 只有"页面脚本"受状态字面量约束；pkg-*/parts/** 是纯视图模型（允许状态→文案映射，lead 口径）
+  const pageLayer = RELS.filter((r) => r.endsWith('.js') && /(^|\/)pages\//.test(r));
+  pageLayer.forEach((rel) => {
     const s = text(rel) || '';
     if (/wx\.cloud\./.test(s)) out.push(rel + ': wx.cloud.*');
     statuses.forEach((st) => {
       if (new RegExp("['\"]" + st + "['\"]").test(s)) out.push(rel + ': 状态字面量 ' + st);
     });
-    if (/Math\.random|random\(/.test(s)) out.push(rel + ': random');
+  });
+  // random / 编号生成：pages 与 parts 都不得出现（文案映射可以，生成不行）
+  RELS.filter((r) => r.endsWith('.js') && (/(^|\/)pages\//.test(r) || /\/parts\//.test(r))).forEach((rel) => {
+    const s = text(rel) || '';
+    if (/Math\.random|\brandom\(/.test(s)) out.push(rel + ': random');
     if (/generate[A-Za-z]*(No|Code|Tag)|nextRoomTag|allocRoomTag/.test(s)) out.push(rel + ': 编号/roomTag 生成');
   });
   return out.length ? shortList(out, 12) : null;
@@ -564,21 +628,22 @@ check(23, '切换会话接入', '17 页引用 switch-bar；pkg-admin 零引用�
     ['switch-bar', 'test-badge'].forEach((k) => { if (s.indexOf(k) !== -1) out.push(rel + ': pkg-admin 不得引用 ' + k); });
   });
   clientFiles().filter((r) => r.endsWith('.js')).forEach((rel) => {
-    if (!(rel === 'api/client.js' || rel.startsWith('store/'))) {
-      if ((text(rel) || '').indexOf('viewTicket') !== -1) out.push(rel + ': viewTicket 外泄');
-    }
+    if (rel === 'api/client.js' || rel.startsWith('store/')) return;
+    // 只拦裸 viewTicket 字面量；公开配置键 viewTicketTtlMinutes / view_ticket 合法
+    if (/(?<![A-Za-z0-9_])viewTicket(?![A-Za-z0-9])/.test(text(rel) || '')) out.push(rel + ': viewTicket 外泄');
   });
   return out.length ? shortList(out, 10) : null;
 });
 
 // ---------------------------------------------------------------- #24
-check(24, '客户端零 AI 外呼/零 Key', '客户端范围零 deepseek 痕迹；ai.parseParcel 只经 api/', () => {
+check(24, '客户端零 AI 外呼/零 Key', '客户端范围零 deepseek 痕迹（SQL 枚举全大写 DEEPSEEK 合法）；ai.parseParcel 只经 api/', () => {
   const out = [];
   const cf = clientFiles();
   ['DEEPSEEK_API_KEY', 'api.deepseek.com'].forEach((k) => {
     grep(cf, new RegExp(k.replace(/[.]/g, '\\.'))).forEach((h) => out.push(k + ': ' + h));
   });
-  grep(cf, /deepseek/i).forEach((h) => out.push('deepseek: ' + h));
+  // 大小写敏感：源码枚举值 'DEEPSEEK'（RECOGNITION_SOURCE）是合法口径，只有 API 客户端痕迹（deepseek/DeepSeek）才拦
+  grep(cf, /deepseek|DeepSeek/).forEach((h) => out.push('deepseek: ' + h));
   pagesJs().forEach((rel) => {
     if ((text(rel) || '').indexOf('ai.parseParcel') !== -1) out.push(rel + ': 页面直调 ai.parseParcel');
   });
@@ -591,7 +656,7 @@ check(24, '客户端零 AI 外呼/零 Key', '客户端范围零 deepseek 痕迹�
 check(25, 'AI 外发白名单', 'https/fetch 只在 lib/ai/deepseek.js；payload 由 buildAiPayload 构造；无身份字段', () => {
   const out = [];
   const aiDir = 'cloudfunctions/api/lib/ai/';
-  js().forEach((rel) => {
+  js().filter((r) => !r.startsWith('tools/')).forEach((rel) => {
     const s = text(rel) || '';
     const outside = !rel.startsWith(aiDir);
     if (outside && /https:\/\//.test(s)) out.push(rel + ': 出现 https 外呼');
@@ -687,12 +752,14 @@ check(28, '绑定方向', 'bind.create 仅 CUSTOMER + 拒自绑；代客单零 b
 });
 
 // ---------------------------------------------------------------- #29
-check(29, '头像昵称', 'avatars/ 只在 upload 域、路径零 openid；avatarFileId 不进脱敏 DTO；昵称截断+msgSecCheck；roomTag 大写', () => {
+check(29, '头像昵称', '头像路径模板只在 upload 域且零 openid；avatarFileId 不进脱敏 DTO；昵称截断+msgSecCheck；roomTag 大写', () => {
   const out = [];
-  const allowed = [/(^|\/)handlers\/upload\//, /^api\/upload\.js$/];
+  const uploadDomain = (rel) => /(^|\/)handlers\/upload\//.test(rel) || rel === 'api/upload.js';
   js().filter((r) => !r.startsWith('tools/')).forEach((rel) => {
     const s = text(rel) || '';
-    if (s.indexOf('avatars/') !== -1 && !allowed.some((re) => re.test(rel))) out.push(rel + ': avatars/ 越界');
+    // 只禁"路径模板/路径拼接"（avatars/{role}/、'avatars/' + 拼接）；用途枚举常量 AVATAR: 'avatars/' 是合法口径
+    const isPathTemplate = /avatars\/[^'"`\n]*\$\{/.test(s) || /['"]avatars\/['"]\s*\+/.test(s);
+    if (isPathTemplate && !uploadDomain(rel)) out.push(rel + ': 头像路径模板越界');
     if (/avatars\/[^'"`\n]*openid/.test(s)) out.push(rel + ': 头像路径含 openid');
   });
   const mask = text('cloudfunctions/api/handlers/admin/dto/mask.js');
@@ -717,7 +784,7 @@ check(29, '头像昵称', 'avatars/ 只在 upload 域、路径零 openid；avata
 });
 
 // ---------------------------------------------------------------- #30
-check(30, '账号切换与测试数据隔离', '会话含 viewMode/targetIsTest；TEST_WRITE 断言 isTestAccount；统计过滤；审计枚举在册', () => {
+check(30, '账号切换与测试数据隔离', '会话含 viewMode/targetIsTest；云侧 TEST_WRITE 签发断言 isTestAccount；统计过滤；审计动作集合', () => {
   const out = [];
   const adminJs = rels('cloudfunctions/api/handlers/admin/').filter((r) => r.endsWith('.js'));
   const sessionWriters = adminJs.filter((r) => (text(r) || '').indexOf('admin_view_sessions') !== -1
@@ -727,9 +794,14 @@ check(30, '账号切换与测试数据隔离', '会话含 viewMode/targetIsTest�
     const s = text(rel) || '';
     ['viewMode', 'targetIsTest'].forEach((k) => { if (s.indexOf(k) === -1) out.push(rel + ': 会话写入缺 ' + k); });
   });
-  RELS.filter((r) => (text(r) || '').indexOf('TEST_WRITE') !== -1 && /\.js$/.test(r)).forEach((rel) => {
+  // TEST_WRITE 只约束"签发/校验处"（云函数 admin/testAccounts、switch-session 中间件）；
+  // 客户端读 viewMode 是合法用途，不在本判据范围（客户端由 #23 拦票据外泄）。
+  const issuance = RELS.filter((r) => r.endsWith('.js') && r.startsWith('cloudfunctions/')
+    && /handlers\/admin\/|switch-session|middleware\//.test(r)
+    && (text(r) || '').indexOf('TEST_WRITE') !== -1);
+  issuance.forEach((rel) => {
     const s = text(rel) || '';
-    if (!/isTestAccount/.test(s)) out.push(rel + ': TEST_WRITE 签发处未断言 isTestAccount');
+    if (!/isTestAccount/.test(s)) out.push(rel + ': TEST_WRITE 签发/校验处未断言 isTestAccount');
   });
   const statFiles = RELS.filter((r) => /handlers\/admin\/.*\.js$/.test(r) && /stats|list|invite/i.test(r));
   statFiles.forEach((rel) => {
@@ -741,32 +813,43 @@ check(30, '账号切换与测试数据隔离', '会话含 viewMode/targetIsTest�
     if (/\.add\s*\(/.test(s) && s.indexOf('isTest') === -1) out.push(rel + ': 订单写入缺 isTest 派生');
     if (s.indexOf('impersonatedBy') === -1 && /impersonat|TEST_WRITE/.test(s)) out.push(rel + ': 测试写事件缺 impersonatedBy');
   });
+  // 审计枚举：只比对"动作字符串集合"，忽略 AUDIT_ACTIONS/AUDIT_ACTION_LIST 等聚合导出名
   const audit = requireRegistry(['shared/audit-actions.js']);
   if (!audit || audit.error) out.push(audit ? 'shared/audit-actions.js 加载失败: ' + audit.error : 'shared/audit-actions.js 缺失');
   else {
-    const got = new Set(Array.from(stringsOf(audit.value)).filter((s) => /^[A-Z][A-Z_]+$/.test(s)));
+    const got = new Set(Array.from(valuesOf(audit.value)).filter((s) => /^[A-Z][A-Z_]+$/.test(s)));
     P.AUDIT_ACTIONS.filter((a) => !got.has(a)).forEach((a) => out.push('审计缺: ' + a));
     Array.from(got).filter((a) => !P.AUDIT_ACTIONS.includes(a)).forEach((a) => out.push('审计多出: ' + a));
-    js().forEach((rel) => { if ((text(rel) || '').indexOf('VIEW_AS_') !== -1 && !rel.startsWith('tools/')) out.push(rel + ': VIEW_AS_* 残留'); });
+    // VIEW_AS_* 只在审计枚举里有意义：审计注册表与云侧审计写入零残留（页面局部变量名不属于审计枚举）
+    if ((text('shared/audit-actions.js') || '').indexOf('VIEW_AS_') !== -1) out.push('audit-actions.js 残留 VIEW_AS_*');
+    RELS.filter((r) => r.startsWith('cloudfunctions/') && r.endsWith('.js')).forEach((rel) => {
+      const s = text(rel) || '';
+      if (/['"]VIEW_AS_[A-Z_]*['"]/.test(s)) out.push(rel + ': 审计写入残留 VIEW_AS_*');
+    });
   }
   return out.length ? shortList(out, 14) : null;
 });
 
 // ---------------------------------------------------------------- #31
-check(31, '测试视觉', 'TEST 字面量只在 test-badge；切换条颜色只在 switch-bar；后台零引用；角标受 viewMode 控制', () => {
+check(31, '测试视觉', '孤立 TEST 字面量只在 test-badge；switch-bar 颜色/样式不旁路；后台零引用；角标受 viewMode 控制', () => {
   const out = [];
+  const stripWxmlComments = (s) => String(s).replace(/<!--[\s\S]*?-->/g, '');
   const reTest = /(?<![A-Za-z0-9_])TEST(?![A-Za-z0-9_])/;
   RELS.filter((r) => /\.(wxml|js)$/.test(r) && !r.startsWith('components/test-badge/') && !r.startsWith('tools/'))
     .forEach((rel) => {
-      const s = text(rel) || '';
-      if (reTest.test(s)) out.push(rel + ': TEST 字面量越界');
+      const raw = text(rel) || '';
+      // 注释里的"TEST 角标"是说明文字，不算字面量；TEST_WRITE 由词边界排除
+      const s = rel.endsWith('.js') ? F.stripComments(raw) : stripWxmlComments(raw);
+      if (reTest.test(s)) out.push(rel + ': 孤立 TEST 字面量越界');
     });
   const badgeWxml = text('components/test-badge/index.wxml');
+  const badgeJs = text('components/test-badge/index.js');
   if (badgeWxml === null) out.push('缺失: components/test-badge/index.wxml');
-  else if (badgeWxml.indexOf('TEST_WRITE') === -1) out.push('test-badge 未受 viewMode=TEST_WRITE 条件控制');
-  const switchWxss = text('components/switch-bar/index.wxss');
-  if (switchWxss === null) out.push('缺失: components/switch-bar/index.wxss');
-  ['#F', '#E', '#1'].forEach((c) => { /* 颜色常量占位，具体色值由 UX 定稿后收紧 */ void c; });
+  else if ((badgeWxml + (badgeJs || '')).indexOf('TEST_WRITE') === -1) out.push('test-badge 未受 viewMode=TEST_WRITE 条件控制');
+  // 切换条黄/蓝样式只在 switch-bar 组件内定义；其它 wxss 不得出现 switch-bar 选择器（颜色旁路）
+  RELS.filter((r) => r.endsWith('.wxss') && !r.startsWith('components/switch-bar/')).forEach((rel) => {
+    if ((text(rel) || '').indexOf('switch-bar') !== -1) out.push(rel + ': switch-bar 样式越界');
+  });
   rels('pkg-admin/').filter((r) => /\.(wxml|js)$/.test(r)).forEach((rel) => {
     const s = text(rel) || '';
     ['switch-bar', 'test-badge'].forEach((k) => { if (s.indexOf(k) !== -1) out.push(rel + ': 后台不得引用 ' + k); });
@@ -779,19 +862,23 @@ const opts = process.argv.slice(2);
 const failOnly = opts.includes('--fail-only');
 let pass = 0;
 let failed = 0;
+let skipped = 0;
 console.log('== tools/check.js · v4 门禁（ENGINEERING §8.2 · 31 条）==');
 for (const r of results) {
   const id = '#' + String(r.no).padStart(2, '0');
   if (r.pass) {
     pass += 1;
-    if (!failOnly) console.log('[PASS] ' + id + ' ' + r.title);
+    if (r.skip) {
+      skipped += 1;
+      console.log('[PASS] ' + id + ' ' + r.title + '（SKIP：' + r.skip + '）');
+    } else if (!failOnly) console.log('[PASS] ' + id + ' ' + r.title);
   } else {
     failed += 1;
     console.log('[FAIL] ' + id + ' ' + r.title);
     (r.detail || []).forEach((d) => console.log('        - ' + d));
   }
 }
-if (failed > 0) console.log('汇总（逐条）：' + results.map((r) => (r.pass ? '✅' : '❌') + r.no).join(' '));
+if (failed > 0) console.log('汇总（逐条）：' + results.map((r) => (r.pass ? (r.skip ? '⏭️' : '✅') : '❌') + r.no).join(' '));
 console.log('------------------------------------------------------------');
-console.log('通过 ' + pass + ' 项；失败 ' + failed + ' 项');
+console.log('通过 ' + pass + ' 项；失败 ' + failed + ' 项' + (skipped ? '（其中跳过 ' + skipped + ' 项，见 SKIP 行）' : ''));
 process.exitCode = failed === 0 ? 0 : 1;

@@ -1,0 +1,123 @@
+<!-- pages/partner/workbench/index.wxml · 取件清单（分组/排序由服务端返回，只渲染不重排） -->
+<view class="page-body workbench-body">
+  <switch-bar />
+  <view class="head-row">
+    <view class="title">工作台</view>
+    <view class="row">
+      <view class="mini-btn btn btn-ghost" bindtap="onRefreshTap">刷新</view>
+      <view class="mini-btn btn btn-primary" bindtap="onToggleSelecting">{{selecting ? '退出多选' : '多选'}}</view>
+    </view>
+  </view>
+
+  <view class="card counts-card">
+    <view class="counts-grid">
+      <view class="count-cell"><view class="count-value">{{counts.submitted}}</view><view class="small">待接单</view></view>
+      <view class="count-cell"><view class="count-value">{{counts.accepted}}</view><view class="small">待取件</view></view>
+      <view class="count-cell"><view class="count-value">{{counts.picked}}</view><view class="small">配送中</view></view>
+      <view class="count-cell"><view class="count-value">{{counts.delivered}}</view><view class="small">待确认</view></view>
+      <view class="count-cell"><view class="count-value">{{counts.exception}}</view><view class="small">异常</view></view>
+      <view class="count-cell"><view class="count-value">{{counts.todayCompleted}}</view><view class="small">今日完成</view></view>
+    </view>
+    <view class="row between small updated-row">
+      <text>{{updatedAtText ? '更新于 ' + updatedAtText : '下拉刷新同步'}}</text>
+      <text>只读视角下不能改状态</text>
+    </view>
+  </view>
+
+  <scroll-view class="filter-scroll" scroll-x>
+    <view class="row filter-row">
+      <view
+        wx:for="{{filters}}"
+        wx:key="key"
+        class="chip {{filter === item.key ? 'chip-active' : ''}}"
+        data-filter="{{item.key}}"
+        bindtap="onFilterTap"
+      >{{item.label}}</view>
+    </view>
+  </scroll-view>
+
+  <view class="card search-card">
+    <input class="form-input" placeholder="搜订单号 / 取件码 / 宿舍 / 称呼 / 尾号" value="{{keyword}}" bindinput="onKeywordInput" />
+  </view>
+
+  <view wx:if="{{loading}}" class="empty-text">加载中…</view>
+  <view wx:elif="{{error}}" class="card">
+    <empty-state text="{{error}}" actionText="重试" bind:action="load" />
+  </view>
+  <view wx:elif="{{!groups.length}}" class="card">
+    <empty-state
+      text="{{keyword ? '没找到匹配的订单 —— 可试试订单号或宿舍号' : '今天还没有订单。把绑定卡片发给顾客，或代客下单。'}}"
+    />
+  </view>
+
+  <block wx:for="{{groups}}" wx:key="stationName" wx:for-item="group" wx:for-index="groupIndex">
+    <view class="card station-card">
+      <view class="row between station-head">
+        <view class="strong">{{group.stationName}}（{{group.count}}）</view>
+        <view wx:if="{{selecting}}" class="mini-btn btn btn-ghost" data-index="{{groupIndex}}" bindtap="onSelectGroup">全选本站</view>
+      </view>
+
+      <view
+        wx:for="{{group.rows}}"
+        wx:key="orderNo"
+        wx:for-item="row"
+        class="order-line {{selected[row.orderNo] ? 'order-line-active' : ''}}"
+        data-order-no="{{row.orderNo}}"
+        bindtap="onRowTap"
+      >
+        <view wx:if="{{selecting}}" class="check-dot {{selected[row.orderNo] ? 'check-dot-on' : ''}}"></view>
+        <view class="flex-1 line-main">
+          <view class="row between">
+            <view class="row flex-1">
+              <view class="code-text">{{row.codeText}}</view>
+              <view wx:if="{{row.lockerText}}" class="small code-locker">{{row.lockerText}}</view>
+              <view wx:if="{{row.isGuest}}" class="tag guest-tag">代客单</view>
+            </view>
+            <status-pill status="{{row.status}}" />
+          </view>
+          <view class="muted ellipsis">{{row.anchorKeyText || row.senderText || '顾客信息待同步'}}</view>
+          <view class="row between small line-foot">
+            <text>{{row.timeText}}</text>
+            <view class="row">
+              <view wx:if="{{row.needCode}}" class="need-code-tag" data-order-no="{{row.orderNo}}" catchtap="onNeedCodeTap">需查明 · 补码</view>
+              <view wx:if="{{row.reviewText}}" class="review-tag">{{row.reviewText}}</view>
+              <view class="detail-arrow">›</view>
+            </view>
+          </view>
+          <view wx:if="{{row.exceptionText}}" class="exception-text">异常：{{row.exceptionText}}</view>
+        </view>
+      </view>
+    </view>
+  </block>
+
+  <view class="bottom-safe"></view>
+
+  <view wx:if="{{selecting}}" class="batch-bar">
+    <view class="small batch-count">已选 {{selectedCount}} 单</view>
+    <view class="row batch-actions">
+      <view
+        wx:for="{{batchActions}}"
+        wx:key="key"
+        class="btn btn-ghost batch-btn {{batchRunning ? 'btn-disabled' : ''}}"
+        data-key="{{item.key}}"
+        bindtap="onBatchTap"
+      >{{item.label}}</view>
+    </view>
+  </view>
+
+  <view wx:if="{{undo.visible}}" class="undo-bar">
+    <text>已标记「{{undo.label}}」{{undo.orderNos.length}} 单 · 可撤销 {{undo.remaining}}s</text>
+    <view class="mini-btn btn btn-ghost" bindtap="onUndoTap">撤销</view>
+  </view>
+
+  <view wx:if="{{guide.visible}}" class="guide-mask">
+    <view class="guide-box">
+      <view class="strong">{{guide.title}}（{{guide.step + 1}}/{{guide.total}}）</view>
+      <view class="guide-text">{{guide.text}}</view>
+      <view class="row guide-actions">
+        <view class="mini-btn btn btn-ghost" bindtap="onGuideSkip">跳过</view>
+        <view class="mini-btn btn btn-primary" bindtap="onGuideNext">{{guide.step + 1 === guide.total ? '知道了' : '下一步'}}</view>
+      </view>
+    </view>
+  </view>
+</view>

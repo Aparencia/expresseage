@@ -275,10 +275,11 @@ function createDeepSeekClient(options) {
 
     /**
      * 外呼一次（内部至多重试 1 次）。
-     * @param {Array<{role: string, content: string}>} messages
+     * @param {{ocrTextMasked: string, hintTrackingTail?: string, role: string}} payload 白名单入参
+     * @param {{stations?: Array}} promptOptions 站点表（服务端注入）
      * @returns {Promise<{ok: boolean, content?: string, aiTried: boolean, errorCode: string, latencyMs: number}>}
      */
-    async complete(messages) {
+    async complete(payload, promptOptions) {
       const at = nowMsOf(opts.now);
       if (!cfg.enabled) {
         return { ok: false, aiTried: false, errorCode: AI_ERROR_CODES.DISABLED, latencyMs: 0 };
@@ -289,11 +290,16 @@ function createDeepSeekClient(options) {
       if (isCircuitOpen(at)) {
         return { ok: false, aiTried: false, errorCode: AI_ERROR_CODES.CIRCUIT_OPEN, latencyMs: 0 };
       }
+      const requestBody = buildRequestBody(payload, {
+        stations: promptOptions && promptOptions.stations,
+        model: cfg.model,
+      });
+      if (!requestBody) {
+        return { ok: false, aiTried: false, errorCode: AI_ERROR_CODES.PARSE_ERROR, latencyMs: 0 };
+      }
       let last = { ok: false, aiTried: true, errorCode: AI_ERROR_CODES.HTTP_5XX, latencyMs: 0 };
       for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
-        /* eslint-disable no-await-in-loop */
-        const result = await attemptOnce(messages, cfg.timeoutMs);
-        /* eslint-enable no-await-in-loop */
+        const result = await attemptOnce(requestBody, cfg.timeoutMs);
         last = {
           ok: result.ok,
           content: result.content,
@@ -325,6 +331,8 @@ module.exports = {
   ENDPOINT,
   KEY_ENV_NAME,
   AI_ERROR_CODES,
+  AI_PAYLOAD_KEYS,
+  buildRequestBody,
   normalizeAiConfig,
   createDeepSeekClient,
   resetCircuitBreaker,

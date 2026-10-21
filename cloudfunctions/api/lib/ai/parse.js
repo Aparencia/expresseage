@@ -33,6 +33,23 @@ const DTO_KEYS = Object.freeze([
   'failureId',
 ]);
 
+/** AI 兜底来源标识：只允许在 lib/ai（与 handlers/ai）内部出现，不进 shared/**。 */
+const AI_SOURCE_DEEPSEEK = 'DEEPSEEK';
+
+/** 识别来源中文文案（服务端下发 recognitionSourceLabel）。 */
+const RECOGNITION_SOURCE_LABELS = Object.freeze({
+  RULE: '截图识别',
+  MANUAL: '手动填写',
+  DEEPSEEK: 'AI 辅助',
+});
+
+/** 识别来源值域（订单 parcel.recognitionSource 的完整集合）。 */
+const RECOGNITION_SOURCES = Object.freeze(['RULE', 'MANUAL', AI_SOURCE_DEEPSEEK]);
+
+function recognitionSourceLabel(source) {
+  return RECOGNITION_SOURCE_LABELS[source] || RECOGNITION_SOURCE_LABELS.RULE;
+}
+
 const FENCE_RE = /^```(?:json)?\s*([\s\S]*?)\s*```$/i;
 
 /**
@@ -221,6 +238,10 @@ module.exports = {
   LOCKER_NO_MAX_LENGTH,
   CONFIDENCE_VALUES,
   DTO_KEYS,
+  AI_SOURCE_DEEPSEEK,
+  RECOGNITION_SOURCES,
+  RECOGNITION_SOURCE_LABELS,
+  recognitionSourceLabel,
   parseJsonObject,
   normalizePickupCode,
   normalizeStationId,

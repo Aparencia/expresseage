@@ -1,0 +1,25 @@
+/* pkg-admin/pages/messages/index.wxss · 后台消息页页面级样式 */
+
+.system-line {
+  margin-top: 12rpx;
+  padding: 12rpx 16rpx;
+  border-radius: 8rpx;
+  background: #FFF7E6;
+  color: var(--v4-readonly-text);
+  font-size: 26rpx;
+}
+
+.message-row {
+  padding: 20rpx 0;
+  border-bottom: 1rpx solid var(--v4-line);
+}
+
+.danger-text {
+  margin-top: 8rpx;
+  font-size: 26rpx;
+  color: var(--v4-danger);
+}
+
+.link {
+  color: var(--v4-brand);
+}

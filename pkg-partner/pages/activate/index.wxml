@@ -33,7 +33,7 @@
     <view class="form-row avatar-row">
       <view class="form-label">头像</view>
       <view class="row flex-1">
-        <avatar-view fileId="{{avatarFileId}}" name="{{displayName}}" size="96" />
+        <avatar-view fileId="{{avatarFileId}}" name="{{displayName}}" size="{{96}}" />
         <button class="btn btn-ghost avatar-btn" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">
           {{uploadAvataring ? '上传中…' : '选择头像'}}
         </button>

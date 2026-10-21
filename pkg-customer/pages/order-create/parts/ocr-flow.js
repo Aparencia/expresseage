@@ -1,8 +1,7 @@
-// pkg-customer/pages/order-create/parts/ocr-flow.js · 截图上传 → 端侧识别 → AI 兜底（页面零件，允许 wx 能力）
-// 只做编排：上传走 api/upload；识别走 utils/ocr；文本解析走 utils/recognize；AI 只填空字段。
+// pkg-customer/pages/order-create/parts/ocr-flow.js · 截图识别编排（页面零件，允许 wx 能力）
+// 上传由 <image-picker> 完成（唯一上传路径 api/upload）；本零件只做 端侧识别 → AI 兜底 → 文本解析。
 'use strict';
 
-const uploadApi = require('../../../../api/upload');
 const aiApi = require('../../../../api/modules/ai');
 const ocr = require('../../../../utils/ocr/index');
 const recognize = require('../../../../utils/recognize/index');
@@ -129,16 +128,6 @@ function ocrDeps(img) {
   };
 }
 
-function uploadImage(filePath) {
-  return uploadApi.prepareAndUpload({ purpose: 'TICKET', filePath: filePath }).then(function ok(data) {
-    return {
-      uploadTicketId: data.uploadTicketId || data.ticket || '',
-      cloudPath: data.cloudPath || '',
-      fileId: data.fileId || ''
-    };
-  });
-}
-
 function applySuggestion(items, suggestion) {
   if (!suggestion || suggestion.recognized === false) {
     return { items: items, changed: false };
@@ -153,27 +142,36 @@ function applySuggestion(items, suggestion) {
 }
 
 /**
- * 一次完整识别流程。
- * @returns {Promise<{ok:boolean,file?:object,image?:object,items?:object[],ocrText?:string,
+ * 对已上传的截图跑识别。file 来自 <image-picker> 的 change 事件：
+ * { localPath, fileId, uploadTicketId, cloudPath, ... }
+ * @returns {Promise<{ok:boolean,file:object,image?:object,items?:object[],ocrText?:string,
  *   failureCode?:string,failureCopy?:object,aiTried?:boolean,aiUsed?:boolean,detail?:string}>}
  */
-async function identify(filePath, onState) {
+async function identify(file, onState) {
   const notify = typeof onState === 'function' ? onState : function noop() {};
-  const info = await imageInfo(filePath);
+  const localPath = (file && file.localPath) || '';
+  if (!localPath) {
+    return {
+      ok: false,
+      file: file || {},
+      failureCode: 'IMAGE_UNREADABLE',
+      failureCopy: ocr.failureCopy('IMAGE_UNREADABLE')
+    };
+  }
+  const info = await imageInfo(localPath);
   if (!info.ok) {
     return {
       ok: false,
+      file: file,
       failureCode: info.code,
       failureCopy: ocr.failureCopy(info.code),
       detail: info.detail
     };
   }
-  notify({ phase: 'upload' });
-  const file = await uploadImage(filePath);
-  const image = { fileId: file.fileId, width: info.width, height: info.height };
+  const image = { fileId: (file && file.fileId) || '', width: info.width, height: info.height };
   notify({ phase: 'ocr' });
   const result = await Promise.race([
-    ocr.recognize({ filePath: filePath, maxEdge: VISION_MAX_EDGE }, ocrDeps(info)),
+    ocr.recognize({ filePath: localPath, maxEdge: VISION_MAX_EDGE }, ocrDeps(info)),
     new Promise(function timeout(resolve) {
       setTimeout(function fire() {
         resolve({ ok: false, code: 'IMAGE_DECODE_FAILED', detail: '识别超时' });
@@ -202,7 +200,7 @@ async function identify(filePath, onState) {
       const suggestion = await aiApi.parseParcel({
         ocrTextMasked: recognize.maskForAi(result.joined || ''),
         hintTrackingTail: parsed.trackingTail || '',
-        uploadTicketId: file.uploadTicketId,
+        uploadTicketId: (file && file.uploadTicketId) || '',
         role: 'CUSTOMER'
       });
       const applied = applySuggestion(items, suggestion || {});
@@ -234,6 +232,5 @@ module.exports = {
   VISION_MAX_EDGE,
   hasVision,
   identify,
-  uploadImage,
   imageInfo
 };

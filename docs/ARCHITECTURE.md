@@ -157,6 +157,11 @@ const off = store.subscribe((snapshot) => { this.setData({ vm: snapshot }); });
 
 `createDao(db)` → `{ get, findOne, find({where,orderBy,skip,limit}), count, add, update, updateWhere, remove, removeWhere, transaction(fn), serverDate(), inc(value) }`；集合名一律从 `require('../shared/collections')` 的 `COLLECTIONS.*` 取。返回值形状见 §4.1。
 
+> 部署单元例外（Lead 已授权）：`cloudfunctions/cleanup` 不能 require `cloudfunctions/api/db/dao.js`，因此 `cloudfunctions/cleanup/db/dao.js` 是**第二处**允许出现 `db.collection` 的位置，接口与 `api/db/dao.js` 逐项一致；两处之外禁止出现 `db.collection`。
+> 编号生成补充：`ctx.ids.orderNo(nowMs)` 因走 `counters` 事务必须返回 Promise；`customerNo/partnerNo/failureNo` 为同步字符串，插入冲突重试由 `lib/id-generator.js` 的 `insertUnique(dao, collection, {field, generate, build})` 包裹（≤5 次，仍失败 `DEPENDENCY_FAILED`），handler 不得自建重试循环。
+> Shared 同步扩围（Lead 已授权，v3-engineering 实现）：`tools/sync-cloud-shared.js` 除 `shared/**` 与 `utils/ids.js`、`utils/room-tag.js` 外，再把 `config/defaults.js` 同步为 `cloudfunctions/*/shared/defaults.js`（云端种子/配置校验的唯一默认值来源；hash 门禁 #17 覆盖该副本）。
+> AI 兜底来源标识：`shared/enums.js` 的 `RECOGNITION_SOURCE` 只含 `RULE/MANUAL`（客户端零第三方 token）；`DEEPSEEK` 标识由 `cloudfunctions/api/lib/ai/**` 自持，订单/识别 DTO 必须由服务端下发 `recognitionSourceLabel` 中文文案，客户端不识别来源 token。`config.aiFallback.model` 默认留空串，云侧 `lib/ai` 在 model 为空时使用自身默认模型名（该差异登记 TECH_DEBT）。
+
 ### 4.3 共享注册表（`shared/**`，v3-data-model 产出；两边共同引用）
 
 | 文件 | 内容 |

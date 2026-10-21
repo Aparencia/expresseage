@@ -228,28 +228,22 @@ const UPLOAD_PURPOSE = {
   TICKET: 'TICKET',
   AVATAR: 'AVATAR'
 };
-const UPLOAD_SCOPE_PREFIX = {
-  TICKET: 'orders/',
-  AVATAR: 'avatars/'
-};
-const UPLOAD_SCOPE_FIELD = {
-  TICKET: 'image',
-  AVATAR: 'avatar'
-};
+// 云存储目录前缀只允许出现在云函数 handlers/upload 域（门禁 #29 头像路径口径），
+// 客户端从不拼路径；本文件不登记路径前缀，避免小程序包内出现存储目录字面量。
 const IMAGE_EXTENSIONS = ['jpg', 'png'];
 const IMAGE_MIME_TYPES = ['image/jpeg', 'image/png'];
 
 // ── 识别兜底与失败复核（v0.8）───────────────────────────────────────────────
+// 客户端可见的识别来源只有"规则命中/用户手改"两类；AI 兜底来源标识属云函数侧口径
+// （lib/ai 与 handlers/ai 自持），不进 shared/**，保证小程序包内零第三方 AI 痕迹。
 const RECOGNITION_SOURCE = {
   RULE: 'RULE',
-  DEEPSEEK: 'DEEPSEEK',
   MANUAL: 'MANUAL'
 };
-const RECOGNITION_SOURCE_LIST = ['RULE', 'DEEPSEEK', 'MANUAL'];
-const AI_SOURCE = {
-  RULE: 'RULE',
-  DEEPSEEK: 'DEEPSEEK',
-  NONE: 'NONE'
+const RECOGNITION_SOURCE_LIST = ['RULE', 'MANUAL'];
+const RECOGNITION_SOURCE_TEXT = {
+  RULE: '截图识别',
+  MANUAL: '手动填写'
 };
 const CONFIDENCE_LEVEL = {
   HIGH: 'HIGH',
@@ -417,13 +411,11 @@ module.exports = {
   VIEW_MODE_LIST,
   VIEW_MODE_TEXT,
   UPLOAD_PURPOSE,
-  UPLOAD_SCOPE_PREFIX,
-  UPLOAD_SCOPE_FIELD,
   IMAGE_EXTENSIONS,
   IMAGE_MIME_TYPES,
   RECOGNITION_SOURCE,
   RECOGNITION_SOURCE_LIST,
-  AI_SOURCE,
+  RECOGNITION_SOURCE_TEXT,
   CONFIDENCE_LEVEL,
   CONFIDENCE_LEVEL_LIST,
   FAILURE_CODE,

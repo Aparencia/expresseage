@@ -27,6 +27,35 @@ function redirect(url) {
   wx.reLaunch({ url: url });
 }
 
+// 把 user.bootstrap 的平铺 DTO 归一成 store 的嵌套快照（store 由 S0 维护，这里只做防御性补齐）
+function normalizeBootstrap(data) {
+  if (!data) return {};
+  const patch = {};
+  if (Array.isArray(data.roles)) patch.roles = data.roles.slice();
+  if (data.activeRole !== undefined) patch.activeRole = data.activeRole || null;
+  if (data.isDeveloper !== undefined) patch.isDeveloper = !!data.isDeveloper;
+  if (data.viewContext !== undefined) patch.viewContext = data.viewContext || null;
+  if (data.customerProfileCompleted !== undefined || data.customerNo !== undefined) {
+    patch.customer = {
+      profileComplete: !!data.customerProfileCompleted,
+      customerNo: data.customerNo || '',
+      displayName: data.customerDisplayName || data.displayName || '',
+      avatarFileId: data.customerAvatarFileId || data.avatarFileId || '',
+      roomTag: data.roomTag || ''
+    };
+  }
+  if (data.partnerStatus !== undefined || data.partnerNo !== undefined) {
+    patch.partner = {
+      status: data.partnerStatus || '',
+      profileComplete: !!data.partnerNo,
+      partnerNo: data.partnerNo || '',
+      displayName: data.partnerDisplayName || ''
+    };
+  }
+  if (data.configPublic) patch.config = data.configPublic;
+  return patch;
+}
+
 Page({
   data: {
     vm: pickVm(),
@@ -52,6 +81,7 @@ Page({
       return;
     }
     if (bindNo) this.loadBindCard(bindNo);
+    if (!this.data.vm.roles || this.data.vm.roles.length === 0) this.hydrateBootstrap();
   },
 
   onShow() {
@@ -70,6 +100,16 @@ Page({
 
   sync() {
     this.setData({ vm: pickVm() });
+  },
+
+  hydrateBootstrap() {
+    return userApi.bootstrap().then((data) => {
+      store.patch(normalizeBootstrap(data));
+      this.sync();
+      return data;
+    }).catch(function failed() {
+      return null;
+    });
   },
 
   loadBindCard(bindNo) {
@@ -130,12 +170,12 @@ Page({
   },
 
   onRetryBootstrap() {
-    userApi.bootstrap().then((data) => {
-      store.hydrateFromBootstrap(data);
-      this.sync();
+    this.hydrateBootstrap().then((data) => {
+      if (!data) {
+        wx.showToast({ title: '网络开小差了，请重试', icon: 'none' });
+        return;
+      }
       if (this._bindNo) this.loadBindCard(this._bindNo);
-    }).catch((err) => {
-      wx.showToast({ title: (err && err.message) || '网络开小差了，请重试', icon: 'none' });
     });
   }
 });

@@ -1,115 +1,106 @@
 // pkg-admin/common/constants.js · 开发者后台共用的展示常量与页面地址
-// 口径：CONTRACT v0.9 §3/§5/§7/§8 与 docs/V4_UX_DEVELOPER.md；状态与脱敏数据一律以服务端 DTO 为准。
+// 口径：CONTRACT v0.9 §3/§5/§7/§8；枚举值与状态中文一律取自 shared/enums、shared/order-state、shared/audit-actions（单源，本文件不抄状态串）。
 // 本文件只放筛选键、中文标签、展示限额与导航地址，不含业务判据。
 
-const ROLE_CUSTOMER = 'CUSTOMER';
-const ROLE_PARTNER = 'PARTNER';
+const enums = require('../../shared/enums');
+const zones = require('../../shared/zones');
+const auditActions = require('../../shared/audit-actions');
 
-const ROLE_LABELS = {
-  CUSTOMER: '顾客',
-  PARTNER: '兼职'
-};
+const ROLE_CUSTOMER = enums.ROLES.CUSTOMER;
+const ROLE_PARTNER = enums.ROLES.PARTNER;
+
+const ROLE_LABELS = enums.ROLE_LABELS;
 
 const ROLE_OPTIONS = [
-  { key: ROLE_CUSTOMER, label: '顾客' },
-  { key: ROLE_PARTNER, label: '兼职' }
+  { key: ROLE_CUSTOMER, label: ROLE_LABELS.CUSTOMER },
+  { key: ROLE_PARTNER, label: ROLE_LABELS.PARTNER }
 ];
 
 const CUSTOMER_NO_PLACEHOLDER = '输入完整顾客编号，如 C-7K2M-9QX4';
 const PARTNER_NO_PLACEHOLDER = '输入完整兼职编号，如 P-7K2-M9X';
 
-const ORDER_STATUS_TABS = [
-  { key: '', label: '全部' },
-  { key: 'SUBMITTED', label: '待接单' },
-  { key: 'ACCEPTED', label: '已接单' },
-  { key: 'PICKED', label: '已取件' },
-  { key: 'DELIVERED', label: '已送达' },
-  { key: 'COMPLETED', label: '已完成' },
-  { key: 'CANCELLED', label: '已取消' },
-  { key: 'EXCEPTION', label: '异常' }
-];
+// 订单七状态：键与中文都来自共享枚举
+const ORDER_STATUS_TABS = [{ key: '', label: '全部' }].concat(
+  enums.ORDER_STATUS_LIST.map(function (status) {
+    return { key: status, label: enums.ORDER_STATUS_TEXT[status] || status };
+  })
+);
 
-const ORDER_STATUS_LABELS = {
-  SUBMITTED: '待接单',
-  ACCEPTED: '已接单',
-  PICKED: '已取件',
-  DELIVERED: '已送达',
-  COMPLETED: '已完成',
-  CANCELLED: '已取消',
-  EXCEPTION: '异常'
-};
+const ORDER_STATUS_LABELS = enums.ORDER_STATUS_TEXT;
+const ORDER_STATUS_EXCEPTION = enums.ORDER_STATUS.EXCEPTION;
 
-const ORDER_STATUS_EXCEPTION = 'EXCEPTION';
+// 邀请码状态与有效期：共享枚举
+const INVITE_STATUS_LABELS = enums.INVITATION_STATUS_LABELS;
 
-const INVITE_STATUS_TABS = [
-  { key: '', label: '全部' },
-  { key: 'UNUSED', label: '未使用' },
-  { key: 'USED', label: '已使用' },
-  { key: 'REVOKED', label: '已作废' },
-  { key: 'EXPIRED', label: '已过期' }
-];
+const INVITE_STATUS_TABS = [{ key: '', label: '全部' }].concat(
+  Object.keys(enums.INVITATION_STATUS_LABELS).map(function (status) {
+    return { key: status, label: enums.INVITATION_STATUS_LABELS[status] };
+  })
+);
 
-const INVITE_STATUS_LABELS = {
-  UNUSED: '未使用',
-  USED: '已使用',
-  REVOKED: '已作废',
-  EXPIRED: '已过期'
-};
+const INVITE_STATUS_UNUSED = enums.INVITATION_STATUS.UNUSED;
 
-const INVITE_STATUS_UNUSED = 'UNUSED';
+function expiresLabel(hours) {
+  return hours < 48 ? hours + ' 小时' : Math.round(hours / 24) + ' 天';
+}
 
-const PARTNER_STATUS_TABS = [
-  { key: '', label: '全部' },
-  { key: 'ACTIVE', label: '接单中' },
-  { key: 'SUSPENDED', label: '已停用' },
-  { key: 'CLOSED', label: '已注销' }
-];
+const EXPIRES_OPTIONS = enums.INVITATION_EXPIRES_HOURS.map(function (hours) {
+  return { value: hours, label: expiresLabel(hours) };
+});
 
-const PARTNER_STATUS_LABELS = {
-  ACTIVE: '接单中',
-  SUSPENDED: '已停用',
-  CLOSED: '已注销'
-};
+const DEFAULT_EXPIRES_HOURS = enums.DEFAULT_INVITATION_EXPIRES_HOURS;
+const DEFAULT_EXPIRES_INDEX = enums.INVITATION_EXPIRES_HOURS.indexOf(DEFAULT_EXPIRES_HOURS);
 
-const PARTNER_STATUS_ACTIVE = 'ACTIVE';
-const PARTNER_STATUS_SUSPENDED = 'SUSPENDED';
-const PARTNER_STATUS_CLOSED = 'CLOSED';
+// 兼职状态：共享枚举；后台列表把"ACTIVE 且接单开关打开"显示为接单中
+const PARTNER_STATUS_LABELS = enums.PARTNER_STATUS_LABELS;
+const PARTNER_STATUS_ACTIVE = enums.PARTNER_STATUS.ACTIVE;
+const PARTNER_STATUS_SUSPENDED = enums.PARTNER_STATUS.SUSPENDED;
+const PARTNER_STATUS_CLOSED = enums.PARTNER_STATUS.CLOSED;
+const PARTNER_ACCEPTING_TEXT = '接单中';
 
-const FAILURE_STATUS_TABS = [
-  { key: 'PENDING', label: '待复核' },
-  { key: 'FIXED', label: '已修复' },
-  { key: 'IGNORED', label: '已忽略' }
-];
+const PARTNER_STATUS_TABS = [{ key: '', label: '全部' }].concat(
+  enums.PARTNER_STATUS_LIST.map(function (status) {
+    const label = status === PARTNER_STATUS_ACTIVE ? PARTNER_ACCEPTING_TEXT : PARTNER_STATUS_LABELS[status];
+    return { key: status, label: label || status };
+  })
+);
 
-const FAILURE_STATUS_LABELS = {
-  PENDING: '待复核',
-  FIXED: '已修复',
-  IGNORED: '已忽略'
-};
+// 识别失败复核：状态/失败码键来自共享枚举，中文按复盘口径
+const FAILURE_STATUS_LABELS = {};
+FAILURE_STATUS_LABELS[enums.FAILURE_STATUS.PENDING] = '待复核';
+FAILURE_STATUS_LABELS[enums.FAILURE_STATUS.FIXED] = '已修复';
+FAILURE_STATUS_LABELS[enums.FAILURE_STATUS.IGNORED] = '已忽略';
 
-const FAILURE_STATUS_PENDING = 'PENDING';
+const FAILURE_STATUS_TABS = enums.FAILURE_STATUS_LIST.map(function (status) {
+  return { key: status, label: FAILURE_STATUS_LABELS[status] || status };
+});
 
-const FAILURE_CODE_LABELS = {
-  NO_TEXT: '未识别到文字',
-  PARSE_MISS: '有文字但没认出站点或取件码',
-  LOW_CONFIDENCE: '识别结果可信度低',
-  LLM_ERROR: '智能识别服务不可用',
-  IMAGE_UNREADABLE: '图片无法读取'
-};
+const FAILURE_STATUS_PENDING = enums.FAILURE_STATUS.PENDING;
 
-const FAILURE_CODE_TABS = [
-  { key: '', label: '全部失败码' },
-  { key: 'NO_TEXT', label: '未识别到文字' },
-  { key: 'PARSE_MISS', label: '没认出站点或取件码' },
-  { key: 'LOW_CONFIDENCE', label: '可信度低' },
-  { key: 'LLM_ERROR', label: '识别服务不可用' },
-  { key: 'IMAGE_UNREADABLE', label: '图片无法读取' }
-];
+const FAILURE_CODE_LABELS = {};
+FAILURE_CODE_LABELS[enums.FAILURE_CODE.NO_TEXT] = '未识别到文字';
+FAILURE_CODE_LABELS[enums.FAILURE_CODE.PARSE_MISS] = '有文字但没认出站点或取件码';
+FAILURE_CODE_LABELS[enums.FAILURE_CODE.LOW_CONFIDENCE] = '识别结果可信度低';
+FAILURE_CODE_LABELS[enums.FAILURE_CODE.LLM_ERROR] = '智能识别服务不可用';
+FAILURE_CODE_LABELS[enums.FAILURE_CODE.IMAGE_UNREADABLE] = '图片无法读取';
+
+const FAILURE_CODE_SHORT_LABELS = {};
+FAILURE_CODE_SHORT_LABELS[enums.FAILURE_CODE.NO_TEXT] = '未识别到文字';
+FAILURE_CODE_SHORT_LABELS[enums.FAILURE_CODE.PARSE_MISS] = '没认出站点或取件码';
+FAILURE_CODE_SHORT_LABELS[enums.FAILURE_CODE.LOW_CONFIDENCE] = '可信度低';
+FAILURE_CODE_SHORT_LABELS[enums.FAILURE_CODE.LLM_ERROR] = '识别服务不可用';
+FAILURE_CODE_SHORT_LABELS[enums.FAILURE_CODE.IMAGE_UNREADABLE] = '图片无法读取';
+
+const FAILURE_CODE_TABS = [{ key: '', label: '全部失败码' }].concat(
+  enums.FAILURE_CODE_LIST.map(function (code) {
+    return { key: code, label: FAILURE_CODE_SHORT_LABELS[code] || code };
+  })
+);
 
 const FAILURE_SOURCE_TABS = [
   { key: '', label: '全部角色' },
-  { key: 'CUSTOMER', label: '顾客' },
-  { key: 'PARTNER', label: '兼职' }
+  { key: ROLE_CUSTOMER, label: ROLE_LABELS.CUSTOMER },
+  { key: ROLE_PARTNER, label: ROLE_LABELS.PARTNER }
 ];
 
 const FAILURE_DATE_TABS = [
@@ -118,39 +109,34 @@ const FAILURE_DATE_TABS = [
   { key: '0', label: '全部日期' }
 ];
 
+const FAILURE_DATE_DEFAULT = '7';
+
 const STATION_OPTIONS = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8'];
 
-const EXPIRES_OPTIONS = [
-  { value: 24, label: '24 小时' },
-  { value: 72, label: '72 小时' },
-  { value: 168, label: '7 天' },
-  { value: 720, label: '30 天' }
-];
+// 审计动作：动作名来自共享枚举，后台中文标签集中在此
+const AUDIT = auditActions.AUDIT_ACTIONS;
 
-const DEFAULT_EXPIRES_HOURS = 168;
-
-const AUDIT_ACTION_LABELS = {
-  INVITE_CREATE: '生成邀请码',
-  INVITE_REVOKE: '作废邀请码',
-  PARTNER_SUSPEND: '停用兼职',
-  PARTNER_RESTORE: '恢复兼职',
-  CONFIG_UPDATE: '修改全局配置',
-  ORDER_ANOMALY_CANCEL: '异常工单介入取消',
-  BOOTSTRAP: '后台初始化',
-  FAILURE_IMAGE_VIEW: '查看失败原图',
-  FAILURE_FIX: '补录识别结果',
-  FAILURE_IGNORE: '忽略识别失败',
-  ACCOUNT_SWITCH_START: '开启账号切换',
-  ACCOUNT_SWITCH_END: '结束账号切换',
-  ACCOUNT_SWITCH_EXPIRED: '账号切换过期',
-  TEST_ACCOUNT_CREATE: '新建测试账号',
-  TEST_ACCOUNT_DELETE: '删除测试账号',
-  TEST_DATA_PURGE: '清空测试数据'
-};
+const AUDIT_ACTION_LABELS = {};
+AUDIT_ACTION_LABELS[AUDIT.INVITE_CREATE] = '生成邀请码';
+AUDIT_ACTION_LABELS[AUDIT.INVITE_REVOKE] = '作废邀请码';
+AUDIT_ACTION_LABELS[AUDIT.PARTNER_SUSPEND] = '停用兼职';
+AUDIT_ACTION_LABELS[AUDIT.PARTNER_RESTORE] = '恢复兼职';
+AUDIT_ACTION_LABELS[AUDIT.CONFIG_UPDATE] = '修改全局配置';
+AUDIT_ACTION_LABELS[AUDIT.ORDER_ANOMALY_CANCEL] = '异常工单介入取消';
+AUDIT_ACTION_LABELS[AUDIT.BOOTSTRAP] = '后台初始化';
+AUDIT_ACTION_LABELS[AUDIT.FAILURE_IMAGE_VIEW] = '查看失败原图';
+AUDIT_ACTION_LABELS[AUDIT.FAILURE_FIX] = '补录识别结果';
+AUDIT_ACTION_LABELS[AUDIT.FAILURE_IGNORE] = '忽略识别失败';
+AUDIT_ACTION_LABELS[AUDIT.ACCOUNT_SWITCH_START] = '开启账号切换';
+AUDIT_ACTION_LABELS[AUDIT.ACCOUNT_SWITCH_END] = '结束账号切换';
+AUDIT_ACTION_LABELS[AUDIT.ACCOUNT_SWITCH_EXPIRED] = '账号切换过期';
+AUDIT_ACTION_LABELS[AUDIT.TEST_ACCOUNT_CREATE] = '新建测试账号';
+AUDIT_ACTION_LABELS[AUDIT.TEST_ACCOUNT_DELETE] = '删除测试账号';
+AUDIT_ACTION_LABELS[AUDIT.TEST_DATA_PURGE] = '清空测试数据';
 
 const LIMITS = {
-  inviteCountMax: 50,
-  inviteNoteMax: 50,
+  inviteCountMax: enums.INVITATION_BATCH_MAX,
+  inviteNoteMax: enums.INVITATION_NOTE_MAX,
   revokeReasonMax: 100,
   suspendReasonMax: 100,
   cancelReasonMax: 200,
@@ -162,7 +148,9 @@ const LIMITS = {
   maintenanceTextMax: 200,
   serviceNameMax: 20,
   serviceDescMax: 60,
-  testDisplayNameMax: 20
+  testDisplayNameMax: 20,
+  purgeConfirmText: 2,
+  deleteConfirmText: 2
 };
 
 const CONFIG_RANGE = {
@@ -179,7 +167,7 @@ const CONFIG_RANGE = {
 
 const DEFAULT_TTL_MINUTES = 30;
 const DEFAULT_TEST_ACCOUNT_MAX_PER_ROLE = 3;
-const TEST_ACCOUNT_TOTAL_MAX = 6;
+const TEST_ACCOUNT_TOTAL_MAX = DEFAULT_TEST_ACCOUNT_MAX_PER_ROLE * 2;
 
 const ACCOUNT_TAB_REAL = 'real';
 const ACCOUNT_TAB_TEST = 'test';
@@ -189,15 +177,13 @@ const ACCOUNT_TABS = [
   { key: ACCOUNT_TAB_TEST, label: '测试账号（可写）' }
 ];
 
-const VIEW_MODE_READONLY = 'READONLY';
-const VIEW_MODE_TEST_WRITE = 'TEST_WRITE';
-
 const REVOKE_REASON_DEFAULT = '后台作废';
+const RESTORE_REASON_DEFAULT = '后台恢复';
+const OTHER_REASON_CODE = enums.OTHER_REASON_CODE;
 
-const TARGET_HOME = {
-  CUSTOMER: '/pages/customer/home/index',
-  PARTNER: '/pages/partner/workbench/index'
-};
+const TARGET_HOME = {};
+TARGET_HOME[ROLE_CUSTOMER] = '/pages/customer/home/index';
+TARGET_HOME[ROLE_PARTNER] = '/pages/partner/workbench/index';
 
 const PAGE_URLS = {
   overview: '/pkg-admin/pages/overview/index',
@@ -214,15 +200,8 @@ const PAGE_URLS = {
   launch: '/pages/launch/index'
 };
 
-const ZONE_KEYS = ['D', 'X', 'N', 'B', 'C'];
-
-const ZONE_DEFAULT_LABELS = {
-  D: 'D 区',
-  X: 'X 区',
-  N: 'N 区',
-  B: 'B 区',
-  C: 'C 区'
-};
+const ZONE_KEYS = zones.ZONES;
+const ZONE_LABELS = zones.ZONE_LABELS;
 
 module.exports = {
   ROLE_CUSTOMER,
@@ -237,11 +216,15 @@ module.exports = {
   INVITE_STATUS_TABS,
   INVITE_STATUS_LABELS,
   INVITE_STATUS_UNUSED,
+  EXPIRES_OPTIONS,
+  DEFAULT_EXPIRES_HOURS,
+  DEFAULT_EXPIRES_INDEX,
   PARTNER_STATUS_TABS,
   PARTNER_STATUS_LABELS,
   PARTNER_STATUS_ACTIVE,
   PARTNER_STATUS_SUSPENDED,
   PARTNER_STATUS_CLOSED,
+  PARTNER_ACCEPTING_TEXT,
   FAILURE_STATUS_TABS,
   FAILURE_STATUS_LABELS,
   FAILURE_STATUS_PENDING,
@@ -249,9 +232,8 @@ module.exports = {
   FAILURE_CODE_TABS,
   FAILURE_SOURCE_TABS,
   FAILURE_DATE_TABS,
+  FAILURE_DATE_DEFAULT,
   STATION_OPTIONS,
-  EXPIRES_OPTIONS,
-  DEFAULT_EXPIRES_HOURS,
   AUDIT_ACTION_LABELS,
   LIMITS,
   CONFIG_RANGE,
@@ -261,11 +243,11 @@ module.exports = {
   ACCOUNT_TAB_REAL,
   ACCOUNT_TAB_TEST,
   ACCOUNT_TABS,
-  VIEW_MODE_READONLY,
-  VIEW_MODE_TEST_WRITE,
   REVOKE_REASON_DEFAULT,
+  RESTORE_REASON_DEFAULT,
+  OTHER_REASON_CODE,
   TARGET_HOME,
   PAGE_URLS,
   ZONE_KEYS,
-  ZONE_DEFAULT_LABELS
+  ZONE_LABELS
 };

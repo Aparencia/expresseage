@@ -31,7 +31,8 @@ Page({
   },
 
   onLoad() {
-    this.setData({ announcement: (store.get('config') && store.get('config').announcement) || '' });
+    const config = store.snapshot().config || {};
+    this.setData({ announcement: config.announcement || '' });
   },
 
   onShow() {

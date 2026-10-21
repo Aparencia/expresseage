@@ -53,7 +53,7 @@ Page({
   },
 
   applyStoreConfig() {
-    this.setData({ config: store.get('config') || {} });
+    this.setData({ config: store.snapshot().config || {} });
   },
 
   startPoll() {
@@ -131,6 +131,14 @@ Page({
 
   onRetry() {
     this.refresh();
+  },
+
+  onBackToList() {
+    wx.navigateBack({
+      fail: function fallback() {
+        wx.reLaunch({ url: '/pages/customer/orders/index' });
+      }
+    });
   },
 
   onViewImage() {

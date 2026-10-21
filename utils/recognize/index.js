@@ -157,9 +157,10 @@ function applyAiSuggestion(parcel, suggestion) {
     changed.push('lockerNo');
   }
   if (changed.length > 0) {
-    target.source = ai.source || 'DEEPSEEK';
+    target.source = ai.source || 'RULE';
     target.confidence = ai.confidence || 'MEDIUM';
     target.recognized = !!ai.recognized;
+    target.aiApplied = true;
   }
   target.failureId = ai.failureId || target.failureId || '';
   target.needsReview = ai.needsReview === true || !target.recognized;

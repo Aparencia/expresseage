@@ -97,6 +97,7 @@ add('partner', ['activate', 'saveProfile', 'saveServiceConfig', 'unbindCustomer'
 add('partner', ['getPublic', 'listBindings'], READ);
 add('bind', ['create', 'release'], WRITE);
 add('bind', ['getCurrent'], READ);
+add('bind', ['claimGuestOrder'], WRITE);
 add('order', ['create', 'createBatch', 'accept', 'reject', 'markPicked', 'unmarkPicked', 'markDelivered',
   'unmarkDelivered', 'reportException', 'resolveException', 'cancel', 'confirmDelivery', 'correct', 'undo',
   'deleteRecord'], WRITE);
@@ -112,9 +113,13 @@ add('admin', ['listInvites', 'listCustomers', 'getCustomer', 'listPartners', 'li
 add('admin', ['bootstrap'], READ, 'internal');
 add('ai', ['parseParcel'], WRITE);
 add('health', ['check'], READ, 'internal');
+// cleanup 定时任务（内部动作；只由定时触发器调用，不注册给客户端）
+add('cleanup', ['orderTimeout', 'autoComplete', 'files', 'tickets', 'viewSessions', 'retention',
+  'accountDeletion', 'invitationCodes', 'rateLimits', 'recomputeStats', 'recognitionFailures', 'testData',
+  'testAccountsDeletion'], WRITE, 'internal');
 
 /** P1 预留动作（CONTRACT 表在册但 MVP 不实现；注册表可缺省，出现则须 client）。 */
-const P1_ACTIONS = ['bind.claimGuestOrder', 'order.guestClaim'];
+const P1_ACTIONS = ['order.guestClaim'];
 
 /** internal 动作（不对客户端开放）。 */
 const INTERNAL_ACTIONS = Object.keys(ACTIONS).filter((a) => ACTIONS[a].visibility === 'internal');

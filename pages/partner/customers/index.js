@@ -75,10 +75,6 @@ Page({
     wx.showToast({ title: '点底部「分享绑定卡片」发给顾客', icon: 'none' });
   },
 
-  onShapeMessage() {
-    return '';
-  },
-
   onRowTap(event) {
     const index = event.currentTarget.dataset.index;
     const item = this.data.list[index];

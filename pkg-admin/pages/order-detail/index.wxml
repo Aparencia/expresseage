@@ -1,0 +1,99 @@
+<view class="page-body">
+  <view class="empty-text" wx:if="{{loading}}">加载中…</view>
+
+  <view class="card" wx:if="{{error}}" bindtap="onRetry">
+    <text class="muted">没连上服务器，先检查网络；刚才的数据是 {{errorAt}} 的。</text>
+    <text class="link"> 点此重试</text>
+  </view>
+
+  <view class="card" wx:if="{{notFound}}">
+    <text class="subtitle">记录不存在或已注销。</text>
+  </view>
+
+  <block wx:if="{{!loading && !notFound && order}}">
+    <view class="card">
+      <view class="row between">
+        <text class="title">{{order.orderNo}}</text>
+        <view class="row">
+          <text class="tag tag-test" wx:if="{{order.isTest}}">测试</text>
+          <text class="tag">{{order.statusText}}</text>
+        </view>
+      </view>
+      <view class="small">创建 {{order.createdAtText}} · 最近更新 {{order.statusUpdatedAtText}}</view>
+      <view class="small" wx:if="{{order.isTest && order.impersonatedBy}}">由 {{order.impersonatedBy}} 以测试账号写入（测试数据，仅后台可见）。</view>
+    </view>
+
+    <view class="card" wx:if="{{order.exceptionText || order.exceptionCodeText}}">
+      <text class="section-title">异常工单</text>
+      <view class="danger-text">{{order.exceptionCodeText}}{{order.reportedAtText ? ' · 上报 ' + order.reportedAtText : ''}}</view>
+      <view class="muted" wx:if="{{order.exceptionText}}">{{order.exceptionText}}</view>
+      <view class="btn btn-danger btn-block action-gap" wx:if="{{canCancel}}" bindtap="onCancelAnomaly">{{submitting ? '处理中…' : '介入取消（仅真实异常单）'}}</view>
+    </view>
+
+    <view class="card">
+      <text class="section-title">双方</text>
+      <view class="row between info-row" bindtap="onOpenCustomer">
+        <text class="muted">顾客</text>
+        <text>{{order.customerNo}} {{order.customerName}}</text>
+      </view>
+      <view class="row between info-row">
+        <text class="muted">兼职</text>
+        <text>{{order.partnerNo}} {{order.partnerName}}</text>
+      </view>
+    </view>
+
+    <view class="card">
+      <text class="section-title">包裹</text>
+      <view class="row between info-row">
+        <text class="muted">取件码</text>
+        <text>{{order.pickupCodeText}}</text>
+      </view>
+      <view class="row between info-row">
+        <text class="muted">柜号</text>
+        <text>{{order.lockerNoText}}</text>
+      </view>
+      <view class="row between info-row">
+        <text class="muted">运单尾号</text>
+        <text>{{order.trackingTailText}}</text>
+      </view>
+      <view class="row between info-row">
+        <text class="muted">站点</text>
+        <text>{{order.stationText}}</text>
+      </view>
+      <view class="small">敏感信息默认脱敏；完整值仅在真实账号只读会话中按目标身份查看。</view>
+    </view>
+
+    <view class="card">
+      <text class="section-title">服务</text>
+      <view class="row between info-row">
+        <text class="muted">服务类型</text>
+        <text>{{order.serviceName}}</text>
+      </view>
+      <view class="row between info-row">
+        <text class="muted">预约</text>
+        <text>{{order.appointText}}</text>
+      </view>
+      <view class="row between info-row" wx:if="{{order.note}}">
+        <text class="muted">备注</text>
+        <text>{{order.note}}</text>
+      </view>
+      <view class="row between info-row" wx:if="{{order.deliveryNote}}">
+        <text class="muted">送达备注</text>
+        <text>{{order.deliveryNote}}</text>
+      </view>
+      <view class="row between info-row" wx:if="{{order.cancelReasonText}}">
+        <text class="muted">取消原因</text>
+        <text>{{order.cancelReasonText}}</text>
+      </view>
+    </view>
+
+    <view class="card">
+      <text class="section-title">时间线</text>
+      <view class="empty-text" wx:if="{{events.length === 0}}">暂无时间线记录。</view>
+      <view class="event-row" wx:for="{{events}}" wx:key="index">
+        <text class="strong">{{item.label}}</text>
+        <view class="muted">{{item.actor}}{{item.actor ? ' · ' : ''}}{{item.atText}}</view>
+      </view>
+    </view>
+  </block>
+</view>

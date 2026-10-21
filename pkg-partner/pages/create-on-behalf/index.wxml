@@ -25,15 +25,15 @@
     </view>
     <view class="form-row">
       <view class="form-label">站点</view>
-      <picker range="{{stationOptions}}" range-key="label" value="{{stationIndex}}" bindchange="onStationChange">
-        <view class="form-input picker-value">{{stationOptions[stationIndex].label || '暂不指定（需查明）'}}</view>
+      <picker range="{{stationOptions}}" range-key="name" value="{{stationIndex}}" bindchange="onStationChange">
+        <view class="form-input picker-value">{{stationOptions[stationIndex].name || '暂不指定（需查明）'}}</view>
       </picker>
     </view>
 
     <view class="divider"></view>
     <view class="row between">
       <view class="strong">取件截图</view>
-      <image-picker purpose="TICKET" maxCount="1" bind:change="onImageChange" />
+      <image-picker purpose="TICKET" maxCount="{{1}}" bind:change="onImageChange" bind:error="onImageError" />
     </view>
     <view wx:if="{{reviewText}}" class="review-text">{{reviewText}}</view>
     <view class="row ai-row">
@@ -45,14 +45,14 @@
   <view wx:if="{{step === 2}}" class="card">
     <view class="section-title">顾客</view>
     <view class="row mode-row">
-      <view class="mode-tag {{customerMode === 'BOUND' ? 'mode-tag-active' : ''}}" data-mode="BOUND" bindtap="onCustomerModeTap">已绑定顾客</view>
+      <view class="mode-tag {{customerMode === 'BOUND' ? 'mode-tag-active' : ''}}" data-mode="BOUND" bindtap="onCustomerModeTap">已绑定（对方发起）</view>
       <view class="mode-tag {{customerMode === 'GUEST' ? 'mode-tag-active' : ''}}" data-mode="GUEST" bindtap="onCustomerModeTap">新顾客（代客单）</view>
     </view>
 
     <block wx:if="{{customerMode === 'BOUND'}}">
-      <view wx:if="{{!bindingOptions.length}}" class="small">还没有绑定顾客，可切到「新顾客（代客单）」建单。</view>
+      <view wx:if="{{!bindingOptions.length}}" class="small">还没有顾客绑定你，可切到「新顾客（代客单）」建单。</view>
       <picker wx:else range="{{bindingOptions}}" range-key="label" bindchange="onBindingPick">
-        <view class="form-input picker-value">选择已绑定顾客</view>
+        <view class="form-input picker-value">选择已绑定的顾客档案</view>
       </picker>
     </block>
 
@@ -85,7 +85,7 @@
         <view class="form-label">宿舍号</view>
         <input class="form-input" type="number" maxlength="4" placeholder="如 522" value="{{guest.room}}" data-field="room" bindinput="onGuestInput" />
       </view>
-      <view class="small guest-note">代客单不产生绑定；顾客之后绑定必须由顾客本人在顾客端发起。guest 显示默认头像 + "代客单"标签。</view>
+      <view class="small guest-note">代客单不产生绑定关系；之后要建立绑定，必须由顾客本人在顾客端发起。guest 显示默认头像 + "代客单"标签。</view>
     </block>
   </view>
 

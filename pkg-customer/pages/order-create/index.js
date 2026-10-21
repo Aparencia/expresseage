@@ -63,7 +63,7 @@ Page({
   },
 
   loadConfig() {
-    const cached = store.get('config');
+    const cached = store.snapshot().config;
     if (cached && cached.privacyVersion) {
       this.applyServices(cached);
       return;
@@ -80,7 +80,7 @@ Page({
     bindApi.getCurrent().then((data) => {
       const partnerPublic = (data && data.partnerPublic) || null;
       this.setData({ partnerPublic: partnerPublic });
-      this.applyServices(store.get('config'));
+      this.applyServices(store.snapshot().config);
     }).catch(function ignore() {});
   },
 
@@ -90,6 +90,12 @@ Page({
     if (services.length > 0) {
       const items = this.data.items.map(function map(item) {
         if (!item.serviceCode) item.serviceCode = services[0].code;
+        let index = -1;
+        for (let i = 0; i < services.length; i += 1) {
+          if (services[i].code === item.serviceCode) index = i;
+        }
+        item.serviceIndex = index >= 0 ? index : 0;
+        item.serviceCode = services[item.serviceIndex].code;
         return item;
       });
       this.setData({ items: items });
@@ -102,23 +108,42 @@ Page({
       return;
     }
     const files = (e.detail && e.detail.files) || [];
-    if (files.length === 0) return;
-    const filePath = files[0].path || files[0].tempFilePath;
-    if (!filePath) return;
+    if (files.length === 0) {
+      this.setData({ file: null, image: null, uploadTicketId: '', filePath: '' });
+      return;
+    }
+    const file = files[0];
+    if (!file || !file.localPath) return;
     this.setData({
-      filePath: filePath,
-      ocrState: 'upload',
+      file: file,
+      filePath: file.localPath,
+      image: { fileId: file.fileId || '', width: file.width || 0, height: file.height || 0 },
+      uploadTicketId: file.uploadTicketId || '',
+      ocrState: 'ocr',
       ocrError: '',
       failureText: '',
       failureNext: '',
       items: []
     });
     try {
-      const result = await ocrFlow.identify(filePath, (state) => this.onOcrPhase(state));
+      const result = await ocrFlow.identify(file, (state) => this.onOcrPhase(state));
       this.applyIdentify(result);
     } catch (err) {
       this.setData({ ocrState: 'failed', ocrError: (err && err.message) || '识别失败，可手动填写' });
     }
+  },
+
+  onPickError(e) {
+    const detail = (e && e.detail) || {};
+    this.setData({
+      ocrState: 'failed',
+      failureCode: detail.reason || 'IMAGE_UNREADABLE',
+      failureText: detail.message || '截图上传失败。',
+      failureNext: '可以重试，或手动填写后提交。',
+      uploadTicketId: '',
+      image: null,
+      file: null
+    });
   },
 
   onOcrPhase(state) {
@@ -165,8 +190,11 @@ Page({
   },
 
   onRetryOcr() {
-    if (!this.data.filePath) return;
-    this.onPickFile({ detail: { files: [{ path: this.data.filePath }] } });
+    if (!this.data.file || !this.data.file.localPath) {
+      wx.showToast({ title: '请先重新选择截图', icon: 'none' });
+      return;
+    }
+    this.onPickFile({ detail: { files: [this.data.file] } });
   },
 
   onManualTap() {
@@ -217,7 +245,10 @@ Page({
   },
 
   onServiceChange(e) {
-    this.updateItem(Number(e.currentTarget.dataset.index), { serviceCode: e.detail.value });
+    const index = Number(e.currentTarget.dataset.index);
+    const serviceIndex = Number(e.detail.value);
+    const service = this.data.services[serviceIndex] || {};
+    this.updateItem(index, { serviceCode: service.code || '', serviceIndex: serviceIndex });
   },
 
   updateItem(index, patch) {
@@ -310,7 +341,11 @@ Page({
     payload.items.forEach(function fill(item) { item.appoint = appoint; item.note = note; });
     try {
       if (payload.single) {
-        const data = await orderApi.create(payload.items[0]);
+        const singlePayload = Object.assign({}, payload.items[0], {
+          ticket: payload.ticket,
+          image: payload.image
+        });
+        const data = await orderApi.create(singlePayload);
         const order = (data && data.order) || {};
         wx.showToast({ title: '已提交，等待兼职接单', icon: 'success' });
         setTimeout(function go() {

@@ -1,18 +1,18 @@
-<!-- pages/partner/customers/index.wxml · 客户档案（只列已被顾客绑定的顾客） -->
+<!-- pages/partner/customers/index.wxml 路 瀹㈡埛妗ｆ锛堝彧鍒楀凡琚【瀹㈢粦瀹氱殑椤惧锛?-->
 <view class="page-body">
   <switch-bar />
   <view class="row between head">
-    <view class="title">客户</view>
+    <view class="title">瀹㈡埛</view>
     <view class="row">
-      <view class="btn btn-ghost head-btn" bindtap="onCopyPartnerNo">复制编号</view>
-      <view class="btn btn-primary head-btn" bindtap="goCreateOnBehalf">代客下单</view>
+      <view class="btn btn-ghost head-btn" bindtap="onCopyPartnerNo">澶嶅埗缂栧彿</view>
+      <view class="btn btn-primary head-btn" bindtap="goCreateOnBehalf">浠ｅ涓嬪崟</view>
     </view>
   </view>
 
   <view class="card search-card">
     <input
       class="form-input"
-      placeholder="搜索：楼栋 / 宿舍 / 称呼 / 尾号"
+      placeholder="鎼滅储锛氭ゼ鏍?/ 瀹胯垗 / 绉板懠 / 灏惧彿"
       value="{{keyword}}"
       bindinput="onKeywordInput"
       bindconfirm="onKeywordConfirm"
@@ -20,37 +20,37 @@
   </view>
 
   <view class="card guide-card">
-    <view class="strong">绑定只能由顾客发起</view>
-    <view class="small">把绑定卡片或兼职编号发给顾客，顾客在自己手机上确认后才会建立绑定；兼职端不提供添加、绑定、导入顾客的入口。</view>
+    <view class="strong">缁戝畾鍙兘鐢遍【瀹㈠彂璧?/view>
+    <view class="small">鎶婄粦瀹氬崱鐗囨垨鍏艰亴缂栧彿鍙戠粰椤惧锛岄【瀹㈠湪鑷繁鎵嬫満涓婄‘璁ゅ悗鎵嶄細寤虹珛缁戝畾锛涘吋鑱岀涓嶆彁渚涙坊鍔犮€佺粦瀹氥€佸鍏ラ【瀹㈢殑鍏ュ彛銆?/view>
   </view>
 
-  <view wx:if="{{loading}}" class="empty-text">加载中…</view>
+  <view wx:if="{{loading}}" class="empty-text">鍔犺浇涓€?/view>
   <view wx:elif="{{error}}" class="card">
-    <empty-state text="{{error}}" actionText="重试" bind:action="load" />
+    <empty-state text="{{error}}" actionText="閲嶈瘯" bind:action="load" />
   </view>
   <view wx:elif="{{!list.length}}" class="card">
     <empty-state
-      text="{{total ? '这个搜索下没有顾客' : '还没有绑定顾客。把绑定卡片发给顾客，让顾客自己绑定。'}}"
-      actionText="{{total ? '' : '分享绑定卡片'}}"
+      text="{{total ? '杩欎釜鎼滅储涓嬫病鏈夐【瀹? : '杩樻病鏈夌粦瀹氶【瀹€傛妸缁戝畾鍗＄墖鍙戠粰椤惧锛岃椤惧鑷繁缁戝畾銆?}}"
+      actionText="{{total ? '' : '鍒嗕韩缁戝畾鍗＄墖'}}"
       bind:action="onShareTap"
     />
   </view>
 
   <view wx:for="{{list}}" wx:key="bindingId" class="card customer-item" data-index="{{index}}" bindtap="onRowTap">
-    <avatar-view fileId="{{item.avatarFileId}}" name="{{item.displayName}}" size="64" />
+    <avatar-view fileId="{{item.avatarFileId}}" name="{{item.displayName}}" size="{{64}}" />
     <view class="flex-1 customer-main">
       <view class="row between">
-        <view class="strong ellipsis">{{item.displayName || '未填称呼'}}</view>
-        <view wx:if="{{item.activeOrderCount}}" class="tag">进行中 {{item.activeOrderCount}}</view>
+        <view class="strong ellipsis">{{item.displayName || '鏈～绉板懠'}}</view>
+        <view wx:if="{{item.activeOrderCount}}" class="tag">杩涜涓?{{item.activeOrderCount}}</view>
       </view>
       <view class="muted ellipsis">{{item.anchorKeyText}}</view>
-      <view class="small">顾客编号 {{item.customerNo}}<text wx:if="{{item.boundAtText}}"> · 绑定 {{item.boundAtText}}</text></view>
+      <view class="small">椤惧缂栧彿 {{item.customerNo}}<text wx:if="{{item.boundAtText}}"> 路 缁戝畾 {{item.boundAtText}}</text></view>
     </view>
   </view>
 
   <view class="row bottom-actions">
     <button wx:if="{{!session}}" class="btn btn-ghost btn-block share-btn" open-type="share">
-      分享绑定卡片（顾客自己绑定）
+      鍒嗕韩缁戝畾鍗＄墖锛堥【瀹㈣嚜宸辩粦瀹氾級
     </button>
   </view>
 </view>

@@ -1,0 +1,131 @@
+<view class="page-body">
+  <view class="card">
+    <text class="section-title">识别失败复核</text>
+    <view class="small">这里只处理识别失败的截图复核：可按单查看原图（每次查看都会记审计），补录站点/取件码只回填订单的识别字段，不会改变订单状态。</view>
+  </view>
+
+  <scroll-view class="filter-row" scroll-x="true">
+    <view class="filter-chip" wx:for="{{statusTabs}}" wx:key="key" data-key="{{item.key}}" bindtap="onStatusTab">
+      <text>{{item.label}}{{item.countText}}</text>
+      <view class="chip-bar" wx:if="{{item.active}}"></view>
+    </view>
+  </scroll-view>
+
+  <view class="filter-pickers">
+    <picker range="{{codeLabels}}" value="{{codeIndex}}" bindchange="onCodeChange">
+      <view class="pick-item">{{codeLabels[codeIndex]}}</view>
+    </picker>
+    <picker range="{{sourceLabels}}" value="{{sourceIndex}}" bindchange="onSourceChange">
+      <view class="pick-item">{{sourceLabels[sourceIndex]}}</view>
+    </picker>
+    <picker range="{{dateLabels}}" value="{{dateIndex}}" bindchange="onDateChange">
+      <view class="pick-item">{{dateLabels[dateIndex]}}</view>
+    </picker>
+  </view>
+
+  <view class="empty-text" wx:if="{{loading}}">加载中…</view>
+
+  <view class="card" wx:if="{{error}}" bindtap="onRetry">
+    <text class="muted">没连上服务器，先检查网络；刚才的数据是 {{errorAt}} 的。</text>
+    <text class="link"> 点此重试</text>
+  </view>
+
+  <view class="empty-text" wx:if="{{!loading && !error && list.length === 0}}">{{emptyText}}</view>
+
+  <view class="card" wx:for="{{list}}" wx:key="failureNo" data-no="{{item.failureNo}}" bindtap="onRowTap">
+    <view class="row between">
+      <text class="strong">{{item.failureNo}}</text>
+      <view class="row">
+        <text class="tag">{{item.statusText}}</text>
+      </view>
+    </view>
+    <view class="muted">{{item.failureCodeText}} · {{item.sourceRoleText}}{{item.uploaderText ? ' · ' + item.uploaderText : ''}}</view>
+    <view class="small">{{item.createdAtText}}{{item.orderNo ? ' · 订单 ' + item.orderNo : ' · 未关联订单'}}</view>
+    <view class="expand" wx:if="{{item.expanded}}">
+      <view class="empty-text" wx:if="{{detailLoading}}">详情加载中…</view>
+      <block wx:if="{{detail}}">
+        <view class="row between detail-row">
+          <text class="muted">失败码</text>
+          <text>{{detail.failureCodeText}}</text>
+        </view>
+        <view class="row between detail-row">
+          <text class="muted">上传人</text>
+          <text>{{detail.uploaderText}}</text>
+        </view>
+        <view class="row between detail-row">
+          <text class="muted">入队时间</text>
+          <text>{{detail.createdAtText}}</text>
+        </view>
+        <view class="row between detail-row" wx:if="{{detail.reviewedAtText}}">
+          <text class="muted">复核时间</text>
+          <text>{{detail.reviewedAtText}}</text>
+        </view>
+
+        <view class="detail-block">
+          <text class="detail-label">原图</text>
+          <view class="btn btn-ghost btn-small" bindtap="onViewImage">查看原图（临时 5 分钟，将记审计）</view>
+        </view>
+
+        <view class="detail-block">
+          <text class="detail-label">OCR 文本（已去敏）</text>
+          <text class="ocr-text">{{detail.ocrExpanded ? detail.ocrText : detail.ocrShort}}</text>
+          <view class="btn btn-ghost btn-small" wx:if="{{detail.ocrFoldable}}" bindtap="onToggleOcr">{{detail.ocrExpanded ? '收起' : '展开'}}</view>
+        </view>
+
+        <view class="detail-block">
+          <text class="detail-label">规则结果</text>
+          <text class="muted">{{detail.ruleText}}</text>
+        </view>
+
+        <view class="detail-block">
+          <text class="detail-label">智能识别尝试</text>
+          <text class="muted">{{detail.aiTriedText}} · {{detail.aiModelText}}</text>
+          <text class="muted">结果：{{detail.aiResultText}}</text>
+          <text class="muted" wx:if="{{detail.aiErrorText}}">{{detail.aiErrorText}}</text>
+        </view>
+
+        <view class="detail-block" wx:if="{{detail.orderNo}}" data-no="{{detail.orderNo}}" bindtap="onOpenOrder">
+          <text class="detail-label">关联订单</text>
+          <text class="strong">{{detail.orderNo}}</text>
+        </view>
+
+        <block wx:if="{{detail.canReview}}">
+          <view class="detail-block">
+            <text class="detail-label">补录站点</text>
+            <picker range="{{stationOptions}}" value="{{stationIndex}}" bindchange="onStationChange">
+              <view class="pick-item">{{stationOptions[stationIndex]}}</view>
+            </picker>
+          </view>
+          <view class="detail-block">
+            <text class="detail-label">补录取件码</text>
+            <input class="form-input" value="{{pickupCode}}" maxlength="40" placeholder="取件码（可留空，最多 40 位）" bindinput="onPickupCodeInput" />
+          </view>
+          <view class="row between detail-row">
+            <text class="muted">同时站内通知上传者</text>
+            <switch checked="{{notifyUploader}}" color="#1F7A5C" bindchange="onNotifyChange" />
+          </view>
+          <view class="btn btn-primary btn-block action-gap" bindtap="onFix">{{submitting ? '提交中…' : '保存补录'}}</view>
+
+          <view class="detail-block">
+            <text class="detail-label">忽略原因（必填，最多 100 字）</text>
+            <input class="form-input" value="{{ignoreNote}}" maxlength="100" placeholder="忽略原因" bindinput="onIgnoreNoteInput" />
+          </view>
+          <view class="btn btn-danger btn-block action-gap" bindtap="onIgnore">{{submitting ? '提交中…' : '标记忽略'}}</view>
+        </block>
+
+        <view class="detail-block" wx:if="{{detail.resolutionNote}}">
+          <text class="detail-label">处理结果</text>
+          <text class="muted">{{detail.resolutionNote}}{{detail.resolutionAtText ? ' · ' + detail.resolutionAtText : ''}}</text>
+        </view>
+      </block>
+    </view>
+  </view>
+
+  <view class="mask" wx:if="{{showImage}}" bindtap="onCloseImage">
+    <view class="image-panel" catchtap="noop">
+      <failure-image failure-no="{{imageFailureNo}}" bind:loaded="onImageLoaded" bind:error="onImageError" />
+      <view class="small">临时地址 5 分钟有效；本次查看已记审计。请勿截图外传或另存。</view>
+      <view class="btn btn-ghost btn-block" bindtap="onCloseImage">关闭</view>
+    </view>
+  </view>
+</view>

@@ -9,7 +9,7 @@
   <block wx:elif="{{view}}">
     <view class="card head-card">
       <view class="row">
-        <avatar-view fileId="{{view.avatarFileId}}" name="{{view.displayName}}" size="96" />
+        <avatar-view fileId="{{view.avatarFileId}}" name="{{view.displayName}}" size="{{96}}" />
         <view class="flex-1 head-main">
           <view class="row between">
             <view class="strong">{{view.displayName || '未填称呼'}}</view>

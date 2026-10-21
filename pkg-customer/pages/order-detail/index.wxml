@@ -8,7 +8,7 @@
   <view class="card" wx:if="{{error}}">
     <view class="muted">{{error}}</view>
     <button class="btn btn-ghost btn-small" bindtap="onRetry">重新加载</button>
-    <button class="btn btn-ghost btn-small" bindtap="onRetry">回到订单列表</button>
+    <button class="btn btn-ghost btn-small" bindtap="onBackToList">回到订单列表</button>
   </view>
 
   <block wx:if="{{order}}">

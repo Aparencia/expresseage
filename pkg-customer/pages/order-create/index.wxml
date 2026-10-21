@@ -20,7 +20,7 @@
     <view class="card">
       <view class="section-title">上传取件码截图</view>
       <view class="muted">截图仅用于识别取件码与兼职核对；订单完成或取消后 7 天删除。</view>
-      <image-picker purpose="TICKET" max-count="1" bind:change="onPickFile" />
+      <image-picker purpose="TICKET" max-count="1" bind:change="onPickFile" bind:error="onPickError" />
       <view class="muted upload-state" wx:if="{{ocrState === 'upload'}}">正在上传…</view>
       <view class="muted upload-state" wx:if="{{ocrState === 'ocr'}}">正在识别截图里的取件码…（通常 3~10 秒）</view>
       <view class="muted upload-state" wx:if="{{ocrState === 'ai'}}">正在智能识别，可继续手动填写…</view>

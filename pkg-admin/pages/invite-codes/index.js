@@ -38,7 +38,7 @@ Page({
     forbidden: false,
     showCreate: false,
     expiresLabels: buildExpiresLabels(),
-    expiresIndex: 2,
+    expiresIndex: C.DEFAULT_EXPIRES_INDEX,
     form: { count: '1', note: '' },
     createError: '',
     submitting: false,

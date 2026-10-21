@@ -5,19 +5,23 @@
 const store = require('../../../store/index');
 const orderApi = require('../../../api/modules/order');
 const route = require('../../../config/route');
+const state = require('../../../shared/order-state');
 
-const TABS = [
-  { key: 'ONGOING', label: '进行中' },
-  { key: 'COMPLETED', label: '已完成' },
-  { key: 'CANCELLED', label: '已取消' }
-];
 const DETAIL_PAGE = '/pkg-customer/pages/order-detail/index';
 const CREATE_PAGE = '/pkg-customer/pages/order-create/index';
 const PAGE_SIZE = 20;
 
+function buildTabs() {
+  return [
+    { key: 'ONGOING', label: '进行中', status: '' },
+    { key: 'DONE', label: '已完成', status: state.STATUS.COMPLETED },
+    { key: 'CANCELED', label: '已取消', status: state.STATUS.CANCELLED }
+  ];
+}
+
 Page({
   data: {
-    tabs: TABS,
+    tabs: buildTabs(),
     activeKey: 'ONGOING',
     list: [],
     cursor: null,
@@ -61,10 +65,21 @@ Page({
     return this.loadPage(false);
   },
 
+  activeTab() {
+    const key = this.data.activeKey;
+    const tabs = this.data.tabs || [];
+    for (let i = 0; i < tabs.length; i += 1) {
+      if (tabs[i].key === key) return tabs[i];
+    }
+    return tabs[0];
+  },
+
   async loadPage(reset) {
     if (this.data.loading) return;
     this.setData({ loading: true, error: reset ? '' : this.data.error });
-    const payload = { status: this.data.activeKey, limit: PAGE_SIZE };
+    const tab = this.activeTab();
+    const payload = { limit: PAGE_SIZE };
+    if (tab && tab.status) payload.status = tab.status;
     if (!reset && this.data.cursor) payload.cursor = this.data.cursor;
     try {
       const data = await orderApi.listCustomer(payload);

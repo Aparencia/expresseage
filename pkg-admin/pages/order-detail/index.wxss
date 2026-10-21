@@ -1,0 +1,25 @@
+/* pkg-admin/pages/order-detail/index.wxss · 订单详情页页面级样式 */
+
+.info-row {
+  min-height: 72rpx;
+  border-bottom: 1rpx solid var(--v4-line);
+}
+
+.danger-text {
+  margin: 8rpx 0;
+  font-size: 26rpx;
+  color: var(--v4-danger);
+}
+
+.action-gap {
+  margin-top: 24rpx;
+}
+
+.event-row {
+  padding: 16rpx 0;
+  border-bottom: 1rpx solid var(--v4-line);
+}
+
+.link {
+  color: var(--v4-brand);
+}

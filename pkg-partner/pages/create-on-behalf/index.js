@@ -3,8 +3,8 @@ const orderApi = require('../../../api/modules/order');
 const partnerApi = require('../../../api/modules/partner');
 const configApi = require('../../../api/modules/config');
 const aiApi = require('../../../api/modules/ai');
-const upload = require('../../../api/upload');
 const store = require('../../../store/index');
+const stations = require('../../../shared/stations');
 const modeGuard = require('../../../api/mode-guard');
 
 const SERVICE_FALLBACK = [
@@ -92,7 +92,8 @@ Page({
           zones: zones,
           bindingOptions: bindingOptions,
           customerMode: bindingOptions.length ? 'BOUND' : 'GUEST',
-          appointOptions: this.buildAppointOptions()
+          appointOptions: this.buildAppointOptions(),
+          stationOptions: [{ id: '', name: '暂不指定（需查明）' }].concat(stations.listStations())
         });
       })
       .catch((err) => {
@@ -163,15 +164,18 @@ Page({
     if (!files.length) {
       return;
     }
-    this.setData({ recognizeText: '', reviewText: '' });
-    upload
-      .prepareAndUpload({ purpose: 'TICKET', filePath: files[0] })
-      .then((uploaded) => {
-        this.setData({ imageFileId: uploaded.fileId || '', imageTicketId: uploaded.uploadTicketId || '' });
-      })
-      .catch((err) => {
-        this.setData({ errorText: (err && err.message) || '截图上传失败，请重试或手填' });
-      });
+    const uploaded = files[0] || {};
+    this.setData({
+      recognizeText: '',
+      reviewText: '',
+      imageFileId: uploaded.fileId || '',
+      imageTicketId: uploaded.uploadTicketId || ''
+    });
+  },
+
+  onImageError(event) {
+    const detail = (event && event.detail) || {};
+    this.setData({ errorText: detail.message || '截图上传失败，请重试或手填' });
   },
 
   onRecognizeTap() {
@@ -287,7 +291,9 @@ Page({
       parcel: {
         pickupCode: textOf(parcel.pickupCode),
         lockerNo: textOf(parcel.lockerNo),
-        trackingTail: textOf(parcel.trackingTail)
+        trackingTail: textOf(parcel.trackingTail),
+        stationId: this.data.stationOptions[this.data.stationIndex].id || '',
+        stationName: this.data.stationOptions[this.data.stationIndex].name || ''
       },
       serviceCode: service.code,
       appoint: appoint,

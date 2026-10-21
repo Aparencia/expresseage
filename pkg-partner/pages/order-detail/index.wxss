@@ -1,0 +1,155 @@
+/* pkg-partner/pages/order-detail/index.wxss · 订单详情局部样式 */
+.detail-body {
+  padding-bottom: 200rpx;
+}
+
+.head-card {
+  padding-bottom: 16rpx;
+}
+
+.order-no {
+  font-size: 32rpx;
+  margin-right: 12rpx;
+}
+
+.copy-btn {
+  min-height: 56rpx;
+  padding: 0 16rpx;
+  font-size: 24rpx;
+}
+
+.guest-row {
+  margin-top: 16rpx;
+}
+
+.guest-tag {
+  margin: 0 12rpx;
+  background: #E8F0FF;
+  color: #2B6DE5;
+}
+
+.counterpart {
+  margin-top: 20rpx;
+}
+
+.counterpart-main {
+  margin-left: 16rpx;
+}
+
+.flag-tip {
+  margin-top: 12rpx;
+  padding: 12rpx 16rpx;
+  border-radius: 12rpx;
+  background: #FFF4CE;
+  color: #8A6D00;
+  font-size: 26rpx;
+}
+
+.image-row {
+  margin-top: 16rpx;
+}
+
+.mini-btn {
+  min-height: 64rpx;
+  padding: 0 20rpx;
+  font-size: 26rpx;
+}
+
+.event-row {
+  display: flex;
+  padding: 12rpx 0;
+  border-bottom: 1rpx solid #EEEEEE;
+}
+
+.event-time {
+  width: 100rpx;
+  flex-shrink: 0;
+}
+
+.event-label {
+  flex: 1;
+}
+
+.message-row {
+  padding: 12rpx 0;
+  border-bottom: 1rpx solid #EEEEEE;
+}
+
+.action-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  padding: 16rpx 24rpx calc(16rpx + env(safe-area-inset-bottom));
+  background: #FFFFFF;
+  box-shadow: 0 -2rpx 12rpx rgba(0, 0, 0, 0.06);
+}
+
+.action-btn {
+  flex: 1;
+  margin: 0 8rpx;
+}
+
+.undo-bar {
+  position: fixed;
+  left: 24rpx;
+  right: 24rpx;
+  bottom: 180rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16rpx 24rpx;
+  border-radius: 16rpx;
+  background: #1A1A1A;
+  color: #FFFFFF;
+  font-size: 26rpx;
+}
+
+.bottom-safe {
+  height: 120rpx;
+}
+
+.panel-mask {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: flex-end;
+  z-index: 20;
+}
+
+.panel {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 24rpx 24rpx calc(24rpx + env(safe-area-inset-bottom));
+  background: #FFFFFF;
+  border-radius: 24rpx 24rpx 0 0;
+}
+
+.panel-textarea {
+  width: 100%;
+  min-height: 160rpx;
+  box-sizing: border-box;
+  margin-top: 16rpx;
+  padding: 16rpx;
+  border-radius: 12rpx;
+  background: #F6F7F9;
+  font-size: 28rpx;
+}
+
+.panel-actions {
+  justify-content: flex-end;
+  margin-top: 20rpx;
+}
+
+.panel-actions .mini-btn {
+  margin-left: 16rpx;
+}
+
+.picker-value {
+  min-height: 40rpx;
+}

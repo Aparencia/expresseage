@@ -4,8 +4,6 @@ const configApi = require('../../../api/modules/config');
 const store = require('../../../store/index');
 const modeGuard = require('../../../api/mode-guard');
 
-const CUSTOM_SERVICE = 'CUSTOM';
-
 function arr(value) {
   return Array.isArray(value) ? value : [];
 }
@@ -158,10 +156,6 @@ Page({
     }
     if (!payload.zones.length) {
       this.setData({ errorText: '至少选 1 个苑作为服务范围' });
-      return;
-    }
-    if (!payload.services.some((item) => item.code === CUSTOM_SERVICE) && this.data.services.length === 0) {
-      this.setData({ errorText: '服务类型目录还没加载出来，请稍后重试' });
       return;
     }
     this.setData({ saving: true, errorText: '' });

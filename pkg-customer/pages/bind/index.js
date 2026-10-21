@@ -108,7 +108,8 @@ Page({
     this.setData({ loading: true, error: '' });
     partnerApi.getPublic({ partnerNo: partnerNo }).then((data) => {
       const partner = (data && data.partnerPublic) || data || {};
-      const catalog = (store.get('config') && store.get('config').serviceCatalog) || [];
+      const config = store.snapshot().config || {};
+      const catalog = config.serviceCatalog || [];
       const names = serviceNames(partner.services, catalog);
       this.setData({
         loading: false,
