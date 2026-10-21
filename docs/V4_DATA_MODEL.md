@@ -167,7 +167,7 @@ v0.7 关闭全部非 D 级缺口：零金额（§0.3）、双角色唯一编号�
 | `statusUpdatedAt` | Date | 是 | 最近状态变更（排序/cleanup 锚） | 状态动作 | 双方 | L1 |
 | `acceptedAt`/`pickedAt`/`deliveredAt`/`completedAt`/`cancelledAt` | Date | 否 | 对应动作写、撤销清空；已送达/完成/取消即终态时间 | 状态动作 | 双方 | L1 |
 | `deletedByCustomerAt`/`anonymizedAt` | Date | 否 | 删除记录仅 COMPLETED、7 天后物理删 / 匿名化时间（**cleanup 幂等判据**，禁止重复匿名化） | `order.deleteRecord`/cleanup | 双方（前者）/admin（后者） | L1/L2 |
-| `batchActionId`/`clientRequestId` | string | 否/是 | ≤32 随机批量分组/16~32 位幂等键 | 批量动作/下单 | 内部 | L2 |
+| `batchActionId`/`clientRequestId` | string | 否/是 | ≤32 随机批量分组/16~32 位幂等键；**批 6 起**：`order.markPicked`/`order.markDelivered`/`order.correct`/`order.undo` 由入参回填本字段（形态闸 `^[A-Za-z0-9_-]{1,32}$`，非法 `VALIDATION_FAILED`），缺省/空串写 `''` 清旧批次归属（单次动作不属于任何批量） | 批量动作/下单 | 内部 | L2 |
 | `version` | number | 是 | 从 1 起、每次写 +1；乐观锁 | 所有写动作 | 双方（响应） | L1 |
 | `createdAt`†/`updatedAt`† | Date | 是 | 服务端时间 | 下单/写动作 | 双方 | L1 |
 | `claimTokenHash`†/`claimExpiresAt`†/`claimedAt`† | — | 否 | `[P1]` 代客单认领预留（MVP 不实现认领） | — | 内部/admin | L2 |
@@ -662,7 +662,7 @@ api(event):
 | `order.createBatch` | `{items:[{parcel,serviceCode,appoint,note?}],ticket,image}`（一图多码≤5） → `{orders[],duplicated?}` | 顾客/兼职（guest） | 每条 `requestKey={identity}:{clientRequestId}:{itemIndex}`；20 单/日（按条计）；**单事务原子创建 N 单** | 同 `order.create`；>5 条或任一非法→`VALIDATION_FAILED`（不建）；`acceptingOrders=false`→`PARTNER_CLOSED`（不建） |
 | `order.get` | `{orderNo}` → `{order,events[]}`（裁剪事件 `{type,at,actorRole,note}`；`order` 含 `customerNo/partnerNo` 快照、服务端动作条 `actions[]{key,label}`、`image{hasImage,cleaned}`） | 订单双方/admin/只读视角 | 读 | `FORBIDDEN`/`NOT_FOUND` |
 | `order.listCustomer` | `{status?,keyword?,cursor?,limit?}` → `{list,nextCursor,counts:{ongoing,completed,cancelled}}`（`counts` 为全量口径、不受 `status/keyword` 影响、排除软删、`isTest` 隔离） | 本人（customerId=me） | 读 | `FORBIDDEN` |
-| `order.listPartner` | `{view:'workbench'\|'history',status?,from?,to?,keyword?,cursor?,limit?}` → `{list,nextCursor,counts:{submitted,accepted,picked,delivered,exception,todayCompleted}}` | 该兼职（partnerId=me） | 读 | `FORBIDDEN`/`VALIDATION_FAILED` |
+| `order.listPartner` | `{view:'workbench'\|'history',status?,from?,to?,keyword?,cursor?,limit?}` → `{list,nextCursor,counts:{submitted,accepted,picked,delivered,exception,todayCompleted}}`（**批 6**：`view='workbench'` 时 list 行内联 `actions[]{key,label}`，只含合法 PARTNER 动作 + 5s undo 窗；`history` 不返回 actions） | 该兼职（partnerId=me）；SUSPENDED/CLOSED 亦 `PARTNER_CLOSED`（读工作台同样下线） | 读 | `FORBIDDEN`/`VALIDATION_FAILED`/`PARTNER_CLOSED` |
 | `order.imageUrl` | `{orderNo}` → `{url,expiresAt}`（`image.cleanedAt` 已置 → `NOT_FOUND`「截图已按隐私策略删除（完成/取消 7 天后）」） | 订单双方/只读视角 | 读（URL 不落库） | `FORBIDDEN`/`NOT_FOUND` |
 | `order.accept` | `{orderNo,expectedVersion?}` → `{order}` | 该兼职（SUBMITTED；SUSPENDED/CLOSED 不可） | `order_events.requestKey` | `INVALID_TRANSITION`/`PARTNER_CLOSED` |
 | `order.reject` | `{orderNo,reason}` → `{order}` | 该兼职（SUBMITTED；reason 必填） | 同上 | `INVALID_TRANSITION`/`VALIDATION_FAILED` |
@@ -679,6 +679,8 @@ api(event):
 | `order.deleteRecord` | `{orderNo}` → `{deletedByCustomerAt}` | 顾客（仅 COMPLETED 本人单） | 自然幂等 | `INVALID_STATE`/`FORBIDDEN` |
 
 `order.undo` 可撤销集合：`markPicked`→`PICKED_REVERTED`、`markDelivered`→`DELIVERED_REVERTED`；**接单不可撤销**（误接单走 `order.cancel`）；**不存在任何收款/标记已收/撤销收款动作**；批量动作不设 batch 云函数：客户端逐单调用、共享 `batchActionId`、逐单返回并汇总“成功 N/失败 M”（不得把部分成功显示为全部成功）。**v0.9 订单 DTO/隔离**：`order.get/listCustomer/listPartner` 可内联 `counterpart{displayName,avatarFileId?}`（**仅当前 ACTIVE 绑定关系内**；解绑/停用/注销后不再返回，历史单只留编号）；`orders.isTest`/`impersonatedBy` **服务端派生**、客户端传入忽略；真实用户永不返回测试单；测试单在后台以「测试」标签标识；跨测试/真实的 `order.create/createBatch` 一律 `FORBIDDEN`。`order.create` 的 `order` 出参含 `customerNo/partnerNo` 快照（顾客看自己的 `customerNo`、兼职看 `customerNo`；双方看对方编号），但**编号不可用于越权查询**。**批 5 顾客闭环（只增不改语义）**：①`order.get` 的 `order.actions[]` 由服务端按七状态矩阵下发——顾客 `cancel`（SUBMITTED/ACCEPTED；EXCEPTION 依 `exception.fromStatus`）/`confirm`（DELIVERED）/`deleteRecord`（COMPLETED 且未软删）/`reorder`（COMPLETED、CANCELLED）/`message`（进行中五态，终态无），页面只消费不本地猜；②`order.get/listCustomer` 的 `image` 为 `{hasImage,cleaned}`（`cleaned` 只读 `image.cleanedAt`，写入由批 8 cleanup）；③`order.listCustomer` 增 `counts{ongoing,completed,cancelled}`（分组 tab 计数）；④写动作支持包络 `expectedVersion` 乐观锁（与 `version` 不符 → `CONFLICT`，页面刷新后重试）；⑤`order.correct` 在 `NEED_CODE→OK` 补码时事件 `note='兼职已补齐取件码'`（其余更正 `note` 为空，客户端给通用文案）。
+
+**批 6 兼职工作台（只增不改语义）**：①`order.listPartner({view:'workbench'})` 行 DTO 内联 `actions[]`（复用手头 PARTNER 动作矩阵 + 5s undo 窗，`history` 不发、`listCustomer` 不动）；②PARTNER `DELIVERED` 动作矩阵**不含 `correct`**（对齐 UX_PARTNER §4.4 与 §7.4 状态机：柜号/尾号改动仅 `PICKED` 前；页面不得本地补回）；③`order.undo` 撤销送达时同步清空 `deliveryNote`（与 `order.unmarkDelivered` 同口径）；④`order.unmarkPicked`/`order.unmarkDelivered` 事件 `undoneAction` 写被撤销动作（`order.markPicked`/`order.markDelivered`），与 `order.undo` 两入口一致；⑤`order.listPartner` 完整订单号搜索走 `uk_order_no` 唯一索引精确匹配（不受 300 条扫描窗限制），其它关键词仍按窗口匹配（TD-044 登记）；⑥`order.reject` 的 `OTHER` 原因必须带备注（与 `order.cancel` 同校验；曾静默通过）；⑦`order.accept`/`order.reject`/`order.markPicked`/`order.markDelivered` 的 `PARTNER_CLOSED`/`FORBIDDEN` 由通用引擎在流转前拦截，零落库。
 ### 7.6 `message.*` / `upload.*` / `config.*` / `health.*` / `admin.*`
 
 | action | 入参 → 出参 | 权限 | 幂等/限流 | 特有错误 |
