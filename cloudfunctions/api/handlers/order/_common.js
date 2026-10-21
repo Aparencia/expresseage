@@ -22,19 +22,20 @@ function identityOf(ctx) {
   return (ctx && ctx.identity) || {};
 }
 
-// 业务身份键：真实会话=本人 openid；切换会话=中间件解析出的目标身份（测试账号合成 openid 或目标本人）。
+// 业务身份键：真实会话=本人 openid；切换会话=中间件解析出的目标身份（中间件保证两种模式都解析为目标）。
 function scopeOf(ctx) {
   const identity = identityOf(ctx);
+  const testWrite = identity.viewMode === enums.VIEW_MODE.TEST_WRITE;
   return {
     role: identity.role || '',
     openid: identity.effectiveOpenid || (ctx && ctx.openid) || '',
     actorOpenid: identity.actorOpenid || (ctx && ctx.openid) || '',
     developerNo: identity.developerNo || '',
-    impersonatedBy: identity.impersonatedBy || '',
+    impersonatedBy: testWrite ? identity.developerNo || '' : '',
     viewMode: identity.viewMode || '',
     targetId: identity.targetId || '',
     readOnly: identity.viewMode === enums.VIEW_MODE.READONLY,
-    testWrite: identity.viewMode === enums.VIEW_MODE.TEST_WRITE
+    testWrite
   };
 }
 
@@ -368,7 +369,7 @@ async function runOrderAction(ctx, payload, spec) {
     return { order: await buildCurrentOrderView(ctx, order), duplicated: true };
   }
   const checked = typeof spec.guard === 'function'
-    ? spec.guard({ ctx, order, payload, now, actorRole, scope })
+    ? await spec.guard({ ctx, order, payload, now, actorRole, scope })
     : {};
   const built = typeof spec.build === 'function'
     ? spec.build({ ctx, order, payload, now, nowDate, actorRole, scope, checked })
@@ -401,7 +402,18 @@ async function runOrderAction(ctx, payload, spec) {
       await trx.update(COLLECTIONS.orders, order._id, patch);
       await trx.add(COLLECTIONS.order_events, eventDoc);
       if (typeof spec.after === 'function') {
-        await spec.after({ trx, order, now, nowDate, actorRole, scope, built });
+        await spec.after({
+          trx,
+          order,
+          now,
+          nowDate,
+          actorRole,
+          scope,
+          built,
+          clientRequestId,
+          fromStatus,
+          toStatus
+        });
       }
     });
   } catch (error) {

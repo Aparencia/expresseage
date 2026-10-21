@@ -144,6 +144,7 @@ Page({
     return {
       displayName: customer.displayName || '',
       avatarFileId: customer.avatarFileId || '',
+      avatarTicket: '',
       avatarPreview: '',
       zoneIndex,
       buildingIndex,
@@ -224,7 +225,7 @@ Page({
   },
 
   onUseDefaultAvatar() {
-    this.setData({ 'form.avatarFileId': '', 'form.avatarPreview': '' });
+    this.setData({ 'form.avatarTicket': '', 'form.avatarFileId': '', 'form.avatarPreview': '' });
   },
 
   async onChooseAvatar(event) {
@@ -235,7 +236,10 @@ Page({
     this.setData({ 'form.avatarPreview': avatarUrl });
     try {
       const uploaded = await uploadApi.prepareAndUpload({ purpose: 'AVATAR', filePath: avatarUrl });
-      this.setData({ 'form.avatarFileId': uploaded.fileId });
+      this.setData({
+        'form.avatarTicket': uploaded.uploadTicketId,
+        'form.avatarFileId': uploaded.fileId
+      });
     } catch (err) {
       toast(err.message || '头像上传失败，可稍后重试或先用默认头像');
       this.setData({ 'form.avatarPreview': '' });
@@ -253,7 +257,10 @@ Page({
       toast('昵称不能为空');
       return;
     }
-    const payload = { displayName, avatarFileId: form.avatarFileId || '' };
+    const payload = { displayName, avatarTicket: form.avatarTicket || '' };
+    if (!form.avatarTicket && !form.avatarPreview) {
+      payload.avatarFileId = '';
+    }
     if (this.data.isCustomer) {
       const zone = ZONES[form.zoneIndex] || ZONES[0];
       const buildingNo = BUILDING_LABELS[form.buildingIndex] || '';

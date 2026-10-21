@@ -64,7 +64,7 @@ const data = await call('order.accept', { orderNo, expectedVersion }, { retry: f
 | :-- | :-- |
 | `api/modules/user.js` | `bootstrap()`、`acceptPrivacy(version)`、`deleteAccount(reason)` |
 | `api/modules/customer.js` | `saveProfile(payload)`、`getProfile()` |
-| `api/modules/partner.js` | `activate({invitationCode,displayName,avatarFileId})`、`saveProfile`、`saveServiceConfig`、`getPublic({partnerNo})`、`listBindings`、`unbindCustomer({bindingId,reason,note})`、`saveCustomerNote({bindingId,note})` |
+| `api/modules/partner.js` | `activate({invitationCode,displayName,avatarTicket})`、`saveProfile`、`saveServiceConfig`、`getPublic({partnerNo})`、`listBindings`、`unbindCustomer({bindingId,reason,note})`、`saveCustomerNote({bindingId,note})` |
 | `api/modules/bind.js` | `create({partnerNo})`、`release({reason,note})`、`getCurrent()` |
 | `api/modules/order.js` | `create`、`createBatch`、`get`、`listCustomer`、`listPartner`、`accept`、`reject`、`markPicked`、`unmarkPicked`、`markDelivered`、`unmarkDelivered`、`reportException`、`resolveException`、`cancel`、`confirmDelivery`、`correct`、`undo`、`deleteRecord`、`imageUrl` |
 | `api/modules/message.js` | `send`、`list`、`markRead` |

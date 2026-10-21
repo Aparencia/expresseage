@@ -2,6 +2,8 @@
 const envConfig = require('./config/env');
 const store = require('./store/index');
 const userModule = require('./api/modules/user');
+const bindModule = require('./api/modules/bind');
+const configModule = require('./api/modules/config');
 
 App({
   globalData: {
@@ -41,10 +43,46 @@ App({
     try {
       const data = await userModule.bootstrap();
       store.hydrateFromBootstrap(data);
+      await this.refreshConfig();
+      await this.refreshBinding();
       return { ok: true, data };
     } catch (err) {
       this.globalData.startupError = (err && err.message) || '启动失败，请稍后重试';
       return { ok: false, code: (err && err.code) || 'BOOTSTRAP_FAILED' };
+    }
+  },
+
+  async refreshConfig() {
+    if (store.get('config')) {
+      return;
+    }
+    try {
+      const config = await configModule.getPublic();
+      store.set('config', config);
+    } catch (err) {
+      // 公开配置失败不阻断启动，页面按默认值降级
+    }
+  },
+
+  async refreshBinding() {
+    const roles = store.get('roles') || [];
+    if (roles.indexOf('CUSTOMER') < 0) {
+      return;
+    }
+    try {
+      const current = await bindModule.getCurrent();
+      if (!current || !current.binding) {
+        store.set('binding', null);
+        return;
+      }
+      const partner = current.partnerPublic || current.partner || {};
+      store.set('binding', Object.assign({}, current.binding, {
+        partnerDisplayName: current.binding.partnerDisplayName || partner.displayName || '',
+        partnerAvatarFileId: current.binding.partnerAvatarFileId || partner.avatarFileId || '',
+        partnerNo: current.binding.partnerNo || partner.partnerNo || ''
+      }));
+    } catch (err) {
+      // 绑定摘要失败不阻断启动；页面可自行重试
     }
   }
 });

@@ -11,6 +11,7 @@ const state = {
   binding: null,
   config: null,
   badges: { workbenchPending: 0, messages: 0 },
+  privacyConsent: null,
   viewContext: null,
   serverTimeSkew: 0
 };
@@ -70,29 +71,63 @@ function hydrateFromBootstrap(data) {
   if (!data) {
     return;
   }
+  const roles = Array.isArray(data.roles) ? data.roles.slice() : state.roles;
   if (Array.isArray(data.roles)) {
-    state.roles = data.roles.slice();
+    state.roles = roles;
   }
   if (data.activeRole !== undefined) {
     state.activeRole = data.activeRole || null;
+  } else if (!state.activeRole && roles.length === 1) {
+    state.activeRole = roles[0];
   }
   if (data.isDeveloper !== undefined) {
     state.isDeveloper = !!data.isDeveloper;
   }
+  // 平铺 DTO → 嵌套快照（DATA_MODEL §7.1 user.bootstrap 形状）
+  const hasCustomer = roles.indexOf('CUSTOMER') >= 0;
+  const hasPartner = roles.indexOf('PARTNER') >= 0;
+  const customer = data.customer !== undefined
+    ? clone(data.customer)
+    : data.customerProfileCompleted !== undefined
+      ? {
+          profileComplete: !!data.customerProfileCompleted,
+          customerNo: data.customerNo || '',
+          displayName: hasCustomer ? data.displayName || '' : '',
+          avatarFileId: hasCustomer ? data.avatarFileId || '' : ''
+        }
+      : state.customer;
+  const partner = data.partner !== undefined
+    ? clone(data.partner)
+    : data.partnerStatus !== undefined
+      ? {
+          status: data.partnerStatus || '',
+          profileComplete: !!(data.partnerNo || data.partnerStatus === 'ACTIVE'),
+          partnerNo: data.partnerNo || '',
+          displayName: hasPartner ? data.displayName || '' : '',
+          avatarFileId: hasPartner ? data.avatarFileId || '' : ''
+        }
+      : state.partner;
+  if (customer !== undefined) {
+    state.customer = customer;
+  }
+  if (partner !== undefined) {
+    state.partner = partner;
+  }
   if (data.me !== undefined) {
     state.me = clone(data.me);
-  }
-  if (data.customer !== undefined) {
-    state.customer = clone(data.customer);
-  }
-  if (data.partner !== undefined) {
-    state.partner = clone(data.partner);
+  } else if (data.displayName !== undefined) {
+    state.me = { displayName: data.displayName || '', avatarFileId: data.avatarFileId || '' };
   }
   if (data.binding !== undefined) {
     state.binding = clone(data.binding);
   }
   if (data.config !== undefined) {
     state.config = clone(data.config);
+  } else if (data.configPublic !== undefined) {
+    state.config = clone(data.configPublic);
+  }
+  if (data.privacyConsent !== undefined) {
+    state.privacyConsent = clone(data.privacyConsent);
   }
   if (data.badges !== undefined) {
     state.badges = Object.assign({ workbenchPending: 0, messages: 0 }, clone(data.badges) || {});
@@ -146,6 +181,7 @@ function reset() {
   state.binding = null;
   state.config = null;
   state.badges = { workbenchPending: 0, messages: 0 };
+  state.privacyConsent = null;
   state.viewContext = null;
   state.serverTimeSkew = 0;
   notify();

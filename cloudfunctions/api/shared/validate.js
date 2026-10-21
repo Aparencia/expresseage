@@ -340,7 +340,7 @@ function validateExpectedVersion(value) {
   return succeed('expectedVersion', { value });
 }
 
-// 32 位不可猜票据（upload ticket / viewTicket 同形）
+// 32 位不可猜票据（上传票据与切换会话票据同形，生成只在云端）
 function validateToken(value, field) {
   const name = field || 'token';
   if (typeof value !== 'string' || !enums.TOKEN_PATTERN.test(value)) {

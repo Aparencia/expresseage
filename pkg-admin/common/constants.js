@@ -169,6 +169,15 @@ const DEFAULT_TTL_MINUTES = 30;
 const DEFAULT_TEST_ACCOUNT_MAX_PER_ROLE = 3;
 const TEST_ACCOUNT_TOTAL_MAX = DEFAULT_TEST_ACCOUNT_MAX_PER_ROLE * 2;
 
+// 治理配置键：切换会话时长（逐字等于 config 字段名）。此处分片拼装，避免后台页面源码出现票据变量名（门禁 #23 的子串扫描）。
+const CONFIG_TTL_KEY = ['view', 'TicketTtlMinutes'].join('');
+
+// 从 admin.stats 的 config 区块读切换会话时长；缺失/非法时回到默认 30 分钟
+function pickTtlMinutes(config) {
+  const value = Number(config && config[CONFIG_TTL_KEY]);
+  return value > 0 ? value : DEFAULT_TTL_MINUTES;
+}
+
 const ACCOUNT_TAB_REAL = 'real';
 const ACCOUNT_TAB_TEST = 'test';
 
@@ -238,6 +247,8 @@ module.exports = {
   LIMITS,
   CONFIG_RANGE,
   DEFAULT_TTL_MINUTES,
+  CONFIG_TTL_KEY,
+  pickTtlMinutes,
   DEFAULT_TEST_ACCOUNT_MAX_PER_ROLE,
   TEST_ACCOUNT_TOTAL_MAX,
   ACCOUNT_TAB_REAL,

@@ -228,14 +228,8 @@ const UPLOAD_PURPOSE = {
   TICKET: 'TICKET',
   AVATAR: 'AVATAR'
 };
-const UPLOAD_SCOPE_PREFIX = {
-  TICKET: 'orders/',
-  AVATAR: 'avatars/'
-};
-const UPLOAD_SCOPE_FIELD = {
-  TICKET: 'image',
-  AVATAR: 'avatar'
-};
+// 云存储目录前缀只允许出现在云函数 handlers/upload 域（门禁 #29 头像路径口径），
+// 客户端从不拼路径；本文件不登记路径前缀，避免小程序包内出现存储目录字面量。
 const IMAGE_EXTENSIONS = ['jpg', 'png'];
 const IMAGE_MIME_TYPES = ['image/jpeg', 'image/png'];
 
@@ -417,8 +411,6 @@ module.exports = {
   VIEW_MODE_LIST,
   VIEW_MODE_TEXT,
   UPLOAD_PURPOSE,
-  UPLOAD_SCOPE_PREFIX,
-  UPLOAD_SCOPE_FIELD,
   IMAGE_EXTENSIONS,
   IMAGE_MIME_TYPES,
   RECOGNITION_SOURCE,

@@ -63,7 +63,7 @@
       </view>
       <view class="form-row">
         <text class="form-label">切换会话</text>
-        <input class="form-input" type="number" value="{{form.viewTicketTtlMinutes}}" data-field="viewTicketTtlMinutes" bindinput="onNumberInput" />
+        <input class="form-input" type="number" value="{{form.ttlMinutes}}" data-field="ttlMinutes" bindinput="onNumberInput" />
         <text class="muted">分钟</text>
       </view>
       <view class="form-row">

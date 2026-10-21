@@ -1,0 +1,179 @@
+<view class="page-body">
+  <view class="card">
+    <text class="section-title">账号切换</text>
+    <view class="small">真实账号只读查看（不能操作、全程审计）；需要真实操作请切「测试账号」（只写测试数据，不影响真实用户）。小程序不能切换微信登录账号，这里只做应用内账号代理切换。</view>
+  </view>
+
+  <scroll-view class="filter-row" scroll-x="true">
+    <view class="filter-chip" wx:for="{{tabs}}" wx:key="key" data-key="{{item.key}}" bindtap="onTabTap">
+      <text>{{item.label}}</text>
+      <view class="chip-bar" wx:if="{{item.active}}"></view>
+    </view>
+  </scroll-view>
+
+  <view class="empty-text" wx:if="{{loading}}">加载中…</view>
+
+  <view class="card" wx:if="{{error}}" bindtap="onRetry">
+    <text class="muted">没连上服务器，先检查网络；刚才的数据是 {{errorAt}} 的。</text>
+    <text class="link"> 点此重试</text>
+  </view>
+
+  <block wx:if="{{isRealTab}}">
+    <view class="card">
+      <text class="section-title">真实账号（只读）</text>
+      <view class="filter-row">
+        <view class="filter-chip" wx:for="{{roleChips}}" wx:key="key" data-key="{{item.key}}" bindtap="onRoleTap">
+          <text>{{item.label}}</text>
+          <view class="chip-bar" wx:if="{{item.active}}"></view>
+        </view>
+      </view>
+      <view class="form-row">
+        <input class="form-input" value="{{keyword}}" placeholder="{{noPlaceholder}}" bindinput="onKeywordInput" bindconfirm="searchReal" />
+        <view class="btn btn-primary btn-small" bindtap="searchReal">{{searchLoading ? '搜索中…' : '搜索'}}</view>
+      </view>
+      <view class="small">只列出状态正常的真实账号；测试账号请到「测试账号」tab。</view>
+      <view class="empty-text" wx:if="{{searched && candidates.length === 0}}">没有找到可查看的账号，请核对完整编号。</view>
+      <view class="candidate-row" wx:for="{{candidates}}" wx:key="targetNo" data-index="{{index}}" bindtap="onSelectCandidate">
+        <view class="row between">
+          <text class="strong">{{item.targetNo}} {{item.displayName}}</text>
+          <view class="row">
+            <text class="tag" wx:if="{{item.selected}}">已选择</text>
+            <text class="tag">{{item.statusText}}</text>
+          </view>
+        </view>
+        <view class="muted">宿舍 {{item.dormText}}{{item.extraText ? ' · ' + item.extraText : ''}}</view>
+      </view>
+    </view>
+
+    <view class="card confirm-card" wx:if="{{selected}}">
+      <text class="section-title">确认进入只读视图</text>
+      <view class="row between detail-row">
+        <text class="muted">角色</text>
+        <text>{{selected.roleText}}</text>
+      </view>
+      <view class="row between detail-row">
+        <text class="muted">编号</text>
+        <text>{{selected.targetNo}}</text>
+      </view>
+      <view class="row between detail-row">
+        <text class="muted">昵称</text>
+        <text>{{selected.displayName}}</text>
+      </view>
+      <view class="row between detail-row">
+        <text class="muted">有效期</text>
+        <text>{{ttlMinutes}} 分钟</text>
+      </view>
+      <view class="row between detail-row">
+        <text class="muted">权限</text>
+        <text>只读并审计、隐藏分享</text>
+      </view>
+      <view class="small">不能做任何写操作；真实操作请切「测试账号」；新开会覆盖旧会话；退出回本页。</view>
+      <view class="row between action-row">
+        <view class="btn btn-ghost" bindtap="onClearSelected">取消</view>
+        <view class="btn btn-primary" bindtap="enterReal">{{submitting ? '进入中…' : '进入只读视图'}}</view>
+      </view>
+    </view>
+  </block>
+
+  <block wx:if="{{isTestTab}}">
+    <view class="card">
+      <view class="row between">
+        <text class="section-title">测试账号（可写）</text>
+        <view class="btn btn-primary btn-small" bindtap="onOpenCreate">新建测试账号</view>
+      </view>
+      <view class="muted">已用：顾客 {{customerUsed}}/{{maxPerRole}} · 兼职 {{partnerUsed}}/{{maxPerRole}} · 合计 {{totalUsed}}/{{maxTotal}}</view>
+      <view class="small">测试数据不进入统计、红点与真实用户页面；删除或清空均需二次确认并记审计。</view>
+      <view class="empty-text" wx:if="{{!testLoading && testAccounts.length === 0}}">还没有测试账号。新建一个测试顾客/测试兼职开始单机验收。</view>
+      <view class="test-row" wx:for="{{testAccounts}}" wx:key="targetNo">
+        <view class="row between">
+          <view class="col flex-1" data-index="{{index}}" bindtap="onSelectTest">
+            <text class="strong">{{item.roleText}} · {{item.targetNo}}</text>
+            <text class="muted">{{item.displayName}} · 最近使用 {{item.lastUsedText}}</text>
+          </view>
+          <view class="row">
+            <view class="btn btn-ghost btn-small" data-index="{{index}}" catchtap="onSelectTest">切换</view>
+            <view class="btn btn-danger btn-small" data-index="{{index}}" catchtap="onDeleteTest">删除</view>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <view class="card confirm-card" wx:if="{{selectedTest}}">
+      <text class="section-title">确认进入测试视图</text>
+      <view class="row between detail-row">
+        <text class="muted">角色</text>
+        <text>{{selectedTest.roleText}}</text>
+      </view>
+      <view class="row between detail-row">
+        <text class="muted">编号</text>
+        <text>{{selectedTest.targetNo}}</text>
+      </view>
+      <view class="row between detail-row">
+        <text class="muted">昵称</text>
+        <text>{{selectedTest.displayName}}</text>
+      </view>
+      <view class="row between detail-row">
+        <text class="muted">有效期</text>
+        <text>{{ttlMinutes}} 分钟</text>
+      </view>
+      <view class="small">将写入测试数据，不影响真实用户；全程审计；退出回本页。</view>
+      <view class="row between action-row">
+        <view class="btn btn-ghost" bindtap="onClearSelectedTest">取消</view>
+        <view class="btn btn-primary" bindtap="enterTest">{{submitting ? '进入中…' : '进入测试视图'}}</view>
+      </view>
+    </view>
+
+    <view class="card">
+      <view class="row between">
+        <text class="section-title">清空测试数据（危险区）</text>
+        <view class="btn btn-danger btn-small" bindtap="onOpenPurge">打开危险区</view>
+      </view>
+      <view class="small">只清测试数据、保留测试账号；需先预览条数并二次确认，执行结果记审计。</view>
+    </view>
+  </block>
+
+  <view class="mask" wx:if="{{showCreate}}" bindtap="onCloseCreate">
+    <view class="panel" catchtap="noop">
+      <text class="section-title">新建测试账号</text>
+      <view class="form-row">
+        <text class="form-label">角色</text>
+        <picker class="flex-1" range="{{roleLabels}}" value="{{createRoleIndex}}" bindchange="onCreateRoleChange">
+          <view class="pick-item">{{roleLabels[createRoleIndex]}}</view>
+        </picker>
+      </view>
+      <view class="form-row">
+        <text class="form-label">昵称</text>
+        <input class="form-input" value="{{createName}}" maxlength="20" placeholder="测试-小王" bindinput="onCreateNameInput" />
+      </view>
+      <view class="small">昵称最多 20 字；测试账号为后台合成的账号，不消耗邀请码、不走激活流程。</view>
+      <view class="row between action-row">
+        <view class="btn btn-ghost" bindtap="onCloseCreate">取消</view>
+        <view class="btn btn-ghost" bindtap="onCreateOnly">{{creating ? '创建中…' : '仅创建'}}</view>
+        <view class="btn btn-primary" bindtap="onCreateAndSwitch">{{creating ? '创建中…' : '创建并切换'}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="mask" wx:if="{{showPurge}}" bindtap="onClosePurge">
+    <view class="panel" catchtap="noop">
+      <text class="section-title">清空测试数据</text>
+      <view class="empty-text" wx:if="{{purgeLoading}}">正在统计将清理的条数…</view>
+      <block wx:if="{{!purgeLoading && purgeCounts}}">
+        <view class="danger-text">将清空全部测试数据：测试订单 {{purgeCounts.orders}} 条、留言 {{purgeCounts.messages}} 条、绑定 {{purgeCounts.bindings}} 条、识别失败 {{purgeCounts.failures}} 条；测试账号保留。此操作不可恢复。</view>
+        <view class="row between detail-row">
+          <text class="muted">我已知晓清理不可恢复</text>
+          <switch checked="{{purgeCheck}}" color="#E54D42" bindchange="onPurgeCheck" />
+        </view>
+        <view class="form-row">
+          <text class="form-label">输入“清空”</text>
+          <input class="form-input" value="{{purgeText}}" maxlength="2" placeholder="请输入 清空" bindinput="onPurgeTextInput" />
+        </view>
+        <view class="row between action-row">
+          <view class="btn btn-ghost" bindtap="onClosePurge">取消</view>
+          <view class="btn btn-danger" bindtap="onPurgeSubmit">{{submitting ? '清空中…' : '确认清空'}}</view>
+        </view>
+      </block>
+      <view class="danger-text" wx:if="{{purgeError}}">{{purgeError}}</view>
+    </view>
+  </view>
+</view>

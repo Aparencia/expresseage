@@ -350,11 +350,13 @@ check(12, '集合名注册表', '云端 db.collection 字面量 ∈ shared/colle
     while ((m = lit.exec(s))) if (!known.has(m[1])) out.push(rel + ': 未注册集合 ' + m[1]);
     lit.lastIndex = 0;
   });
-  // 客户端：只认"带引号的集合名字符串字面量"，且排除注册表自身（config 等普通词不算命中）
   const REGISTRY = 'shared/collections.js';
+  // `config` 同时是 store 键/公开配置模块名（client 里 store.get('config') 合法），
+  // 客户端集合字面量检查排除它；其余 13 个集合名带引号出现即红。
+  const clientCollectionNames = P.COLLECTIONS.filter((c) => c !== 'config');
   clientFiles().filter((rel) => rel !== REGISTRY).forEach((rel) => {
     const s = text(rel) || '';
-    P.COLLECTIONS.forEach((c) => {
+    clientCollectionNames.forEach((c) => {
       if (new RegExp("(['\"])" + c + "\\1").test(s)) out.push(rel + ': 客户端出现带引号集合名 "' + c + '"');
     });
   });
@@ -572,13 +574,13 @@ check(20, '错误码注册表', 'shared/error-codes.js 恰好 13 码；CODE_COPY
       Array.from(keys).filter((k) => !P.ERROR_CODES.includes(k)).forEach((k) => out.push('CODE_COPY 多出: ' + k));
     }
   }
-  // 代码引用的 code 必须 ∈ 13 码（只认 code: 'X' / code = 'X' / code === 'X' 形态，避开状态/事件字面量）
-  const codeRef = /\bcode\s*(?:===?|==|:|=)\s*'([A-Z][A-Z_]+)'/g;
+  // 代码引用侧：只认"错误码语境"（throw/respond 的 code 赋值）；服务码/取消原因等业务枚举不在本判据范围
+  const codeRef = /(?:err|error|resp|response|result|callError|fail\w*)\s*\.code\s*=\s*'([A-Z][A-Z_]+)'/g;
   js().filter((r) => !r.startsWith('tools/')).forEach((rel) => {
     const s = text(rel) || '';
     let m;
     while ((m = codeRef.exec(s))) {
-      if (!set.has(m[1]) && P.OLD_ERROR_CODES.indexOf(m[1]) === -1) out.push(rel + ': 代码引用未登记 code ' + m[1]);
+      if (!set.has(m[1]) && P.OLD_ERROR_CODES.indexOf(m[1]) === -1) out.push(rel + ': 错误码语境引用未登记 code ' + m[1]);
     }
     codeRef.lastIndex = 0;
   });
@@ -740,7 +742,9 @@ check(28, '绑定方向', 'bind.create 仅 CUSTOMER + 拒自绑；代客单零 b
   if (!selfGuarded) out.push('bind.create 未见自绑拒绝断言');
   const orderJs = rels('cloudfunctions/api/handlers/order/').filter((r) => r.endsWith('.js'));
   orderJs.forEach((rel) => {
-    if ((text(rel) || '').indexOf('bindings') !== -1) out.push(rel + ': 代客单路径不得访问 bindings');
+    const s = text(rel) || '';
+    // 代客单不产生绑定 = 订单路径不得"写"bindings（读 ACTIVE 绑定用于顾客单可见性是合法读路径）
+    if (/(?:add|set|update|remove)\(\s*COLLECTIONS\.bindings\b/.test(s)) out.push(rel + ': 订单路径写入 bindings');
   });
   rels('pkg-partner/').filter((r) => /\.(js|wxml)$/.test(r)).forEach((rel) => {
     const s = text(rel) || '';
@@ -776,7 +780,8 @@ check(29, '头像昵称', '头像路径模板只在 upload 域且零 openid；av
   const tagAlloc = RELS.filter((r) => /tag-allocator/.test(r) && r.endsWith('.js'));
   tagAlloc.forEach((rel) => {
     const s = text(rel) || '';
-    if (!/\^\[A-Z\]\+|\[A-Z\]\+\$?/.test(s)) out.push(rel + ': roomTag 未见大写校验');
+    // 大写校验可由 toTag/isValidTag 零件保证，也可由显式正则保证
+    if (!/toTag|isValidTag|\^\[A-Z\]\+|\[A-Z\]\+\$?/.test(s)) out.push(rel + ': roomTag 未见大写校验');
   });
   const roomTag = text('utils/room-tag.js');
   if (roomTag !== null && roomTag.indexOf('random') !== -1) out.push('utils/room-tag.js 不得含 random');
@@ -810,8 +815,14 @@ check(30, '账号切换与测试数据隔离', '会话含 viewMode/targetIsTest�
   });
   RELS.filter((r) => /handlers\/order\/.*\.js$/.test(r)).forEach((rel) => {
     const s = text(rel) || '';
-    if (/\.add\s*\(/.test(s) && s.indexOf('isTest') === -1) out.push(rel + ': 订单写入缺 isTest 派生');
-    if (s.indexOf('impersonatedBy') === -1 && /impersonat|TEST_WRITE/.test(s)) out.push(rel + ': 测试写事件缺 impersonatedBy');
+    // 只约束 orders 主表写入（order_events 用 impersonatedBy，不含 isTest 字段）
+    if (/(?:add|set)\(\s*COLLECTIONS\.(?:ORDERS|orders)\b/.test(s) && s.indexOf('isTest') === -1) {
+      out.push(rel + ': orders 写入缺 isTest 派生');
+    }
+    if (/(?:add|set)\(\s*COLLECTIONS\.(?:ORDER_EVENTS|order_events)\b/.test(s)
+      && s.indexOf('impersonatedBy') === -1 && /TEST_WRITE|impersonat/.test(s)) {
+      out.push(rel + ': order_events 测试写缺 impersonatedBy');
+    }
   });
   // 审计枚举：只比对"动作字符串集合"，忽略 AUDIT_ACTIONS/AUDIT_ACTION_LIST 等聚合导出名
   const audit = requireRegistry(['shared/audit-actions.js']);
@@ -835,7 +846,9 @@ check(31, '测试视觉', '孤立 TEST 字面量只在 test-badge；switch-bar �
   const out = [];
   const stripWxmlComments = (s) => String(s).replace(/<!--[\s\S]*?-->/g, '');
   const reTest = /(?<![A-Za-z0-9_])TEST(?![A-Za-z0-9_])/;
-  RELS.filter((r) => /\.(wxml|js)$/.test(r) && !r.startsWith('components/test-badge/') && !r.startsWith('tools/'))
+  // 判据范围 = 客户端 UI 产物（pages/pkg/components/custom-tab-bar）；云侧 TEST- 合成 openid 前缀是合法口径
+  RELS.filter((r) => /\.(wxml|js)$/.test(r) && /^(pages\/|pkg-|components\/|custom-tab-bar\/)/.test(r)
+    && !r.startsWith('components/test-badge/') && !r.startsWith('tools/'))
     .forEach((rel) => {
       const raw = text(rel) || '';
       // 注释里的"TEST 角标"是说明文字，不算字面量；TEST_WRITE 由词边界排除

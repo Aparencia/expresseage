@@ -93,5 +93,19 @@ module.exports = {
   CODE_LIST,
   errors,
   from,
-  isKnownCode
+  isKnownCode,
+  // 兼容两种引用习惯：const { errors } = require('.../lib/errors') 与 require('.../lib/errors').forbidden(...)
+  validation: errors.validation,
+  forbidden: errors.forbidden,
+  notFound: errors.notFound,
+  conflict: errors.conflict,
+  invalidTransition: errors.invalidTransition,
+  invalidState: errors.invalidState,
+  rateLimited: errors.rateLimited,
+  inviteExpired: errors.inviteExpired,
+  inviteUsed: errors.inviteUsed,
+  viewTicketExpired: errors.viewTicketExpired,
+  partnerClosed: errors.partnerClosed,
+  dependencyFailed: errors.dependencyFailed,
+  internalError: errors.internalError
 };

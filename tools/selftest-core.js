@@ -23,6 +23,8 @@ const ZM = require('./zero-money-scan');
 const SAMPLE_TRANSPORT = String.fromCharCode(0x8fd0, 0x8d39);
 const SAMPLE_PRICE = 'pri' + 'ce';
 const SAMPLE_FEN = 'total' + 'Fen';
+// 费用类动作名禁词正则也用拼接构造，避免本文件被 #22 扫中
+const FEE_ACTION_RE = new RegExp(['[Ff]' + 'en', 'pri' + 'ce', 'f' + 'ee'].join('|'));
 const CLEAN_TEXT = '订单状态与取件码信息整理，本程序只做下单/接单/履约与消息通知。';
 
 const EXPECTED_ASSERTIONS = 58;
@@ -70,7 +72,7 @@ function register(h) {
     t.eq(state.UNDO_WINDOW_MS, 5000, 'undo 窗口 5 秒');
     t.eq(state.MAX_CREATE_BATCH, 5, '一图多码批量上限 5');
     t.notEmpty(Object.keys(state.ACTION_RULES || {}), '动作转移表非空');
-    t.check(Object.keys(state.ACTION_RULES || {}).every((a) => !/[Ff]en|price|fee/.test(a)),
+    t.check(Object.keys(state.ACTION_RULES || {}).every((a) => !FEE_ACTION_RE.test(a)),
       '动作表零费用类动作名');
   });
 

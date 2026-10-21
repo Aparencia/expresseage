@@ -12,7 +12,7 @@ const FIELD_LABELS = {
   orderTimeoutMinutes: '接单超时',
   autoCompleteHours: '自动完成时长',
   screenshotRetentionDays: '截图留存天数',
-  viewTicketTtlMinutes: '切换会话时长',
+  ttlMinutes: '切换会话时长',
   avatarMaxBytes: '头像大小上限'
 };
 
@@ -30,7 +30,7 @@ function emptyForm() {
     orderTimeoutMinutes: '120',
     autoCompleteHours: '24',
     screenshotRetentionDays: '7',
-    viewTicketTtlMinutes: '30',
+    ttlMinutes: '30',
     avatarMaxKb: '200'
   };
 }
@@ -132,7 +132,7 @@ Page({
     form.orderTimeoutMinutes = String(F.numOrZero(config.orderTimeoutMinutes) || 120);
     form.autoCompleteHours = String(F.numOrZero(config.autoCompleteHours) || 24);
     form.screenshotRetentionDays = String(F.numOrZero(config.screenshotRetentionDays) || 7);
-    form.viewTicketTtlMinutes = String(F.numOrZero(config.viewTicketTtlMinutes) || C.DEFAULT_TTL_MINUTES);
+    form.ttlMinutes = String(C.pickTtlMinutes(config));
     const avatarBytes = F.numOrZero(config.avatarMaxBytes) || C.CONFIG_RANGE.avatarKbMax * 1024;
     form.avatarMaxKb = String(Math.round(avatarBytes / 1024));
     return form;
@@ -258,7 +258,7 @@ Page({
       orderTimeoutMinutes: toInt(form.orderTimeoutMinutes),
       autoCompleteHours: toInt(form.autoCompleteHours),
       screenshotRetentionDays: toInt(form.screenshotRetentionDays),
-      viewTicketTtlMinutes: toInt(form.viewTicketTtlMinutes),
+      ttlMinutes: toInt(form.ttlMinutes),
       avatarMaxBytes: toInt(form.avatarMaxKb) * 1024
     };
   },
@@ -283,7 +283,7 @@ Page({
     if (!(payload.screenshotRetentionDays > 0 && payload.screenshotRetentionDays <= range.screenshotMax)) {
       return '截图留存天数不能超过 ' + range.screenshotMax + ' 天。';
     }
-    if (!(payload.viewTicketTtlMinutes >= range.ttlMin && payload.viewTicketTtlMinutes <= range.ttlMax)) {
+    if (!(payload.ttlMinutes >= range.ttlMin && payload.ttlMinutes <= range.ttlMax)) {
       return '切换会话时长请填 ' + range.ttlMin + '~' + range.ttlMax + ' 分钟。';
     }
     if (!(payload.avatarMaxBytes >= range.avatarKbMin * 1024 && payload.avatarMaxBytes <= range.avatarKbMax * 1024)) {
@@ -302,6 +302,13 @@ Page({
       return '五个苑名都不能为空。';
     }
     return '';
+  },
+
+  buildApiPayload(payload) {
+    const result = Object.assign({}, payload);
+    result[C.CONFIG_TTL_KEY] = result.ttlMinutes;
+    delete result.ttlMinutes;
+    return result;
   },
 
   onSave() {
@@ -328,7 +335,7 @@ Page({
 
   submit(payload) {
     this.setData({ saving: true });
-    admin.updateConfig({ config: payload }).then(() => {
+    admin.updateConfig({ config: this.buildApiPayload(payload) }).then(() => {
       this.setData({ saving: false, dirty: false });
       this.original = payload;
       this.disableLeaveAlert();

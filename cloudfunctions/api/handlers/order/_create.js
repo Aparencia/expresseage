@@ -13,11 +13,8 @@ const dto = require('./_dto');
 
 const MAX_BATCH = orderState.MAX_CREATE_BATCH;
 
-function nextOrderNosOf(ctx) {
-  const api = (ctx && ctx.ids) || {};
-  if (typeof api.nextOrderNos === 'function') {
-    return api.nextOrderNos;
-  }
+// 订单号取号必须在同一事务内（counters 原子自增 + orders.orderNo 唯一索引兜底）
+function nextOrderNosOf() {
   return idGenerator.nextOrderNos;
 }
 
@@ -289,7 +286,7 @@ async function createOne(ctx, payload) {
   }
   const nowDate = common.toDate(context.now);
   const image = buildImageSnapshot(imageCtx.image, imageCtx.ticket, failureRecord, nowDate);
-  const nextOrderNos = nextOrderNosOf(ctx);
+  const nextOrderNos = nextOrderNosOf();
   let created = null;
   try {
     created = await ctx.dao.transaction(async (trx) => {
@@ -353,7 +350,7 @@ async function createBatch(ctx, payload) {
   }
   const nowDate = common.toDate(context.now);
   const image = buildImageSnapshot(imageCtx.image, imageCtx.ticket, failureRecord, nowDate);
-  const nextOrderNos = nextOrderNosOf(ctx);
+  const nextOrderNos = nextOrderNosOf();
   let created = [];
   try {
     created = await ctx.dao.transaction(async (trx) => {
@@ -406,6 +403,6 @@ module.exports = {
   buildItemFields,
   buildRequestKey,
   MAX_BATCH,
-  createOne: order.create,
-  createBatch: order.createBatch
+  createOne,
+  createBatch
 };
