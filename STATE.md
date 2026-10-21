@@ -333,7 +333,7 @@
 | `node tools/selftest-deletion.js` | 断言 **89/89**；失败 0 项（A `user.deleteAccount` handler / B cleanup 阶段一 / C 阶段二 30 天物理删与幂等 / D 兼职 CLOSED 全链 / E 修复回归与失败隔离 / F 端侧静态；先判据后修：首跑 14 条缺陷红；变异电池 3 组首红 + SHA256 还原） |
 | `node tools/sync-cloud-shared.js --check` | 16 源 × 2 套 32 件 hash 一致（shared 未改） |
 | QA 条目计数 | `(Select-String -Path docs\QA_CHECKLIST.md -Pattern '^\| [A-Z]+\d+ \|').Count` → **255**（批 8 后 249，批 9 增 H12~H17 共 6 条，分区合计与附录 E 自洽） |
-| 批 9 代码/判据提交 | 本批 `feat` 提交（哈希由后续证据提交回读填写，见 §8） |
+| 批 9 代码/判据提交 | `81c58ba`（19 文件 +1633/-43；代码/判据/文档） |
 | `gate.ps1` | 见 §8（红色 0 / 黄色 0，变更集与体量以真实输出为准） |
 
 - 新增/修改文件（批 9）：`tools/selftest-deletion.js`（838 行，新）、`tools/selftest.js`（注册第 28 套）、`tools/lib/project.js`（DESIGN_DOCS +2）；`cloudfunctions/api/handlers/user/deleteAccount.js`（52 行）、`cloudfunctions/api/handlers/admin/setPartnerStatus.js`（275 行）、`cloudfunctions/cleanup/sweeps/accounts.js`（270 行）；`docs/V4_REVIEW_MATERIALS.md`（206 行，新）、`docs/V4_V3_PARITY.md`（256 行，新）、`docs/RUNBOOK.md`（+83 行 §10 重写）、`docs/QA_CHECKLIST.md`（+11 行、H12~H17、E15/P6/P18 强化）、`docs/V4_CONTRACT.md`/`docs/V4_DATA_MODEL.md`/`docs/V4_ENGINEERING.md`/`docs/TECH_DEBT.md`/`docs/lessons/` 两张新卡/`README.md`/`CHANGELOG.md`/`STATE.md`。
@@ -403,7 +403,8 @@
 | 2026-10-22 | **批 9 工程侧开工**（4 条并行线复用既有 Team 分身）：云端注销链路端到端判据（cloud-core）、审核材料手册（v4-privacy-qa）、v3 对照验收表（v3-engineering）、灰度回滚演练与 QA 批 9（v3-lifecycle-flow）；Lead 同步做文档地图/证据与门禁集成；D1/D2/D3 未到前只做离线代码/判据/文档 |
 | 2026-10-22 | **批 9 真实缺陷修复（首红定位）**：新建 `selftest-deletion` 先判据后修 14 条红——①顾客注销阶段一漏清历史 `bindings.partnerNote`（含已释放行）；②注销/CLOSED 未清识别失败 `fileId` 与原图引用；③兼职 CLOSED 只写状态（未清 `displayName/avatarFileId`、未删头像文件、未清 `invitation_codes.usedBy`、未清识别失败 `uploaderOpenid`）；④重复 CLOSED 不保持匿名化空值；并回写 CONTRACT §11.4 注销时点与 DATA_MODEL §10.3/§10.4/§7.6/§12#4 口径 |
 | 2026-10-22 | **批 9 工程侧收口**：`check.ps1` 4 步全 PASS（退出码 0）——check.js 31/31、check-docs 10/10、零金额 0 命中、selftest **28 套 4,151 断言**全 PASS（新增 `selftest-deletion` 89）；交付 `docs/V4_REVIEW_MATERIALS.md`（206 行）、`docs/V4_V3_PARITY.md`（256 行）、RUNBOOK §10 灰度/回滚演练、QA §H12~H17（附录 E 255 条）；TD-053~057 登记、lessons +2 卡；README/CONTRACT/DATA_MODEL/ENGINEERING/CHANGELOG 回写 |
-| 2026-10-22 | **批 9 收口提交与 gate 回读**：代码/判据提交 + 证据回写提交；`gate.ps1` 红色 0 / 黄色 0（变更集与体量以真实输出为准）；提交哈希与 gate 终态见 `git log` 与本表 §8 抬头记录 |
+| 2026-10-22 | **批 9 收口提交**：代码/判据/文档提交 `81c58ba`（19 文件 +1633/-43）；证据回写提交随后（本表由该提交写入）；`gate.ps1` 红色 0 / 黄色 0（变更集与体量见 §6i/§8 下条，以 gate 真实输出为准） |
+| 2026-10-22 | **批 9 证据回写**：本提交更新 STATE §6i/§8、CHANGELOG 批 9 工程细节与 README 现状计数（提交 `81c58ba` 回读）；`check.ps1` 4 步复跑全 PASS 后进入发布前用户侧 |
 
 > 说明：上表最后两行为收口当天记录，提交哈希与 gate 终态以仓库 `git log` 与门禁真实输出为准（本文件不在提交内自引用哈希）。
 
