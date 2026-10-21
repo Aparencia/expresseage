@@ -1,6 +1,6 @@
 # expressage_college_v4 · 校园快递代取（第四次重建 · 面向客户）
 
-> **当前阶段：批 8 完成（2026-10-22 收口）· 工程骨架 + 两个云函数 + 30 页面 + 组件/工具链齐备，`check.ps1` 全绿（4 步、退出码 0；`check.js` 31/31、`check-docs` 10/10、零金额 0 命中、selftest 27 套 4,062 断言）· 待用户闭环 D1/D2/D3/D13（云环境/主体）、D8（苑名）、D22（上传失败后无截图手填）与隐私文本 13 项填写后进入真机与云端联调/批 9 提审**
+> **当前阶段：批 9 工程侧完成（2026-10-22 收口）· 工程骨架 + 两个云函数 + 30 页面 + 组件/工具链齐备，`check.ps1` 全绿（4 步、退出码 0；`check.js` 31/31、`check-docs` 10/10、零金额 0 命中、selftest 28 套 4,151 断言）· 待用户闭环 D1/D2/D3/D13（云环境/主体）、D8（苑名）、D22（上传失败后无截图手填）与隐私文本 13 项填写后进入真机与云端联调/提审**
 > 本目录从微信小程序默认模板重建；v1 / v2 / v3 已冻结为只读参照：
 > `D:\Code\expresseage\expresseage_college\`（v1）、`D:\Code\expresseage\expresseage_college_v2\`（v2）、`D:\Code\expresseage_college_v3\`（v3）。
 
@@ -20,6 +20,7 @@ v4 把 v3 的「兼职单人台账」升级为 **顾客下单 + 兼职接单履�
 
 | 顺序 | 文档 | 内容 |
 | :-- | :-- | :-- |
+| 0 | [`docs/V4_INTERIM_OVERVIEW.md`](docs/V4_INTERIM_OVERVIEW.md) | **临时总体说明（先读）**：30 秒结论/进度台账/系统全貌/门禁真实读数/文档地图/裁决与欠账/用户下一步/自证命令；状态仍以 `STATE.md` 为准、口径以 CONTRACT 为准 |
 | 1 | [`docs/V4_CONTRACT.md`](docs/V4_CONTRACT.md) | **唯一口径卡 v0.9**：角色/术语/编号规格/集合/状态机/页面地图/隐私/账号切换/裁决索引；文档冲突以它为准 |
 | 2 | [`V4_REBUILD_SPEC.md`](V4_REBUILD_SPEC.md) | 主规格书：产品/架构/权限/流程/批次/验收/风险/裁决 |
 | 3 | [`docs/V4_DECISIONS.md`](docs/V4_DECISIONS.md) | **D1~D22 裁决清单**（开工前要看，含推荐与被否方案；D20/D21 已定；D22 批 4 登记待裁） |

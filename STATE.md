@@ -6,6 +6,7 @@
 > 本文只记**状态、待办与下一步**，不重复设计口径（口径看 CONTRACT，工程规则看 ENGINEERING，接口看 ARCHITECTURE）。
 
 **快照时间：2026-10-22（批 9 工程侧收口）**
+> 临时总体说明（全局汇总，非状态源）：[`docs/V4_INTERIM_OVERVIEW.md`](docs/V4_INTERIM_OVERVIEW.md)（2026-10-22 生成，依据 HEAD `66eb96c`；状态仍以本文件为准、口径以 CONTRACT 为准）。
 
 ## 1. 一句话状态
 
