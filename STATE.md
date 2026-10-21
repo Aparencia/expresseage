@@ -5,11 +5,11 @@
 > 更新时机：每批开工/收口、用户裁决变化、风险新增或关闭、HEAD 变化需回读。
 > 本文只记**状态、待办与下一步**，不重复设计口径（口径看 CONTRACT，工程规则看 ENGINEERING，接口看 ARCHITECTURE）。
 
-**快照时间：2026-10-22（批 6 离线收口）**
+**快照时间：2026-10-22（批 7 离线收口）**
 
 ## 1. 一句话状态
 
-**批 0 设计定稿完成；批 1 工程骨架与云端基础设施完成并收口（`check.ps1` 4 步全 PASS、退出码 0）；批 2 账号入口/切换会话/测试账号/头像采集的离线部分完成并收口；批 3 绑定与服务配置的离线部分完成并收口；批 4 顾客下单链路的离线部分完成并收口；批 5 顾客订单闭环的离线部分完成并收口（**14 套 2,078 断言全 PASS**、`check.ps1` 退出码 0、check.js 31/31、check-docs 10/10、零金额 0 命中；新增 `selftest-order-lifecycle`（98）与 `selftest-order-customer`（190）；修 12 项真实 UX/契约缺陷：服务端 actions 矩阵缺 confirm/deleteRecord/reorder、终态可留言、listCustomer 无 counts、image 无 cleaned、补码事件不可区分、列表行四字段全空、详情轮询死 setInterval 无退避/无最近更新、页面本地猜按钮、写动作丢 expectedVersion、无再次下单、消息红点不归零、截图/异常/取消分支与回退提示缺失）；批 6 兼职工作台的离线部分完成并收口（**17 套 2,555 断言全 PASS**、`check.ps1` 退出码 0；新增 `selftest-order-partner`（127）、`selftest-order-workbench`（197）、`selftest-order-detail-partner`（153）；修 9 项真实缺陷：workbench 行 DTO 无 actions、batchActionId 静默丢弃、todayCompleted 100 截断探针、keyword 越窗漏单、CLOSED/SUSPENDED 可读工作台、DELIVERED 下发非法 correct、unmark 事件 undoneAction 写错、undo 残留 deliveryNote、DTO 空时间戳变假时间，另修 reject.OTHER 无备注静默通过）。批 2/批 3/批 4/批 5/批 6 真机项与云环境验收待用户。**
+**批 0 设计定稿完成；批 1 工程骨架与云端基础设施完成并收口（`check.ps1` 4 步全 PASS、退出码 0）；批 2 账号入口/切换会话/测试账号/头像采集的离线部分完成并收口；批 3 绑定与服务配置的离线部分完成并收口；批 4 顾客下单链路的离线部分完成并收口；批 5 顾客订单闭环的离线部分完成并收口（**14 套 2,078 断言全 PASS**、`check.ps1` 退出码 0、check.js 31/31、check-docs 10/10、零金额 0 命中；新增 `selftest-order-lifecycle`（98）与 `selftest-order-customer`（190）；修 12 项真实 UX/契约缺陷：服务端 actions 矩阵缺 confirm/deleteRecord/reorder、终态可留言、listCustomer 无 counts、image 无 cleaned、补码事件不可区分、列表行四字段全空、详情轮询死 setInterval 无退避/无最近更新、页面本地猜按钮、写动作丢 expectedVersion、无再次下单、消息红点不归零、截图/异常/取消分支与回退提示缺失）；批 6 兼职工作台的离线部分完成并收口（**17 套 2,555 断言全 PASS**、`check.ps1` 退出码 0；新增 `selftest-order-partner`（127）、`selftest-order-workbench`（197）、`selftest-order-detail-partner`（153）；修 9 项真实缺陷：workbench 行 DTO 无 actions、batchActionId 静默丢弃、todayCompleted 100 截断探针、keyword 越窗漏单、CLOSED/SUSPENDED 可读工作台、DELIVERED 下发非法 correct、unmark 事件 undoneAction 写错、undo 残留 deliveryNote、DTO 空时间戳变假时间，另修 reject.OTHER 无备注静默通过）；批 7 兼职客户与运营的离线部分完成并收口（**21 套 3,132 断言全 PASS**、`check.ps1` 退出码 0；新增 `selftest-partner-customers`（129）、`selftest-partner-orders`（89）、`selftest-partner-pages`（156）、`selftest-partner-stats`（203）；修 10+ 项真实缺陷：解绑进行中单按兼职全量误拦、绑定列表按字符串序排列（D10 排 D4 前）、listBindings keyword/cursor/limit 全缺、activeOrderCount 混入 isTest、顾客详情用 keyword 冒充按顾客过滤、代客单只能 guest（绑定顾客单顾客不可见）、stats 客户端 4×100 累加近似（超 400 单偏小）、完成率分母 0 显示 0%、空数据画假柱、解绑/备注归属错误码 NOT_FOUND→FORBIDDEN，另修二选一入参静默缺省与重放侧别错判）。批 2/批 3/批 4/批 5/批 6/批 7 真机项与云环境验收待用户。**
 用户侧开工门仍未闭环：D1/D2/D3/D13 待用户确认、D8 五苑正式展示名待用户给出、**D22 上传失败后是否允许无截图手填提交待用户裁决**；云环境尚未创建、云函数尚未在真实云环境部署、真机项未点检。
 
 ## 2. 批次台账
@@ -23,7 +23,8 @@
 | 批 4 | 顾客下单链路 | **离线部分完成并收口（2026-10-22）** | 工程侧（代码/判据/文档）已收口（提交 `a204ed1`，17 文件 +3036/-442）：`order.create/createBatch` 建单引擎（严格入参白名单/逐单 `recognition.failureId` 回填/事务原子/`upload_tickets` 一次性）/上传票据与图片路径/`ai.parseParcel` 兜底（配额/票据/降级 DTO 10 键/入队字段）/四步下单端侧（`clientRequestId` 生命周期、逐件 AI 兜底、逐件预约备注、识别来源快照、识别原文/截图预览/服务类型说明）；新增 `selftest-order`（建单引擎）与 `selftest-order-flow`（端侧流程）两套；**真机项 D1~D12/R1~R4/M1~M3 待用户** |
 | 批 5 | 顾客订单闭环 | **离线部分完成并收口（2026-10-22）** | 工程侧（代码/判据/文档）已收口（提交 `7eac662`，37 文件 +3189/-265）：服务端 `order.get` 七态顾客 `actions[]` 单源矩阵（cancel/confirm/deleteRecord/reorder/message；终态无 message）、`listCustomer` 三桶 `counts`、`image{hasImage,cleaned}`、`message.send` 终态闸、`imageUrl` cleaned 拒绝、`order.correct` 补码事件 note、写动作 `expectedVersion` 乐观锁（客户端 `api/client` 透传）；端侧列表 counts/等待倒计时、详情 10s 轮询+失败退避（20s→40s）+最近更新时间、进度异常/取消分支、时间线、截图四态、留言只读归档、再次下单（`?reorder=` 只预填服务类型/站点）、订单号复制、消息红点；新增 `selftest-order-lifecycle`（98）与 `selftest-order-customer`（190）；**真机项 QA E1~E8/E12~E18 与双机 T1~T13 待用户** |
 | 批 6 | 兼职工作台 | **离线部分完成并收口（2026-10-22）** | 工程侧（代码/判据/文档）已收口：服务端 workbench 行内 `actions[]` 单源、`batchActionId` 落库+形态闸、完整订单号精确搜索、todayCompleted/keyword 窗口登记 TD、CLOSED/SUSPENDED 读写下线闸、`reject.OTHER` 必填备注、DELIVERED 动作矩阵去非法 correct、undo 清 `deliveryNote`、unmark 事件 `undoneAction` 口径、DTO 空时间戳假时间修复；端侧工作台行级动作/状态筛选服务端化/需查明与筛选空态/多选资格/部分失败保留重试/撤销条批量 id 与部分失败文案/counts 点击筛选/引导+兼职编号/已完结自然日分区/分页+行级 setData+骨架屏+tabBar 红点；详情页补码/异常/送达/凭证卡/只读收敛；新增 3 套判据（`order-partner` 127 / `order-workbench` 197 / `order-detail-partner` 153）；**真机项 QA F1~F15、F21、F23 待用户** |
-| 批 7~批 9 | 见 `docs/V4_ENGINEERING.md` §11 | 未开工 | 范围、依赖与风险以 ENGINEERING §11 为准；批 7 兼职客户与运营为下一步 |
+| 批 7 | 兼职客户与运营 | **离线部分完成并收口（2026-10-22）** | 工程侧（代码/判据/文档）已收口（提交 `d34e35b`，48 文件 +7151/-1032）：服务端 `partner.listBindings` 服务端搜索（昵称/楼栋/宿舍/roomTag/尾号四位/编号）+ 自然序排序（`shared/zones.compareDormKey`，修 D10 排 D4 前）+ 游标分页 + 按顾客 `activeOrderCount`（含 isTest 隔离）；新增 `partner.getCustomer`（bindingId 反查档案/订单/解绑资格，不透传 openid）与 `partner.stats`（今日/本周/本月、完成/进行中/异常/取消、完成率 null、近 7 日 series、recent 日报源，一律排除测试数据）；`order.create/createBatch` 兼职路径 `bindingId`（绑定顾客，顾客可见进度）与 `guest`（新顾客，无顾客访问路径）显式互斥、均不写 bindings；`order.listPartner({view:'customer'})` 顾客维度历史单单一来源；`partner.unbindCustomer` 进行中单改按该顾客判定（修全量误拦）+ 归属 FORBIDDEN；`partner.saveCustomerNote` 归属/ACTIVE/≤100 加固；端侧客户列表（服务端搜索/分页/头像昵称/进行中数/分享卡/复制编号/新绑定刷新）、顾客详情（getCustomer 档案+解绑资格、listPartner view=customer 历史单按自然日分组与「查看更早」、备注仅自己可见、解绑原因必填+二次确认、本人兼职编号）、代客下单（两路径互斥、校验矩阵、幂等、逐条结果块、guest 提示、无任何绑定入口）、统计页（partner.stats 单源、三 tab、四格、7 日自绘柱不画假柱、日报复制、「今日完成」跳工作台参数）；新增 4 套判据（`partner-customers` 129 / `partner-orders` 89 / `partner-pages` 156 / `partner-stats` 203）；**真机项 QA F16/F18/F20/F22 与 stats 跨 tab 跳转、头像昵称互见、guest 单无顾客入口待用户** |
+| 批 8~批 9 | 见 `docs/V4_ENGINEERING.md` §11 | 未开工 | 范围、依赖与风险以 ENGINEERING §11 为准；批 8 开发者后台 + 切换会话 + 通知 + 隐私文本为下一步 |
 
 ## 3. 批 1 并行交付快照（全部收口）
 
@@ -90,6 +91,16 @@
 | 批6-C 详情端侧（v3-pickup-ux task-70） | 动作条 100% 服务端 `order.actions[]`（未知 key 忽略、label 取服务端）；补码/改站点面板（P1~P8、码≤40/柜号/尾号 5 位、PICKED 字段收窄、DELIVERED 隐藏+文案、`expectedVersion`）；异常六原因+备注≤200+OTHER 必填、解除按 `exception.fromStatus` 渲染；送达 deliveryNote≤100+三快捷标签、guest 24h 自动完成文案、5s 撤销条、顾客已确认撤销被拒文案；凭证卡（orderNo/站点/服务/四时间/deliveryNote/顾客确认时间+自动完成标识）；顾客/本人编号小字；READONLY 置灰+事件层再挡（transport 零调用）、TEST_WRITE 提示；三面板首红→复绿；新建 `selftest-order-detail-partner`（153 断言 A~G，DELIVERED 无 correct 反例锁） | 已交付 |
 | 批6-D Lead 集成与回写 | `tools/selftest.js` 注册 3 套（17 套）；`pages/profile` 增「重新看新手引导」（`storage.clearGuideSeen` 白名单键，S0 域）；DATA_MODEL §2.5/§7.3（batchActionId 落库、workbench 行 actions/CLOSED 读闸/批 6 只增约定）、ENGINEERING §7/§11 批 6 回写；TECH_DEBT TD-043~048、lessons +2 卡；零金额白名单校验与门禁全绿 | 已交付 |
 
+## 3g. 批 7 离线交付快照（工程侧收口）
+
+| 工作流 | 交付摘要 | 状态 |
+| :-- | :-- | :-- |
+| 批7-A 云端客户/统计域（v3-data-model task-71） | 新建 `handlers/partner/_customer.js`（归属守卫/进行中单计数/关键词/游标/UTC+8 日周月窗口）；`listBindings` 重构（服务端搜索+`compareDormKey` 自然序+游标分页+按顾客 activeOrderCount+isTest 隔离）；新建 `getCustomer`（bindingId 反查、越权 FORBIDDEN、不透传 openid）与 `stats`（三区间/完成率 null/近 7 日/最近 10 单/排 isTest/异常按 `exception.at`）；`unbindCustomer` 进行中单按顾客判定（修全量误拦）；`saveCustomerNote` 归属/ACTIVE/≤100 加固；新建 `selftest-partner-customers`（129 断言 A~F，变异电池 5 处首红）；授权更新 `selftest-bind-cloud` E12 期望 FORBIDDEN | 已交付 |
+| 批7-B 云端代客下单（cloud-orders task-72） | `_create.js` 顶层白名单增 `bindingId`、上下文拆三函数、绑定顾客身份/编号/dorm/roomTag 一次装配、requestKey 归属（绑定=customerId、guest=partnerId）、重放侧别修正；`_parcel.js` 二选一互斥/批量条目 guest 互斥/顾客单禁止 selector；`_store.js` binding 归属/ACTIVE/注销/测试侧；`listPartner` 增 `view:'customer'`（bindingId 归属、按 customerId 过滤、不发 counts/actions）；新建 `selftest-partner-orders`（89 断言 A~G + 首红 3 缺陷 + 变异电池 5 处） | 已交付 |
+| 批7-C 端侧客户档案（v3-pickup-ux task-73） | 客户列表服务端搜索/游标触底/头像昵称/进行中数/分享卡片/复制编号/空态引导/新绑定刷新；顾客详情 `getCustomer` 档案+解绑资格、`order.listPartner({view:'customer'})` 历史单自然日分组+「查看更早」、备注仅自己可见、解绑原因必填+二次确认、本人兼职编号；代客下单两路径互斥、字段校验矩阵、`clientRequestId`、逐条结果块、guest 提示、零绑定入口；`utils/customer-view.js` 扩展；新建 `selftest-partner-pages`（156 断言 A~G，变异电池 3 处） | 已交付 |
+| 批7-D 端侧统计（v3-lifecycle-flow task-74） | 统计页改 `partner.stats` 单源（删除旧 4×100 客户端累加 `summary.js`、补 `view-model.js` 322 行 + `daily-report.js` 92 行）、三 tab/四格/7 日 view 自绘柱（空数据不画假柱）/日报复制/骨架/空/错态/READONLY 可读；`pages/partner/workbench` 仅增 `completedDate` 入参解析用于「今日完成」跳转；新建 `selftest-partner-stats`（203 断言 A~G，变异电池 3 处） | 已交付 |
+| 批7-E Lead 集成与回写 | 口径增补写 CONTRACT §5.3（getCustomer/stats）与 DATA_MODEL §7.4/§7.5/§4.8（Batch 7 只增约定、exception.at、UTC+8、`view:'customer'`、bindingId/guest 互斥）、UX_PARTNER §9（服务端单源）；`shared/actions.js` +`partner.getCustomer/stats`（sync 一致）、`switch-session` READONLY 读白名单、`tools/lib/project.js` 注册表、`api/modules/partner.js` 适配；`tools/selftest.js` 注册 4 套（21 套）；DATA_MODEL 批 7⑦（`getCustomer.orders` 双源→页面统一 listPartner）；ENGINEERING §6.2/§7.1/§11；TECH_DEBT TD-049/050；lessons +3 卡 | 已交付 |
+
 ## 4. 用户待办（阻塞项）
 
 | # | 事项 | 阻塞什么 | 来源 | 状态 |
@@ -123,6 +134,7 @@
 | 批4 真机 | QA `D1~D12`（截图→核对→服务→提交、一图多码拆单、手填兜底、结果块）、`R1~R4`（造假失败图→AI 等待态/成功预填/不覆盖手填/静默降级）、`M1~M3`（零金额页面巡检） | 批 4 | QA_CHECKLIST 附录 B | 待用户点检 |
 | 批5 真机 | QA `E1~E8`（双机进度 10s 内同步/确认送达/取消与原因/超时与自动完成）、`E12~E18`（留言、消息中心红点、删除记录、编号复制、弱网重试与最近成功时间、订单无头像昵称快照）、双机 `T1~T13` | 批 5 | QA_CHECKLIST 附录 B | 待用户点检 |
 | 批6 真机 | QA `F1~F15`（首用引导/站点聚合/四档动线/需查明补齐/接单拒单/单件取件撤销/批量取件/批量送达/批量改站点改码/搜索/筛选/长列表/弱网/新单提醒/顾客取消）、`F21`（切换角色）、`F23`（兼职端无绑定入口）；双机新单红点与 30s 轮询、tabBar 角标、骨架屏/长列表性能 | 批 6 | QA_CHECKLIST 附录 B | 待用户点检 |
+| 批7 真机 | QA `F16`（客户档案/备注：只看到绑定顾客、`partnerNote` 仅兼职可见、解绑后不再显示头像昵称）、`F18`（代客下单：已绑定顾客单顾客可见进度、guest 单顾客看不到、绑定后只看新单）、`F20`（统计页只有单量、无费用字段、测试数据不计入）、`F22`（客户档案头像+昵称+编号、guest 默认头像+"代客单"标签）；另点检：客户列表服务端搜索/分页、顾客详情「查看更早」、解绑原因必填与二次确认、统计「今日完成」跨 tab 跳工作台（reLaunch 带参）、头像/昵称 onShow 重取 | 批 7 | QA_CHECKLIST 附录 B | 待用户点检 |
 
 ## 6. 批 1 收口证据（真实输出）
 
@@ -235,6 +247,28 @@
 - 口径回写：DATA_MODEL §2.5（`batchActionId` 回填/形态闸）+ §7.3（`listPartner` workbench 行 actions/CLOSED 读闸 + 批 6 只增约定 ①~⑦）；ENGINEERING §7.1/§7.2（3 套命令）+ §11 批 6 行；TECH_DEBT TD-043~048；`docs/lessons/` +2 卡（契约入参静默丢弃、清空时间戳假时间）。
 - 新增债务：TD-043（todayCompleted 精确计数需 DAO 窄口）、TD-044（keyword 部分匹配窗口）、TD-045（`lib/time.toMs` 空值兜底）、TD-046（admin 异常取消链不可达）、TD-047（listPartner 无 `since` 增量）、TD-048（终态总数/绑定空态数据源）；关闭债务：无（批 5 遗留明账继续跟踪）。
 
+## 6g. 批 7 离线收口证据（真实输出）
+
+| 命令 | 结果 |
+| :-- | :-- |
+| `powershell -File check.ps1` | **4 步全 PASS，退出码 0** |
+| `node tools/check.js` | 通过 **31 项**；失败 0 项 |
+| `node tools/check-docs.js --batch 1` | 通过 **10 项**；失败 0 项 |
+| `node tools/zero-money-scan.js --scope all` | **0 命中**（白名单 136 项） |
+| `node tools/selftest.js` | 运行 **21 套**；失败 0 套；SKIP 0；**3,132 断言全 PASS**（core 58 / state 341 / recognize 187 / cloud 168 / ai 197 / bind 79 / bind-cloud 108 / order 126 / order-flow 135 / order-lifecycle 98 / order-customer 190 / order-partner 127 / order-workbench 197 / order-detail-partner 153 / **partner-customers 129（新）** / **partner-orders 89（新）** / **partner-pages 156（新）** / **partner-stats 203（新）** / profile 98 / switch 140 / testaccount 153） |
+| `node tools/selftest-partner-customers.js` | 断言 **129/129**；失败 0 项（A~F：listBindings 搜索/排序/分页/activeOrderCount、getCustomer 越权与订单过滤、stats 三区间与 isTest 排除、解绑按顾客判定、备注、静态；变异电池 5 处首红） |
+| `node tools/selftest-partner-orders.js` | 断言 **89/89**；失败 0 项（A~G：bindingId 建单身份/guest 建单身份/互斥与白名单/批量原子/view=customer/DTO 隐私/静态；变异电池 5 处） |
+| `node tools/selftest-partner-pages.js` | 断言 **156/156**；失败 0 项（A~G：列表视图/详情装配与自然日分组/解绑流程/两路径 payload/校验矩阵/READONLY/静态；变异电池 3 处） |
+| `node tools/selftest-partner-stats.js` | 断言 **203/203**；失败 0 项（A~G：请求 payload/指标映射/7 日柱/日报文本/空错态/静态；变异电池 3 处） |
+| `node tools/sync-cloud-shared.js --check` | 16 源 × 2 套 32 件 hash 一致（sync 后 30 件已一致） |
+| 批 7 代码/判据提交 | `d34e35b`（48 文件 +7151/-1032；批 7 代码/判据/端侧） |
+| `gate.ps1 -Anchor 2514cbb -ScopeFiles "api/,cloudfunctions/,docs/,pages/,pkg-partner/,shared/,tools/,utils/" -Estimate 5200`（收口前工作区） | 红色 **0** 项；黄色 **0** 项（退出码 0）；变更集 56 件、8 前缀全匹配、体量 **7,157 行 ≤ 7,800**、提交信息格式合规（终态回读见 §8） |
+
+- 新增/修改代码文件（批 7）：服务端 `cloudfunctions/api/handlers/partner/{_customer,getCustomer,stats,listBindings,unbindCustomer,saveCustomerNote,index}.js`、`handlers/order/{_create,_parcel,_store,listPartner}.js`；端侧 `pages/partner/customers/**`（+parts/list-model）、`pkg-partner/pages/{customer-detail,create-on-behalf,stats}/**`（+parts）、`pages/partner/workbench/index.js`（仅 completedDate 入参）、`utils/customer-view.js`；基础设施 `shared/actions.js`、`tools/lib/project.js`、`switch-session.js`、`api/modules/partner.js`；测试 `tools/selftest-partner-{customers,customers-cases,orders,orders-cases,pages,stats}.js`、`tools/selftest.js`、`tools/selftest-bind-cloud.js`。
+- 真实缺陷（首红→复绿，均断言锁定）：①`partner.unbindCustomer` 进行中单按兼职全量误拦（他人有单导致本顾客不能解绑）；②`listBindings` 依赖 DB 字符串序（D10 排 D4 前）；③keyword/cursor/limit 服务端搜索分页全缺、activeOrderCount 混入 isTest；④`saveCustomerNote`/`unbindCustomer` 归属错误码 NOT_FOUND（§7.4 要求 FORBIDDEN 不泄露存在性）；⑤顾客详情用 `order.listPartner({keyword: customerNo})` 冒充按顾客过滤；⑥代客单只能 guest（绑定顾客单 `customerId=''`，顾客看不到进度）；⑦顾客单/批量 items 传 guest 被静默接受；⑧幂等重放 DTO 侧别按 customerId 判等（guest/绑定单回放成顾客视图）；⑨统计页 4×100 history 客户端累加（>400 单偏小）、完成率分母 0 显示 0%、异常按本地时区猜；⑩空数据画假柱；⑪「今日完成」无跳转协议；⑫解绑空原因可提交。
+- 口径回写：CONTRACT §5.3 partner 行（getCustomer/stats）；DATA_MODEL §7.4 表与批 7 段（search/cursor/getCustomer/stats/解绑按顾客/隐私）、§7.5 表与批 7 段（bindingId/guest 互斥、view=customer、guest 内联）、§4.8 A（绑定顾客代客分支）、§4.7（requestKey 归属沿用）；UX_PARTNER §9（stats 服务端单源）；ENGINEERING §6.2/§7.1/§7.2/§11 批 7；TECH_DEBT TD-049/050；`docs/lessons/` +3 卡（关键词冒充过滤、二选一入参互斥、文档字段名漂移）。
+- 新增债务：TD-049（`getCustomer.orders` 与 `listPartner view=customer` 双源，页面已统一 listPartner）、TD-050（partner 域扫描窗 100/300，DAO 无范围查询）；关闭债务：无（批 5/6 遗留明账继续跟踪）。
+
 ## 7. 当前风险与红灯（如实记录）
 
 1. **云端一切未执行**：云环境、集合、索引、安全规则、环境变量、触发器、存储权限均未在真实控制台创建；批 1/批 2/批 3/批 4 的"绿"全部来自 fake-DB/纯件/静态门禁，**不等于云端已跑通**。任何"部署成功/联调成功"必须以 RUNBOOK 证据为准。
@@ -252,6 +286,8 @@
 13. **批 5 遗留明账**：`order.listCustomer.counts` 单次 find 上限 500 截断（TD-040，极端历史量 tab 计数偏小）；详情写动作 `clientRequestId` 每次自生成（TD-041，靠状态机/乐观锁兜底）；补码文案 `CODE_FILLED_NOTE` 云端/端侧各一份字面量（TD-042，两端套件双向锁一致）。均不阻塞离线收口。
 14. **批 6 遗留明账**：`todayCompleted` 仍 100 截断（TD-043，需冻结件 `db/dao.js` 查询运算符，Lead 未授权前不硬改）；keyword 非订单号部分匹配受 300 条窗口限制（TD-044，口径已声明降级）；`lib/time.toMs` 空值兜底 `Date.now()` 根因在他域（TD-045，DTO 层已防御）；admin 异常介入取消链不可达（TD-046，批 8 裁决）；`listPartner` 无 `since` 增量入参（TD-047，端侧已做行级合并）；已完结终态总数/绑定空态数据源缺口（TD-048，工作台以近似文案表达）。均不阻塞离线收口。
 15. **批 6 判据有牙**：三套新判据均带变异电池首红（A 组 5/5、B 组 6/6、C 组由首轮 132/153 与 20 红→复绿）；`selftest-order-detail-partner` 的 DELIVERED `correct` 以「服务端误下发→页面不渲染」反例锁双保险，不依赖服务端现状。
+16. **批 7 遗留明账**：`partner.getCustomer.orders` 与 `order.listPartner({view:'customer'})` 双源（页面已统一走后者，TD-049）；`partner.listBindings`/`activeOrderCount`/`partner.stats` 受等值查询扫描窗限制（绑定 100/每状态 300，TD-050，与 TD-043/044 合并立项）；解绑原因枚举由端侧固定 `PARTNER_INITIATED`、用户填写说明落 `releaseNote`（契约 reason 命中枚举，未提供枚举选择器）；统计「今日完成」跳工作台用 `wx.reLaunch` 带 `completedDate` 跨 tab（`switchTab` 不能带参，真机待验）。均不阻塞离线收口。
+17. **批 7 判据有牙**：四套新判据均带变异电池首红（customers 5 处、orders 5 处、pages 3 处、stats 3 处，均 SHA256 还原后复跑绿）；first-red 共 31+20+12+35 条；`selftest-partner-orders` 以「顾客单传 guest 仍 ok」反例锁二选一互斥，`selftest-partner-pages` G5 静态锁 `view:'customer'` 包络。
 
 ## 8. 最近更新
 
@@ -279,6 +315,9 @@
 | 2026-10-22 | **批 6 离线开工**（Agent Team 并行 task-68/69/70）：云端兼职域（workbench 行 actions/batchActionId/搜索/CLOSED）、工作台端侧（行级动作/批量/撤销/筛选/性能/引导）、详情端侧（补码/异常/送达/凭证/只读）三个工作流 + Lead 集成（`tools/selftest.js` 注册 3 套、`pages/profile` 重新看引导、文档回写）；D1/D2 未到前只做离线代码与机器判据 |
 | 2026-10-22 | **批 6 真实缺陷修复（首红定位）**：①workbench 行 DTO 无 `actions[]`；②§7.3 四动作 `batchActionId` 静默丢弃（批量分组不可审计 + 非法 id 不拒）；③`todayCompleted` 100 截断探针；④keyword 完整订单号也漏（改唯一索引精确查询）；⑤SUSPENDED/CLOSED 仍可读工作台；⑥PARTNER DELIVERED 下发非法 `correct`；⑦`unmark*` 事件 `undoneAction` 写错；⑧`undo` 撤销送达残留 `deliveryNote`；⑨DTO 清空时间戳变真实时钟假时间；⑩`reject.OTHER` 无备注静默通过；端侧另修「非法 partnerNo 渲染造假」「DELIVERED 仍可补码建模」，并按 UX §4 补齐行级动作/服务端筛选/部分失败重试/撤销条批量 id/引导编号/已完结分区/分页行级 setData/骨架屏/凭证卡等达标点 |
 | 2026-10-22 | **批 6 离线收口**：`check.ps1` 4 步全 PASS（退出码 0）——check.js 31/31、check-docs 10/10、零金额 0 命中、selftest **17 套 2,555 断言**全 PASS（新增 `selftest-order-partner` 127、`selftest-order-workbench` 197、`selftest-order-detail-partner` 153）；提交：代码/判据 `5abf140`（45 文件 +7326/-762）+ 证据回写 `cdd3b81`；`gate.ps1 -Anchor 39c9e49` 红色 0 / 黄色 0（53 件、体量 7,404 行 ≤ 7,800）；TD-043~048 登记、lessons +2 卡；DATA_MODEL/ENGINEERING/README/CHANGELOG 回写 |
+| 2026-10-22 | **批 7 离线开工**（Agent Team 并行 task-71/72/73/74）：云端客户/统计域（listBindings 重构 + getCustomer + stats + 解绑修复）、云端代客下单（bindingId/guest 双路径 + listPartner view=customer）、端侧客户档案三页、端侧统计与日报四个工作流；Lead 先冻结批 7 接口口径（CONTRACT §5.3 + DATA_MODEL §7.4/§7.5/§4.8 + UX §9 + shared/actions/project 注册）再派发；D1/D2 未到前只做离线代码与机器判据 |
+| 2026-10-22 | **批 7 真实缺陷修复（首红定位）**：①unbind 进行中单全量误拦；②listBindings 字符串序（D10→D4 前）；③keyword/cursor/limit 全缺 + activeOrderCount 混 isTest；④归属错误码 NOT_FOUND→FORBIDDEN；⑤顾客详情 keyword 冒充按顾客过滤；⑥代客单只能 guest；⑦顾客单/批量 guest 静默接受；⑧重放侧别错判；⑨统计 4×100 累加近似/完成率 0%/本地时区；⑩空数据假柱；⑪今日完成无跳转协议；⑫解绑空原因可提交。均修并断言锁定 |
+| 2026-10-22 | **批 7 离线收口**：`check.ps1` 4 步全 PASS（退出码 0）——check.js 31/31、check-docs 10/10、零金额 0 命中、selftest **21 套 3,132 断言**全 PASS（新增 `selftest-partner-customers` 129、`selftest-partner-orders` 89、`selftest-partner-pages` 156、`selftest-partner-stats` 203）；提交：代码/判据 `d34e35b`（48 文件 +7151/-1032）+ 证据回写（本提交）；`gate.ps1 -Anchor 2514cbb` 红色 0 / 黄色 0；TD-049/050 登记、lessons +3 卡；CONTRACT/DATA_MODEL/UX_PARTNER/ENGINEERING/README/CHANGELOG 回写 |
 
 ## 9. 下一步（按序）
 
@@ -289,8 +328,9 @@
 5. **批 4 真机点检**：D1~D12（截图→核对→服务→提交、一图多码拆单、手填兜底、结果块）、R1~R4（造假失败图→AI 等待态/成功预填/不覆盖手填/静默降级）、M1~M3（零金额巡检）；真实云部署后补 D8/D9/D12 控制台项与 R2/R3 真机取证。
 6. **批 5 真机点检**：E1~E8（双机 10s 内进度同步、确认送达、取消与原因、拒单原因、超时自动取消/24h 自动完成）、E12~E18（留言与只读归档、消息中心红点、删除记录、双方编号复制、弱网重试与「最近更新」、订单无头像昵称快照）、双机 T1~T13；按 `docs/QA_CHECKLIST.md` 批 5 分区取证。
 7. **批 6 真机点检**（只能用户）：QA `F1~F15`/`F21`/`F23`——首用引导、站点聚合、四档动线、需查明补齐、接单拒单、单件取件撤销、批量取件/送达/改站点改码、搜索、筛选、长列表、弱网、新单提醒、顾客取消、切换角色、兼职端无绑定入口；双机新单红点与 30s 轮询、tabBar 角标、骨架屏/长列表性能；按 `docs/QA_CHECKLIST.md` 批 6 分区取证。
-8. **批 7 离线收口（agent，不依赖云环境）**：兼职客户与运营——客户档案/详情/`partnerNote`/顾客编号展示；代客下单（guest 单）；单量统计（今日/本周完成量、状态分布、异常数，无收入类字段）；绑定卡片分享/解绑；`partner.listBindings/unbindCustomer`；`partner.saveCustomerNote`。
-9. **批 8/批 9** 按 ENGINEERING §11 推进；每批 DoD = `check.ps1` 退出码 0 + 真实输出 + 本批验收逐条打勾 + 文档回写；真机/控制台项由用户执行。
+8. **批 7 真机点检**（只能用户）：QA `F16`（客户档案/备注：只看到绑定自己顾客、`partnerNote` 顾客不可见、解绑后不再显示头像昵称）、`F18`（代客下单：已绑定顾客单顾客可见进度、guest 单顾客看不到进度、绑定后只看新单）、`F20`（统计页只有单量、无费用字段、测试数据不计入）、`F22`（客户档案头像+昵称+编号、guest 默认头像+"代客单"标签）；另点检客户列表服务端搜索/分页、详情「查看更早」、解绑原因必填与二次确认、统计「今日完成」跨 tab 跳工作台（`reLaunch` 带参）、头像/昵称 onShow 重取；按 `docs/QA_CHECKLIST.md` 批 7 分区取证。
+9. **批 8 开发者后台 + 切换会话 + 通知 + 隐私文本**（下一步，见 ENGINEERING §11）：`pkg-admin` 11 页、`admin.*` 全量 + 脱敏 DTO、`viewAsStart/End` 两模式 + 测试账号四动作、`cleanup.*` 其余、消息中心聚合/红点/公告、`docs/privacy/` 定稿；`docs/TECH_DEBT.md` 中 TD-046（admin 异常介入取消链）与 TD-049（客户历史单双源）在批 8 收口时裁决。
+10. **批 9** 按 ENGINEERING §11 推进；每批 DoD = `check.ps1` 退出码 0 + 真实输出 + 本批验收逐条打勾 + 文档回写；真机/控制台项由用户执行。
 
 ## 10. 维护规则
 
