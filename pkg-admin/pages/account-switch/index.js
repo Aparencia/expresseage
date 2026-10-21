@@ -147,23 +147,30 @@ Page({
       return;
     }
     this.setData({ searchLoading: true, searched: false, candidates: [], selected: null });
-    const isPartner = this.data.role === C.ROLE_PARTNER;
-    const task = isPartner
-      ? admin.listPartners({ keyword: keyword, includeTest: false, limit: SEARCH_LIMIT })
-      : admin.listCustomers({ keyword: keyword, includeTest: false, limit: SEARCH_LIMIT });
+    const plan = vm.buildRealSearchParams({ role: this.data.role, keyword: keyword, limit: SEARCH_LIMIT });
+    const task = plan.action === 'listPartners'
+      ? admin.listPartners(plan.payload)
+      : admin.listCustomers(plan.payload);
     task.then((result) => {
       const list = (result && result.list) || [];
+      const isPartner = this.data.role === C.ROLE_PARTNER;
       this.setData({
-        candidates: list.map((item) => vm.decorateCandidate(item, isPartner)),
+        candidates: list.map(function mapCandidate(item) {
+          return vm.decorateCandidate(item, isPartner);
+        }),
         searched: true,
         searchLoading: false
       });
       if (this.prefillTarget) {
         this.prefillTarget = '';
-        const target = this.data.candidates.filter(function (item) {
+        const target = this.data.candidates.filter(function matchTarget(item) {
           return item.targetNo === keyword;
         })[0];
-        if (target) this.selectCandidate(target);
+        if (target) {
+          this.selectCandidate(target);
+        } else {
+          feedback.toast('该用户当前不可查看，请确认对方账号处于正常状态后再试。');
+        }
       }
     }).catch((err) => {
       this.setData({ searchLoading: false, searched: true });
@@ -203,10 +210,9 @@ Page({
   },
 
   confirmEnter(options) {
-    const ttl = this.data.ttlMinutes;
     const content = options.testMode
-      ? '将以测试账号 ' + options.targetNo + '（' + options.roleText + '）进入，有效期 ' + ttl + ' 分钟。期间可操作，但只写入测试数据，不影响真实用户；全程审计。确定进入？'
-      : '将以' + options.roleText + ' ' + options.targetNo + ' ' + options.displayName + ' 的只读视角进入，有效期 ' + ttl + ' 分钟。期间不能做任何写操作，退出或到期后自动回到账号切换。确定进入？';
+      ? vm.buildTestConfirmContent(options, this.data.ttlMinutes)
+      : vm.buildRealConfirmContent(options, this.data.ttlMinutes);
     feedback.confirm({
       title: options.testMode ? '进入测试视图' : '进入只读视图',
       content: content,
@@ -341,27 +347,34 @@ Page({
   createAccount(autoSwitch) {
     if (this.data.creating) return;
     const role = this.data.createRole;
-    const used = role === C.ROLE_PARTNER ? this.data.partnerUsed : this.data.customerUsed;
-    if (used >= this.data.maxPerRole || this.data.totalUsed >= this.data.maxTotal) {
-      feedback.toast('每位开发者每角色最多 ' + this.data.maxPerRole + ' 个、合计 ' + this.data.maxTotal + ' 个测试账号。');
+    const quota = vm.quotaState({
+      role: role,
+      customerUsed: this.data.customerUsed,
+      partnerUsed: this.data.partnerUsed,
+      totalUsed: this.data.totalUsed,
+      maxPerRole: this.data.maxPerRole,
+      maxTotal: this.data.maxTotal
+    });
+    if (quota.blocked) {
+      feedback.toast(quota.copy);
       return;
     }
-    const displayName = String(this.data.createName || '').trim();
-    if (!displayName || displayName.length > C.LIMITS.testDisplayNameMax) {
-      feedback.toast('昵称不能为空且最多 20 字。');
+    const checked = vm.validateCreateName(this.data.createName, C.LIMITS.testDisplayNameMax);
+    if (!checked.ok) {
+      feedback.toast(checked.error);
       return;
     }
     this.setData({ creating: true });
-    admin.createTestAccount({ role: role, displayName: displayName }).then((account) => {
+    admin.createTestAccount({ role: role, displayName: checked.displayName }).then((account) => {
       this.setData({ creating: false, showCreate: false });
       const targetNo = (account && (account.customerNo || account.partnerNo || account.targetNo)) || '';
       feedback.toast('已创建测试账号 ' + targetNo + '（' + vm.roleLabel(role) + '）。');
       if (autoSwitch && targetNo) {
-        this.startView({
+        this.confirmEnter({
           role: role,
           roleText: vm.roleLabel(role),
           targetNo: targetNo,
-          displayName: displayName,
+          displayName: checked.displayName,
           mode: enums.VIEW_MODE.TEST_WRITE,
           testMode: true
         });
@@ -378,21 +391,14 @@ Page({
     const index = Number(event.currentTarget.dataset.index);
     const account = this.data.testAccounts[index];
     if (!account || this.data.submitting) return;
-    // 先 dryRun 拿将删除条数（含活跃会话数），再二次确认；真实引用时服务端直接拒绝并显示其原因。
+    // 先 dryRun 拿将删除条数（含订单/事件/留言/绑定/识别失败/avatarFiles 文件数与活跃会话数），
+    // 再二次确认；真实引用时服务端直接拒绝并显示其原因。确认文案由 parts/view-model 纯件生成。
     this.setData({ submitting: true });
     admin.deleteTestAccount({ targetNo: account.targetNo, dryRun: true }).then((preview) => {
       this.setData({ submitting: false });
-      const counts = (preview && preview.removedCounts) || {};
-      const sessionsEnded = F.numOrZero(preview && preview.sessionsEnded);
-      const content = '删除测试账号 ' + account.targetNo + '（' + account.displayName + '）将级联删除：测试订单 ' +
-        F.numOrZero(counts.orders) + ' 条、事件 ' + F.numOrZero(counts.events) + ' 条、留言 ' +
-        F.numOrZero(counts.messages) + ' 条、绑定 ' + F.numOrZero(counts.bindings) + ' 条、识别失败 ' +
-        F.numOrZero(counts.failures) + ' 条、头像/原图 ' + F.numOrZero(counts.avatarFiles) + ' 个' +
-        (sessionsEnded > 0 ? '，并结束 ' + sessionsEnded + ' 个活跃切换会话' : '') +
-        '。不可恢复，输入“删除”确认。';
       return feedback.confirm({
         title: '删除测试账号',
-        content: content,
+        content: vm.buildDeleteConfirmContent(account, preview),
         confirmText: '确认删除',
         danger: true,
         editable: true,
@@ -461,8 +467,7 @@ Page({
     const counts = this.data.purgeCounts || {};
     feedback.confirm({
       title: '确认清空测试数据',
-      content: '将清空全部测试数据：测试订单 ' + F.numOrZero(counts.orders) + ' 条、留言 ' + F.numOrZero(counts.messages) +
-        ' 条、绑定 ' + F.numOrZero(counts.bindings) + ' 条、识别失败 ' + F.numOrZero(counts.failures) + ' 条；测试账号保留。此操作不可恢复。',
+      content: vm.buildPurgeConfirmContent(counts),
       confirmText: '确认清空',
       danger: true
     }).then((res) => {

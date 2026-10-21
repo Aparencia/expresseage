@@ -50,10 +50,11 @@ const DEFAULT_CONFIG = {
 };
 
 // admin.updateConfig 白名单字段的范围（未列出的键不接受后台改）
+// 头像上限 = 200KB：与 CONTRACT §4.12 / 隐私文本「≤200KB」一致，不得放宽（批 8 收口统一，TD 记于 CHANGELOG）。
 const CONFIG_LIMITS = {
   viewTicketTtlMinutes: { min: 5, max: 60 },
   recognitionFailureRetentionDays: { min: 7, max: 30 },
-  avatarMaxBytes: { min: 100 * 1024, max: 500 * 1024 },
+  avatarMaxBytes: { min: 100 * 1024, max: 200 * 1024 },
   testAccountMaxPerRole: { min: 1, max: 3 },
   testDataRetentionDays: { min: 7, max: 90 }
 };

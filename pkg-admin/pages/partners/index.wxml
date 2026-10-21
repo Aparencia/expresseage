@@ -1,4 +1,9 @@
 <view class="page-body">
+  <view class="card" wx:if="{{forbidden}}">
+    <text class="section-title">{{forbidden.title}}</text>
+    <text class="muted">{{forbidden.text}}</text>
+  </view>
+  <block wx:if="{{!forbidden}}">
   <view class="card filter-block">
     <view class="form-row">
       <input class="form-input" value="{{keyword}}" placeholder="完整兼职编号或前缀" confirm-type="search" bindinput="onKeywordInput" bindconfirm="onSearchConfirm" />
@@ -20,7 +25,7 @@
   <view class="empty-text" wx:if="{{searching}}">搜索中…</view>
 
   <view class="card" wx:if="{{error}}" bindtap="onRetry">
-    <text class="muted">没连上服务器，先检查网络；刚才的数据是 {{errorAt}} 的。</text>
+    <text class="muted">{{error}}</text>
     <text class="link"> 点此重试</text>
   </view>
 
@@ -42,8 +47,9 @@
       <view class="row">
         <view class="btn btn-danger btn-small" wx:if="{{item.canSuspend}}" data-index="{{index}}" catchtap="onSuspend">停用</view>
         <view class="btn btn-primary btn-small" wx:if="{{item.canResume}}" data-index="{{index}}" catchtap="onResume">恢复</view>
-        <view class="btn btn-ghost btn-small" data-index="{{index}}" catchtap="onSwitch">切换</view>
+        <view class="btn btn-ghost btn-small" wx:if="{{item.canSwitch}}" data-index="{{index}}" catchtap="onSwitch">切换</view>
       </view>
     </view>
   </view>
+  </block>
 </view>

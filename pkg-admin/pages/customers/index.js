@@ -1,11 +1,10 @@
 // pkg-admin/pages/customers/index.js · 顾客列表（默认脱敏；默认排除测试账号）
 const admin = require('../../../api/modules/admin');
 const C = require('../../common/constants');
-const F = require('../../common/format');
 const feedback = require('../../common/feedback');
+const vm = require('./parts/view-model');
 
 const PAGE_SIZE = 20;
-const SEARCH_MIN = 2;
 const DEBOUNCE_MS = 300;
 
 Page({
@@ -20,7 +19,8 @@ Page({
     error: '',
     errorAt: '',
     forbidden: false,
-    searched: false
+    searched: false,
+    emptyText: '还没有顾客资料。'
   },
 
   onLoad() {
@@ -55,10 +55,11 @@ Page({
       includeTest: this.data.includeTest,
       limit: PAGE_SIZE
     }).then((result) => {
-      const rows = ((result && result.list) || []).map((item) => this.decorateRow(item));
+      const rows = vm.decorateList((result && result.list) || []);
       this.setData({
         list: reset ? rows : this.data.list.concat(rows),
         nextCursor: (result && result.nextCursor) || '',
+        emptyText: vm.emptyTextOf(this.data.keyword),
         loading: false,
         searching: false,
         loadingMore: false,
@@ -79,7 +80,7 @@ Page({
       cursor: this.data.nextCursor,
       limit: PAGE_SIZE
     }).then((result) => {
-      const rows = ((result && result.list) || []).map((item) => this.decorateRow(item));
+      const rows = vm.decorateList((result && result.list) || []);
       this.setData({
         list: this.data.list.concat(rows),
         nextCursor: (result && result.nextCursor) || '',
@@ -91,34 +92,13 @@ Page({
     });
   },
 
-  decorateRow(item) {
-    const inProgress = F.numOrZero(item.inProgressCount);
-    const total = F.numOrZero(item.totalCount);
-    return {
-      customerNo: item.customerNo || '—',
-      displayName: F.textOrDash(item.displayName),
-      dormText: item.dormText || item.dorm || '—',
-      bindingText: item.bindingPartnerNo ? '已绑定 ' + item.bindingPartnerNo : '未绑定',
-      profileText: item.profileCompleted ? '资料完整' : '资料未完整',
-      progressText: '进行中 ' + inProgress + ' / 累计 ' + total,
-      isTest: item.isTest === true
-    };
-  },
-
   onKeywordInput(event) {
     const keyword = String(event.detail.value || '');
     this.setData({ keyword: keyword });
     if (this.timer) {
       clearTimeout(this.timer);
     }
-    if (keyword.length === 0) {
-      this.timer = setTimeout(() => {
-        this.timer = null;
-        this.loadList(true).catch(function () {});
-      }, DEBOUNCE_MS);
-      return;
-    }
-    if (keyword.length < SEARCH_MIN) {
+    if (!vm.shouldSearch(keyword)) {
       return;
     }
     this.timer = setTimeout(() => {

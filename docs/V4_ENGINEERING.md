@@ -183,11 +183,11 @@ expressage_college_v4/
 | `screenshotRetentionDays` | 截图留存 | 7 | admin.updateConfig |
 | `viewTicketTtlMinutes` | **切换会话票据时长（v0.7；v0.9 两模式共用）** | 30，范围 5~60 | admin.updateConfig |
 | `recognitionFailureRetentionDays`（v0.8） | **识别失败原图/记录保留** | 30，范围 7~30 | admin.updateConfig |
-| `avatarMaxBytes`（v0.9） | **头像文件大小上限**（客户端压缩目标从 `config.getPublic` 取） | `200*1024`（200KB，范围 100KB~500KB） | admin.updateConfig |
-| `testAccountMaxPerRole`（v0.9） | **每位开发者每角色测试账号上限** | 3（合计 ≤6） | admin.updateConfig |
-| `testDataRetentionDays`（v0.9） | **测试数据保留天数**（超期未使用清空业务数据、账号保留） | 30 | admin.updateConfig |
+| `avatarMaxBytes`（v0.9） | **头像文件大小上限**（客户端压缩目标从 `config.getPublic` 取） | `200*1024`（200KB，范围 100KB~200KB；上限=隐私承诺 ≤200KB，不得放宽） | admin.updateConfig |
+| `testAccountMaxPerRole`（v0.9） | **每位开发者每角色测试账号上限** | 3（范围 1~3；合计 ≤6） | admin.updateConfig |
+| `testDataRetentionDays`（v0.9） | **测试数据保留天数**（超期未使用清空业务数据、账号保留） | 30（范围 7~90） | admin.updateConfig |
 | `aiFallback`（v0.8） | **AI 兜底开关与限额**：`{enabled,model,timeoutMs,maxPerUserPerDay,dailyQuota,cooldownMinutes}` | 默认 `{enabled:false（实测后开）, model:'deepseek-chat', timeoutMs:8000, maxPerUserPerDay:5, dailyQuota:<按运营量定>, cooldownMinutes:10}`；值为次数/毫秒/布尔，**不含任何交易语义** | MVP **后台只读展示**（`admin.updateConfig` 白名单不含该键，P1 再开）；改值走部署配置脚本/控制台，且与隐私文本同步 |
-| `privacyVersion` | 隐私版本号 | 由 privacy 文档定稿回填 | admin.updateConfig |
+| `privacyVersion` | 隐私版本号 | 由隐私文本定稿回填（文本键，非空≤32） | admin.updateConfig（隐私定稿流程；后台 config 页不提供编辑入口） |
 | `subscribe`（P1） | 订阅消息 `{enabled,templates:{newOrder,status,exception}}` | 默认关闭 | admin.updateConfig |
 - 客户端只经 `config.getPublic` 取公开子集（不含 `subscribe.templates` 的模板 ID、不含 `aiFallback` 的任何密钥类信息；**公开子集含 `avatarMaxBytes`（压缩目标）与 `viewTicketTtlMinutes`（黄条/蓝条倒计时），均为只读数值**）；`config` 缓存 TTL 5 分钟 + onShow 刷新；AI 开关/限额变更仅服务端生效（客户端不依赖开关做安全判断）；**`aiFallback` 不经 `admin.updateConfig`**（MVP 后台只读），改值走部署配置脚本/控制台并与隐私文本同步。
 ---
@@ -352,8 +352,8 @@ expressage_college_v4/
 | :-- | :-- | :-- | :-- |
 | `cleanup.orderTimeout` | `SUBMITTED` 且超 `orderTimeoutMinutes` 未接单 | CANCELLED + `TIMEOUT_CANCELLED`（SYSTEM） | 每轮 100 条 |
 | `cleanup.autoComplete` | `DELIVERED` 且超 `autoCompleteHours` 未确认（**含 guest 单**） | COMPLETED + `AUTO_COMPLETED`（SYSTEM） | 100 |
-| `cleanup.files` | 终态超 `screenshotRetentionDays`（默认 7） | 按 `image.fileId` 引用计数归零删云文件（`orders/{ticket}/image.jpg`；**无引用 `avatars/{role}/{random}.jpg` 一并清**）并清订单图片引用 | 100 |
-| `cleanup.tickets` | `upload_tickets` 过期（宽限 24h） | 删票据 + 无主文件兜底扫描 | 100 |
+| `cleanup.files` | 终态超 `screenshotRetentionDays`（默认 7） | 按 `image.fileId` 引用计数归零删云文件（`orders/{ticket}/image.jpg`）并写 `orders.image.cleanedAt`、清订单图片引用；**无主 `avatars/` 自动清 MVP 不可行（TD-051，见本节末）** | 100 |
+| `cleanup.tickets` | `upload_tickets` 过期（宽限 24h，含已使用） | 删票据（无主文件扫描 MVP 不可行，TD-051） | 100 |
 | `cleanup.viewSessions`（v0.7） | 票据 `expiresAt` 已过或 `endedAt` 超 7 天 | 过期未结束 → 补写 `endedAt` + 记一条 `ACCOUNT_SWITCH_EXPIRED`（每票至多一条）；结束超 7 天 → 物理删会话 | 100 |
 | `cleanup.retention` | 终态超 180 天且 `anonymizedAt` 空 → 匿名化；`anonymizedAt`+30 天或 `deletedByCustomerAt`+7 天 → 物理删 | 匿名化（去 openid/昵称/尾号/宿舍/截图/留言文本/事件 payload PII/编号快照）+ 级联删订单/留言/事件 | 100/类 |
 | `cleanup.accountDeletion` | `users.deletionRequestedAt` + 30 天 | 物理删 customers/partners/bindings/tickets/**头像文件**；编号作废不回收；**识别失败记录：`uploaderOpenid` 置空（匿名化）、原图按引用计数删、`ocrTextMasked` 保留至到期（默认 30 天）后物理删；复核审计日志保留**（CONTRACT §11.4） | 100 |
@@ -364,6 +364,7 @@ expressage_college_v4/
 | `cleanup.recomputeStats` | 每次运行 | 重算 `partners.stats`（**只含单量：todayOrders/totalOrders/completedOrders**，无费用字段）；写 `admin_audit{action:'CLEANUP', detail:{counts}}` | — |
 
 - **调度**：`cleanup` **只配一条定时触发器，每 10 分钟**；每次按"到期条件"幂等执行全部任务，**不要求多触发器**。代价 = 高频查询（索引覆盖 + 每轮限 100 条）；上线后按控制台调用日志评估是否降频，结论写 `docs/RUNBOOK.md`。
+- **无主文件兜底（批 8 实测限制，TD-051）**：`upload_tickets` 只存 `cloudPath` 不存 fileID，`wx-server-sdk` 无"列举文件"API ⇒ §4.7 `files/tickets` 的"无引用文件/无主 `avatars/` 扫描删除"**MVP 不可自动实现**；当前按「订单 `image.fileId` 引用计数 + 票据/账号删除时已知 fileID」清理，残留由用户在控制台人工清理（RUNBOOK §7）；P1 方案 = api 消费票据时把 fileID 回写 `upload_tickets` 再交 cleanup 自动清理。`CLEANUP` 汇总审计按 §10.2 步骤 11 每轮一条（10 分钟一轮，幂等 requestKey）。
 - **异常单超时提醒不落库、不发送**：工作台/管理端按 `exception.at + 阈值` 查询派生；P1 订阅消息另做（模板 ID/开关/文案在 `config`）。
 - **留存时间线**：终态 180 天匿名化 → +30 天物理删；软删 COMPLETED 7 天物理删；截图 7 天；**头像替换即删旧文件、注销/删测试账号删文件**；切换会话结束/过期后 7 天删；**识别失败原图/记录 `recognitionFailureRetentionDays`（默认 30，到期删引用并置 `IGNORED(EXPIRED)`）**；**测试数据 30 天未使用清空（账号保留）**；注销=立即匿名化 + 删截图/头像/partnerNote + **识别失败记录清 `uploaderOpenid`、原图按引用计数删、`ocrTextMasked` 到期删** + 30 天内物理删（复核审计日志按审计策略保留，CONTRACT §11.4）。
 ### 4.8 开发者切换会话（云侧，v0.9；READONLY / TEST_WRITE）
@@ -631,6 +632,7 @@ expressage_college_v4/
 | v0.9 专项（绑定/资料/切换/测试账号） | `tools/selftest-{bind,profile,switch,testaccount}.js` | 绑定角色/方向/自绑/真实×测试互斥；昵称截断+`msgSecCheck`+头像 payload 白名单；票据解析/READONLY 拒写/TEST_WRITE 白名单/统计排除；测试账号上限/`dryRun`/级联删除 | 真实外呼/真库/真实微信 |
 | 云函数 handler | `tools/selftest-cloud.js` + `fake-db.js` | 状态矩阵/幂等/唯一冲突/越权/限流/**编号生成/邀请码/切换会话/测试账号**/cleanup 时间旅行 | 直连真实云环境/真库 |
 | 订单闭环（批 4/5） | `tools/selftest-{order,order-flow,order-lifecycle,order-customer}.js` + `fake-db.js` / transport 注入 | 建单引擎与票据/批量原子/严格入参；**顾客闭环**（`order.get` 七态 actions 矩阵、`listCustomer` 三桶+counts+游标、cancel/confirmDelivery/deleteRecord 事件流水、越权负向、`expectedVersion`=CONFLICT、`message.send` 终态闸、`imageUrl` cleaned）；端侧视图矩阵/轮询退避/再次下单/消息红点/补码文案 | 真库/真实云；mock 全局 wx |
+| 开发者后台与通知（批 8） | `tools/selftest-{admin,messages,cleanup,admin-pages,message-pages,privacy-text}.js` + `fake-db.js` / transport 注入 | 后台 23 动作白名单与脱敏 DTO/邀请码生命周期/审计/复核四动作/异常介入取消（ADMIN 分支）/维护闸「读放行·写拒绝」边界；消息中心聚合与 `messageReadAt` 水位、`markRead`；cleanup 13 sweep 时间旅行/重跑幂等/部分失败隔离；后台 11 页五态/脱敏/「测试」行标签/危险二次确认；消息页 + 红点 + 公告 + 维护遮罩端侧；端内隐私全文与 docs 定稿关键条目一致性/版本注入 | 真库/真实云；mock 全局 wx |
 | API 适配层 | `selftest-core.js`（注入 transport） | 请求包络、响应校验、错误码映射、读重试/写不重试、**viewTicket 注入与写拦截** | mock `wx` 对象 |
 | 页面零件 | `selftest-state.js`（require `parts/`） | 纯函数视图模型 | `require` 页面（`Page()` 注册） |
 | 零金额门禁 | `check.js` #22、`check-docs.js` #7、`zero-money-scan.js` 自测 | 代码/文案/文档三范围命中 0；扫描器对注入样本必须红 | 用白名单整文件放行 |
@@ -638,7 +640,7 @@ expressage_college_v4/
 ### 7.2 harness 设计（v4 `tools/selftest.js`）
 - 计数器 + `EXPECTED_ASSERTIONS` 完整性闸（少算/多算都判红）；分节统一 `run({check,eq})` 注入，计数器只在 harness；`uncaughtException/unhandledRejection` 也打印总数并 exit 1；每条断言文字带 `§节号`。
 - 三条纪律沿用 v3：**有判别力**（先合法基线、再只有该闸能挡的反例）、**不许空集全绿**（先断言样本非空）、**期望值不抄现状**（修 bug 时同步改断言并记 CHANGELOG）。
-- 取数：`node tools/selftest.js | Select-Object -Last 2`、`node tools/selftest-ai.js | Select-Object -Last 2`、`node tools/selftest-cloud.js | Select-Object -Last 2`、`node tools/selftest-bind.js | Select-Object -Last 2`、`node tools/selftest-order.js | Select-Object -Last 2`、`node tools/selftest-order-lifecycle.js | Select-Object -Last 2`、`node tools/selftest-order-customer.js | Select-Object -Last 2`、`node tools/selftest-order-partner.js | Select-Object -Last 2`、`node tools/selftest-order-workbench.js | Select-Object -Last 2`、`node tools/selftest-order-detail-partner.js | Select-Object -Last 2`、`node tools/selftest-partner-customers.js | Select-Object -Last 2`、`node tools/selftest-partner-orders.js | Select-Object -Last 2`、`node tools/selftest-partner-pages.js | Select-Object -Last 2`、`node tools/selftest-partner-stats.js | Select-Object -Last 2`、`node tools/selftest-switch.js | Select-Object -Last 2`；条数不写死进文档。
+- 取数：`node tools/selftest.js | Select-Object -Last 2`、`node tools/selftest-ai.js | Select-Object -Last 2`、`node tools/selftest-cloud.js | Select-Object -Last 2`、`node tools/selftest-bind.js | Select-Object -Last 2`、`node tools/selftest-order.js | Select-Object -Last 2`、`node tools/selftest-order-lifecycle.js | Select-Object -Last 2`、`node tools/selftest-order-customer.js | Select-Object -Last 2`、`node tools/selftest-order-partner.js | Select-Object -Last 2`、`node tools/selftest-order-workbench.js | Select-Object -Last 2`、`node tools/selftest-order-detail-partner.js | Select-Object -Last 2`、`node tools/selftest-partner-customers.js | Select-Object -Last 2`、`node tools/selftest-partner-orders.js | Select-Object -Last 2`、`node tools/selftest-partner-pages.js | Select-Object -Last 2`、`node tools/selftest-partner-stats.js | Select-Object -Last 2`、`node tools/selftest-switch.js | Select-Object -Last 2`、`node tools/selftest-admin.js | Select-Object -Last 2`、`node tools/selftest-messages.js | Select-Object -Last 2`、`node tools/selftest-cleanup.js | Select-Object -Last 2`、`node tools/selftest-admin-pages.js | Select-Object -Last 2`、`node tools/selftest-message-pages.js | Select-Object -Last 2`、`node tools/selftest-privacy-text.js | Select-Object -Last 2`；条数不写死进文档。
 - 测试文件预算：单文件 ≤1000 行、单函数 ≤50 行（AGENTS 口径）；新增导出必须有生产调用或登记 TECH_DEBT。
 ### 7.3 云函数 handler 单测（fake DB）
 - DI：`createApi({ db, now, openid, env, cloud, requestId })` → `call(action, payload)`；`db` 为内存 fake（`collection/where/orderBy/limit/skip/get/add/update/remove/count`、`_.inc`、事务提交/回滚、唯一索引冲突模拟）。

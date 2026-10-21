@@ -38,6 +38,17 @@
   font-weight: 600;
 }
 
+.doc-section {
+  margin-bottom: 24rpx;
+}
+
+.doc-section-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: var(--v4-text);
+  margin: 8rpx 0 12rpx;
+}
+
 .paragraph {
   margin-bottom: 16rpx;
   line-height: 1.6;

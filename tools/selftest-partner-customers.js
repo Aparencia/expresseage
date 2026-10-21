@@ -221,13 +221,12 @@ function customerWorldOrders() {
 }
 
 async function sectionB(h) {
-  h.section('§7.4 B. partner.getCustomer：归属/档案行/订单白名单与分页/解绑资格同源', async (t) => {
+  h.section('§7.4 B. partner.getCustomer：归属/档案行/解绑资格同源（TD-049 起无 orders 字段）', async (t) => {
     const db = world({ orders: customerWorldOrders() });
     const pApi = apiOf(db, P1);
     const base = await pApi.call('partner.getCustomer', { bindingId: B1 });
-    t.eq(sortedKeys(base.data),
-      ['activeOrderCount', 'customer', 'nextCursor', 'orders', 'partnerNo', 'unbindEligibility'],
-      'B1 getCustomer 响应顶层键按契约固定六项');
+    t.eq(sortedKeys(base.data), ['activeOrderCount', 'customer', 'partnerNo', 'unbindEligibility'],
+      'B1 getCustomer 响应顶层键恰四项（TD-049：orders/nextCursor 已下线）');
     const customerRow = base.data.customer;
     t.eq([customerRow.bindingId, customerRow.displayName, customerRow.customerNo, customerRow.roomTag,
       customerRow.dormKey, customerRow.buildingText, customerRow.phoneTail, customerRow.avatarFileId,
@@ -236,108 +235,51 @@ async function sectionB(h) {
     'B2 customer 档案行=客户列表同源字段（含编号/锚/尾号/头像/进行中单数）');
     t.eq(Object.keys(customerRow).sort(), BINDING_ROW_KEYS.slice().sort(),
       'B3 customer 行顶层键与 listBindings 行白名单一致');
-    t.eq(base.data.orders.map((row) => row.orderNo),
-      ['20261022-3001', '20261022-3004', '20261022-3002', '20261022-3003', '20260912-3005'],
-      'B4 orders 只含该顾客在本兼职名下订单，按 statusUpdatedAt desc');
-    const completedRow = pickRow(base.data.orders, 'orderNo', '20261022-3002');
-    const submittedRow = pickRow(base.data.orders, 'orderNo', '20261022-3001');
-    t.eq(Object.keys(completedRow).sort(),
-      ['completedAt', 'createdAt', 'orderNo', 'serviceName', 'status', 'statusText'],
-      'B5 订单行只含白名单字段（日期键按存在性出现：完成单含 completedAt）');
-    t.eq(Object.keys(submittedRow).sort(),
-      ['createdAt', 'orderNo', 'serviceName', 'status', 'statusText'],
-      'B6 未发生的时间戳不出现在行里（不是空串占位）');
-    t.eq(base.data.orders.map((row) => row.statusText),
-      ['待接单', '已送达·待确认', '已完成', '已取消', '已完成'],
-      'B7 statusText 是服务端下发的人话（页面零文案拼接）');
-    t.eq(base.data.orders.filter((row) => row.serviceName !== '标准代取').length, 0,
-      'B8 serviceName 来自订单服务快照（仅名称，无任何计价字段）');
-    const orderKeyOffenders = [];
-    base.data.orders.forEach((row) => {
-      Object.keys(row).forEach((key) => {
-        if (ORDER_ROW_KEYS.indexOf(key) < 0) {
-          orderKeyOffenders.push(key);
-        }
-      });
-    });
-    t.eq(orderKeyOffenders, [],
-      'B9 订单行不出现取件码/宿舍/尾号/动作条/截图等敏感或未授权字段');
-    t.eq(collectKeyPaths(base.data, DTO_BANNED_KEYS, '', []), [],
-      'B10 getCustomer 响应递归零内部键（openid/主键/幂等键/isTest 等）');
+    t.check(base.data.orders === undefined,
+      "B4 响应不含 orders 字段（顾客历史订单唯一来源 = order.listPartner({view:'customer'})）");
+    t.check(base.data.nextCursor === undefined,
+      'B5 响应不含 nextCursor（不暴露第二套订单游标，避免双来源分页）');
     t.eq([base.data.activeOrderCount, base.data.unbindEligibility],
       [2, { canUnbind: false, activeOrderCount: 2 }],
-      'B11 activeOrderCount 与 unbindEligibility 同源：该顾客有进行中单→不可解绑');
-    t.eq(base.data.partnerNo, 'PAAAAAA', 'B12 回传本人兼职编号（页面底部「服务兼职编号」用）');
-
-    const pageNos = [];
-    const pageCursors = [];
-    let cursor = null;
-    let pages = 0;
-    for (;;) {
-      const page = await pApi.call('partner.getCustomer', { bindingId: B1, limit: 2, cursor });
-      page.data.orders.forEach((row) => pageNos.push(row.orderNo));
-      pageCursors.push(page.data.nextCursor);
-      cursor = page.data.nextCursor;
-      pages += 1;
-      if (!cursor || pages > 10) {
-        break;
-      }
-    }
-    t.eq([pageNos, new Set(pageNos).size], [pageNos, pageNos.length],
-      'B13 limit=2 游标翻页不重不漏');
-    t.eq([pageCursors.length, pageCursors[pageCursors.length - 1]], [3, null],
-      'B14 三页取尽且末页 nextCursor=null');
-
-    const ranged = await pApi.call('partner.getCustomer', {
-      bindingId: B1, from: NOW - 2500, to: NOW - 500
+      'B6 activeOrderCount 与 unbindEligibility 同源：该顾客有进行中单→不可解绑');
+    t.eq(base.data.partnerNo, 'PAAAAAA', 'B7 回传本人兼职编号（页面底部「服务兼职编号」用）');
+    const legacy = await pApi.call('partner.getCustomer', {
+      bindingId: B1, limit: 2, cursor: { sortValue: 1, orderNo: 'X' }, from: 'not-a-time', to: NOW
     });
-    t.eq(ranged.data.orders.map((row) => row.orderNo),
-      ['20261022-3001', '20261022-3004', '20261022-3002'],
-      'B15 from/to 按订单时间锚（完成/取消优先、进行中用 statusUpdatedAt）过滤');
-    await expectField(t, pApi.call('partner.getCustomer', { bindingId: B1, from: 'not-a-time' }),
-      'VALIDATION_FAILED', 'from', 'B16 非法 from → VALIDATION_FAILED 且 data.field=from');
-    await expectField(t, pApi.call('partner.getCustomer', { bindingId: B1, cursor: { sortValue: 1 } }),
-      'VALIDATION_FAILED', 'cursor', 'B17 畸形游标（缺 orderNo）→ VALIDATION_FAILED 且 data.field=cursor');
-
-    const c2Detail = await pApi.call('partner.getCustomer', { bindingId: B3 });
-    t.eq([c2Detail.data.orders.map((row) => row.orderNo), c2Detail.data.activeOrderCount],
-      [['20261022-3006'], 1], 'B18 他人订单/代客单/其他兼职订单不混入该顾客详情');
+    t.eq([legacy.data.customer.bindingId, legacy.data.orders],
+      [B1, undefined], 'B8 旧订单分页参数（limit/cursor/from/to）不再参与取数：不影响档案、不报错、不回 orders');
     const noOrderDetail = await pApi.call('partner.getCustomer', { bindingId: B4 });
-    t.eq([noOrderDetail.data.orders.length, noOrderDetail.data.nextCursor,
-      noOrderDetail.data.unbindEligibility],
-    [0, null, { canUnbind: true, activeOrderCount: 0 }],
-    'B19 无订单顾客：空列表 + 可解绑（canUnbind 与解绑守卫同源）');
-
+    t.eq([noOrderDetail.data.activeOrderCount, noOrderDetail.data.unbindEligibility],
+      [0, { canUnbind: true, activeOrderCount: 0 }],
+      'B9 无订单顾客：进行中 0 + 可解绑（canUnbind 与解绑守卫同源）');
     await expectCode(t, pApi.call('partner.getCustomer', { bindingId: B7 }), 'FORBIDDEN',
-      'B20 他人 bindingId → FORBIDDEN（不泄露绑定是否存在）');
+      'B10 他人 bindingId → FORBIDDEN（不泄露绑定是否存在）');
     await expectCode(t, pApi.call('partner.getCustomer', { bindingId: 'bind-not-exist' }), 'FORBIDDEN',
-      'B21 不存在的 bindingId → FORBIDDEN（与越权同码，避免枚举）');
+      'B11 不存在的 bindingId → FORBIDDEN（与越权同码，避免枚举）');
     await expectCode(t, pApi.call('partner.getCustomer', { bindingId: B6 }), 'INVALID_STATE',
-      'B22 自己已释放的 bindingId → INVALID_STATE（档案可留、关系已结束）');
+      'B12 自己已释放的 bindingId → INVALID_STATE（档案可留、关系已结束）');
     await expectField(t, pApi.call('partner.getCustomer', {}), 'VALIDATION_FAILED', 'bindingId',
-      'B23 缺 bindingId → VALIDATION_FAILED 且 data.field=bindingId');
+      'B13 缺 bindingId → VALIDATION_FAILED 且 data.field=bindingId');
     await expectCode(t, apiOf(db, C1).call('partner.getCustomer', { bindingId: B1 }), 'FORBIDDEN',
-      'B24 顾客身份调 partner.getCustomer → FORBIDDEN');
+      'B14 顾客身份调 partner.getCustomer → FORBIDDEN');
     await expectCode(t, pApi.call('partner.getCustomer', { bindingId: C1 }), 'FORBIDDEN',
-      'B25 把顾客 openid 当 bindingId 传入 → FORBIDDEN（页面参数只能是 bindingId）');
+      'B15 把顾客 openid 当 bindingId 传入 → FORBIDDEN（页面参数只能是 bindingId）');
     const ignoredOpenid = await pApi.call('partner.getCustomer', { bindingId: B1, customerId: C2 });
-    t.eq([ignoredOpenid.data.customer.bindingId, ignoredOpenid.data.orders.length],
-      [B1, 5], 'B26 额外传 customerId/openid 被忽略：仍按 bindingId 归属取数，不扩大/不缩小范围');
-
+    t.eq([ignoredOpenid.data.customer.bindingId, ignoredOpenid.data.orders],
+      [B1, undefined], 'B16 额外传 customerId/openid 被忽略：仍按 bindingId 归属取数，不扩大/不缩小范围');
+    t.eq(collectKeyPaths(base.data, DTO_BANNED_KEYS, '', []), [],
+      'B17 getCustomer 响应递归零内部键（openid/主键/幂等键/isTest 等）');
     const testCtx = handlerCtxOf(db, TEST_P, {
       role: ROLES.PARTNER, viewMode: VIEW_MODE.TEST_WRITE, isTestAccount: true
     });
     const testDetail = await getCustomer.handler(testCtx, { bindingId: BT });
-    t.eq([testDetail.orders.map((row) => row.orderNo), testDetail.activeOrderCount],
-      [['20261022-3009'], 1],
-      'B27 TEST_WRITE 会话：订单与进行中单数只看 isTest 数据（真实/污染单不混入）');
-
+    t.eq(testDetail.activeOrderCount, 1,
+      'B18 TEST_WRITE 会话：进行中单数只看 isTest 数据（真实/污染单不混入）');
     const suspendedDb = world({ partnerStatus: PARTNER_STATUS.SUSPENDED, orders: customerWorldOrders() });
     await expectCode(t, apiOf(suspendedDb, P1).call('partner.getCustomer', { bindingId: B1 }),
-      'PARTNER_CLOSED', 'B28 SUSPENDED 兼职查顾客详情 → PARTNER_CLOSED');
+      'PARTNER_CLOSED', 'B19 SUSPENDED 兼职查顾客详情 → PARTNER_CLOSED');
   });
 }
-
 // ================================================================ C. stats
 function statsWorldOrders() {
   return [
@@ -670,7 +612,7 @@ async function sectionF(h) {
     }));
     readonlyResults.push(await errorInfoOf(async () => {
       const value = await getCustomer.handler(readonlyCtx, { bindingId: B1 });
-      return value.orders.length;
+      return value.customer.bindingId;
     }));
     readonlyResults.push(await errorInfoOf(async () => {
       const value = await stats.handler(readonlyCtx, {});

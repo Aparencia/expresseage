@@ -112,6 +112,7 @@ const off = store.subscribe((snapshot) => { this.setData({ vm: snapshot }); });
 - 页面 `.js` 只做：取参 → 调 `api/` → `setData` → 事件转发。禁止：`wx.cloud.*`、七状态字符串字面量、编号/roomTag 生成或 `random`、拼状态文案、直接读集合名/action 字符串。
 - 每个业务页（主包 5 tab + `pkg-customer` 5 页 + `pkg-partner` 7 页）`index.wxml` 根节点第一个子节点必须是 `<switch-bar />`；`pkg-admin` 页面不引用 `switch-bar`/`test-badge`。
 - 页面 `.json` 只写 `navigationBarTitleText` 等；组件已在 `app.json` 全局注册，页面无需再 `usingComponents`。
+- **页面纯件（批 6~8 扩展）**：可测的视图模型/表单校验/文案放同页 `parts/*.js`（纯函数、零 `wx`），页面 `index.js` 只做取参→调 `api/`→`setData`→事件转发；`pkg-admin` 11 页均有 `parts/view-model.js` + `common/copy.js`，`pkg-customer/pkg-partner` 部分页有 `parts/*`。例外组件 `components/maintenance-mask`（维护模式全屏公告）与纯件 `utils/maintenance.js` 采用**页面级 `usingComponents` 注册**（不改 `app.json`；仅 `pages/customer/home`、`pages/partner/workbench` 引用）。
 - 相对路径深度：`pages/xxx/index.js` 与 `pkg-*/pages/xxx/index.js` 到仓库根都是 `../../../`（`pkg-*/pages/xxx/parts/*` 为 `../../../../../`）；`pages/launch/index.js`、`components/xxx/index.js` 为 `../../`。
 - 组件 props/events（冻结）：
 
@@ -132,6 +133,7 @@ const off = store.subscribe((snapshot) => { this.setData({ vm: snapshot }); });
 | `empty-state` | `text`、`actionText?` | `action` |
 | `form-field` | `label`、`value`、`type`、`placeholder`、`required` | `change`（`detail.value`） |
 | `role-switch` | `activeRole` | `change`（`detail.role`） |
+| `maintenance-mask`（页面级注册，非全局） | `view`（`{enabled,title,text}`，来自 `utils/maintenance.buildMaintenanceView`） | `ack`（关闭遮罩，仅本页内存态） |
 
 - `app.wxss` 已提供全局工具类：`page-body`、`card`、`row`、`col`、`flex-1`、`between`、`center`、`title`、`section-title`、`subtitle`、`muted`、`small`、`strong`、`ellipsis`、`divider`、`btn`、`btn-primary`、`btn-ghost`、`btn-danger`、`btn-disabled`、`btn-block`、`tag`、`tag-test`、`safe-bottom`、`hidden`、`empty-text`、`form-row`、`form-label`、`form-input`。用到未定义的类必须写进本页 wxss（门禁 #9）。
 - `custom-tab-bar`：按 store 渲染 3 格；`setData({ selected, role })`；切格 `wx.switchTab`；无会话按 `activeRole`，有会话按 `viewContext.role`。
@@ -163,7 +165,7 @@ const off = store.subscribe((snapshot) => { this.setData({ vm: snapshot }); });
 
 `createDao(db)` → `{ get, findOne, find({where,orderBy,skip,limit}), count, add, update, updateWhere, remove, removeWhere, transaction(fn), serverDate(), inc(value) }`；集合名一律从 `require('../shared/collections')` 的 `COLLECTIONS.*` 取。返回值形状见 §4.1。
 
-> 部署单元例外（Lead 已授权）：`cloudfunctions/cleanup` 不能 require `cloudfunctions/api/db/dao.js`，因此 `cloudfunctions/cleanup/db/dao.js` 是**第二处**允许出现 `db.collection` 的位置，接口与 `api/db/dao.js` 逐项一致；两处之外禁止出现 `db.collection`。
+> 部署单元例外（Lead 已授权）：`cloudfunctions/cleanup` 不能 require `cloudfunctions/api/db/dao.js`，因此 `cloudfunctions/cleanup/db/dao.js` 是**第二处**允许出现 `db.collection` 的位置，接口与 `api/db/dao.js` 逐项一致；同部署单元内 `cleanup/db/collections.js`（集合名校验）与 `cleanup/run.js`（可注入执行器：loadSweeps/runAll/汇总审计）为批 8 收口新增，仍属同一例外范围；两处之外禁止出现 `db.collection`。
 > 编号生成补充：`ctx.ids.orderNo(nowMs)` 因走 `counters` 事务必须返回 Promise；`customerNo/partnerNo/failureNo` 为同步字符串，插入冲突重试由 `lib/id-generator.js` 的 `insertUnique(dao, collection, {field, generate, build})` 包裹（≤5 次，仍失败 `DEPENDENCY_FAILED`），handler 不得自建重试循环。
 > Shared 同步扩围（Lead 已授权，v3-engineering 实现）：`tools/sync-cloud-shared.js` 除 `shared/**` 与 `utils/ids.js`、`utils/room-tag.js` 外，再把 `config/defaults.js` 同步为 `cloudfunctions/*/shared/defaults.js`（云端种子/配置校验的唯一默认值来源；hash 门禁 #17 覆盖该副本）。
 > AI 兜底来源标识：`shared/enums.js` 的 `RECOGNITION_SOURCE` 只含 `RULE/MANUAL`（客户端零第三方 token）；`DEEPSEEK` 标识由 `cloudfunctions/api/lib/ai/**` 自持，订单/识别 DTO 必须由服务端下发 `recognitionSourceLabel` 中文文案，客户端不识别来源 token。`config.aiFallback.model` 默认留空串，云侧 `lib/ai` 在 model 为空时使用自身默认模型名（该差异登记 TECH_DEBT）。

@@ -1,8 +1,9 @@
-// pkg-admin/common/feedback.js · 后台页面统一反馈与错误处理
-// 规则：错误文案只 toast 服务端 message；FORBIDDEN 一律退场（不显示后台空壳）；页面不自行拼错误码文案。
+// pkg-admin/common/feedback.js · 后台页面统一反馈与错误处理（五态出口集中在这里）
+// 口径：V4_UX_DEVELOPER §0.3/§8.1/§11.4——FORBIDDEN 清数据、整页说明、回普通首页；错误文案说真话给下一步；不自行拼错误码文案。
+'use strict';
 
 const { PAGE_URLS } = require('./constants');
-const { formatClock } = require('./format');
+const copy = require('./copy');
 
 const FORBIDDEN_CODE = 'FORBIDDEN';
 
@@ -12,14 +13,15 @@ function toast(title) {
 }
 
 function confirm(options) {
+  const opts = options || {};
   return wx.showModal({
-    title: options.title || '确认操作',
-    content: options.content || '',
-    confirmText: options.confirmText || '确认',
-    confirmColor: options.danger ? '#E54D42' : '#1F7A5C',
+    title: opts.title || '确认操作',
+    content: opts.content || '',
+    confirmText: opts.confirmText || '确认',
+    confirmColor: opts.danger ? '#E54D42' : '#1F7A5C',
     cancelText: '取消',
-    editable: options.editable === true,
-    placeholderText: options.placeholderText || ''
+    editable: opts.editable === true,
+    placeholderText: opts.placeholderText || ''
   });
 }
 
@@ -32,25 +34,47 @@ function redirectOut() {
   wx.reLaunch({ url: PAGE_URLS.launch });
 }
 
-function handleError(page, err, fallbackText) {
-  const message = err && err.message ? err.message : (fallbackText || '没连上服务器，先检查网络；请稍后重试。');
-  if (err && err.code === FORBIDDEN_CODE) {
-    page.setData({ loading: false, loadingMore: false, forbidden: true });
-    toast('当前账号没有后台权限，已返回首页。');
-    setTimeout(redirectOut, 800);
-    return;
-  }
+// 无权限：清掉已加载的后台数据（不显示空壳），整页说明后回普通首页
+function clearLoadedData(page) {
   page.setData({
-    loading: false,
-    loadingMore: false,
-    error: message,
-    errorAt: formatClock(Date.now())
+    list: [],
+    audit: [],
+    counts: null,
+    countsText: '',
+    detail: null,
+    customer: null,
+    order: null,
+    binding: null,
+    candidates: [],
+    testAccounts: [],
+    exceptions: [],
+    failures: [],
+    recentOrders: [],
+    selected: null,
+    selectedTest: null,
+    statusTabs: [],
+    systemLines: []
   });
 }
 
+function handleError(page, err, fallbackText) {
+  const code = err && err.code ? err.code : '';
+  if (code === FORBIDDEN_CODE) {
+    clearLoadedData(page);
+    page.setData({ loading: false, loadingMore: false, error: '', forbidden: copy.forbiddenView() });
+    toast(copy.FORBIDDEN_TOAST);
+    setTimeout(redirectOut, copy.FORBIDDEN_REDIRECT_MS);
+    return;
+  }
+  const message = copy.errorText(err) || fallbackText || copy.UNKNOWN_ERROR_TEXT;
+  page.setData({ loading: false, loadingMore: false, error: message });
+}
+
 module.exports = {
+  FORBIDDEN_CODE,
   toast,
   confirm,
   go,
+  redirectOut,
   handleError
 };

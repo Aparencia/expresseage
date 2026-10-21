@@ -1,17 +1,27 @@
-<!-- pkg-partner/pages/messages/index.wxml · 消息中心 -->
+<!-- pkg-partner/pages/messages/index.wxml · 消息中心（全部/订单/留言/公告分类 + 未读圆点 + 全部已读） -->
 <view class="page-body">
   <switch-bar />
   <view class="row between msg-head">
     <view class="title">消息</view>
-    <view class="btn btn-ghost mark-read" bindtap="onMarkAllRead">全部已读</view>
+    <view class="btn btn-ghost mark-read {{readonly ? 'mark-read-disabled' : ''}}" bindtap="onMarkAllRead">全部已读</view>
+  </view>
+
+  <view class="chip-row">
+    <view
+      wx:for="{{filters}}"
+      wx:key="key"
+      class="chip {{filter === item.key ? 'chip-active' : ''}}"
+      data-filter="{{item.key}}"
+      bindtap="onFilterTap"
+    >{{item.label}}{{item.count ? ' ' + item.count : ''}}</view>
   </view>
 
   <view wx:if="{{loading}}" class="empty-text">加载中…</view>
   <view wx:elif="{{error}}" class="card">
-    <empty-state text="{{error}}" actionText="重试" bind:action="loadList" />
+    <empty-state text="{{error}}" actionText="重试" bind:action="onRetry" />
   </view>
   <view wx:elif="{{!list.length}}" class="card">
-    <empty-state text="还没有消息" />
+    <empty-state text="{{emptyText}}" />
   </view>
 
   <view wx:for="{{list}}" wx:key="id" class="card msg-item" data-index="{{index}}" bindtap="onItemTap">

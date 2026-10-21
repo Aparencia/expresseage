@@ -1,22 +1,16 @@
 // pkg-admin/pages/partners/index.js · 兼职列表（脱敏检索、行内展开、停用/恢复、账号切换入口）
 const admin = require('../../../api/modules/admin');
 const C = require('../../common/constants');
-const F = require('../../common/format');
 const feedback = require('../../common/feedback');
+const vm = require('./parts/view-model');
 
 const PAGE_SIZE = 20;
 const DEBOUNCE_MS = 300;
 
-function buildTabs(activeStatus) {
-  return C.PARTNER_STATUS_TABS.map(function (tab) {
-    return { key: tab.key, label: tab.label, active: tab.key === activeStatus };
-  });
-}
-
 Page({
   data: {
     keyword: '',
-    statusTabs: buildTabs(''),
+    statusTabs: vm.buildTabs(''),
     activeStatus: '',
     includeTest: false,
     list: [],
@@ -65,7 +59,7 @@ Page({
       includeTest: this.data.includeTest,
       limit: PAGE_SIZE
     }).then((result) => {
-      const rows = ((result && result.list) || []).map((item) => this.decorateRow(item));
+      const rows = vm.decorateList((result && result.list) || [], this.data.expandedNo);
       this.setData({
         list: reset ? rows : this.data.list.concat(rows),
         nextCursor: (result && result.nextCursor) || '',
@@ -90,7 +84,7 @@ Page({
       cursor: this.data.nextCursor,
       limit: PAGE_SIZE
     }).then((result) => {
-      const rows = ((result && result.list) || []).map((item) => this.decorateRow(item));
+      const rows = vm.decorateList((result && result.list) || [], this.data.expandedNo);
       this.setData({
         list: this.data.list.concat(rows),
         nextCursor: (result && result.nextCursor) || '',
@@ -100,25 +94,6 @@ Page({
       this.setData({ loadingMore: false });
       feedback.toast(err && err.message);
     });
-  },
-
-  decorateRow(item) {
-    const isTest = item.isTest === true;
-    const status = item.status || '';
-    return {
-      partnerNo: item.partnerNo || '—',
-      displayName: F.textOrDash(item.displayName),
-      statusText: C.PARTNER_STATUS_LABELS[status] || '—',
-      isTest: isTest,
-      expanded: item.partnerNo === this.data.expandedNo,
-      bindingText: '绑定 ' + F.numOrZero(item.bindingCount),
-      orderText: '今日 ' + F.numOrZero(item.todayOrders) + ' / 累计 ' + F.numOrZero(item.totalOrders),
-      serviceCount: F.numOrZero(item.serviceCount),
-      activatedAtText: item.activatedAt ? F.formatTime(item.activatedAt) : '',
-      suspendedReason: item.suspendedReason || '',
-      canSuspend: !isTest && status === C.PARTNER_STATUS_ACTIVE,
-      canResume: !isTest && status === C.PARTNER_STATUS_SUSPENDED
-    };
   },
 
   onKeywordInput(event) {
@@ -142,7 +117,7 @@ Page({
     if (key === this.data.activeStatus) return;
     this.setData({
       activeStatus: key,
-      statusTabs: buildTabs(key),
+      statusTabs: vm.buildTabs(key),
       nextCursor: ''
     });
     this.loadList(true).catch(function () {});
@@ -166,13 +141,17 @@ Page({
   },
 
   decorateExpanded() {
-    const rows = this.data.list.map((item) => this.decorateRow(item));
-    this.setData({ list: rows });
+    this.setData({ list: vm.decorateList(this.data.list, this.data.expandedNo) });
   },
 
   onSwitch(event) {
     const item = this.data.list[Number(event.currentTarget.dataset.index)];
     if (!item) return;
+    // 只有 ACTIVE 真实账号或测试账号可切换（停用/注销不可查看，§3.5/§6.2）
+    if (!item.canSwitch) {
+      feedback.toast('该用户当前不可查看，请确认对方账号处于正常状态后再试。');
+      return;
+    }
     const tab = item.isTest ? C.ACCOUNT_TAB_TEST : C.ACCOUNT_TAB_REAL;
     const url = C.PAGE_URLS.accountSwitch +
       '?tab=' + tab +
@@ -184,13 +163,14 @@ Page({
   onSuspend(event) {
     const item = this.data.list[Number(event.currentTarget.dataset.index)];
     if (!item || this.data.submitting) return;
-    if (item.isTest) {
+    if (this.data.submitting) return;
+    if (vm.isGovernanceBlocked(item)) {
       feedback.toast('测试账号不能执行真实治理动作。');
       return;
     }
     feedback.confirm({
       title: '停用兼职',
-      content: '停用后，' + item.displayName + '（' + item.partnerNo + '）将无法登录兼职端，名下未完成订单转异常待处理，绑定顾客暂时不能向他下单。历史订单与编号保留。确定停用？',
+      content: vm.suspendConfirmContent(item),
       confirmText: '确认停用',
       danger: true,
       editable: true,
@@ -202,19 +182,16 @@ Page({
   },
 
   submitSuspend(item, reason) {
-    if (!reason) {
-      feedback.toast('请填写停用原因（最多 100 字）。');
-      return;
-    }
-    if (reason.length > C.LIMITS.suspendReasonMax) {
-      feedback.toast('停用原因最多 100 字。');
+    const checked = vm.validateSuspendReason(reason);
+    if (!checked.ok) {
+      feedback.toast(checked.error);
       return;
     }
     this.setData({ submitting: true });
     admin.setPartnerStatus({
       partnerNo: item.partnerNo,
       status: C.PARTNER_STATUS_SUSPENDED,
-      reason: reason
+      reason: checked.reason
     }).then(() => {
       this.setData({ submitting: false, expandedNo: '' });
       feedback.toast('已停用 ' + item.displayName + '（' + item.partnerNo + '）');
@@ -228,13 +205,13 @@ Page({
   onResume(event) {
     const item = this.data.list[Number(event.currentTarget.dataset.index)];
     if (!item || this.data.submitting) return;
-    if (item.isTest) {
+    if (vm.isGovernanceBlocked(item)) {
       feedback.toast('测试账号不能执行真实治理动作。');
       return;
     }
     feedback.confirm({
       title: '恢复兼职',
-      content: '恢复后，' + item.displayName + '（' + item.partnerNo + '）可重新登录兼职端；停用期间产生的异常订单仍需逐单处理。确定恢复？',
+      content: vm.resumeConfirmContent(item),
       confirmText: '确认恢复'
     }).then((res) => {
       if (!res.confirm) return;

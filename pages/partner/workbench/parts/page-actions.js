@@ -6,6 +6,7 @@
 const orderApi = require('../../../../api/modules/order');
 const client = require('../../../../api/client');
 const storage = require('../../../../utils/storage');
+const maintenance = require('../../../../utils/maintenance');
 const rowActions = require('./row-actions');
 const batchView = require('./batch-view');
 const actionFlow = require('./action-flow');
@@ -121,7 +122,12 @@ module.exports = {
   },
 
   onWriteFail(err) {
-    const message = rowActions.inlineError(err);
+    // 维护模式（UX_DEVELOPER §7.5）：写接口被拒时用统一维护文案，不吞错；同时让遮罩上屏
+    const maintenanceText = maintenance.writeRejectedTextOf(err);
+    if (maintenanceText) {
+      this.syncMaintenance();
+    }
+    const message = maintenanceText || rowActions.inlineError(err);
     if (this.data.panel) {
       this.setData({ 'panel.error': message });
     } else {

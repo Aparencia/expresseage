@@ -1,46 +1,57 @@
-// pkg-customer/pages/messages/index.js · 消息中心（服务端聚合视图；分页 30）
+// pkg-customer/pages/messages/index.js · 消息中心（服务端聚合视图：状态事件+留言+公告；分页 30）
+// 口径：CONTRACT §5.3 message.list/markRead；UX_CUSTOMER §3.9/§8.2/§8.3（进入即上报已读水位、
+// 公告置顶且会话内可关闭、下拉刷新、分页 30、空态/错误态、READONLY 置灰不写）。
 'use strict';
 
 const store = require('../../../store/index');
 const messageApi = require('../../../api/modules/message');
-const format = require('../../parts/format');
+const modeGuard = require('../../../api/mode-guard');
+const route = require('../../../config/route');
+const view = require('./parts/message-view');
 
 const DETAIL_PAGE = '/pkg-customer/pages/order-detail/index';
 const PAGE_SIZE = 30;
-
-function mapItem(item) {
-  const row = item || {};
-  const at = row.at || row.createdAt || '';
-  const text = row.text || '';
-  return {
-    // message.list 聚合项：{type,title,text,orderNo,at,read}（服务端已剔除 _id）
-    id: row.id || row.messageId || (row.type || 'ORDER') + '@' + at + '@' + text.slice(0, 8),
-    type: row.type || 'MESSAGE',
-    title: row.title || (row.type === 'ANNOUNCEMENT' ? '公告' : '订单动态'),
-    text: text,
-    orderNo: row.orderNo || '',
-    unread: row.read === false,
-    time: format.formatTimeAgo(at)
-  };
-}
+const DEFAULT_BADGES = { workbenchPending: 0, messages: 0 };
 
 Page({
   data: {
     list: [],
+    announcement: null,
+    announcementClosed: false,
     cursor: null,
-    hasMore: true,
+    hasMore: false,
     loading: true,
+    loadingMore: false,
     error: '',
-    announcement: ''
+    readError: '',
+    readonly: false,
+    emptyText: view.EMPTY_TEXT
   },
 
   onLoad() {
-    const config = store.snapshot().config || {};
-    this.setData({ announcement: format.announcementText(config.announcement) });
+    // 会话态：公告关闭只记在本页内存（不写本地存储，不持久化任何敏感值）
+    this._closedKey = '';
   },
 
   onShow() {
+    this.guard();
+    this.setData({ readonly: !modeGuard.canRenderWriteButton() });
     this.refresh();
+  },
+
+  // 身份闸：切换会话按目标角色、普通登录按 activeRole；不匹配回各自首页（UX_CUSTOMER §3.9 无权限态）
+  guard() {
+    const snapshot = store.snapshot();
+    const session = snapshot.viewContext;
+    if (session && session.role) {
+      if (session.role !== 'CUSTOMER') {
+        wx.reLaunch({ url: route.PARTNER_WORKBENCH });
+      }
+      return;
+    }
+    if (snapshot.activeRole !== 'CUSTOMER') {
+      wx.reLaunch({ url: route.ROLE_PAGE });
+    }
   },
 
   onPullDownRefresh() {
@@ -52,71 +63,76 @@ Page({
   },
 
   refresh() {
-    this.setData({ loading: true, error: '' });
+    this.setData({ loading: true, error: '', readError: '' });
     return messageApi.list({ limit: PAGE_SIZE }).then((data) => {
-      const list = ((data && data.list) || []).map(mapItem);
-      this.setData({
-        loading: false,
-        list: list,
-        cursor: (data && data.nextCursor) || null,
-        hasMore: !!(data && data.nextCursor)
-      });
-      this.markRead();
+      this.setData({ loading: false });
+      this.applyFirstPage(data);
+      return this.reportRead();
     }).catch((err) => {
-      this.setData({ loading: false, error: (err && err.message) || '网络开小差了，请下拉重试' });
-    });
-  },
-
-  loadMore() {
-    if (this.data.loading || !this.data.hasMore || !this.data.cursor) return;
-    this.setData({ loading: true });
-    messageApi.list({ limit: PAGE_SIZE, cursor: this.data.cursor }).then((data) => {
-      const page = ((data && data.list) || []).map(mapItem);
-      this.setData({
-        loading: false,
-        list: this.data.list.concat(page),
-        cursor: (data && data.nextCursor) || null,
-        hasMore: !!(data && data.nextCursor)
-      });
-    }).catch((err) => {
-      this.setData({ loading: false, error: (err && err.message) || '加载失败，请重试' });
-    });
-  },
-
-  markRead() {
-    return messageApi.markRead({ scope: 'ALL' }).then((data) => {
-      if (data && data.messageReadAt) store.patch({ messageReadAt: data.messageReadAt });
-      this.markAllReadLocally();
-      this.clearBadge();
-      return true;
-    }).catch(function ignore() {
-      // 水位上报失败不影响浏览，下次进入会再次上报
+      this.setData({ loading: false, error: (err && err.message) || '消息没加载出来，检查网络后重试' });
       return false;
     });
   },
 
-  // 全部已读后红点归零（E13 / UX §8.2）：badges.messages 是首页铃铛红点的唯一来源
-  clearBadge() {
-    const snapshot = store.snapshot();
-    const badges = snapshot.badges || {};
-    if (!badges.messages) return;
-    store.patch({ badges: Object.assign({ workbenchPending: 0 }, badges, { messages: 0 }) });
-  },
-
-  markAllReadLocally() {
-    const list = this.data.list.map(function mark(item) {
-      return Object.assign({}, item, { unread: false });
+  applyFirstPage(data) {
+    const config = store.snapshot().config || {};
+    const pinned = view.pinAnnouncement(data && data.list, config.announcement);
+    const key = pinned.announcement ? pinned.announcement.id : '';
+    this.setData({
+      list: pinned.items,
+      announcement: pinned.announcement,
+      announcementClosed: !!key && this._closedKey === key,
+      cursor: (data && data.nextCursor) || null,
+      hasMore: !!(data && data.nextCursor)
     });
-    this.setData({ list: list });
   },
 
-  onItemTap(e) {
-    const orderNo = (e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.orderNo) || '';
-    if (!orderNo) {
-      wx.showToast({ title: '这是一条公告，没有关联订单', icon: 'none' });
+  // 进入/下拉即上报已读水位（scope=ALL）；READONLY 不写（置灰），失败留存真话不吞
+  reportRead() {
+    if (this.data.readonly) {
+      return Promise.resolve(false);
+    }
+    return messageApi.markRead({ scope: 'ALL' }).then((data) => {
+      this.setData({ list: view.applyReadWatermark(this.data.list, data && data.messageReadAt) });
+      this.clearBadge();
+      return true;
+    }).catch((err) => {
+      this.setData({ readError: (err && err.message) || '已读状态没同步上，下拉刷新后重试' });
+      return false;
+    });
+  },
+
+  // 全部已读后红点归零（E13 / UX §8.2）：badges.messages 是首页铃铛/我的入口的唯一来源
+  clearBadge() {
+    const badges = store.snapshot().badges || DEFAULT_BADGES;
+    if (!badges.messages) {
       return;
     }
-    wx.navigateTo({ url: DETAIL_PAGE + '?orderNo=' + encodeURIComponent(orderNo) });
+    store.patch({ badges: view.badgePatchOf(badges) });
+  },
+
+  loadMore() {
+    if (this.data.loading || this.data.loadingMore || !this.data.hasMore || !this.data.cursor) {
+      return;
+    }
+    this.setData({ loadingMore: true, error: '' });
+    messageApi.list({ limit: PAGE_SIZE, cursor: this.data.cursor }).then((data) => {
+      const page = view.buildItems(data && data.list).filter(function noAnnouncement(item) {
+        return item.type !== 'ANNOUNCEMENT';
+      });
+      this.setData({
+        loadingMore: false,
+        list: view.mergePage(this.data.list, page),
+        cursor: (data && data.nextCursor) || null,
+        hasMore: !!(data && data.nextCursor)
+      });
+    }).catch((err) => {
+      this.setData({ loadingMore: false, error: (err && err.message) || '下一批消息没加载出来，检查网络后重试' });
+    });
+  },
+
+  onLoadMoreTap() {
+    this.loadMore();
   },
 
   onRetry() {
@@ -124,8 +140,31 @@ Page({
   },
 
   onAllRead() {
-    this.markRead().then((ok) => {
-      wx.showToast({ title: ok ? '已标为已读' : '标记失败，请稍后重试', icon: 'none' });
+    if (this.data.readonly) {
+      wx.showToast({ title: view.READONLY_COPY, icon: 'none' });
+      return;
+    }
+    this.reportRead().then((ok) => {
+      wx.showToast({
+        title: ok ? '已标为已读' : (this.data.readError || '标记失败，请下拉刷新后重试'),
+        icon: 'none'
+      });
     });
+  },
+
+  onCloseAnnouncement() {
+    const announcement = this.data.announcement;
+    this._closedKey = announcement ? announcement.id : '';
+    this.setData({ announcementClosed: true });
+  },
+
+  onItemTap(e) {
+    const dataset = (e.currentTarget && e.currentTarget.dataset) || {};
+    const orderNo = dataset.orderNo || '';
+    if (!orderNo) {
+      wx.showToast({ title: '这条消息没有关联订单', icon: 'none' });
+      return;
+    }
+    wx.navigateTo({ url: DETAIL_PAGE + '?orderNo=' + encodeURIComponent(orderNo) });
   }
 });

@@ -3,17 +3,24 @@
 
   <view class="row between head-row">
     <view class="title">消息中心</view>
-    <view class="small" bindtap="onAllRead">全部标为已读</view>
+    <view class="small {{readonly ? 'mark-read-disabled' : ''}}" bindtap="onAllRead">全部标为已读</view>
   </view>
 
-  <view class="card announcement" wx:if="{{announcement}}">
-    <view class="muted">公告：{{announcement}}</view>
+  <!-- 公告置顶：服务端聚合项优先 / config.announcement 回落；关闭仅本页会话态（不落存储） -->
+  <view class="card announcement" wx:if="{{announcement && !announcementClosed}}">
+    <view class="row between">
+      <view class="announcement-title ellipsis">{{announcement.headline}}</view>
+      <view class="small" bindtap="onCloseAnnouncement">知道了</view>
+    </view>
+    <view class="muted announcement-text" wx:if="{{announcement.body}}">{{announcement.body}}</view>
   </view>
 
   <view class="card" wx:if="{{error}}">
     <view class="muted">{{error}}</view>
     <button class="btn btn-ghost btn-small" bindtap="onRetry">重新加载</button>
   </view>
+
+  <view class="read-error" wx:if="{{readError}}">{{readError}}</view>
 
   <view
     wx:for="{{list}}"
@@ -32,7 +39,8 @@
     <view class="muted message-text">{{item.text}}</view>
   </view>
 
-  <empty-state wx:if="{{!loading && list.length === 0 && !error}}" text="还没有消息。订单有进展时，这里会提醒你。" />
+  <empty-state wx:if="{{!loading && list.length === 0 && !error}}" text="{{emptyText}}" />
   <view class="empty-text" wx:if="{{loading}}">加载中…</view>
-  <view class="empty-text" wx:if="{{!loading && list.length > 0 && !hasMore}}">没有更多了</view>
+  <view class="load-more" wx:if="{{!loading && hasMore}}" bindtap="onLoadMoreTap">{{loadingMore ? '加载中…' : '加载更多'}}</view>
+  <view class="read-error" wx:if="{{!loading && list.length > 0 && !hasMore}}">没有更多了</view>
 </view>

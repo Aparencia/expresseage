@@ -1,0 +1,54 @@
+/* components/maintenance-mask/index.wxss · 全屏维护公告（遮罩不遮挡状态栏，居中卡片） */
+.mm-mask {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 10000;
+  background: rgba(26, 26, 26, 0.56);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48rpx;
+}
+
+.mm-card {
+  width: 100%;
+  max-width: 600rpx;
+  background: #FFFFFF;
+  border-radius: 16rpx;
+  padding: 48rpx 40rpx 32rpx;
+  box-sizing: border-box;
+}
+
+.mm-title {
+  font-size: 34rpx;
+  font-weight: 600;
+  color: #1A1A1A;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.mm-text {
+  margin-top: 16rpx;
+  font-size: 28rpx;
+  color: #666666;
+  line-height: 1.6;
+  text-align: center;
+  word-break: break-all;
+}
+
+.mm-btn {
+  margin-top: 32rpx;
+  min-height: 88rpx;
+  line-height: 88rpx;
+  border-radius: 12rpx;
+  background: #1F7A5C;
+  color: #FFFFFF;
+  font-size: 30rpx;
+}
+
+.mm-btn::after {
+  border: none;
+}

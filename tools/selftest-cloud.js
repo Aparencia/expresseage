@@ -255,6 +255,7 @@ function register(h) {
     }
     t.eq(adminOnlyError && adminOnlyError.code, 'FORBIDDEN', '非白名单 openid 调 admin.* → FORBIDDEN');
     db.seed('users', [{ _id: 'openid-maint', roles: [ROLES.CUSTOMER], status: USER_STATUS.ACTIVE }]);
+    // 维护模式只拦写（ENGINEERING §4.7 / UX_DEVELOPER §7.5）：读放行；完整读/写/admin 用例见 selftest-admin §A11~A16。
     let maintError = null;
     try {
       await auth.middleware(makeState(makeCtx(dao, {
@@ -264,7 +265,7 @@ function register(h) {
     } catch (error) {
       maintError = error;
     }
-    t.eq(maintError && maintError.code, 'INVALID_STATE', '维护模式开启时客户端读动作 INVALID_STATE');
+    t.eq(maintError, null, '维护模式开启时客户端读动作放行（写动作 INVALID_STATE 见 selftest-admin）');
     db.seed('users', [{ _id: 'openid-privacy', roles: [ROLES.CUSTOMER], status: USER_STATUS.ACTIVE, privacyConsent: null }]);
     const privacyCtx = makeCtx(dao, {
       openid: 'openid-privacy',

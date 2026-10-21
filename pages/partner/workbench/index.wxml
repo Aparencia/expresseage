@@ -325,4 +325,12 @@
       </view>
     </view>
   </view>
+
+  <!-- 维护模式全屏公告（页面级注册；enabled 由 utils/maintenance 纯件计算） -->
+  <maintenance-mask
+    enabled="{{maintenance.visible}}"
+    title="{{maintenance.title}}"
+    text="{{maintenance.text}}"
+    bind:ack="onMaintenanceAck"
+  />
 </view>

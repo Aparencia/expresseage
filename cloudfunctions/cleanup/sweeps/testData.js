@@ -1,5 +1,6 @@
 // cloudfunctions/cleanup/sweeps/testData.js · 超期未使用测试账号的业务数据清理（账号保留、审计摘要保留）
-// 口径：ENGINEERING §4.7 testData / §4.11.3；DATA_MODEL §10.2 #10。每轮最多 6 个测试账号，幂等可重跑。
+// 口径：ENGINEERING §4.7 testData / §4.11.3；DATA_MODEL §10.2 步骤 10。每轮最多 6 个测试账号，幂等可重跑。
+// 幂等：数据已清空（各集合计数全 0）时不再写审计、不再计 acted —— 重跑 acted 收敛为 0，审计不重复。
 'use strict';
 
 const util = require('./_util');
@@ -64,13 +65,25 @@ async function purgeAccountData(ctx, data) {
   for (let i = 0; i < files.length; i += 1) {
     await util.deleteFileSafe(ctx, files[i]);
   }
-  await ctx.dao.removeWhere(C.UPLOAD_TICKETS, { openid: data.openid });
-  return { orders, events, messages, bindings: data.bindings.length, failures: data.failures.length };
+  const ticketResult = await ctx.dao.removeWhere(C.UPLOAD_TICKETS, { openid: data.openid });
+  return {
+    orders,
+    events,
+    messages,
+    bindings: data.bindings.length,
+    failures: data.failures.length,
+    tickets: ticketResult.removed,
+    avatarFiles: files.length
+  };
+}
+
+function totalOf(counts) {
+  return Object.keys(counts).reduce((sum, key) => sum + (Number(counts[key]) || 0), 0);
 }
 
 async function runTestData(ctx) {
   const C = util.collectionsOf(ctx);
-  const retentionDays = util.numberConfig(ctx.config, 'testDataRetentionDays', DEFAULT_RETENTION_DAYS);
+  const retentionDays = util.numberConfig(ctx.config, 'testDataRetentionDays', DEFAULT_RETENTION_DAYS, 7, 90);
   const deadline = util.daysBefore(ctx.now, retentionDays);
   const rows = await util.scanPage(ctx, C.USERS, { isTestAccount: true }, [['createdAt', 'asc']]);
   let scanned = 0;
@@ -87,27 +100,23 @@ async function runTestData(ctx) {
     if (accounts >= MAX_ACCOUNTS_PER_RUN) {
       break;
     }
-    accounts += 1;
     try {
       const data = await testDataOf(ctx, user);
       const counts = await purgeAccountData(ctx, data);
+      if (totalOf(counts) === 0) {
+        // 数据早已清空：无副作用，不写审计、不计 acted（重跑幂等）
+        continue;
+      }
+      accounts += 1;
       const dayBucket = Math.floor(ctx.now / util.DAY_MS);
       const requestKey = 'cleanup-testData:' + String(user._id) + ':' + dayBucket;
-      try {
-        await ctx.dao.add(C.ADMIN_AUDIT, {
-          adminOpenid: 'SYSTEM',
-          developerNo: util.SYSTEM,
-          action: 'CLEANUP',
-          target: { type: 'test_account', id: String(user._id) },
-          detail: { sweep: 'testData', counts },
-          at: util.nowDateOf(ctx),
-          requestKey
-        });
-      } catch (auditError) {
-        if (!ctx.dao.isDuplicateError || !ctx.dao.isDuplicateError(auditError)) {
-          throw auditError;
-        }
-      }
+      await util.writeAuditOnce(ctx, util.auditDoc(
+        ctx,
+        'CLEANUP',
+        { type: 'test_account', id: String(user._id) },
+        { sweep: 'testData', accountId: String(user._id), counts },
+        requestKey
+      ));
       acted += 1;
     } catch (error) {
       failed += 1;

@@ -30,10 +30,18 @@
         bindtap="onDocTap"
       >{{item.label}}</view>
     </view>
-    <view wx:for="{{paragraphs}}" wx:key="*this" class="muted paragraph">{{item}}</view>
+    <block wx:if="{{doc === 'privacy'}}">
+      <view wx:for="{{sections}}" wx:key="title" class="doc-section">
+        <view class="doc-section-title">{{item.title}}</view>
+        <view wx:for="{{item.paragraphs}}" wx:for-item="paragraph" wx:key="*this" class="muted paragraph">{{paragraph}}</view>
+      </view>
+    </block>
+    <block wx:else>
+      <view wx:for="{{paragraphs}}" wx:key="*this" class="muted paragraph">{{item}}</view>
+    </block>
   </view>
 
   <view class="card version-card">
-    <view class="muted">版本 {{version}} · 客服：请联系你的兼职</view>
+    <view class="muted">版本 {{version}} · 隐私政策版本 {{privacyVersion}} · 客服：请联系你的兼职</view>
   </view>
 </view>

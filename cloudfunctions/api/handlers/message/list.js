@@ -157,10 +157,12 @@ async function listCenter(ctx, payload) {
   }
   const notices = await systemNoticeItems(ctx, scope);
   notices.forEach((notice) => items.push(notice));
-  const sorted = common.sortItemsDesc(items).filter((item) => common.afterCursor(item, cursor));
+  const all = common.sortItemsDesc(items);
+  const sorted = all.filter((item) => common.afterCursor(item, cursor));
   const page = sorted.slice(0, limit);
   const last = page[page.length - 1];
-  const unreadMessages = sorted.filter((item) => item.type === 'MESSAGE' && !item.read).length;
+  // 未读数与分页游标无关（DATA_MODEL §5.2：未读 = 合并视图内 order_messages.readAt=null 的计数）
+  const unreadMessages = all.filter((item) => item.type === 'MESSAGE' && !item.read).length;
   return {
     list: page,
     nextCursor: sorted.length > limit && last ? common.makeListCursor(last) : null,

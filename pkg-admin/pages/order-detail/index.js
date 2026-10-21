@@ -2,8 +2,8 @@
 const admin = require('../../../api/modules/admin');
 const orderApi = require('../../../api/modules/order');
 const C = require('../../common/constants');
-const F = require('../../common/format');
 const feedback = require('../../common/feedback');
+const vm = require('./parts/view-model');
 
 Page({
   data: {
@@ -55,54 +55,12 @@ Page({
   },
 
   apply(result) {
-    const order = result.order || {};
-    const events = (result.events || []).map((item) => this.decorateEvent(item));
+    const built = vm.buildDetailView(result, this.data.orderNo);
     this.setData({
-      order: this.decorateOrder(order),
-      events: events,
-      canCancel: !order.isTest && order.status === C.ORDER_STATUS_EXCEPTION
+      order: built.order,
+      events: built.events,
+      canCancel: built.canCancel
     });
-  },
-
-  decorateOrder(order) {
-    const parcel = order.parcel || {};
-    const service = order.service || {};
-    const exception = order.exception || {};
-    const customer = order.customer || {};
-    const partner = order.partner || {};
-    return {
-      orderNo: order.orderNo || this.data.orderNo,
-      statusText: order.statusText || C.ORDER_STATUS_LABELS[order.status] || '—',
-      serviceName: service.name || order.serviceName || service.code || '—',
-      appointText: order.appointText || '—',
-      note: order.note || '',
-      deliveryNote: order.deliveryNote || '',
-      cancelReasonText: order.cancelReasonText || '',
-      customerNo: order.customerNo || '—',
-      customerName: F.textOrDash(order.customerDisplayName || customer.displayName),
-      partnerNo: order.partnerNo || '—',
-      partnerName: F.textOrDash(order.partnerDisplayName || partner.displayName),
-      stationText: [parcel.stationId, parcel.stationName].filter(Boolean).join(' ') || '—',
-      pickupCodeText: F.textOrDash(parcel.pickupCode),
-      lockerNoText: F.textOrDash(parcel.lockerNo),
-      trackingTailText: F.textOrDash(parcel.trackingTail),
-      exceptionText: exception.text || '',
-      exceptionCodeText: exception.codeText || exception.code || '',
-      reportedAtText: exception.reportedAt ? F.formatTime(exception.reportedAt) : '',
-      createdAtText: F.formatTime(order.createdAt),
-      statusUpdatedAtText: F.formatTime(order.statusUpdatedAt),
-      isTest: order.isTest === true,
-      impersonatedBy: order.impersonatedBy || ''
-    };
-  },
-
-  decorateEvent(item) {
-    const label = item.label || item.title || item.note || item.type || '状态更新';
-    return {
-      label: label,
-      actor: item.actorText || item.actorRole || '',
-      atText: F.formatTime(item.at || item.createdAt)
-    };
   },
 
   onRetry() {
@@ -120,23 +78,19 @@ Page({
     const order = this.data.order || {};
     feedback.confirm({
       title: '介入取消',
-      content: '将取消订单 ' + order.orderNo + '（' + order.statusText + '）。取消后双方可见原因与状态，不可恢复。请填写介入原因（必填，最多 200 字）。',
+      content: vm.cancelConfirmContent(order),
       confirmText: '确认取消',
       danger: true,
       editable: true,
       placeholderText: '介入原因（必填，最多 200 字）'
     }).then((res) => {
       if (!res.confirm) return;
-      const note = String(res.content || '').trim();
-      if (!note) {
-        feedback.toast('请填写介入原因（最多 200 字）。');
+      const checked = vm.validateCancelNote(res.content);
+      if (!checked.ok) {
+        feedback.toast(checked.error);
         return;
       }
-      if (note.length > C.LIMITS.cancelReasonMax) {
-        feedback.toast('介入原因最多 200 字。');
-        return;
-      }
-      this.submitCancel(note);
+      this.submitCancel(checked.note);
     });
   },
 

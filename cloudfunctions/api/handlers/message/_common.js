@@ -202,14 +202,17 @@ function buildAnnouncementItem(config) {
   let title = '公告';
   let text = '';
   let atMs = 0;
+  let enabled = true;
   if (typeof announcement === 'string') {
     text = announcement;
   } else if (announcement && typeof announcement === 'object') {
+    // config.announcement{enabled,title,text}：开关关闭时不下发（UX_CUSTOMER 消息中心公告口径）
+    enabled = announcement.enabled !== false;
     title = textOf(announcement.title) || title;
     text = textOf(announcement.text);
     atMs = time.toMs(announcement.updatedAt);
   }
-  if (!text) {
+  if (!text || !enabled) {
     return null;
   }
   return {

@@ -175,7 +175,7 @@
             <view class="row-item" bindtap="onMessages">
               <view class="row">
                 <text>消息中心</text>
-                <text wx:if="{{messagesBadge}}" class="badge-num">{{messagesBadge}}</text>
+                <view wx:if="{{messagesBadge}}" class="red-dot"></view>
               </view>
               <text class="row-arrow">›</text>
             </view>
@@ -187,7 +187,7 @@
           <view class="row-item" bindtap="onMessages">
             <view class="row">
               <text>消息中心</text>
-              <text wx:if="{{messagesBadge}}" class="badge-num">{{messagesBadge}}</text>
+              <view wx:if="{{messagesBadge}}" class="red-dot"></view>
             </view>
             <text class="row-arrow">›</text>
           </view>

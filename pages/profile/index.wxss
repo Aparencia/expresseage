@@ -350,3 +350,13 @@
   gap: 16rpx;
   margin-top: 32rpx;
 }
+
+/* 消息中心未读红点（UX_CUSTOMER §8.2：我的入口为红点，不显示数字） */
+.red-dot {
+  width: 14rpx;
+  height: 14rpx;
+  border-radius: 50%;
+  background: #E54D42;
+  margin-left: 12rpx;
+  flex-shrink: 0;
+}

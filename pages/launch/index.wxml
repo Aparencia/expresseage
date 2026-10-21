@@ -5,9 +5,9 @@
       <view class="launch-logo">代</view>
       <view class="launch-title">隐私保护提示</view>
       <view class="privacy-lead">{{privacyLead}}</view>
-      <view class="privacy-list">
+      <scroll-view scroll-y class="privacy-list">
         <view wx:for="{{privacyItems}}" wx:key="*this" class="privacy-item">{{item}}</view>
-      </view>
+      </scroll-view>
       <button class="btn btn-primary btn-block" loading="{{privacySubmitting}}" bindtap="onAgreePrivacy">同意并继续</button>
       <button class="btn btn-ghost btn-block launch-gap" bindtap="onViewPrivacy">查看完整隐私政策</button>
       <view class="privacy-decline" bindtap="onDeclinePrivacy">不同意</view>

@@ -24,7 +24,9 @@ const { ROLES, PARTNER_STATUS, ORDER_STATUS, VIEW_MODE, CODE_STATUS, USER_STATUS
 const { SUBMITTED, ACCEPTED, PICKED, DELIVERED, COMPLETED, CANCELLED, EXCEPTION } = ORDER_STATUS;
 
 // 断言总数（精确相等；改断言必须同步改此数字，少算/多算都判红）。
-const EXPECTED_ASSERTIONS = 129;
+// TD-049：getCustomer 去 orders/nextCursor（原 B 段 28 条断言收敛为 19 条）
+// => 129 - (B4~B10/B13~B15 共 9 条下线) = 120
+const EXPECTED_ASSERTIONS = 120;
 
 const NOW = Date.parse('2026-10-22T10:00:00+08:00'); // 上海时间 2026-10-22（周四）10:00
 const HOUR = 3600 * 1000;

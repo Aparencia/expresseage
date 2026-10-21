@@ -1,10 +1,16 @@
 // pkg-customer/pages/help/index.js · 帮助 / 隐私 / 关于（静态口径，无网络）
+// 隐私全文单源：pkg-customer/parts/privacy-text.js（与 docs/privacy/隐私保护指引.md 定稿候选 v1.0 对齐）；
+// 版本号取 config.privacyVersion（store 缓存优先、出厂默认兜底），页面只做取数 → setData。
 'use strict';
+
+const store = require('../../../store/index');
+const defaults = require('../../../config/defaults');
+const privacyText = require('../../parts/privacy-text');
 
 const FAQS = [
   {
     q: '怎么绑定兼职？',
-    a: '向兼职要完整兼职编号（P 开头，如 P-7K2-M9X），在首页「去绑定」或兼职分享的卡片里绑定；每天最多尝试 5 次。同一个微信号不能绑定自己的兼职账号。'
+    a: '向兼职要完整兼职编号（P 开头，如 P-XXX-XXX），在首页「去绑定」或兼职分享的卡片里绑定；每天最多尝试 5 次。同一个微信号不能绑定自己的兼职账号。'
   },
   {
     q: '为什么会「需查明」？',
@@ -16,23 +22,35 @@ const FAQS = [
   },
   {
     q: '截图和资料存在哪里？',
-    a: '存在微信云开发，按角色隔离、仅订单双方可见；截图在订单完成或取消后 7 天删除，订单信息 180 天后删除或匿名化。'
+    a: '存在微信云开发，按角色隔离、仅订单双方可见；截图在订单完成或取消后 7 天删除（同一文件被多单引用时，全部引用到期才删）；订单信息完成或取消后 180 天匿名化（去标识），再 30 天后物理删除；你主动删除的已完成订单 7 天后物理删除。'
   },
   {
     q: '识别失败会怎么样？',
-    a: '先在本机识别与规则解析；仍失败时只把去敏文字发给第三方 AI 辅助识别，原图不出本程序云存储；失败截图可能进入开发者复核（临时查看并留审计，默认 30 天删除）。你始终可以手动填写提交。'
+    a: '先在本机识别与规则解析；仍失败时只把去敏文字发给第三方 AI 辅助识别（不含原图、账号标识、联系方式、头像与昵称，不用于训练），原图不出本程序云存储；失败原图可能进入开发者复核（临时查看并留审计，默认 30 天删除）。你始终可以手动填写提交。'
   },
   {
     q: '头像和昵称会被谁看到？',
-    a: '头像来自微信头像选择（可拒绝，拒绝后用默认头像），昵称由你确认（必填）；只向当前绑定的兼职展示，解绑或对方注销后立即不再展示；分享卡片、通知、后台都不含头像与昵称；注销会删除头像文件。'
+    a: '头像来自微信头像选择（可拒绝，拒绝后用默认头像），昵称必填、最多 20 字、可改；兼职昵称在你凭完整兼职编号预览时即可看到，头像要绑定成功后才显示；解绑、兼职停用或注销后立即不再展示；对方设备已缓存或已截图的内容无法从技术上撤回；分享卡片、通知与后台列表不含头像，昵称脱敏；注销会删除头像文件。'
   },
   {
     q: '怎么注销账号？',
-    a: '在「我的-注销账号」：先完成或取消进行中的订单，然后一键注销，数据（含头像文件）按隐私政策删除或匿名化。'
+    a: '在「我的 → 账号 → 注销账号」：有进行中订单需先处理，然后一键注销；注销后无法恢复，唯一编号作废，头像、截图与资料按隐私政策删除或匿名化，30 天内物理删除。'
   },
   {
     q: '需要付钱吗？',
     a: '不需要。本程序不涉及任何费用收付。'
+  },
+  {
+    q: '未成年人可以使用吗？',
+    a: '本程序面向在校大学生代取快递场景，不针对未成年人单独收集个人信息。如你未满 14 周岁，请在监护人陪同下阅读隐私政策并取得监护人同意后使用。'
+  },
+  {
+    q: '我的信息可以查、改、删吗？',
+    a: '可以在「我的」查看并修改昵称、头像、宿舍与手机尾号；已完成订单可删除记录（7 天后物理删除）；可解绑兼职、注销账号，注销后唯一编号作废。头像只有当前绑定对方可见，兼职昵称凭完整编号预览可见；解除绑定、停用或注销后双方不再互见。'
+  },
+  {
+    q: '账号切换和测试账号是什么？',
+    a: '开发者可切换账号排障：真实账号只能只读查看、不能代操作、每次留审计；测试账号是后台创建的合成账号，不含任何真实用户资料，数据独立标记、不计入统计并按期清理。平台不支持切换微信登录的账号。'
   }
 ];
 
@@ -40,15 +58,7 @@ const DOCS = {
   about: [
     '本程序用于校园快递代取：顾客上传取件码截图下单，兼职接单、取件、送达，双方在订单里沟通进度。',
     '服务只提供代取类型（标准代取、送寝上门、加急代取、代寄快递、其他代办），不展示任何费用信息。',
-    '账号问题请通过订单留言联系兼职；无法解决时联系开发者。'
-  ],
-  privacy: [
-    '我们收集：微信登录标识、顾客编号、微信昵称（必填）、微信头像（可选，可拒绝后用默认头像）、苑/楼栋/宿舍号、可选手机尾号、订单信息与取件码截图。',
-    '用途：下单履约与进度沟通；头像与昵称只向当前绑定的对方展示，解绑、停用或注销后不再展示。',
-    '保存期限：截图在订单完成或取消后 7 天删除；订单信息 180 天后删除或匿名化；注销立即匿名化并删除头像文件，30 天内物理删除。',
-    '识别失败时，去敏后的截图文字会发给第三方 AI 服务辅助识别；原图不出本程序云存储，也不会发给第三方。',
-    '识别失败截图可能进入开发者复核（临时查看、每次审计、默认 30 天删除）。',
-    '开发者账号可切换账号查看：真实账号只读，测试账号为后台合成账号（不含真实用户数据），均留审计。'
+    '隐私政策与用户协议是本程序的使用前提，可在本页「隐私政策 / 用户协议」标签查看全文；账号问题请先通过订单留言联系兼职。'
   ],
   terms: [
     '使用本程序即表示你同意按真实信息填写宿舍身份，并对提交的订单与留言负责。',
@@ -57,6 +67,14 @@ const DOCS = {
     '本程序不涉及任何费用收付，也不处理任何金钱交易。'
   ]
 };
+
+const DOC_TABS = [
+  { key: 'about', label: '关于' },
+  { key: 'privacy', label: '隐私政策' },
+  { key: 'terms', label: '用户协议' }
+];
+
+const DOC_KEYS = ['about', 'privacy', 'terms'];
 
 function readVersion() {
   try {
@@ -68,29 +86,39 @@ function readVersion() {
   }
 }
 
+// 隐私版本单源：服务端配置（store 缓存）优先，缺失回落出厂默认（config/defaults.js）
+function privacyVersionOf() {
+  const config = store.get('config');
+  const fromServer = config && typeof config.privacyVersion === 'string' ? config.privacyVersion.trim() : '';
+  if (fromServer) {
+    return fromServer;
+  }
+  return (defaults.DEFAULT_CONFIG && defaults.DEFAULT_CONFIG.privacyVersion) || '';
+}
+
+function docViewOf(key) {
+  if (key === 'privacy') {
+    return { sections: privacyText.buildSections(privacyVersionOf()), paragraphs: [] };
+  }
+  return { sections: [], paragraphs: DOCS[key] || DOCS.about };
+}
+
 Page({
   data: {
     doc: 'about',
-    docTabs: [
-      { key: 'about', label: '关于' },
-      { key: 'privacy', label: '隐私政策' },
-      { key: 'terms', label: '用户协议' }
-    ],
+    docTabs: DOC_TABS,
     faqs: FAQS,
     expanded: -1,
+    sections: [],
     paragraphs: DOCS.about,
-    statements: {
-      zeroMoney: '本程序不涉及任何费用收付。',
-      audit: '开发者后台默认脱敏查看订单数据；完整数据查看需通过只读视角并留审计。',
-      ai: '识别失败时：去敏截图文字会发给第三方 AI 辅助识别；原图不出本程序云存储；失败截图可能进入开发者复核（临时查看+审计，默认 30 天删除）。',
-      avatar: '头像与昵称只向当前绑定对方展示；解绑/停用/注销后不再展示；头像可拒绝（使用默认头像）。'
-    },
+    statements: privacyText.STATEMENTS,
+    privacyVersion: privacyVersionOf(),
     version: readVersion()
   },
 
   onLoad(options) {
-    const doc = String((options && options.doc) || 'about');
-    if (DOCS[doc]) this.setData({ doc: doc, paragraphs: DOCS[doc] });
+    const raw = String((options && options.doc) || 'about');
+    this.openDoc(DOC_KEYS.indexOf(raw) === -1 ? 'about' : raw);
   },
 
   onFaqTap(e) {
@@ -100,7 +128,14 @@ Page({
 
   onDocTap(e) {
     const key = (e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.key) || 'about';
-    if (!DOCS[key]) return;
-    this.setData({ doc: key, paragraphs: DOCS[key] });
+    if (DOC_KEYS.indexOf(key) === -1) {
+      return;
+    }
+    this.openDoc(key);
+  },
+
+  openDoc(key) {
+    const view = docViewOf(key);
+    this.setData({ doc: key, sections: view.sections, paragraphs: view.paragraphs });
   }
 });

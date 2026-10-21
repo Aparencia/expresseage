@@ -638,14 +638,27 @@ check(23, '切换会话接入', '17 页引用 switch-bar；pkg-admin 零引用�
 });
 
 // ---------------------------------------------------------------- #24
-check(24, '客户端零 AI 外呼/零 Key', '客户端范围零 deepseek 痕迹（SQL 枚举全大写 DEEPSEEK 合法）；ai.parseParcel 只经 api/', () => {
+check(24, '客户端零 AI 外呼/零 Key', '客户端范围零 deepseek 痕迹（SQL 枚举全大写 DEEPSEEK 合法；隐私披露纯文本文件单文件窄豁免+补偿断言）；ai.parseParcel 只经 api/', () => {
   const out = [];
   const cf = clientFiles();
   ['DEEPSEEK_API_KEY', 'api.deepseek.com'].forEach((k) => {
     grep(cf, new RegExp(k.replace(/[.]/g, '\\.'))).forEach((h) => out.push(k + ': ' + h));
   });
-  // 大小写敏感：源码枚举值 'DEEPSEEK'（RECOGNITION_SOURCE）是合法口径，只有 API 客户端痕迹（deepseek/DeepSeek）才拦
-  grep(cf, /deepseek|DeepSeek/).forEach((h) => out.push('deepseek: ' + h));
+  // 大小写敏感：源码枚举值 'DEEPSEEK'（RECOGNITION_SOURCE）是合法口径，只有 API 客户端痕迹（deepseek/DeepSeek）才拦。
+  // 例外（批 8）：CONTRACT §11.2 要求端内隐私文本明文披露第三方 AI 服务名「DeepSeek」——仅该纯文本数据文件豁免，
+  // 并由下方补偿断言锁「零 Key/零端点/零 URL/零 require/fetch/wx.cloud/ai.parseParcel」。
+  const PRIVACY_TEXT = 'pkg-customer/parts/privacy-text.js';
+  grep(cf, /deepseek|DeepSeek/).forEach((h) => {
+    if (h.indexOf(PRIVACY_TEXT + ':') === 0) return;
+    out.push('deepseek: ' + h);
+  });
+  const pt = text(PRIVACY_TEXT);
+  if (pt === null) {
+    out.push('缺失: ' + PRIVACY_TEXT);
+  } else {
+    ['DEEPSEEK_API_KEY', 'api.deepseek.com', 'http://', 'https://', 'fetch(', 'require(', 'wx.cloud', 'ai.parseParcel']
+      .forEach((k) => { if (pt.indexOf(k) !== -1) out.push(PRIVACY_TEXT + ': 披露文本禁止出现 ' + k); });
+  }
   pagesJs().forEach((rel) => {
     if ((text(rel) || '').indexOf('ai.parseParcel') !== -1) out.push(rel + ': 页面直调 ai.parseParcel');
   });

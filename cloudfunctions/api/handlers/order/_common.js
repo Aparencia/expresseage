@@ -95,6 +95,11 @@ async function runOrderAction(ctx, payload, spec) {
   if (rule.roles.indexOf(actorRole) < 0) {
     throw errors.forbidden('当前身份不能执行该操作');
   }
+  // CONTRACT §1.1 第 4 条：开发者唯一的订单写动作 = 异常介入取消；不代确认送达/不代操作其它状态动作。
+  // （shared/order-state 的 resolveException 角色表含 ADMIN，本闸把后台权限收敛到 cancel 一个动作。）
+  if (actorRole === enums.CANCELLED_BY.ADMIN && spec.action !== 'order.cancel') {
+    throw errors.forbidden('后台仅可介入取消异常订单');
+  }
   if (actorRole === enums.ROLES.PARTNER) {
     await loadWritablePartner(ctx);
   }

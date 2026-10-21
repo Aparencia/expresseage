@@ -1,4 +1,9 @@
 <view class="page-body">
+  <view class="card" wx:if="{{forbidden}}">
+    <text class="section-title">{{forbidden.title}}</text>
+    <text class="muted">{{forbidden.text}}</text>
+  </view>
+  <block wx:if="{{!forbidden}}">
   <view class="card">
     <text class="section-title">账号切换</text>
     <view class="small">真实账号只读查看（不能操作、全程审计）；需要真实操作请切「测试账号」（只写测试数据，不影响真实用户）。小程序不能切换微信登录账号，这里只做应用内账号代理切换。</view>
@@ -14,7 +19,7 @@
   <view class="empty-text" wx:if="{{loading}}">加载中…</view>
 
   <view class="card" wx:if="{{error}}" bindtap="onRetry">
-    <text class="muted">没连上服务器，先检查网络；刚才的数据是 {{errorAt}} 的。</text>
+    <text class="muted">{{error}}</text>
     <text class="link"> 点此重试</text>
   </view>
 
@@ -177,4 +182,5 @@
       <view class="danger-text" wx:if="{{purgeError}}">{{purgeError}}</view>
     </view>
   </view>
+  </block>
 </view>

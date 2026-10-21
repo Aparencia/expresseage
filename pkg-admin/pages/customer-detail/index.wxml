@@ -1,8 +1,13 @@
 <view class="page-body">
+  <view class="card" wx:if="{{forbidden}}">
+    <text class="section-title">{{forbidden.title}}</text>
+    <text class="muted">{{forbidden.text}}</text>
+  </view>
+  <block wx:if="{{!forbidden}}">
   <view class="empty-text" wx:if="{{loading}}">加载中…</view>
 
   <view class="card" wx:if="{{error}}" bindtap="onRetry">
-    <text class="muted">没连上服务器，先检查网络；刚才的数据是 {{errorAt}} 的。</text>
+    <text class="muted">{{error}}</text>
     <text class="link"> 点此重试</text>
   </view>
 
@@ -57,5 +62,6 @@
         <view class="muted">{{item.serviceName}} · {{item.dormText}} · {{item.statusUpdatedAtText}}</view>
       </view>
     </view>
+  </block>
   </block>
 </view>

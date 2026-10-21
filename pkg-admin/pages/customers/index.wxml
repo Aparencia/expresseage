@@ -1,4 +1,9 @@
 <view class="page-body">
+  <view class="card" wx:if="{{forbidden}}">
+    <text class="section-title">{{forbidden.title}}</text>
+    <text class="muted">{{forbidden.text}}</text>
+  </view>
+  <block wx:if="{{!forbidden}}">
   <view class="card filter-block">
     <view class="form-row">
       <input class="form-input" value="{{keyword}}" placeholder="编号 / 苑+楼栋 / 昵称" confirm-type="search" bindinput="onKeywordInput" bindconfirm="onSearchConfirm" />
@@ -14,7 +19,7 @@
   <view class="empty-text" wx:if="{{searching}}">搜索中…</view>
 
   <view class="card" wx:if="{{error}}" bindtap="onRetry">
-    <text class="muted">没连上服务器，先检查网络；刚才的数据是 {{errorAt}} 的。</text>
+    <text class="muted">{{error}}</text>
     <text class="link"> 点此重试</text>
   </view>
 
@@ -31,4 +36,5 @@
     <view class="subtitle">{{item.displayName}} · {{item.dormText}}</view>
     <view class="muted">{{item.bindingText}} · {{item.progressText}}</view>
   </view>
+  </block>
 </view>

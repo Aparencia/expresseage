@@ -12,7 +12,11 @@ function forward(prev, nextMs) {
 async function markOrderMessagesRead(ctx, orderNo, nowDate) {
   const scope = common.scopeOf(ctx);
   const order = await common.getOrderByNo(ctx, orderNo);
-  common.assertParticipant(ctx, order);
+  const side = common.assertParticipant(ctx, order);
+  // CONTRACT §10 权限矩阵：开发者对订单留言仅只读（工单），不得改写对方已读状态。
+  if (side === 'ADMIN') {
+    throw common.errors.forbidden('后台不能代操作订单留言');
+  }
   const messages = await ctx.dao.find(common.COLLECTIONS.ORDER_MESSAGES, {
     where: { orderId: order._id },
     limit: 100

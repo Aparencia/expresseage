@@ -1,8 +1,8 @@
 // pkg-admin/pages/customer-detail/index.js · 顾客详情（脱敏资料 + 绑定关系 + 订单摘要，无写动作）
 const admin = require('../../../api/modules/admin');
 const C = require('../../common/constants');
-const F = require('../../common/format');
 const feedback = require('../../common/feedback');
+const vm = require('./parts/view-model');
 
 Page({
   data: {
@@ -54,52 +54,13 @@ Page({
   },
 
   applyDetail(result) {
-    const customer = result.customer || {};
-    const binding = result.bindingSummary || null;
-    const summary = result.orderSummary || {};
-    const orders = result.recentOrders || [];
+    const built = vm.buildDetailView(result, this.data.customerNo);
     this.setData({
-      customer: {
-        customerNo: customer.customerNo || this.data.customerNo,
-        displayName: F.textOrDash(customer.displayName),
-        dormText: customer.dormText || customer.dorm || '—',
-        phoneTailText: customer.phoneTail || '—',
-        profileText: customer.profileCompleted ? '资料完整' : '资料未完整',
-        isTest: customer.isTest === true
-      },
-      binding: binding ? this.decorateBinding(binding) : null,
-      orderSummaryText: this.buildSummaryText(summary),
-      recentOrders: orders.map((item) => this.decorateOrder(item))
+      customer: built.customer,
+      binding: built.binding,
+      orderSummaryText: built.orderSummaryText,
+      recentOrders: built.recentOrders
     });
-  },
-
-  decorateBinding(binding) {
-    return {
-      partnerNo: binding.partnerNo || '—',
-      displayName: F.textOrDash(binding.displayName),
-      statusText: C.PARTNER_STATUS_LABELS[binding.status] || '—',
-      boundAtText: binding.boundAt ? F.formatTime(binding.boundAt) : ''
-    };
-  },
-
-  buildSummaryText(summary) {
-    const pick = function (value) {
-      return value === undefined || value === null ? '—' : F.numOrZero(value);
-    };
-    return '进行中 ' + pick(summary.inProgress) +
-      ' · 已完成 ' + pick(summary.completed) +
-      ' · 异常 ' + pick(summary.exception);
-  },
-
-  decorateOrder(item) {
-    return {
-      orderNo: item.orderNo || '—',
-      statusText: item.statusText || C.ORDER_STATUS_LABELS[item.status] || '—',
-      serviceName: item.serviceName || item.serviceCode || '—',
-      dormText: item.dormText || item.dorm || '—',
-      statusUpdatedAtText: F.formatTime(item.statusUpdatedAt),
-      isTest: item.isTest === true
-    };
   },
 
   onRetry() {

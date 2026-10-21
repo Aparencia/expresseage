@@ -1,6 +1,7 @@
 // handlers/order/cancel.js · order.cancel：顾客/兼职/admin 取消（非终态）
 // 顾客取消条件（EXCEPTION 仅当 exception.fromStatus ∈ {SUBMITTED,ACCEPTED}）由 shared/order-state.canCustomerCancel 判定；
-// admin 仅异常介入：原因必填 + 审计 ORDER_ANOMALY_CANCEL（与订单事件同事务，幂等键 adminOpenid:clientRequestId）。
+// admin 仅异常介入：仅 EXCEPTION 可取消（其余状态 INVALID_TRANSITION）+ 原因必填 + 审计 ORDER_ANOMALY_CANCEL
+// （与订单事件同事务，幂等键 adminOpenid:clientRequestId）。
 'use strict';
 
 const { COLLECTIONS } = require('../../shared/collections');
@@ -23,6 +24,14 @@ function validateAdminReason(payload) {
     throw errors.validation('note', '选择其他原因时请填写备注');
   }
   return { reason, note: noteResult.value };
+}
+
+// CONTRACT §5.1 / UX_DEVELOPER §7.3：admin 只能介入取消「异常工单」，其余状态不提供入口 → INVALID_TRANSITION。
+// （shared/order-state.canAct 对 ADMIN 只校验「进行中状态」，故此处补业务闸；顾客/兼职路径不受影响。）
+function assertAdminCancelable(order) {
+  if (!order || order.status !== enums.ORDER_STATUS.EXCEPTION) {
+    throw errors.invalidTransition('当前订单状态不允许该操作');
+  }
 }
 
 function validateReason(actorRole, payload) {
@@ -55,6 +64,9 @@ module.exports = async function orderCancel(ctx, payload) {
   return common.runOrderAction(ctx, payload, {
     action: 'order.cancel',
     guard(input) {
+      if (input.actorRole === enums.CANCELLED_BY.ADMIN) {
+        assertAdminCancelable(input.order);
+      }
       return validateReason(input.actorRole, input.payload);
     },
     build(input) {

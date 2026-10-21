@@ -1,14 +1,14 @@
 // pkg-admin/pages/overview/index.js · 开发者总览（统计卡 + 识别失败待复核 + 审计区块）
 const admin = require('../../../api/modules/admin');
 const C = require('../../common/constants');
-const F = require('../../common/format');
 const feedback = require('../../common/feedback');
+const vm = require('./parts/view-model');
 
 const AUDIT_PAGE_SIZE = 20;
 
 Page({
   data: {
-    developerNo: '',
+    header: vm.buildHeader(null),
     loadedOnce: false,
     loading: true,
     loadingMore: false,
@@ -63,36 +63,18 @@ Page({
   },
 
   applyStats(stats) {
-    const counts = stats.counts || {};
-    const today = stats.today || {};
-    const config = stats.config || {};
-    const maintenance = config.maintenance || {};
-    const announcement = config.announcement || {};
-    const pendingFailures = F.numOrZero(counts.pendingFailures || counts.pendingRecognitionFailures);
-    const exceptions = F.numOrZero(counts.exceptions);
-    const statusBar = [];
-    if (maintenance.enabled) {
-      statusBar.push('维护中：' + (maintenance.text || '系统维护中'));
-    }
-    if (announcement.enabled) {
-      statusBar.push('公告：' + (announcement.title || '已启用'));
-    }
+    const built = vm.buildCounts(stats);
+    const config = (stats && stats.config) || {};
     this.setData({
-      developerNo: stats.developerNo || '',
-      counts: {
-        todayOrders: F.numOrZero(today.orders || counts.todayOrders),
-        exceptions: exceptions,
-        activePartners: F.numOrZero(counts.activePartners),
-        customers: F.numOrZero(counts.activeCustomers || counts.customers),
-        pendingFailures: pendingFailures
-      },
-      badge: exceptions + pendingFailures,
-      statusBar: statusBar
+      header: vm.buildHeader(stats),
+      counts: built.counts,
+      badge: built.badge,
+      statusBar: vm.buildStatusBar(config)
     });
   },
 
   applyAudit(list, nextCursor, append) {
-    const rows = list.map((item) => this.decorateAudit(item));
+    const rows = vm.decorateAuditList(list);
     const merged = append ? this.data.audit.concat(rows) : rows;
     this.setData({
       audit: merged,
@@ -100,23 +82,6 @@ Page({
       auditHasMore: !!nextCursor,
       loadingMore: false
     });
-  },
-
-  decorateAudit(item) {
-    const actionText = C.AUDIT_ACTION_LABELS[item.action] || '其他操作';
-    return {
-      actionText: actionText,
-      developerNo: item.developerNo || '—',
-      targetText: this.decorateTarget(item.target),
-      timeText: F.formatTime(item.at)
-    };
-  },
-
-  decorateTarget(target) {
-    if (!target) return '—';
-    if (typeof target === 'string') return target;
-    const label = target.no || target.displayName || target.type || '';
-    return label ? String(label) : '—';
   },
 
   onAuditMore() {

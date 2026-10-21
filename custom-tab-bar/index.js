@@ -4,13 +4,13 @@ const store = require('../store/index');
 const CUSTOMER_TABS = [
   { pagePath: 'pages/customer/home/index', text: '首页', icon: '/assets/tabbar/customer-home.png', activeIcon: '/assets/tabbar/customer-home-active.png' },
   { pagePath: 'pages/customer/orders/index', text: '订单', icon: '/assets/tabbar/customer-orders.png', activeIcon: '/assets/tabbar/customer-orders-active.png' },
-  { pagePath: 'pages/profile/index', text: '我的', icon: '/assets/tabbar/profile.png', activeIcon: '/assets/tabbar/profile-active.png' }
+  { pagePath: 'pages/profile/index', text: '我的', icon: '/assets/tabbar/profile.png', activeIcon: '/assets/tabbar/profile-active.png', badgeKey: 'messages' }
 ];
 
 const PARTNER_TABS = [
   { pagePath: 'pages/partner/workbench/index', text: '工作台', icon: '/assets/tabbar/partner-workbench.png', activeIcon: '/assets/tabbar/partner-workbench-active.png', badgeKey: 'workbenchPending' },
   { pagePath: 'pages/partner/customers/index', text: '客户', icon: '/assets/tabbar/partner-customers.png', activeIcon: '/assets/tabbar/partner-customers-active.png' },
-  { pagePath: 'pages/profile/index', text: '我的', icon: '/assets/tabbar/profile.png', activeIcon: '/assets/tabbar/profile-active.png' }
+  { pagePath: 'pages/profile/index', text: '我的', icon: '/assets/tabbar/profile.png', activeIcon: '/assets/tabbar/profile-active.png', badgeKey: 'messages' }
 ];
 
 function roleOf(snapshot) {

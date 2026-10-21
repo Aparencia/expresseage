@@ -1,39 +1,9 @@
 // pkg-admin/pages/config/index.js · 全局配置（白名单字段可编辑；智能识别兜底只读展示）
+// 口径：V4_UX_DEVELOPER §3.8/§7.4——保存前变更清单 + 二次确认；维护开启/关闭都二次确认；未保存返回拦截。
 const admin = require('../../../api/modules/admin');
 const C = require('../../common/constants');
-const F = require('../../common/format');
 const feedback = require('../../common/feedback');
-
-const FIELD_LABELS = {
-  zoneLabels: '苑名',
-  serviceCatalog: '服务类型模板',
-  announcement: '公告',
-  maintenance: '维护模式',
-  orderTimeoutMinutes: '接单超时',
-  autoCompleteHours: '自动完成时长',
-  screenshotRetentionDays: '截图留存天数',
-  ttlMinutes: '切换会话时长',
-  avatarMaxBytes: '头像大小上限'
-};
-
-function toInt(value) {
-  const parsed = Number(value);
-  return isNaN(parsed) ? NaN : Math.floor(parsed);
-}
-
-function emptyForm() {
-  return {
-    zones: [],
-    services: [],
-    announcement: { enabled: false, title: '', text: '' },
-    maintenance: { enabled: false, text: '' },
-    orderTimeoutMinutes: '120',
-    autoCompleteHours: '24',
-    screenshotRetentionDays: '7',
-    ttlMinutes: '30',
-    avatarMaxKb: '200'
-  };
-}
+const vm = require('./parts/view-model');
 
 Page({
   data: {
@@ -43,10 +13,9 @@ Page({
     forbidden: false,
     saving: false,
     dirty: false,
-    form: emptyForm(),
+    form: vm.emptyForm(),
     readonlyInfo: {
       aiFallbackText: '—',
-      recognitionFailureRetentionDays: '—',
       testAccountMaxPerRole: '—',
       testDataRetentionDays: '—'
     },
@@ -75,11 +44,11 @@ Page({
     this.setData({ loading: true, error: '' });
     return admin.stats({}).then((stats) => {
       const config = (stats && stats.config) || {};
-      const form = this.buildForm(config);
-      this.original = this.buildPayload(form);
+      const form = vm.buildForm(config);
+      this.original = vm.buildPayload(form);
       this.setData({
         form: form,
-        readonlyInfo: this.buildReadonly(config),
+        readonlyInfo: vm.buildReadonlyInfo(config),
         loading: false,
         dirty: false
       });
@@ -88,54 +57,6 @@ Page({
       feedback.handleError(this, err);
       throw err;
     });
-  },
-
-  buildReadonly(config) {
-    const fallback = config.aiFallback || {};
-    return {
-      aiFallbackText: fallback.enabled === false ? '已关闭（只读展示，不可在此修改）' : '已开启（只读展示，不可在此修改）',
-      recognitionFailureRetentionDays: F.textOrDash(config.recognitionFailureRetentionDays),
-      testAccountMaxPerRole: F.textOrDash(config.testAccountMaxPerRole),
-      testDataRetentionDays: F.textOrDash(config.testDataRetentionDays)
-    };
-  },
-
-  buildForm(config) {
-    const form = emptyForm();
-    const zoneLabels = config.zoneLabels || {};
-    form.zones = C.ZONE_KEYS.map(function (key) {
-      return {
-        key: key,
-        placeHolder: C.ZONE_LABELS[key],
-        value: zoneLabels[key] || ''
-      };
-    });
-    form.services = (config.serviceCatalog || []).map(function (item) {
-      return {
-        code: item.code,
-        name: item.name || '',
-        desc: item.desc || '',
-        enabled: item.enabled !== false
-      };
-    });
-    const announcement = config.announcement || {};
-    form.announcement = {
-      enabled: announcement.enabled === true,
-      title: announcement.title || '',
-      text: announcement.text || ''
-    };
-    const maintenance = config.maintenance || {};
-    form.maintenance = {
-      enabled: maintenance.enabled === true,
-      text: maintenance.text || ''
-    };
-    form.orderTimeoutMinutes = String(F.numOrZero(config.orderTimeoutMinutes) || 120);
-    form.autoCompleteHours = String(F.numOrZero(config.autoCompleteHours) || 24);
-    form.screenshotRetentionDays = String(F.numOrZero(config.screenshotRetentionDays) || 7);
-    form.ttlMinutes = String(C.pickTtlMinutes(config));
-    const avatarBytes = F.numOrZero(config.avatarMaxBytes) || C.CONFIG_RANGE.avatarKbMax * 1024;
-    form.avatarMaxKb = String(Math.round(avatarBytes / 1024));
-    return form;
   },
 
   markDirty() {
@@ -171,15 +92,6 @@ Page({
     this.markDirty();
   },
 
-  onServiceToggle(event) {
-    const index = Number(event.currentTarget.dataset.index);
-    const services = this.data.form.services.slice();
-    if (!services[index]) return;
-    services[index].enabled = event.detail.value === true;
-    this.setData({ 'form.services': services });
-    this.markDirty();
-  },
-
   onAnnouncementToggle(event) {
     const form = this.data.form;
     form.announcement.enabled = event.detail.value === true;
@@ -196,19 +108,16 @@ Page({
     this.markDirty();
   },
 
+  // 维护模式开启/关闭都是治理动作：都需二次确认（§7.5）
   onMaintenanceToggle(event) {
     const next = event.detail.value === true;
-    if (!next) {
-      this.setMaintenance(false);
-      return;
-    }
     feedback.confirm({
-      title: '开启维护模式',
-      content: '开启维护模式后，顾客/兼职端将看到维护公告，写操作被拒绝；后台不受影响。确定开启？',
-      confirmText: '确认开启',
-      danger: true
+      title: next ? '开启维护模式' : '关闭维护模式',
+      content: vm.maintenanceConfirmContent(next),
+      confirmText: next ? '确认开启' : '确认关闭',
+      danger: next
     }).then((res) => {
-      this.setMaintenance(res.confirm === true);
+      this.setMaintenance(res.confirm === true ? next : !next);
     });
   },
 
@@ -237,89 +146,15 @@ Page({
     this.loadConfig().catch(function () {});
   },
 
-  buildPayload(form) {
-    return {
-      zoneLabels: form.zones.reduce(function (acc, item) {
-        acc[item.key] = String(item.value || '').trim();
-        return acc;
-      }, {}),
-      serviceCatalog: form.services.map(function (item) {
-        return { code: item.code, name: String(item.name || '').trim(), desc: String(item.desc || '').trim(), enabled: item.enabled };
-      }),
-      announcement: {
-        enabled: form.announcement.enabled,
-        title: String(form.announcement.title || '').trim(),
-        text: String(form.announcement.text || '').trim()
-      },
-      maintenance: {
-        enabled: form.maintenance.enabled,
-        text: String(form.maintenance.text || '').trim()
-      },
-      orderTimeoutMinutes: toInt(form.orderTimeoutMinutes),
-      autoCompleteHours: toInt(form.autoCompleteHours),
-      screenshotRetentionDays: toInt(form.screenshotRetentionDays),
-      ttlMinutes: toInt(form.ttlMinutes),
-      avatarMaxBytes: toInt(form.avatarMaxKb) * 1024
-    };
-  },
-
-  collectChanges(payload) {
-    const before = this.original || {};
-    return Object.keys(FIELD_LABELS).filter(function (key) {
-      return JSON.stringify(before[key]) !== JSON.stringify(payload[key]);
-    }).map(function (key) {
-      return FIELD_LABELS[key];
-    });
-  },
-
-  validatePayload(payload) {
-    const range = C.CONFIG_RANGE;
-    if (!(payload.orderTimeoutMinutes >= range.orderTimeoutMin && payload.orderTimeoutMinutes <= range.orderTimeoutMax)) {
-      return '接单超时请填 ' + range.orderTimeoutMin + '~' + range.orderTimeoutMax + ' 分钟。';
-    }
-    if (!(payload.autoCompleteHours >= range.autoCompleteMin && payload.autoCompleteHours <= range.autoCompleteMax)) {
-      return '自动完成时长请填 ' + range.autoCompleteMin + '~' + range.autoCompleteMax + ' 小时。';
-    }
-    if (!(payload.screenshotRetentionDays > 0 && payload.screenshotRetentionDays <= range.screenshotMax)) {
-      return '截图留存天数不能超过 ' + range.screenshotMax + ' 天。';
-    }
-    if (!(payload.ttlMinutes >= range.ttlMin && payload.ttlMinutes <= range.ttlMax)) {
-      return '切换会话时长请填 ' + range.ttlMin + '~' + range.ttlMax + ' 分钟。';
-    }
-    if (!(payload.avatarMaxBytes >= range.avatarKbMin * 1024 && payload.avatarMaxBytes <= range.avatarKbMax * 1024)) {
-      return '头像大小上限请填 ' + range.avatarKbMin + '~' + range.avatarKbMax + 'KB。';
-    }
-    if (payload.announcement.title.length > C.LIMITS.announcementTitleMax) {
-      return '公告标题最多 ' + C.LIMITS.announcementTitleMax + ' 字。';
-    }
-    if (payload.announcement.text.length > C.LIMITS.announcementTextMax) {
-      return '公告正文最多 ' + C.LIMITS.announcementTextMax + ' 字。';
-    }
-    if (payload.maintenance.text.length > C.LIMITS.maintenanceTextMax) {
-      return '维护说明最多 ' + C.LIMITS.maintenanceTextMax + ' 字。';
-    }
-    if (payload.zoneLabels && Object.keys(payload.zoneLabels).some(function (key) { return !payload.zoneLabels[key]; })) {
-      return '五个苑名都不能为空。';
-    }
-    return '';
-  },
-
-  buildApiPayload(payload) {
-    const result = Object.assign({}, payload);
-    result[C.CONFIG_TTL_KEY] = result.ttlMinutes;
-    delete result.ttlMinutes;
-    return result;
-  },
-
   onSave() {
     if (this.data.saving) return;
-    const payload = this.buildPayload(this.data.form);
-    const invalid = this.validatePayload(payload);
+    const payload = vm.buildPayload(this.data.form);
+    const invalid = vm.validatePayload(payload);
     if (invalid) {
       feedback.toast(invalid);
       return;
     }
-    const changes = this.collectChanges(payload);
+    const changes = vm.collectChanges(this.original || {}, payload);
     if (changes.length === 0) {
       feedback.toast('配置没有变化。');
       return;
@@ -335,7 +170,7 @@ Page({
 
   submit(payload) {
     this.setData({ saving: true });
-    admin.updateConfig({ config: this.buildApiPayload(payload) }).then(() => {
+    admin.updateConfig({ config: vm.buildApiPayload(payload, C.CONFIG_TTL_KEY) }).then(() => {
       this.setData({ saving: false, dirty: false });
       this.original = payload;
       this.disableLeaveAlert();

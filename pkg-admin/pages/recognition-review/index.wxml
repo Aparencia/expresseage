@@ -1,4 +1,9 @@
 <view class="page-body">
+  <view class="card" wx:if="{{forbidden}}">
+    <text class="section-title">{{forbidden.title}}</text>
+    <text class="muted">{{forbidden.text}}</text>
+  </view>
+  <block wx:if="{{!forbidden}}">
   <view class="card">
     <text class="section-title">识别失败复核</text>
     <view class="small">这里只处理识别失败的截图复核：可按单查看原图（每次查看都会记审计），补录站点/取件码只回填订单的识别字段，不会改变订单状态。</view>
@@ -26,7 +31,7 @@
   <view class="empty-text" wx:if="{{loading}}">加载中…</view>
 
   <view class="card" wx:if="{{error}}" bindtap="onRetry">
-    <text class="muted">没连上服务器，先检查网络；刚才的数据是 {{errorAt}} 的。</text>
+    <text class="muted">{{error}}</text>
     <text class="link"> 点此重试</text>
   </view>
 
@@ -128,4 +133,5 @@
       <view class="btn btn-ghost btn-block" bindtap="onCloseImage">关闭</view>
     </view>
   </view>
+  </block>
 </view>

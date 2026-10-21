@@ -9,6 +9,34 @@
   font-size: 26rpx;
 }
 
+.mark-read-disabled {
+  color: #999999;
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  padding-bottom: 16rpx;
+}
+
+.chip {
+  min-height: 64rpx;
+  line-height: 64rpx;
+  padding: 0 28rpx;
+  margin: 0 16rpx 16rpx 0;
+  border-radius: 32rpx;
+  background: #FFFFFF;
+  color: #666666;
+  font-size: 26rpx;
+  border: 1rpx solid #EEEEEE;
+}
+
+.chip-active {
+  background: #2B6DE5;
+  border-color: #2B6DE5;
+  color: #FFFFFF;
+}
+
 .msg-item {
   position: relative;
 }

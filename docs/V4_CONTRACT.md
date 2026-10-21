@@ -57,7 +57,7 @@
    - **默认脱敏**：列表与后台详情中取件码打码、手机尾号仅显示后 2 位、宿舍只显示苑+楼栋（房间号打码）、不显示 openid；后台不提供完整手机号（系统本就不收集）。
    - **完整 L3 数据（取件码/尾号/门牌/截图）只能通过只读视角查看**（§1.2，带审计）；后台不提供"显示完整"按钮。
    - **例外（v0.8，用户三次修订）**：**识别失败复核页**（`pkg-admin/pages/recognition-review/index`）可按单查看**该失败记录的原图**（临时 URL 5 分钟 + 每次审计 `FAILURE_IMAGE_VIEW`），仅用于排查识别问题；**不提供批量查看/下载/导出**，非失败单原图仍只能走只读视角。
-4. **治理动作**：兼职停用/恢复（`admin.setPartnerStatus`）；异常订单介入取消（`order.cancel` 由 ADMIN 执行：原因必填+审计；**不代顾客确认送达、不创建订单、不修改订单归属**）；全局配置（服务类型模板/苑名/公告/超时/留存期限/切换会话时长/头像大小）；维护模式。
+4. **治理动作**：兼职停用/恢复（`admin.setPartnerStatus`；**`CLOSED` 注销为运维兜底能力、后台页面不提供入口，级联语义见 DATA_MODEL §8**）；异常订单介入取消（`order.cancel` 由 ADMIN 执行：原因必填+审计；**不代顾客确认送达、不创建订单、不修改订单归属**）；全局配置（服务类型模板/苑名/公告/超时/留存期限/切换会话时长/头像大小）；维护模式。
 5. **不可做**：删除订单；改状态（除异常介入取消）；作为顾客下单/作为兼职接单；导出完整个人信息；查看/写入 openid；把邀请码给别人长期复用。
 6. **审计**：`admin_audit` 记录 `adminOpenid + developerNo + action + target + detail + at`；后台总览内嵌审计区块（MVP 不单独建页，P1 可拆）。
 7. **账号切换（v0.9，用户四次修订）**：统一入口「切换账号」；**真实账号只读**（=§1.2 只读视角）、**测试账号可写**（=§1.3）。账号切换页同时提供测试账号管理（新建/查看/删除/清理数据）；全部动作审计。
@@ -342,7 +342,7 @@
 | :-- | :-- |
 | `user` | `bootstrap`（返回角色/资料完成度/绑定摘要/`isDeveloper`/当前切换会话上下文 `viewContext`（含 `viewMode/role/target`），**不返回 openid**）、`acceptPrivacy`、`deleteAccount` |
 | `customer` | `saveProfile`（首次保存时生成 `customerNo`，幂等；含 `displayName` 昵称与 `avatarFileId`）、`getProfile` |
-| `partner` | `activate`（入参 `invitationCode` + 昵称，激活时可一键取微信昵称/头像）、`saveProfile`（昵称/头像可改）、`saveServiceConfig`、`getPublic`（凭完整 `partnerNo`，未绑定可、限流；**绑定前只回昵称，绑定后回头像/昵称**；测试账号返回 `NOT_FOUND`）、`listBindings`（客户档案，服务端搜索 + 游标分页）、`getCustomer`（`bindingId` 反查自己绑定顾客：档案 + 该顾客订单分页 + 解绑资格）、`unbindCustomer`、`saveCustomerNote`、`stats`（**只含单量**：今日/本周/本月完成量、进行中/异常/取消、完成率、近 7 日单量、日报摘要源；**排除测试账号与 `isTest` 订单**；无任何收入类字段） |
+| `partner` | `activate`（入参 `invitationCode` + 昵称，激活时可一键取微信昵称/头像）、`saveProfile`（昵称/头像可改）、`saveServiceConfig`、`getPublic`（凭完整 `partnerNo`，未绑定可、限流；**绑定前只回昵称，绑定后回头像/昵称**；测试账号返回 `NOT_FOUND`）、`listBindings`（客户档案，服务端搜索 + 游标分页）、`getCustomer`（`bindingId` 反查自己绑定顾客：档案 + 解绑资格；**不含订单分页**，该顾客历史订单统一走 `order.listPartner({view:'customer'})` 单一来源，批 8 TD-049 收敛）、`unbindCustomer`、`saveCustomerNote`、`stats`（**只含单量**：今日/本周/本月完成量、进行中/异常/取消、完成率、近 7 日单量、日报摘要源；**排除测试账号与 `isTest` 订单**；无任何收入类字段） |
 | `bind` | `create`（**仅顾客可调**；凭完整 `partnerNo`；测试账号只能绑测试账号）、`release`（reason 必填枚举 + note≤100）、`getCurrent`（当前 ACTIVE 绑定摘要 + partner 公开资料（头像/昵称）+ roomTag）、`claimGuestOrder`（P1，顾客认领） |
 | `order` | `create`、`createBatch`（一图多码拆单，**≤5 单、单事务原子创建**；每条 `requestKey` 后缀 `:{itemIndex}`）、`get`、`listCustomer`、`listPartner`（返回列表 + `counts` 6 项）、`accept`、`reject`、`markPicked`、`unmarkPicked`、`markDelivered`、`unmarkDelivered`、`reportException`、`resolveException`、`cancel`、`confirmDelivery`、`correct`、`undo`、`deleteRecord`、`imageUrl` |
 | `message` | `send`、`list`（消息中心聚合）、`markRead` |

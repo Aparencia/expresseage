@@ -80,7 +80,7 @@
 
 ### 3.8 配置种子与冒烟
 
-- 用户：在 `config` 集合写 `_id='global'` 的种子（或由 `admin.bootstrap` 幂等建/校验），键与默认值见 ENGINEERING §3.6；`privacyVersion` 随隐私文本定稿回填。
+- 用户：在 `config` 集合写 `_id='global'` 的种子（或由 `admin.bootstrap` 幂等建/校验），键与默认值见 ENGINEERING §3.6；`privacyVersion` 随隐私文本定稿回填（批 8 定稿候选 v1.0 ↔ 代码默认 `v4.0.0`，见 §8 与 `docs/privacy/发布前填写清单.md` §1#17）。
 - Lead/用户：云开发控制台 → 云函数 → `api` → 测试 → 调用内部动作 `health.check`、`admin.bootstrap`（仅在开发者白名单下可用）；期望返回集合/索引清单、`configSeeded`，重复调用结果一致。
 - Lead：`node tools/seed-dev.js` 写 dev 种子（内置环境断言，prod 拒绝运行；含服务类型目录、测试邀请码批次、测试顾客/兼职资料）。
 - 冒烟：`account-switch` 开 READONLY 读写边界；测试账号走 `TEST_WRITE` 两端各一单；头像上传/替换；删除测试账号（先 `dryRun` 看计数）；审计 `ACCOUNT_SWITCH_*`/`TEST_ACCOUNT_*` 可查。详细清单见 §9。
@@ -115,7 +115,7 @@
 
 - 私有存储；截图与头像都经服务端票据签发路径；`wx.cloud.uploadFile` 只允许出现在 `api/upload.js`。
 - 展示用临时 URL（5 分钟）且不缓存、不落本地存储；后台不提供截图直链、后台 DTO 不含头像 fileID。
-- 清理：`cleanup.files`/`cleanup.tickets` 按引用计数与过期时间清理（含无主头像文件）；删除账号/测试账号时立即删头像文件。
+- 清理：`cleanup.files`/`cleanup.tickets` 按引用计数与过期时间清理；删除账号/测试账号时立即删已知 fileID 的头像/截图文件。**无主文件兜底（TD-051）**：MVP 无文件列举 API，`cleanup` 无法自动发现"无引用/无主"的云文件；每月由用户在控制台「存储 → 文件」人工核对一次（重点 `avatars/` 与 `orders/` 下孤儿文件），记录到 §13；P1 方案为票据消费时回写 fileID 后交 cleanup 自动清。
 - 上传失败排查顺序：存储权限 → 票据是否过期 → 路径是否与票据一致 → 文件大小/类型是否超限。
 
 ## 8. 运行时配置（`config` 集合，无费用项）
@@ -123,13 +123,13 @@
 | 键 | 默认/范围 | 谁能改 |
 | :-- | :-- | :-- |
 | `viewTicketTtlMinutes` | 30（5~60） | admin.updateConfig |
-| `avatarMaxBytes` | 204800（100KB~500KB） | admin.updateConfig |
+| `avatarMaxBytes` | 204800（100KB~200KB；上限=隐私承诺，不得放宽） | admin.updateConfig |
 | `testAccountMaxPerRole` | 3（每开发者合计 ≤6） | admin.updateConfig |
 | `testDataRetentionDays` | 30 | admin.updateConfig |
 | `recognitionFailureRetentionDays` | 30（7~30） | admin.updateConfig |
 | `orderTimeoutMinutes` / `autoCompleteHours` / `screenshotRetentionDays` | 120 / 24 / 7 | admin.updateConfig |
 | `zoneLabels` / `serviceCatalog` / `announcement` / `maintenance` | 五苑展示名 / 五类服务 / 公告 / 维护开关 | admin.updateConfig |
-| `privacyVersion` | 随《隐私保护指引》定稿回填 | admin.updateConfig |
+| `privacyVersion` | 定稿候选文本 v1.0 对应 `v4.0.0`（首次发布保持；仅当体验版已让用户同意旧文本才 bump，见 `docs/privacy/发布前填写清单.md` §1#17） | admin.updateConfig（白名单文本键；后台 config 页不提供编辑入口，发布前由 Lead/用户一次性写入并留证） |
 | `aiFallback` | `{enabled:false, timeoutMs:8000, maxPerUserPerDay:5, ...}` | **后台只读**；改值走部署配置脚本/控制台，并与隐私文本同步 |
 
 - 客户端只经 `config.getPublic` 取公开子集；缓存 TTL 5 分钟 + onShow 刷新（ENGINEERING §3.6）。
@@ -150,6 +150,12 @@
 | 9 | `cleanup` | 触发器到点执行，日志 `scanned/acted/failed` 正常；重跑幂等 | Lead | 日志 |
 | 10 | AI 兜底降级 | `aiFallback.enabled=false` 或 Key 为空时零外呼、返回 `recognized=false` 且失败入队 | Lead | 返回 + 队列截图 |
 | 11 | 复核页 | 原图临时 URL 5 分钟、每次访问有审计；补录/忽略写审计 | 用户 | 后台截图 |
+| 12 | 后台脱敏（批 8） | `admin.listCustomers`/`admin.getCustomer`/`admin.getOrder` 返回无 `avatarFileId`/openid、昵称脱敏（`小***`）、码/尾号/柜号按脱敏值；`admin.stats.developerNo` = 当前抬头编号 | Lead/用户 | 返回原文 + 后台截图 |
+| 13 | 切换会话读写边界（批 8） | READONLY 读白名单成功、写 `FORBIDDEN`；TEST_WRITE 仅测试账号、业务可写且 `isTest/impersonatedBy` 落库；`admin.viewAsEnd` 后审计 `ACCOUNT_SWITCH_END` 可查 | 用户 | 录屏 + 审计截图 |
+| 14 | 异常介入取消（批 8） | 仅 `EXCEPTION` 单可介入取消、原因必填、`cancelledBy='ADMIN'`、审计 `ORDER_ANOMALY_CANCEL`；非异常单 `INVALID_TRANSITION` | Lead/用户 | 返回原文 + 后台截图 |
+| 15 | cleanup 重跑幂等（批 8） | 触发器到点执行，日志/审计 `CLEANUP` 汇总 `scanned/acted/failed` 正常；紧接一轮 `acted` 收敛（无重复写审计）；`orderTimeout/autoComplete/retention/recognitionFailures/testData` 按到期条件生效 | Lead | 两轮日志 |
+| 16 | 维护模式（批 8） | 开启后读（`user.bootstrap`/`config.getPublic`/`message.list`）正常、客户端写 `INVALID_STATE`、端侧全屏公告可见；关闭后写恢复；开启/关闭均 `CONFIG_UPDATE` 审计 | 用户 | 录屏 + 返回原文 |
+| 17 | 隐私文本一致性（批 8） | `config.getPublic.privacyVersion` 与 `docs/privacy/隐私保护指引`（定稿候选 v1.0）一致；端内 help 全文离线可读、关键条目（数据项/留存/AI/测试账号/未成年人/权利）齐全；launch 弹窗口径与 §4.1/§4.2 一致 | Lead/用户 | 返回原文 + 截图 + `docs/privacy/发布前填写清单.md` 勾选 |
 
 ## 10. 回滚预案
 

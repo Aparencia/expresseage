@@ -1,9 +1,14 @@
 <view class="page-body">
+  <view class="card" wx:if="{{forbidden}}">
+    <text class="section-title">{{forbidden.title}}</text>
+    <text class="muted">{{forbidden.text}}</text>
+  </view>
+  <block wx:if="{{!forbidden}}">
   <view class="card">
     <view class="row between">
       <view class="col flex-1">
         <text class="title">开发者后台</text>
-        <text class="muted">{{developerNo ? developerNo + ' · 仅用于治理与排障' : '仅用于治理与排障'}}</text>
+        <text class="muted">{{header.subtitle}}</text>
       </view>
       <view class="bell" bindtap="onOpenMessages">
         <text class="small">消息</text>
@@ -16,7 +21,7 @@
   <view class="empty-text" wx:if="{{loading}}">加载中…</view>
 
   <view class="card" wx:if="{{error}}" bindtap="onRetry">
-    <text class="muted">没连上服务器，先检查网络；刚才的数据是 {{errorAt}} 的。</text>
+    <text class="muted">{{error}}</text>
     <text class="link"> 点此重试</text>
   </view>
 
@@ -35,7 +40,7 @@
     </view>
     <view class="stat-card" bindtap="onOpenCustomers">
       <text class="stat-value">{{counts.customers}}</text>
-      <text class="stat-label">活跃顾客</text>
+      <text class="stat-label">顾客</text>
     </view>
     <view class="stat-card" bindtap="onOpenReview">
       <text class="stat-value warning">{{counts.pendingFailures}}</text>
@@ -66,4 +71,5 @@
     </view>
     <view class="btn btn-ghost" wx:if="{{auditHasMore}}" bindtap="onAuditMore">{{loadingMore ? '加载中…' : '加载更多审计'}}</view>
   </view>
+  </block>
 </view>

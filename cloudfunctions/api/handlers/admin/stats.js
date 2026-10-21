@@ -122,6 +122,9 @@ async function handler(ctx, payload) {
   });
   const invites = await inviteSummaryOf(scope);
   return {
+    // 抬头数据源（UX_DEVELOPER §3.1）：当前调用开发者编号，只来自 ADMIN_OPENIDS 环境映射身份，
+    // 仅用于后台抬头/审计展示，不参与鉴权；不信任何入参 developerNo（非白名单调用已被入口 FORBIDDEN 拦）。
+    developerNo: scope.developerNo,
     counts: {
       users: Math.max(0, usersTotal - test.total),
       customers: Math.max(0, customersTotal - test.customer),

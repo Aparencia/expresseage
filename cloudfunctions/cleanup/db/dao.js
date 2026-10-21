@@ -1,7 +1,7 @@
 // cloudfunctions/cleanup/db/dao.js · cleanup 部署单元的数据访问层
 // 云函数目录独立部署，cleanup 无法 require api/db/dao.js；本文件是第二处（经 Lead 授权）
 // 允许出现 db.collection 的位置，接口与 api/db/dao.js 逐项一致，集合名仍来自 shared/collections。
-const { assertCollection } = require('../shared/collections');
+const { assertCollection } = require('./collections');
 
 function isDuplicateError(error) {
   if (!error) {

@@ -65,6 +65,7 @@ const base = {
     completed: { text: '', expanded: false, loading: false, sections: [], moreText: '', hasMore: false, nextCursor: null },
     guide: guideView.closedState(),
     empty: { title: '', text: '', actions: guideView.emptyActions() },
+    maintenance: { visible: false, title: '', text: '' },
     partnerNoText: ''
   },
 
@@ -76,6 +77,9 @@ const base = {
     this._ack = null;
     this._chunkToken = 0;
     this._lastBatch = null;
+    this._maintenanceClosed = '';
+    this._maintenanceView = null;
+    this._configFetchedAt = 0;
     this._completedFocusDate = focusDateOf(options);
     this.setData({ empty: Object.assign({}, this.data.empty, filterView.emptyOf({ filter: this.data.filter })) });
     this.syncMode();
@@ -85,6 +89,8 @@ const base = {
 
   onShow() {
     this.syncMode();
+    this.refreshConfig();
+    this.syncMaintenance();
     // onShow 也走增量：已加载过就只发变化行补丁，不整页重拉（UX §4.11）
     this.load({ poll: this.data.stage === 'ready' }).then(() => {
       this.loadHistorySummary();
@@ -193,6 +199,7 @@ const base = {
       if (readonly !== this.data.readonly || sessionView !== this.data.sessionView) {
         this.syncMode();
       }
+      this.syncMaintenance();
     });
   },
 
@@ -228,6 +235,27 @@ const base = {
         content: '请回「切换账号」重新开启。',
         showCancel: false,
         success: () => wx.reLaunch({ url: ACCOUNT_SWITCH_PAGE })
+      });
+      return;
+    }
+    // 维护闸拒读兜底（正常口径读放行，此处只保证不把 INVALID_STATE 吞成网络错误）
+    const maintenanceFallback = this.maintenanceFallbackOf(err);
+    if (maintenanceFallback) {
+      this.setData({
+        maintenance: {
+          visible: true,
+          title: maintenanceFallback.view.title,
+          text: maintenanceFallback.view.text
+        }
+      });
+      if (opts.poll || this.data.stage === 'ready') {
+        this.setData({ syncError: maintenanceFallback.text });
+        return;
+      }
+      this.setData({
+        stage: 'error',
+        errorText: maintenanceFallback.text,
+        empty: filterView.emptyOf({ filter: this.data.filter })
       });
       return;
     }
@@ -458,5 +486,8 @@ const base = {
   // 浮层/遮罩上的 catchtap/catchtouchmove 空处理（阻止穿透到行点击）
   noop() {}
 };
+
+// 维护模式挂钩以「页面方法」形态并入 base（不改 workbench 既有入口合并方式，F21 口径保持）
+Object.assign(base, require('./parts/maintenance-hook'));
 
 Page(Object.assign(base, require('./parts/page-actions')));

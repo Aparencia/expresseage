@@ -1,0 +1,8 @@
+<!-- components/maintenance-mask/index.wxml · 维护模式全屏公告（会话内可 ack 关闭；不写本地存储） -->
+<view wx:if="{{enabled}}" class="mm-mask" catchtap="noop" catchtouchmove="noop">
+  <view class="mm-card">
+    <view class="mm-title">{{title}}</view>
+    <view class="mm-text">{{text}}</view>
+    <button class="mm-btn" bindtap="onAck">{{actionText}}</button>
+  </view>
+</view>

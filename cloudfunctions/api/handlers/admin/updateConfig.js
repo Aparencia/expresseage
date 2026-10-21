@@ -1,4 +1,11 @@
 // handlers/admin/updateConfig.js · admin.updateConfig（白名单键 + 范围校验；aiFallback 不在白名单）
+// 白名单唯一口径 = DATA_MODEL §7.6（行 711）与 CONTRACT §1.1 第 4 条：
+//   · 可写：orderTimeoutMinutes/autoCompleteHours/screenshotRetentionDays/recognitionFailureRetentionDays/
+//     viewTicketTtlMinutes/avatarMaxBytes/testAccountMaxPerRole/testDataRetentionDays/privacyVersion +
+//     zoneLabels/serviceCatalog/announcement/maintenance；
+//   · avatarMaxBytes 上限 = 200KB（DATA_MODEL §2.10「默认 200KB；102400~204800」，隐私承诺不得放宽）；
+//   · privacyVersion 是文本键（非空 ≤32 字，隐私文本定稿流程用，审计 CONFIG_UPDATE）；
+//   · 仅 aiFallback 不在白名单（只读展示；写入走部署配置脚本/控制台，DATA_MODEL §2.10）。
 'use strict';
 
 const { COLLECTIONS, CONFIG_DOC_ID } = require('../../shared/collections');
@@ -21,22 +28,13 @@ const NUMBER_RULES = {
   screenshotRetentionDays: { min: 1, max: 7 },
   recognitionFailureRetentionDays: { min: 7, max: 30 },
   viewTicketTtlMinutes: { min: 5, max: 60 },
-  avatarMaxBytes: { min: 102400, max: 512000 },
+  avatarMaxBytes: { min: 102400, max: 200 * 1024 },
   testAccountMaxPerRole: { min: 1, max: 3 },
   testDataRetentionDays: { min: 7, max: 90 }
 };
 const TEXT_KEYS = ['privacyVersion'];
 const OBJECT_KEYS = ['zoneLabels', 'serviceCatalog', 'announcement', 'maintenance'];
 const WHITELIST = Object.keys(NUMBER_RULES).concat(TEXT_KEYS, OBJECT_KEYS);
-
-function normalizeNumber(key, value) {
-  const rule = NUMBER_RULES[key];
-  const num = Number(value);
-  if (!Number.isFinite(num) || Math.floor(num) !== num || num < rule.min || num > rule.max) {
-    throw errors.validation(key, '配置值超出允许范围');
-  }
-  return num;
-}
 
 function normalizeText(key, value) {
   if (typeof value !== 'string') {
@@ -47,6 +45,15 @@ function normalizeText(key, value) {
     throw errors.validation(key, '配置格式不正确');
   }
   return text;
+}
+
+function normalizeNumber(key, value) {
+  const rule = NUMBER_RULES[key];
+  const num = Number(value);
+  if (!Number.isFinite(num) || Math.floor(num) !== num || num < rule.min || num > rule.max) {
+    throw errors.validation(key, '配置值超出允许范围');
+  }
+  return num;
 }
 
 function normalizeZoneLabels(value) {
