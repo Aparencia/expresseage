@@ -768,8 +768,28 @@ check(29, '头像昵称', '头像路径模板只在 upload 域且零 openid；av
     if (isPathTemplate && !uploadDomain(rel)) out.push(rel + ': 头像路径模板越界');
     if (/avatars\/[^'"`\n]*openid/.test(s)) out.push(rel + ': 头像路径含 openid');
   });
-  const mask = text('cloudfunctions/api/handlers/admin/dto/mask.js');
-  if (mask !== null && mask.indexOf('avatarFileId') !== -1) out.push('dto/mask.js 不得含 avatarFileId');
+  // 脱敏单源 = db/dto/mask.js；旧路径 handlers/admin/dto/mask.js 已废弃（读空会让判据空转，缺失必须判红）
+  const maskRel = 'cloudfunctions/api/db/dto/mask.js';
+  const mask = text(maskRel);
+  if (mask === null) out.push('脱敏件缺失: ' + maskRel);
+  else if (mask.indexOf('avatarFileId') !== -1) out.push(maskRel + ': 不得含 avatarFileId');
+  // 后台 DTO 单出口 handlers/admin/_dto.js：去注释后零 avatarFileId（注释里写"无 avatarFileId"不算命中）
+  const dtoRel = 'cloudfunctions/api/handlers/admin/_dto.js';
+  const dtoSrc = text(dtoRel);
+  if (dtoSrc === null) out.push('后台 DTO 缺失: ' + dtoRel);
+  else if (F.stripComments(dtoSrc).indexOf('avatarFileId') !== -1) out.push(dtoRel + ': 后台脱敏 DTO 回吐 avatarFileId');
+  // 其它 admin handler：返回/赋值键（key: value）不得回吐 avatarFileId；
+  // 造测试账号资料时的默认空串写入（avatarFileId: ''）不是回吐，不判红。
+  rels('cloudfunctions/api/handlers/admin/').filter((r) => r.endsWith('.js') && r !== dtoRel).forEach((rel) => {
+    const code = F.stripComments(text(rel) || '');
+    const re = /(^|[^A-Za-z0-9_$])avatarFileId\s*:\s*([^\n,}]*)/gm;
+    let m = re.exec(code);
+    while (m !== null) {
+      const value = (m[2] || '').trim();
+      if (value !== "''" && value !== '""') out.push(rel + ': 返回/赋值键出现 avatarFileId');
+      m = re.exec(code);
+    }
+  });
   rels('pkg-admin/').filter((r) => /\.(js|wxml)$/.test(r)).forEach((rel) => {
     if ((text(rel) || '').indexOf('avatarFileId') !== -1) out.push(rel + ': 后台出现 avatarFileId');
   });

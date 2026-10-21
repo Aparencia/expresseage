@@ -36,7 +36,7 @@ const fake = require(path.join(ROOT, 'tools/fake-db.js'));
 const daoModule = require(path.join(ROOT, 'cloudfunctions/api/db/dao.js'));
 const testAccountActions = require(path.join(ROOT, 'cloudfunctions/api/handlers/admin/testAccounts.js')).actions;
 
-const EXPECTED_ASSERTIONS = 135;
+const EXPECTED_ASSERTIONS = 153;
 
 // 旧审计名用拼接构造：本文件不出现旧名字面量（门禁 #30 / 文档纪律）
 const LEGACY_AUDIT_PREFIX = 'VIEW' + '_' + 'AS' + '_';
@@ -269,6 +269,84 @@ function register(h) {
     '写入点只落地派生值（不读客户端入参）');
     t.check(SRC.dataModel.indexOf('服务端按参与账号') !== -1 && SRC.dataModel.indexOf('客户端传入忽略') !== -1,
       '契约：isTest 服务端派生、客户端传入忽略');
+  });
+
+  // ---------------------------------------------------------------- §7.7 后台 DTO 脱敏（行为）
+  h.section('§7.7 后台 DTO 脱敏（递归键集零 avatarFileId/openid；昵称/码/尾号打码）', (t) => {
+    // 递归收集键名：L3/内部键即使藏在 binding/parcel 等嵌套对象里也必须被剥离
+    const FORBIDDEN_KEYS = ['avatarFileId', 'openid', 'customerOpenid', 'partnerOpenid',
+      'adminOpenid', 'uploaderOpenid', 'targetAvatarFileId'];
+    function keysDeep(value, depth, acc) {
+      const out = acc || [];
+      if (!value || typeof value !== 'object' || (depth || 0) > 5) return out;
+      Object.keys(value).forEach((key) => {
+        out.push(key);
+        keysDeep(value[key], (depth || 0) + 1, out);
+      });
+      return out;
+    }
+    const leakKeys = (value) => keysDeep(value).filter((key) => FORBIDDEN_KEYS.indexOf(key) !== -1);
+
+    // 正控输入：raw doc 带 L3/内部字段（非空集；断言若失效这里先红）
+    const rawCustomer = {
+      _id: 'openid-raw-customer', customerNo: 'CABCD2222', displayName: '张三丰',
+      avatarFileId: 'cloud://env/avatars/customer/AAAAAAAAAAAAAAAA.jpg',
+      zone: 'D', buildingNo: 4, buildingNumber: 4, room: '522', dormKey: 'D4-522',
+      phoneTail: '1234', profileCompleted: true, openid: 'openid-raw-customer',
+      createdAt: new Date(TEST_NOW), updatedAt: new Date(TEST_NOW), deletedAt: null
+    };
+    const rawBinding = {
+      _id: 'b-raw-1', customerId: rawCustomer._id, partnerId: 'pp-raw-1', status: 'ACTIVE', roomTag: 'A'
+    };
+    const rawPartner = {
+      _id: 'pp-raw-1', openid: 'openid-raw-partner', partnerNo: 'PABCD23', displayName: '李四',
+      avatarFileId: 'cloud://env/avatars/partner/BBBBBBBBBBBBBBBB.jpg', status: enums.PARTNER_STATUS.ACTIVE,
+      serviceConfig: { services: [{ code: enums.SERVICE_CODES[0], enabled: true }], zones: ['D'], acceptingOrders: true },
+      stats: { todayOrders: 1, totalOrders: 2, completedOrders: 1 },
+      activatedAt: new Date(TEST_NOW), createdAt: new Date(TEST_NOW)
+    };
+    const rawOrder = {
+      _id: 'o-raw-1', orderNo: '20261021-0003', status: enums.ORDER_STATUS.COMPLETED, source: 'CUSTOMER',
+      service: { code: enums.SERVICE_CODES[0], name: '帮取快递' },
+      dorm: { zone: 'D', buildingNo: 4, room: '522' },
+      customerId: rawCustomer._id, customerOpenid: rawCustomer._id,
+      partnerId: rawPartner._id, partnerOpenid: rawPartner.openid,
+      customerNo: 'CABCD2222', partnerNo: 'PABCD23', isTest: true,
+      parcel: {
+        stationId: 'S1', stationName: '菜鸟驿站', pickupCode: '12345678',
+        lockerNo: 'A-12', trackingTail: '5678', codeStatus: 'READY'
+      },
+      phoneTail: '1234', note: '放门口', image: { fileId: 'cloud://env/orders/o-raw-1/image.jpg' },
+      createdAt: new Date(TEST_NOW), statusUpdatedAt: new Date(TEST_NOW)
+    };
+    t.check(keysDeep(rawCustomer).indexOf('avatarFileId') !== -1 && keysDeep(rawCustomer).indexOf('openid') !== -1,
+      '正控样例确实带 avatarFileId/openid（断言不空转）');
+    const boundBrief = adminDto.customerBrief(rawCustomer, { isTest: true, binding: rawBinding, partner: rawPartner });
+    const boundDetail = adminDto.customerDetail(rawCustomer, { isTest: true, binding: rawBinding, partner: rawPartner });
+    t.eq(leakKeys(boundBrief), [], 'customerBrief（含绑定）零 L3/内部键（avatarFileId/openid）');
+    t.eq(leakKeys(boundDetail), [], 'customerDetail（含绑定/订单概览）零 L3/内部键');
+    t.eq(leakKeys(adminDto.partnerBrief(rawPartner, { isTest: true })), [], 'partnerBrief 零 L3/内部键');
+    t.eq(leakKeys(adminDto.orderBrief(rawOrder, true)), [], 'orderBrief 零 L3/内部键');
+    const orderDetail = adminDto.orderDetail(rawOrder, {
+      customerDisplayName: rawCustomer.displayName, partnerDisplayName: rawPartner.displayName, guestDisplayName: ''
+    });
+    t.eq(leakKeys(orderDetail), [], 'orderDetail 零 L3/内部键（截图只回 imageUploaded 布尔）');
+    // 反例（判据有牙）：同一检测器对"注入式泄漏"必须判红
+    t.eq(leakKeys(Object.assign({}, boundBrief, { avatarFileId: rawCustomer.avatarFileId })),
+      ['avatarFileId'], '反例：DTO 注入 avatarFileId → 检测器判红（断言可证伪）');
+    // 打码值逐项核对（脱敏不是"删字段"了事）
+    t.eq(boundBrief.displayName, '张***', '昵称脱敏：首字 + ***');
+    t.eq(boundBrief.phoneTail, '**34', '尾号仅后 2 位（带 ** 前缀）');
+    t.eq(boundBrief.dorm, 'D4', '宿舍只到苑 + 楼栋（无房间号）');
+    t.eq(boundDetail.binding.partnerDisplayName, '李***', '绑定对方昵称同样脱敏（后台不借此看到完整昵称）');
+    t.eq(adminDto.partnerBrief(rawPartner, {}).displayName, '李***', '兼职 DTO 昵称脱敏');
+    t.eq(adminDto.orderBrief(rawOrder).dorm, 'D4', '订单 DTO 宿舍打码（无房间号）');
+    t.eq(orderDetail.parcel.pickupCode, '1***8', '取件码只留首尾（不可还原）');
+    t.eq(orderDetail.parcel.lockerNo, '***', '柜号只表示有值（不可还原）');
+    t.eq(orderDetail.parcel.trackingTail, '***78', '运单尾号只留后 2 位');
+    t.eq(orderDetail.imageUploaded, true, '截图只回"有图"布尔（无 fileId/临时 URL）');
+    t.check(JSON.stringify(boundDetail).indexOf('cloud://') === -1
+      && JSON.stringify(orderDetail).indexOf('cloud://') === -1, '后台 DTO 序列化后零 fileID（云存储路径不外泄）');
   });
 
   // ---------------------------------------------------------------- §7.8 统计排除

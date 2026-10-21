@@ -118,9 +118,11 @@ if ($prefixes.Count -eq 0) {
 foreach ($f in $changedList) {
   if (-not (Test-Path -LiteralPath $f -PathType Leaf)) { continue }
   if (-not ($f.EndsWith('.js') -or $f.EndsWith('.wxml') -or $f.EndsWith('.wxss') -or $f.EndsWith('.json'))) { continue }
-  $isTest = $f -match '(^|/)tools/selftest'
+  // 与 check.js #18 对齐：tools/ 工具链（非小程序包内容）单文件预算与测试同档 ≤1000；
+  // 被小程序编译的源码（pages/pkg/api/shared/utils/store/cloudfunctions/config）仍 ≤500。
+  $isTool = $f -match '(^|/)tools/'
   $limit = $CODE_LIMIT
-  if ($isTest) { $limit = $TEST_LIMIT }
+  if ($isTool) { $limit = $TEST_LIMIT }
   $lines = 0
   try { $lines = (Get-Content -LiteralPath $f -ErrorAction Stop | Measure-Object -Line).Lines } catch { continue }
   if ($lines -le $limit) { continue }
