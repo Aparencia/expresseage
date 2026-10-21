@@ -27,7 +27,7 @@ async function handler(ctx, payload) {
   requireClientRequestId(ctx);
   const input = payload || {};
   const failureNo = normalizeFailureNo(input.failureNo);
-  const noteResult = sharedValidate.validateFailureNote(input.note);
+  const noteResult = sharedValidate.validateText(input.note, sharedValidate.TEXT_LIMITS.failureNote, 'note', true);
   if (!noteResult.ok || !noteResult.value) {
     throw errors.validation('note', '请填写忽略原因（最多 100 字）');
   }

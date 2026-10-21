@@ -1,4 +1,5 @@
 // handlers/admin/viewAsEnd.js · admin.viewAsEnd（结束切换会话；幂等；仅票据发起人可结束）
+// 写入集合：admin_view_sessions（置 endedAt；随后写 ACCOUNT_SWITCH_END 审计）。
 'use strict';
 
 const { COLLECTIONS } = require('../../shared/collections');

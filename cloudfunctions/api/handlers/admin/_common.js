@@ -144,9 +144,7 @@ async function findAuditByKey(scope, requestKey) {
 }
 
 // ── 作用域（一次请求构造一次，避免各 handler 重复读配置/测试标记）──────────────
-async function createAdminScope(ctx) {
-  const admin = requireAdmin(ctx);
-  const configResult = await loadConfigOf(ctx);
+function buildScope(ctx, configResult, admin) {
   const scope = {
     ctx: ctx,
     dao: ctx.dao,
@@ -171,6 +169,19 @@ async function createAdminScope(ctx) {
     return testFlagOf(scope, openid);
   };
   return scope;
+}
+
+async function createAdminScope(ctx) {
+  const admin = requireAdmin(ctx);
+  const configResult = await loadConfigOf(ctx);
+  return buildScope(ctx, configResult, admin);
+}
+
+// 部署上下文（无 OPENID，如部署脚本/控制台测试）专用：仅 admin.bootstrap 等内部动作可用；
+// 身份记为 SYSTEM（审计口径：系统任务 adminOpenid/developerNo = 'SYSTEM'）。
+async function createInternalScope(ctx) {
+  const configResult = await loadConfigOf(ctx);
+  return buildScope(ctx, configResult, { actorOpenid: 'SYSTEM', developerNo: 'SYSTEM' });
 }
 
 async function testFlagOf(scope, openid) {
@@ -374,6 +385,7 @@ module.exports = {
   writeAudit,
   findAuditByKey,
   createAdminScope,
+  createInternalScope,
   testFlagOf,
   loadTestFlags,
   getUserByOpenid,

@@ -124,11 +124,23 @@ async function invokeCore(event, deps) {
         configSeeded: runtime.seeded === true
       }
     };
-    // 部署/定时上下文（无 OPENID）：仅内部动作允许走无用户态的最小链路
+    // 部署/控制台上下文（无 OPENID）：仅内部动作允许走无用户态的最小链路。
+    // 客户端调用云函数必然带 OPENID，因此本分支不可由客户端伪造；用 DEPLOY 哨兵表示部署者，
+    // 只用于让 internal 动作（admin.bootstrap/health.check）通过 adminGuard 与审计，不落业务数据。
     if (spec.visibility === 'internal' && !ctx.openid) {
+      ctx.identity = {
+        actorOpenid: 'DEPLOY',
+        effectiveOpenid: 'DEPLOY',
+        role: '',
+        isTestAccount: false,
+        viewMode: '',
+        viewTicketId: '',
+        developerNo: 'DEPLOY'
+      };
+      state.ctx = ctx;
       const checked = await middleware.validate.middleware(state);
       const data = await handler(checked.ctx, checked.payload);
-      console.log('[api]', request.action, requestId, 'ok', time.elapsedMs(nowMs, Date.now()), 'ms', 'deploy');
+      console.log('[api]', request.action, requestId, 'ok', time.elapsedMs(startedWall, Date.now()), 'ms', 'deploy');
       return respond.success(data, meta);
     }
     let current = state;

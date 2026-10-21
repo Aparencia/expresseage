@@ -4,7 +4,8 @@
 const { COLLECTIONS, ALL_COLLECTIONS, CONFIG_DOC_ID } = require('../../shared/collections');
 const { AUDIT_ACTIONS } = require('../../shared/audit-actions');
 const {
-  createAdminScope
+  createAdminScope,
+  createInternalScope
 } = require('./_common');
 const { DEFAULT_CONFIG, cloneDefault } = require('../../db/config');
 
@@ -63,7 +64,8 @@ async function ensureConfig(scope) {
 }
 
 async function handler(ctx) {
-  const scope = await createAdminScope(ctx);
+  // 内部动作：开发者后台可调；部署脚本/控制台部署上下文（无 OPENID）也允许，身份记 SYSTEM。
+  const scope = ctx && ctx.openid ? await createAdminScope(ctx) : await createInternalScope(ctx);
   const collections = await inspectCollections(scope);
   const config = await ensureConfig(scope);
   await scope.writeAudit(

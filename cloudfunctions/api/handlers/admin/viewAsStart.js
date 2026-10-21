@@ -1,4 +1,5 @@
 // handlers/admin/viewAsStart.js · admin.viewAsStart（真实账号 READONLY / 测试账号 TEST_WRITE；同开发者单活）
+// 写入集合：admin_view_sessions（_id=viewTicket，32 位随机；viewMode/targetIsTest/targetAvatarFileId?/targetDisplayName）。
 'use strict';
 
 const { COLLECTIONS } = require('../../shared/collections');

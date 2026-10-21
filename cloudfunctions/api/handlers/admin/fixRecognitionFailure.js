@@ -46,7 +46,7 @@ function buildRecognitionFields(input) {
 }
 
 function buildResolution(scope, input, fields) {
-  const noteResult = sharedValidate.validateFailureNote(input.note);
+  const noteResult = sharedValidate.validateText(input.note, sharedValidate.TEXT_LIMITS.failureNote, 'note', false);
   assertValid(noteResult, '备注最多 100 字');
   return {
     stationId: fields.stationId || '',
