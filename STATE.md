@@ -82,7 +82,8 @@
 | `node tools/selftest.js` | 运行 **9 套**；失败 0 套；SKIP 0；**1,011 断言全 PASS** |
 | `node tools/sync-cloud-shared.js` | 16 源 × 2 套逐字节 hash 一致 |
 | `node tools/doctor.ps1` | 通过 15 / 告警 1（envId 占位待回填）/ 失败 0 |
-| `gate.ps1` | 见 §7 收口记录（提交后回读） |
+| `gate.ps1 -Anchor 71341c9`（提交 `d125b42` 后回读） | 红色 **0** 项；黄色 **0** 项（退出码 0） |
+| 收口提交 | `d125b42`（批 1 收口；gate 回读 HEAD 一致） |
 
 - 代码规模：471 文件 / 46,784 行；页面 30 个；云函数 163 文件；工具 17 件；文档 14 件。
 - 已关闭工程裁决：TD-017（四档排序归客户端）、TD-018（公开配置含 `viewTicketTtlMinutes`）、TD-007/008/009（upload/privacy 接纯件）；新增跟踪 TD-019~TD-024（详见 `docs/TECH_DEBT.md`）。
@@ -104,7 +105,7 @@
 | 2026-10-21 | 批 0 设计定稿（CONTRACT v0.9 及全部设计文档；D18~D21 四次修订回写；隐私两件升草案） |
 | 2026-10-21 | 批 1 开工提交 `d5ad214`：app.json 页面地图冻结、ARCHITECTURE 接口冻结、根配置改造 |
 | 2026-10-21 | 批 1 并行开发（S0~S16）：云端/页面/组件/工具链/测试全部落盘；期间关闭多项门禁裁决与 bug（fake-db 三处、listPartner raw 文档泄露、saveProfile 角色死锁、bind 幂等、四档排序归属等） |
-| 2026-10-21 | **批 1 收口**：`check.ps1` 4 步全 PASS（退出码 0）、9 套 selftest 1,011 断言全 PASS；提交与 gate 回读见 §7 收口记录 |
+| 2026-10-21 | **批 1 收口提交 `d125b42`**：`check.ps1` 4 步全 PASS（退出码 0）、9 套 selftest 1,011 断言全 PASS、`gate.ps1` 红色 0 / 黄色 0（退出码 0）、`doctor.ps1` 15 通过 1 告警 0 失败；批 2 未开工 |
 
 ## 9. 下一步（按序）
 
