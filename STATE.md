@@ -334,7 +334,7 @@
 | `node tools/sync-cloud-shared.js --check` | 16 源 × 2 套 32 件 hash 一致（shared 未改） |
 | QA 条目计数 | `(Select-String -Path docs\QA_CHECKLIST.md -Pattern '^\| [A-Z]+\d+ \|').Count` → **255**（批 8 后 249，批 9 增 H12~H17 共 6 条，分区合计与附录 E 自洽） |
 | 批 9 代码/判据提交 | `81c58ba`（19 文件 +1633/-43；代码/判据/文档） |
-| `gate.ps1` | 见 §8（红色 0 / 黄色 0，变更集与体量以真实输出为准） |
+| `powershell -File gate.ps1 -Anchor a07a4f5 -ScopeFiles "cloudfunctions/,docs/,readme.md,state.md,changelog.md,tools/" -Estimate 1200` | 红色 **0** 项；黄色 **0** 项（退出码 0）；变更集 **19 件**、6 前缀全匹配、体量 **1,635 行 ≤ 1,800**、提交信息格式合规；回读 HEAD=`ade2f6f`（代码/判据/文档 `81c58ba` → 证据回写 `ade2f6f` → 本勘误提交） |
 
 - 新增/修改文件（批 9）：`tools/selftest-deletion.js`（838 行，新）、`tools/selftest.js`（注册第 28 套）、`tools/lib/project.js`（DESIGN_DOCS +2）；`cloudfunctions/api/handlers/user/deleteAccount.js`（52 行）、`cloudfunctions/api/handlers/admin/setPartnerStatus.js`（275 行）、`cloudfunctions/cleanup/sweeps/accounts.js`（270 行）；`docs/V4_REVIEW_MATERIALS.md`（206 行，新）、`docs/V4_V3_PARITY.md`（256 行，新）、`docs/RUNBOOK.md`（+83 行 §10 重写）、`docs/QA_CHECKLIST.md`（+11 行、H12~H17、E15/P6/P18 强化）、`docs/V4_CONTRACT.md`/`docs/V4_DATA_MODEL.md`/`docs/V4_ENGINEERING.md`/`docs/TECH_DEBT.md`/`docs/lessons/` 两张新卡/`README.md`/`CHANGELOG.md`/`STATE.md`。
 - 真实缺陷（首红→复绿，均断言锁定）：①顾客注销阶段一漏清历史 `bindings.partnerNote`（含已释放行）；②注销/CLOSED 未清识别失败 `fileId`、原图引用未按引用计数回收；③兼职 `admin.setPartnerStatus(CLOSED)` 只写状态：未清 `displayName/avatarFileId`、未清停用与关闭原因、未删头像云文件、未清 `invitation_codes.usedBy`、未清识别失败 `uploaderOpenid`；④重复 CLOSED 幂等分支不保持空值。均修并断言锁定（14 条首红）。口径澄清：§7.6 注销幂等 vs 中间件 DEACTIVATED（端到端 FORBIDDEN、`duplicated` 仅 handler 直调可达）、§12#4 CLOSED 绑定返回 `NOT_FOUND`（编号作废不暴露存在性）、§10.4 两阶段时点（事务只做绑定释放+状态变更，匿名化/删图下一轮 cleanup）。
@@ -403,8 +403,8 @@
 | 2026-10-22 | **批 9 工程侧开工**（4 条并行线复用既有 Team 分身）：云端注销链路端到端判据（cloud-core）、审核材料手册（v4-privacy-qa）、v3 对照验收表（v3-engineering）、灰度回滚演练与 QA 批 9（v3-lifecycle-flow）；Lead 同步做文档地图/证据与门禁集成；D1/D2/D3 未到前只做离线代码/判据/文档 |
 | 2026-10-22 | **批 9 真实缺陷修复（首红定位）**：新建 `selftest-deletion` 先判据后修 14 条红——①顾客注销阶段一漏清历史 `bindings.partnerNote`（含已释放行）；②注销/CLOSED 未清识别失败 `fileId` 与原图引用；③兼职 CLOSED 只写状态（未清 `displayName/avatarFileId`、未删头像文件、未清 `invitation_codes.usedBy`、未清识别失败 `uploaderOpenid`）；④重复 CLOSED 不保持匿名化空值；并回写 CONTRACT §11.4 注销时点与 DATA_MODEL §10.3/§10.4/§7.6/§12#4 口径 |
 | 2026-10-22 | **批 9 工程侧收口**：`check.ps1` 4 步全 PASS（退出码 0）——check.js 31/31、check-docs 10/10、零金额 0 命中、selftest **28 套 4,151 断言**全 PASS（新增 `selftest-deletion` 89）；交付 `docs/V4_REVIEW_MATERIALS.md`（206 行）、`docs/V4_V3_PARITY.md`（256 行）、RUNBOOK §10 灰度/回滚演练、QA §H12~H17（附录 E 255 条）；TD-053~057 登记、lessons +2 卡；README/CONTRACT/DATA_MODEL/ENGINEERING/CHANGELOG 回写 |
-| 2026-10-22 | **批 9 收口提交**：代码/判据/文档提交 `81c58ba`（19 文件 +1633/-43）；证据回写提交随后（本表由该提交写入）；`gate.ps1` 红色 0 / 黄色 0（变更集与体量见 §6i/§8 下条，以 gate 真实输出为准） |
-| 2026-10-22 | **批 9 证据回写**：本提交更新 STATE §6i/§8、CHANGELOG 批 9 工程细节与 README 现状计数（提交 `81c58ba` 回读）；`check.ps1` 4 步复跑全 PASS 后进入发布前用户侧 |
+| 2026-10-22 | **批 9 收口提交**：代码/判据/文档提交 `81c58ba`（19 文件 +1633/-43）；证据回写提交 `ade2f6f`；`gate.ps1 -Anchor a07a4f5` 红色 **0** / 黄色 **0**（退出码 0；变更 19 件、体量 **1,635 行 ≤ 1,800**、HEAD=`ade2f6f`）；本勘误提交补 gate 终态 |
+| 2026-10-22 | **批 9 证据回写**：提交 `ade2f6f` 更新 STATE §6i/§8、CHANGELOG 批 9 工程细节与 README 现状计数；`check.ps1` 4 步复跑全 PASS 后进入发布前用户侧 |
 
 > 说明：上表最后两行为收口当天记录，提交哈希与 gate 终态以仓库 `git log` 与门禁真实输出为准（本文件不在提交内自引用哈希）。
 
