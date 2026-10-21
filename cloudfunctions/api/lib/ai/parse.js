@@ -50,6 +50,31 @@ function recognitionSourceLabel(source) {
   return RECOGNITION_SOURCE_LABELS[source] || RECOGNITION_SOURCE_LABELS.RULE;
 }
 
+/**
+ * 降级 DTO（识别失败/低置信）：客户端只认这份，走手填且不阻断下单。
+ * queue 必须来自已成功入队/幂等命中的失败记录（failureNo 非空）。
+ * @param {{failureNo: string, duplicated?: boolean}} queue
+ * @param {object} fields 可回填的识别字段（可为空串）
+ * @param {{source?: string}} extras
+ */
+function buildDegradedDto(queue, fields, extras) {
+  const extra = extras || {};
+  const value = fields && typeof fields === 'object' ? fields : {};
+  return {
+    recognized: false,
+    stationId: typeof value.stationId === 'string' ? value.stationId : '',
+    stationName: typeof value.stationName === 'string' ? value.stationName : '',
+    pickupCode: typeof value.pickupCode === 'string' ? value.pickupCode : '',
+    trackingTail: typeof value.trackingTail === 'string' ? value.trackingTail : '',
+    lockerNo: typeof value.lockerNo === 'string' ? value.lockerNo : '',
+    confidence: typeof value.confidence === 'string' && value.confidence ? value.confidence : FALLBACK_CONFIDENCE,
+    source: typeof extra.source === 'string' ? extra.source : 'NONE',
+    needsReview: true,
+    failureId: queue && typeof queue.failureNo === 'string' ? queue.failureNo : '',
+    duplicated: !!(queue && queue.duplicated === true)
+  };
+}
+
 const FENCE_RE = /^```(?:json)?\s*([\s\S]*?)\s*```$/i;
 
 /**
@@ -242,6 +267,7 @@ module.exports = {
   RECOGNITION_SOURCES,
   RECOGNITION_SOURCE_LABELS,
   recognitionSourceLabel,
+  buildDegradedDto,
   parseJsonObject,
   normalizePickupCode,
   normalizeStationId,

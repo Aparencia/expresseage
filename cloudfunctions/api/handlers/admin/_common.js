@@ -96,10 +96,8 @@ function readNote(value, maxLength, field) {
 }
 
 // ── 配置 ─────────────────────────────────────────────────────────────────────
+// 后台必须知道配置是否已落库（bootstrap 种子判定），因此不使用 ctx 里已补默认值的快照。
 async function loadConfigOf(ctx) {
-  if (ctx && ctx.config && isPlainObject(ctx.config) && Object.keys(ctx.config).length > 0) {
-    return { config: ctx.config, seeded: true };
-  }
   return readConfig(ctx.dao);
 }
 
@@ -109,15 +107,18 @@ function auditKeyOf(ctx) {
 }
 
 function buildAuditRecord(scope, action, target, detail, requestKey) {
-  return {
+  const record = {
     adminOpenid: scope.actorOpenid,
     developerNo: scope.developerNo,
     action: action,
     target: target || { type: '', id: '' },
     detail: detail || {},
-    at: scope.nowDate,
-    requestKey: requestKey || ''
+    at: scope.nowDate
   };
+  // requestKey 唯一索引：无幂等键的审计用「本次请求」派生键，避免空值/缺失互相冲突。
+  const key = requestKey || ('auto:' + String((scope.ctx && scope.ctx.requestId) || '') + ':' + String(action || ''));
+  record.requestKey = key;
+  return record;
 }
 
 // 管理写动作审计：requestKey 唯一；重复键说明重放，返回 duplicated 由调用方决定响应。

@@ -67,9 +67,10 @@ if ($diff.Code -eq 0) {
 $status = Run-Git @('-c', 'core.quotepath=false', 'status', '--porcelain', '-uall')
 if ($status.Code -eq 0) {
   foreach ($line in $status.Out) {
-    $t = ("$line").Trim()
-    if ($t.Length -lt 4) { continue }
-    $path = $t.Substring(3).Trim()
+    $raw = "$line"
+    if ($raw.Length -lt 4) { continue }
+    # porcelain 格式：XY<空格>path；不能先 Trim（会吃掉工作区变更路径的首字符），固定从第 4 个字符起取
+    $path = $raw.Substring(3).Trim()
     if ($path.Contains(' -> ')) { $path = $path.Split(' -> ')[-1].Trim() }
     $path = $path.Trim('"')
     if ($path -ne '') { $changed.Add($path) }
@@ -162,9 +163,9 @@ if ($numstat.Code -eq 0) {
 $status2 = Run-Git @('-c', 'core.quotepath=false', 'status', '--porcelain', '-uall')
 if ($status2.Code -eq 0) {
   foreach ($line in $status2.Out) {
-    $t = ("$line").Trim()
-    if (-not $t.StartsWith('??')) { continue }
-    $path = $t.Substring(3).Trim().Trim('"')
+    $raw = "$line"
+    if (-not $raw.StartsWith('??') -or $raw.Length -lt 4) { continue }
+    $path = $raw.Substring(3).Trim().Trim('"')
     if (Test-Path -LiteralPath $path -PathType Leaf) {
       $added = $added + (Get-Content -LiteralPath $path | Measure-Object -Line).Lines
     }

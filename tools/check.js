@@ -705,14 +705,16 @@ check(26, '失败必入队', 'handlers/ai 每个 recognized:false 返回点有 r
 check(27, '复核原图访问必审计', 'getTempFileURL 与 FAILURE_IMAGE_VIEW 同函数；复核页零直取；fix/ignore 写审计', () => {
   const out = [];
   const adminJs = rels('cloudfunctions/api/handlers/admin/').filter((r) => r.endsWith('.js'));
-  const getFiles = adminJs.filter((r) => (text(r) || '').indexOf('getRecognitionFailure') !== -1);
-  if (getFiles.length === 0) out.push('handlers/admin 未见 getRecognitionFailure');
+  // 只认"真正实现文件"（读写 dao/db 的 handler）；router/index.js 登记名字不算实现
+  const hasImpl = (rel) => /ctx\.|dao\.|db\.|transaction/.test(text(rel) || '');
+  const getFiles = adminJs.filter((r) => (text(r) || '').indexOf('getRecognitionFailure') !== -1 && hasImpl(r));
+  if (getFiles.length === 0) out.push('handlers/admin 未落盘 getRecognitionFailure 实现（router 登记 ≠ 实现）');
   getFiles.forEach((rel) => {
     const s = text(rel) || '';
     if (s.indexOf('getTempFileURL') === -1) out.push(rel + ': 缺 getTempFileURL');
     if (s.indexOf('FAILURE_IMAGE_VIEW') === -1) out.push(rel + ': 缺 FAILURE_IMAGE_VIEW 审计');
   });
-  rels('cloudfunctions/api/handlers/admin/').filter((r) => r.endsWith('.js')).forEach((rel) => {
+  adminJs.filter(hasImpl).forEach((rel) => {
     const s = text(rel) || '';
     if (s.indexOf('fixRecognitionFailure') !== -1 && s.indexOf('FAILURE_FIX') === -1) out.push(rel + ': fix 缺 FAILURE_FIX');
     if (s.indexOf('ignoreRecognitionFailure') !== -1 && s.indexOf('FAILURE_IGNORE') === -1) out.push(rel + ': ignore 缺 FAILURE_IGNORE');

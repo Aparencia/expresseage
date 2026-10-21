@@ -79,6 +79,40 @@ async function myOrders(ctx, scope) {
   return [];
 }
 
+async function customerPartnerOpenids(ctx, scope) {
+  const bindings = await ctx.dao.find(common.COLLECTIONS.BINDINGS, {
+    where: { customerId: scope.openid },
+    limit: 20
+  });
+  const openids = [];
+  for (let i = 0; i < bindings.length; i += 1) {
+    const partner = await ctx.dao.get(common.COLLECTIONS.PARTNERS, bindings[i].partnerId);
+    if (partner && typeof partner.openid === 'string' && partner.openid && openids.indexOf(partner.openid) < 0) {
+      openids.push(partner.openid);
+    }
+  }
+  return openids;
+}
+
+// 系统通知：orderId=''（解绑/停用等无关联订单的通知），按历史绑定兼职来源过滤归属
+async function systemNoticeItems(ctx, scope) {
+  if (scope.role !== common.enums.ROLES.CUSTOMER) {
+    return [];
+  }
+  const partnerOpenids = await customerPartnerOpenids(ctx, scope);
+  if (partnerOpenids.length === 0) {
+    return [];
+  }
+  const rows = await ctx.dao.find(common.COLLECTIONS.ORDER_MESSAGES, {
+    where: { orderId: '' },
+    orderBy: [['createdAt', 'desc']],
+    limit: 30
+  });
+  return rows
+    .filter((row) => partnerOpenids.indexOf(row.fromId) >= 0)
+    .map((row) => common.buildMessageItem(scope, '', row));
+}
+
 async function listCenter(ctx, payload) {
   const scope = common.scopeOf(ctx);
   if (scope.role !== common.enums.ROLES.CUSTOMER && scope.role !== common.enums.ROLES.PARTNER) {
@@ -118,6 +152,8 @@ async function listCenter(ctx, payload) {
   if (announcement) {
     items.push(announcement);
   }
+  const notices = await systemNoticeItems(ctx, scope);
+  notices.forEach((notice) => items.push(notice));
   const sorted = common.sortItemsDesc(items).filter((item) => common.afterCursor(item, cursor));
   const page = sorted.slice(0, limit);
   const last = page[page.length - 1];

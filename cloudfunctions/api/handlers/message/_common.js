@@ -135,6 +135,9 @@ async function checkContentSecurity(ctx, text, field) {
   return { checked: true };
 }
 
+const SYSTEM_FROM = 'SYSTEM';
+const BIND_RELEASED_TEMPLATE = 'BIND_RELEASED';
+
 function messageTitleOf(fromRole) {
   if (fromRole === enums.ROLES.CUSTOMER) {
     return '顾客留言';
@@ -145,17 +148,25 @@ function messageTitleOf(fromRole) {
   return '订单留言';
 }
 
+function isSystemNotice(message) {
+  return message.fromId === SYSTEM_FROM
+    || message.templateCode === BIND_RELEASED_TEMPLATE
+    || (message.orderId === '' && message.templateCode);
+}
+
 function buildMessageItem(scope, orderNo, message) {
   const fromRole = textOf(message.fromRole);
-  const mine = fromRole === scope.role;
+  const system = isSystemNotice(message);
+  const mine = !system && fromRole === scope.role;
   return {
-    type: 'MESSAGE',
-    title: messageTitleOf(fromRole),
+    type: system ? 'NOTICE' : 'MESSAGE',
+    title: system ? '系统通知' : messageTitleOf(fromRole),
     text: textOf(message.text),
-    orderNo,
+    orderNo: orderNo || textOf(message.orderNo),
     at: toIso(message.createdAt),
-    read: mine || !!message.readAt,
-    fromRole
+    read: system ? !!message.readAt : (mine || !!message.readAt),
+    fromRole: system ? SYSTEM_FROM : fromRole,
+    templateCode: textOf(message.templateCode)
   };
 }
 
@@ -288,6 +299,9 @@ module.exports = {
   buildMessageItem,
   buildEventItem,
   buildAnnouncementItem,
+  isSystemNotice,
+  SYSTEM_FROM,
+  BIND_RELEASED_TEMPLATE,
   sortItemsDesc,
   parseLimit,
   parseCursor,

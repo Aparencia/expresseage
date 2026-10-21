@@ -270,39 +270,6 @@ async function recordFailure(ctx, input) {
   }
 }
 
-// 统一降级 DTO：recognized=false + needsReview=true + failureId（每次返回前已写队列）
-function degradeDto(options) {
-  const opt = options || {};
-  const fields = opt.fields || {};
-  return {
-    recognized: false,
-    stationId: fields.stationId || '',
-    stationName: fields.stationName || '',
-    pickupCode: fields.pickupCode || '',
-    trackingTail: fields.trackingTail || '',
-    lockerNo: fields.lockerNo || '',
-    confidence: fields.confidence || enums.CONFIDENCE_LEVEL.LOW,
-    source: opt.source || 'NONE',
-    needsReview: true,
-    failureId: opt.failureNo || '',
-    duplicated: opt.duplicated === true
-  };
-}
-
-function succeedDto(fields, source) {
-  return {
-    recognized: true,
-    stationId: fields.stationId,
-    stationName: fields.stationName,
-    pickupCode: fields.pickupCode,
-    trackingTail: fields.trackingTail,
-    lockerNo: fields.lockerNo,
-    confidence: fields.confidence,
-    source,
-    needsReview: false
-  };
-}
-
 module.exports = {
   MAX_OCR_TEXT_LENGTH,
   COLLECTIONS,
@@ -322,6 +289,4 @@ module.exports = {
   checkQuota,
   countQuota,
   recordFailure,
-  degradeDto,
-  succeedDto
 };
