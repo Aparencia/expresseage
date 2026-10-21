@@ -1,0 +1,85 @@
+/* pkg-partner/pages/create-on-behalf/index.wxss · 代客下单局部样式 */
+.step-row {
+  padding: 8rpx 0 24rpx;
+}
+
+.step {
+  flex: 1;
+  min-height: 64rpx;
+  line-height: 64rpx;
+  text-align: center;
+  border-radius: 32rpx;
+  background: #FFFFFF;
+  color: #666666;
+  font-size: 26rpx;
+  margin-right: 12rpx;
+}
+
+.step:last-child {
+  margin-right: 0;
+}
+
+.step-active {
+  background: #2B6DE5;
+  color: #FFFFFF;
+}
+
+.error-card {
+  background: #FDECEA;
+  color: #E54D42;
+  font-size: 26rpx;
+}
+
+.picker-value {
+  min-height: 40rpx;
+  line-height: 1.4;
+}
+
+.mode-row {
+  margin: 12rpx 0 16rpx;
+}
+
+.mode-tag {
+  min-height: 56rpx;
+  line-height: 56rpx;
+  padding: 0 20rpx;
+  border-radius: 28rpx;
+  border: 2rpx solid #D9DEE5;
+  color: #666666;
+  font-size: 24rpx;
+  margin: 0 12rpx 12rpx 0;
+}
+
+.mode-tag-active {
+  border-color: #2B6DE5;
+  background: #E8F0FF;
+  color: #2B6DE5;
+}
+
+.zone-row {
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+.review-text {
+  margin-top: 12rpx;
+  font-size: 26rpx;
+  color: #8A6D00;
+}
+
+.ai-row {
+  margin-top: 16rpx;
+}
+
+.mini-btn {
+  min-height: 64rpx;
+  padding: 0 20rpx;
+  font-size: 26rpx;
+  margin-right: 16rpx;
+}
+
+.guest-note,
+.submit-note {
+  display: block;
+  margin-top: 16rpx;
+}

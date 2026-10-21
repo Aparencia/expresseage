@@ -1,0 +1,14 @@
+/* pkg-admin/pages/customer-detail/index.wxss · 顾客详情页页面级样式 */
+
+.switch-action {
+  margin-bottom: 24rpx;
+}
+
+.order-row {
+  padding: 20rpx 0;
+  border-bottom: 1rpx solid var(--v4-line);
+}
+
+.link {
+  color: var(--v4-brand);
+}

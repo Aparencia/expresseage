@@ -1,4 +1,4 @@
-<!-- pkg-partner/pages/service-settings/index.wxml · 服务类型与范围（无价格语义） -->
+<!-- pkg-partner/pages/service-settings/index.wxml · 服务类型与范围（不含费用字段） -->
 <view class="page-body">
   <switch-bar />
   <view class="title head-title">服务类型与范围</view>

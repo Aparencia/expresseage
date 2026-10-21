@@ -1,3 +1,7 @@
+.image-picker {
+  width: 100%;
+}
+
 .image-picker-previews {
   display: flex;
   flex-direction: row;

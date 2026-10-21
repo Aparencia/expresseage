@@ -1,0 +1,128 @@
+/* pkg-customer/pages/order-create/index.wxss */
+.steps {
+  margin-bottom: 24rpx;
+  background: #FFFFFF;
+  border-radius: 16rpx;
+  padding: 20rpx 8rpx;
+}
+
+.step-node {
+  flex-direction: column;
+}
+
+.step-dot {
+  width: 48rpx;
+  height: 48rpx;
+  border-radius: 50%;
+  background: #D9DEE5;
+  color: #FFFFFF;
+  font-size: 24rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.step-dot.current {
+  background: var(--v4-customer);
+}
+
+.step-dot.done {
+  background: var(--v4-brand);
+}
+
+.step-label {
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  color: var(--v4-text-3);
+}
+
+.upload-state {
+  margin-top: 16rpx;
+}
+
+.fail-card {
+  border-left: 8rpx solid var(--v4-warning);
+}
+
+.fail-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  margin-bottom: 8rpx;
+}
+
+.actions-row {
+  display: flex;
+  flex-direction: row;
+  gap: 20rpx;
+  margin-top: 24rpx;
+}
+
+.btn-inline {
+  flex: 1;
+  min-height: 80rpx;
+  font-size: 28rpx;
+}
+
+.page-actions {
+  margin-bottom: 32rpx;
+}
+
+.item-head {
+  margin-bottom: 8rpx;
+}
+
+.item-title {
+  margin-left: 12rpx;
+}
+
+.check-box {
+  width: 32rpx;
+  height: 32rpx;
+  border-radius: 8rpx;
+  border: 2rpx solid var(--v4-text-3);
+  box-sizing: border-box;
+}
+
+.check-box.checked {
+  background: var(--v4-brand);
+  border-color: var(--v4-brand);
+}
+
+.placeholder {
+  color: var(--v4-text-3);
+}
+
+.error-text {
+  color: var(--v4-danger);
+  margin-top: 8rpx;
+}
+
+.needs-code {
+  margin-top: 8rpx;
+  color: var(--v4-warning);
+}
+
+.radio-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  min-height: 72rpx;
+  font-size: 28rpx;
+}
+
+.result-row {
+  min-height: 72rpx;
+  border-bottom: 1rpx solid var(--v4-line);
+}
+
+.result-row .small {
+  color: var(--v4-brand);
+}
+
+.summary-row {
+  padding: 12rpx 0;
+}
+
+.zero-money-note {
+  margin-top: 16rpx;
+}

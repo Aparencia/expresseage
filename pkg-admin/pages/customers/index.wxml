@@ -1,0 +1,34 @@
+<view class="page-body">
+  <view class="card filter-block">
+    <view class="form-row">
+      <input class="form-input" value="{{keyword}}" placeholder="编号 / 苑+楼栋 / 昵称" confirm-type="search" bindinput="onKeywordInput" bindconfirm="onSearchConfirm" />
+    </view>
+    <view class="small">关键词至少 2 个字符；不按取件码、尾号、房间号搜索。</view>
+    <view class="row between">
+      <text class="muted">含测试账号</text>
+      <switch checked="{{includeTest}}" color="#1F7A5C" bindchange="onIncludeTestChange" />
+    </view>
+  </view>
+
+  <view class="empty-text" wx:if="{{loading}}">加载中…</view>
+  <view class="empty-text" wx:if="{{searching}}">搜索中…</view>
+
+  <view class="card" wx:if="{{error}}" bindtap="onRetry">
+    <text class="muted">没连上服务器，先检查网络；刚才的数据是 {{errorAt}} 的。</text>
+    <text class="link"> 点此重试</text>
+  </view>
+
+  <view class="empty-text" wx:if="{{!loading && !searching && !error && list.length === 0}}">{{keyword.length >= 2 ? '没有找到匹配的顾客，换个编号、苑+楼栋或昵称试试。' : '还没有顾客资料。'}}</view>
+
+  <view class="card" wx:for="{{list}}" wx:key="customerNo" data-no="{{item.customerNo}}" bindtap="onOpenDetail">
+    <view class="row between">
+      <text class="strong">{{item.customerNo}}</text>
+      <view class="row">
+        <text class="tag tag-test" wx:if="{{item.isTest}}">测试</text>
+        <text class="tag">{{item.profileText}}</text>
+      </view>
+    </view>
+    <view class="subtitle">{{item.displayName}} · {{item.dormText}}</view>
+    <view class="muted">{{item.bindingText}} · {{item.progressText}}</view>
+  </view>
+</view>

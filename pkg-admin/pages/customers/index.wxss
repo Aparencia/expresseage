@@ -1,0 +1,9 @@
+/* pkg-admin/pages/customers/index.wxss · 顾客列表页页面级样式 */
+
+.filter-block {
+  padding-bottom: 12rpx;
+}
+
+.link {
+  color: var(--v4-brand);
+}

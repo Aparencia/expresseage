@@ -1,0 +1,61 @@
+<view class="page-body">
+  <view class="empty-text" wx:if="{{loading}}">加载中…</view>
+
+  <view class="card" wx:if="{{error}}" bindtap="onRetry">
+    <text class="muted">没连上服务器，先检查网络；刚才的数据是 {{errorAt}} 的。</text>
+    <text class="link"> 点此重试</text>
+  </view>
+
+  <view class="card" wx:if="{{notFound}}">
+    <text class="subtitle">记录不存在或已注销。</text>
+  </view>
+
+  <block wx:if="{{!loading && !notFound && customer}}">
+    <view class="card">
+      <view class="row between">
+        <text class="title">{{customer.customerNo}}</text>
+        <text class="tag tag-test" wx:if="{{customer.isTest}}">测试</text>
+      </view>
+      <view class="subtitle">{{customer.displayName}}</view>
+      <view class="divider"></view>
+      <view class="muted">宿舍 {{customer.dormText}} · 尾号 {{customer.phoneTailText}} · {{customer.profileText}}</view>
+      <view class="small">房间号与头像已隐藏、昵称已脱敏；完整资料仅在真实账号只读会话中按目标身份查看。</view>
+    </view>
+
+    <view class="card" wx:if="{{binding}}">
+      <text class="section-title">绑定关系</text>
+      <view class="row between">
+        <text>{{binding.partnerNo}} {{binding.displayName}}</text>
+        <text class="tag">{{binding.statusText}}</text>
+      </view>
+      <view class="small" wx:if="{{binding.boundAtText}}">绑定时间 {{binding.boundAtText}}</view>
+    </view>
+
+    <view class="card" wx:if="{{!binding}}">
+      <text class="section-title">绑定关系</text>
+      <text class="muted">当前没有生效的绑定。</text>
+    </view>
+
+    <view class="card">
+      <text class="section-title">订单</text>
+      <view class="muted">{{orderSummaryText}}</view>
+    </view>
+
+    <view class="btn btn-primary btn-block switch-action" bindtap="onOpenSwitch">以该顾客身份查看（只读）</view>
+
+    <view class="card">
+      <text class="section-title">最近订单</text>
+      <view class="empty-text" wx:if="{{recentOrders.length === 0}}">该顾客还没有订单记录。</view>
+      <view class="order-row" wx:for="{{recentOrders}}" wx:key="orderNo" data-no="{{item.orderNo}}" bindtap="onOpenOrder">
+        <view class="row between">
+          <text class="strong">{{item.orderNo}}</text>
+          <view class="row">
+            <text class="tag tag-test" wx:if="{{item.isTest}}">测试</text>
+            <text class="tag">{{item.statusText}}</text>
+          </view>
+        </view>
+        <view class="muted">{{item.serviceName}} · {{item.dormText}} · {{item.statusUpdatedAtText}}</view>
+      </view>
+    </view>
+  </block>
+</view>

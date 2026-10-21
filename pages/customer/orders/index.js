@@ -53,15 +53,15 @@ Page({
   },
 
   refresh() {
-    return this.fetch(true);
+    return this.loadPage(true);
   },
 
   loadMore() {
     if (!this.data.hasMore || this.data.loading) return Promise.resolve();
-    return this.fetch(false);
+    return this.loadPage(false);
   },
 
-  async fetch(reset) {
+  async loadPage(reset) {
     if (this.data.loading) return;
     this.setData({ loading: true, error: reset ? '' : this.data.error });
     const payload = { status: this.data.activeKey, limit: PAGE_SIZE };

@@ -1,0 +1,49 @@
+<view class="page-body">
+  <view class="card filter-block">
+    <view class="form-row">
+      <input class="form-input" value="{{keyword}}" placeholder="完整兼职编号或前缀" confirm-type="search" bindinput="onKeywordInput" bindconfirm="onSearchConfirm" />
+    </view>
+    <view class="row between">
+      <text class="muted">含测试账号</text>
+      <switch checked="{{includeTest}}" color="#1F7A5C" bindchange="onIncludeTestChange" />
+    </view>
+  </view>
+
+  <scroll-view class="filter-row" scroll-x="true">
+    <view class="filter-chip" wx:for="{{statusTabs}}" wx:key="key" data-key="{{item.key}}" bindtap="onTabChange">
+      <text>{{item.label}}</text>
+      <view class="chip-bar" wx:if="{{item.active}}"></view>
+    </view>
+  </scroll-view>
+
+  <view class="empty-text" wx:if="{{loading}}">加载中…</view>
+  <view class="empty-text" wx:if="{{searching}}">搜索中…</view>
+
+  <view class="card" wx:if="{{error}}" bindtap="onRetry">
+    <text class="muted">没连上服务器，先检查网络；刚才的数据是 {{errorAt}} 的。</text>
+    <text class="link"> 点此重试</text>
+  </view>
+
+  <view class="empty-text" wx:if="{{!loading && !searching && !error && list.length === 0}}">{{keyword ? '没有找到这个兼职编号，请核对后重试。' : '还没有兼职人员。'}}</view>
+
+  <view class="card" wx:for="{{list}}" wx:key="partnerNo" data-index="{{index}}" bindtap="onRowTap">
+    <view class="row between">
+      <text class="strong">{{item.partnerNo}} {{item.displayName}}</text>
+      <view class="row">
+        <text class="tag tag-test" wx:if="{{item.isTest}}">测试</text>
+        <text class="tag">{{item.statusText}}</text>
+      </view>
+    </view>
+    <view class="muted">{{item.bindingText}} · {{item.orderText}}</view>
+    <view class="expand" wx:if="{{item.expanded}}">
+      <view class="small">服务类型 {{item.serviceCount}} 项{{item.activatedAtText ? ' · 最近激活 ' + item.activatedAtText : ''}}</view>
+      <view class="small" wx:if="{{item.suspendedReason}}">停用原因：{{item.suspendedReason}}</view>
+      <view class="small" wx:if="{{item.isTest}}">测试账号不可执行真实治理动作；如需清理请到「账号切换」页删除或清空。</view>
+      <view class="row">
+        <view class="btn btn-danger btn-small" wx:if="{{item.canSuspend}}" data-index="{{index}}" catchtap="onSuspend">停用</view>
+        <view class="btn btn-primary btn-small" wx:if="{{item.canResume}}" data-index="{{index}}" catchtap="onResume">恢复</view>
+        <view class="btn btn-ghost btn-small" data-index="{{index}}" catchtap="onSwitch">切换</view>
+      </view>
+    </view>
+  </view>
+</view>

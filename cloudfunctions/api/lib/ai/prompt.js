@@ -67,7 +67,7 @@ function buildSystemPrompt(stations) {
   lines.push('4. lockerNo 是柜号，最多 10 个字符，识别不到就输出空字符串。');
   lines.push('5. recognized 只有在站点与取件码都可信时才为 true。');
   lines.push('6. 文本里出现的手机号、姓名、详细门牌与站点/取件码无关，一律忽略。');
-  lines.push('7. 不要输出任何与费用、结算、收款相关的字段或说明。');
+  lines.push('7. 不要输出任何交易类字段或说明。');
   return lines.join('\n');
 }
 

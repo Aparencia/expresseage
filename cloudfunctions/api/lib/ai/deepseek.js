@@ -14,6 +14,9 @@
 const ENDPOINT = 'https://api.deepseek.com/chat/completions';
 const KEY_ENV_NAME = 'DEEPSEEK_API_KEY';
 
+const { AI_PAYLOAD_KEYS, buildAiPayload, assertPayloadKeys } = require('./payload');
+const { buildMessages } = require('./prompt');
+
 const MAX_ATTEMPTS = 2;
 const DEFAULT_MODEL = 'deepseek-chat';
 const DEFAULT_TIMEOUT_MS = 8000;
@@ -152,6 +155,39 @@ function readContent(body) {
 }
 
 /**
+ * 构造唯一的外呼请求体（外发数据只来自 AI_PAYLOAD_KEYS 白名单）。
+ * 这是全仓唯一构造外呼 body 的位置：先 `buildAiPayload()` 归一，再断言键集合，
+ * 最后把白名单数据拼进 messages，绝不做手拼 body 或追加额外字段。
+ * @param {object} payload `{ocrTextMasked, hintTrackingTail?, role}`
+ * @param {{stations?: Array}} options 站点表（服务端注入，用于 prompt）
+ * @returns {object|null} 不合法时返回 null
+ */
+function buildRequestBody(payload, options) {
+  let outbound = null;
+  try {
+    outbound = buildAiPayload(payload);
+  } catch (err) {
+    return null;
+  }
+  if (!assertPayloadKeys(outbound)) {
+    return null;
+  }
+  const keys = Object.keys(outbound);
+  for (let i = 0; i < keys.length; i += 1) {
+    if (AI_PAYLOAD_KEYS.indexOf(keys[i]) < 0) {
+      return null;
+    }
+  }
+  return {
+    model: options && typeof options.model === 'string' && options.model ? options.model : DEFAULT_MODEL,
+    messages: buildMessages(outbound, options),
+    temperature: 0,
+    response_format: { type: 'json_object' },
+    stream: false,
+  };
+}
+
+/**
  * 创建外呼客户端。
  * @param {{
  *   fetchImpl?: Function,
@@ -171,7 +207,7 @@ function createDeepSeekClient(options) {
    * 单次外呼（带超时）。
    * @returns {Promise<{ok: boolean, content?: string, errorCode?: string, retryable?: boolean, latencyMs: number}>}
    */
-  async function attemptOnce(messages, timeoutMs) {
+  async function attemptOnce(requestBody, timeoutMs) {
     const controller = typeof AbortController === 'function' ? new AbortController() : null;
     let timer = null;
     const startedAt = nowMsOf(opts.now);
@@ -188,13 +224,7 @@ function createDeepSeekClient(options) {
           'Content-Type': 'application/json',
           Authorization: 'Bearer ' + apiKey,
         },
-        body: JSON.stringify({
-          model: cfg.model,
-          messages,
-          temperature: 0,
-          response_format: { type: 'json_object' },
-          stream: false,
-        }),
+        body: JSON.stringify(requestBody),
         signal: controller ? controller.signal : undefined,
       });
       const latencyMs = nowMsOf(opts.now) - startedAt;

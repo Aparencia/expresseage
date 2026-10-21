@@ -1,4 +1,4 @@
-// pkg-partner/pages/service-settings/index.js · 服务类型与范围（启用/停用 + 苑级范围 + 接单开关；无价格）
+// pkg-partner/pages/service-settings/index.js · 服务类型与范围（启用/停用 + 苑级范围 + 接单开关；不含费用字段）
 const partnerApi = require('../../../api/modules/partner');
 const configApi = require('../../../api/modules/config');
 const store = require('../../../store/index');

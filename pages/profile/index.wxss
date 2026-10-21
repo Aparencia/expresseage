@@ -179,6 +179,20 @@
   font-size: 28rpx;
 }
 
+.form-card {
+  margin-bottom: 24rpx;
+}
+
+.section-label {
+  font-size: 26rpx;
+  color: #999999;
+  margin-bottom: 12rpx;
+}
+
+.list-card {
+  padding: 24rpx;
+}
+
 .order-summary {
   font-size: 28rpx;
   color: #666666;

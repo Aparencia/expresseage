@@ -9,7 +9,7 @@ const route = require('../../config/route');
 
 const ACTIVATE_PAGE = '/pkg-partner/pages/activate/index';
 const BIND_PAGE = '/pkg-customer/pages/bind/index';
-const VIEW_AS_ADMIN = '/pkg-admin/pages/account-switch/index';
+const ACCOUNT_SWITCH_PAGE = '/pkg-admin/pages/account-switch/index';
 
 function pickVm() {
   const snapshot = store.snapshot();
@@ -48,7 +48,7 @@ Page({
       return;
     }
     if (this.data.vm.isDeveloper) {
-      redirect(VIEW_AS_ADMIN);
+      redirect(ACCOUNT_SWITCH_PAGE);
       return;
     }
     if (bindNo) this.loadBindCard(bindNo);
@@ -61,7 +61,7 @@ Page({
       redirect(guard.viewContext.role === 'PARTNER' ? route.PARTNER_WORKBENCH : route.CUSTOMER_HOME);
       return;
     }
-    if (guard.isDeveloper) redirect(VIEW_AS_ADMIN);
+    if (guard.isDeveloper) redirect(ACCOUNT_SWITCH_PAGE);
   },
 
   onHide() {
