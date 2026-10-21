@@ -1,0 +1,48 @@
+/* pkg-partner/pages/activate/index.wxss · 激活页局部样式（全局工具类见 app.wxss） */
+.activate-head {
+  padding: 32rpx 8rpx 24rpx;
+}
+
+.code-input {
+  letter-spacing: 2rpx;
+}
+
+.avatar-row {
+  align-items: center;
+}
+
+.avatar-btn {
+  min-height: 72rpx;
+  padding: 0 20rpx;
+  margin: 0 16rpx;
+  font-size: 26rpx;
+}
+
+.agree-row {
+  padding: 24rpx 0 8rpx;
+}
+
+.agree-label {
+  display: flex;
+  align-items: center;
+  font-size: 26rpx;
+  color: #666666;
+}
+
+.error {
+  margin-top: 16rpx;
+  padding: 16rpx 20rpx;
+  border-radius: 12rpx;
+  background: #FDECEA;
+  color: #E54D42;
+  font-size: 26rpx;
+}
+
+.submit {
+  margin-top: 24rpx;
+}
+
+.contact {
+  margin-top: 24rpx;
+  text-align: center;
+}

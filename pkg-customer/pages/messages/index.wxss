@@ -1,0 +1,32 @@
+/* pkg-customer/pages/messages/index.wxss */
+.head-row {
+  margin-bottom: 24rpx;
+}
+
+.announcement {
+  padding: 20rpx 24rpx;
+}
+
+.message-card {
+  padding: 20rpx 24rpx;
+}
+
+.unread-dot {
+  width: 14rpx;
+  height: 14rpx;
+  border-radius: 50%;
+  background: var(--v4-danger);
+  margin-right: 12rpx;
+  flex-shrink: 0;
+}
+
+.message-text {
+  margin-top: 8rpx;
+}
+
+.btn-small {
+  min-height: 64rpx;
+  font-size: 26rpx;
+  padding: 0 24rpx;
+  margin-top: 16rpx;
+}

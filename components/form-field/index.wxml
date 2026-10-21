@@ -1,0 +1,10 @@
+<view class="form-field">
+  <view class="form-field-row">
+    <view class="form-field-label">
+      <text wx:if="{{required}}" class="form-field-required">*</text>
+      <text>{{label}}</text>
+    </view>
+    <input class="form-field-input" type="{{type}}" value="{{value}}" placeholder="{{placeholder}}" maxlength="{{maxlength}}" bindinput="onInput" />
+  </view>
+  <view wx:if="{{error}}" class="form-field-error">{{error}}</view>
+</view>

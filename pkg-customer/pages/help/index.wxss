@@ -1,0 +1,48 @@
+/* pkg-customer/pages/help/index.wxss */
+.faq-item {
+  border-bottom: 1rpx solid var(--v4-line);
+  padding: 16rpx 0;
+}
+
+.faq-question {
+  min-height: 64rpx;
+}
+
+.faq-answer {
+  margin-top: 12rpx;
+  line-height: 1.6;
+}
+
+.statement {
+  margin-bottom: 16rpx;
+  line-height: 1.6;
+}
+
+.tabs {
+  margin-bottom: 20rpx;
+  background: var(--v4-bg);
+  border-radius: 12rpx;
+  padding: 8rpx;
+}
+
+.tab-item {
+  min-height: 64rpx;
+  font-size: 26rpx;
+  color: var(--v4-text-2);
+  border-radius: 8rpx;
+}
+
+.tab-active {
+  background: #FFFFFF;
+  color: var(--v4-brand);
+  font-weight: 600;
+}
+
+.paragraph {
+  margin-bottom: 16rpx;
+  line-height: 1.6;
+}
+
+.version-card {
+  text-align: center;
+}

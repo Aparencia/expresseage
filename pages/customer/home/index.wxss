@@ -1,0 +1,40 @@
+/* pages/customer/home/index.wxss */
+.announcement {
+  padding: 20rpx 24rpx;
+}
+
+.tip-card {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.partner-meta {
+  margin-left: 20rpx;
+  min-width: 0;
+}
+
+.order-card {
+  padding-bottom: 12rpx;
+}
+
+.btn-small {
+  min-height: 64rpx;
+  font-size: 26rpx;
+  padding: 0 24rpx;
+}
+
+.tag-disabled {
+  background: #F0F2F5;
+  color: var(--v4-text-3);
+}
+
+.home-links {
+  margin-top: 24rpx;
+}
+
+.link-item {
+  padding: 24rpx 0;
+  color: var(--v4-text-2);
+  font-size: 28rpx;
+}

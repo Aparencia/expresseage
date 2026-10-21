@@ -1,0 +1,63 @@
+<!-- pkg-partner/pages/service-settings/index.wxml · 服务类型与范围（无价格语义） -->
+<view class="page-body">
+  <switch-bar />
+  <view class="title head-title">服务类型与范围</view>
+
+  <view wx:if="{{first}}" class="card first-tip">
+    <view class="strong">先配置服务类型与范围，顾客才能下单</view>
+    <view class="small">服务只说明做什么，本程序不涉及任何费用收付。</view>
+  </view>
+
+  <view wx:if="{{loading}}" class="empty-text">加载中…</view>
+  <view wx:elif="{{!services.length}}" class="card">
+    <empty-state text="{{errorText || '服务设置没加载出来'}}" actionText="重试" bind:action="load" />
+  </view>
+
+  <block wx:else>
+    <view class="card">
+      <view class="row between form-row">
+        <view>
+          <view class="strong">接单开关</view>
+          <view class="small">关闭后新顾客暂时不能下单，已接的订单不受影响</view>
+        </view>
+        <switch checked="{{acceptingOrders}}" disabled="{{readonly}}" bindchange="onAcceptingChange" />
+      </view>
+    </view>
+
+    <view class="card">
+      <view class="section-title">服务类型（启用 / 停用）</view>
+      <view
+        wx:for="{{services}}"
+        wx:key="code"
+        class="service-row"
+        data-index="{{index}}"
+        bindtap="onServiceToggle"
+      >
+        <checkbox checked="{{item.enabled}}" disabled="{{readonly}}" />
+        <view class="flex-1 service-main">
+          <view class="strong">{{item.name}}</view>
+          <view class="small">{{item.desc}}</view>
+        </view>
+      </view>
+    </view>
+
+    <view class="card">
+      <view class="section-title">服务范围（苑级）</view>
+      <view class="zone-row">
+        <view
+          wx:for="{{zones}}"
+          wx:key="key"
+          class="zone-tag {{item.selected ? 'zone-tag-active' : ''}}"
+          data-key="{{item.key}}"
+          bindtap="onZoneToggle"
+        >{{item.label}}</view>
+      </view>
+      <view class="small zone-note">楼栋、每日上限、营业时间属 P1，本期不展示。</view>
+    </view>
+
+    <view wx:if="{{errorText}}" class="error">{{errorText}}</view>
+    <button class="btn btn-primary btn-block" disabled="{{saving || readonly}}" bindtap="onSave">
+      {{saving ? '保存中…' : '保存'}}
+    </button>
+  </block>
+</view>

@@ -1,0 +1,1 @@
+<text wx:if="{{text}}" class="status-pill status-{{tone}}">{{text}}</text>

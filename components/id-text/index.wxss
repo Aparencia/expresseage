@@ -1,0 +1,18 @@
+.id-text {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.id-no {
+  font-family: Menlo, Consolas, "Courier New", monospace;
+  font-size: 30rpx;
+  letter-spacing: 1rpx;
+  color: #1A1A1A;
+}
+
+.id-copy {
+  font-size: 24rpx;
+  color: #1F7A5C;
+  margin-left: 16rpx;
+}

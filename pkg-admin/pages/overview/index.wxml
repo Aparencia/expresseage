@@ -1,0 +1,69 @@
+<view class="page-body">
+  <view class="card">
+    <view class="row between">
+      <view class="col flex-1">
+        <text class="title">开发者后台</text>
+        <text class="muted">{{developerNo ? developerNo + ' · 仅用于治理与排障' : '仅用于治理与排障'}}</text>
+      </view>
+      <view class="bell" bindtap="onOpenMessages">
+        <text class="small">消息</text>
+        <view class="badge" wx:if="{{badge > 0}}">{{badge}}</view>
+      </view>
+    </view>
+    <view class="status-line" wx:for="{{statusBar}}" wx:key="*this">{{item}}</view>
+  </view>
+
+  <view class="empty-text" wx:if="{{loading}}">加载中…</view>
+
+  <view class="card" wx:if="{{error}}" bindtap="onRetry">
+    <text class="muted">没连上服务器，先检查网络；刚才的数据是 {{errorAt}} 的。</text>
+    <text class="link"> 点此重试</text>
+  </view>
+
+  <view class="stats-grid" wx:if="{{!loading}}">
+    <view class="stat-card" bindtap="onOpenOrders">
+      <text class="stat-value">{{counts.todayOrders}}</text>
+      <text class="stat-label">今日订单</text>
+    </view>
+    <view class="stat-card" bindtap="onOpenOrders">
+      <text class="stat-value warning">{{counts.exceptions}}</text>
+      <text class="stat-label">待处理异常</text>
+    </view>
+    <view class="stat-card" bindtap="onOpenPartners">
+      <text class="stat-value">{{counts.activePartners}}</text>
+      <text class="stat-label">活跃兼职</text>
+    </view>
+    <view class="stat-card" bindtap="onOpenCustomers">
+      <text class="stat-value">{{counts.customers}}</text>
+      <text class="stat-label">活跃顾客</text>
+    </view>
+    <view class="stat-card" bindtap="onOpenReview">
+      <text class="stat-value warning">{{counts.pendingFailures}}</text>
+      <text class="stat-label">识别失败待复核</text>
+    </view>
+  </view>
+
+  <view class="card" wx:if="{{!loading}}">
+    <text class="section-title">常用入口</text>
+    <view class="quick-grid">
+      <view class="quick" bindtap="onOpenInviteCodes">生成邀请码</view>
+      <view class="quick" bindtap="onOpenAccountSwitch">切换账号</view>
+      <view class="quick" bindtap="onOpenOrders">订单总览</view>
+      <view class="quick" bindtap="onOpenConfig">全局配置</view>
+    </view>
+    <view class="muted">识别失败待复核 {{counts.pendingFailures}} 条 · 复核含原图查看（审计）</view>
+  </view>
+
+  <view class="card" wx:if="{{!loading}}">
+    <text class="section-title">最近审计</text>
+    <view class="empty-text" wx:if="{{audit.length === 0}}">暂无审计记录。</view>
+    <view class="audit-row" wx:for="{{audit}}" wx:key="index">
+      <view class="col flex-1">
+        <text class="strong">{{item.actionText}}</text>
+        <text class="muted">{{item.developerNo}} · {{item.targetText}}</text>
+      </view>
+      <text class="small">{{item.timeText}}</text>
+    </view>
+    <view class="btn btn-ghost" wx:if="{{auditHasMore}}" bindtap="onAuditMore">{{loadingMore ? '加载中…' : '加载更多审计'}}</view>
+  </view>
+</view>

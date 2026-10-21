@@ -1,0 +1,70 @@
+<view class="page-body">
+  <switch-bar />
+
+  <view class="card announcement" wx:if="{{announcement && !announcementClosed}}">
+    <view class="row between">
+      <view class="muted flex-1 ellipsis">公告：{{announcement}}</view>
+      <view class="small" bindtap="onCloseAnnouncement">知道了</view>
+    </view>
+  </view>
+
+  <view class="card tip-card" wx:if="{{!vm.customer.profileComplete}}">
+    <view class="muted flex-1">还差苑/楼栋/宿舍号 —— 完善后才能下单。</view>
+    <button class="btn btn-ghost btn-small" bindtap="onProfileTap">去完善</button>
+  </view>
+
+  <view class="card" wx:if="{{vm.binding}}">
+    <view class="row between">
+      <view class="row flex-1">
+        <avatar-view file-id="{{partnerPublic.avatarFileId}}" name="{{partnerPublic.displayName}}" size="96" />
+        <view class="col partner-meta">
+          <view class="section-title ellipsis">我的兼职 · {{partnerPublic.displayName}}</view>
+          <id-text kind="PARTNER" no="{{partnerPublic.partnerNo}}" />
+          <view class="muted">{{servicesText || '服务类型加载中'}}</view>
+        </view>
+      </view>
+      <button class="btn btn-ghost btn-small" bindtap="onRebindTap">换绑</button>
+    </view>
+    <view class="divider"></view>
+    <view class="row between">
+      <room-tag-text dorm-key="{{dormKey}}" tag="{{roomTag}}" />
+      <view class="tag" wx:if="{{partnerPublic.acceptingOrders !== false}}">接单中</view>
+      <view class="tag tag-disabled" wx:else>暂停接单</view>
+    </view>
+  </view>
+
+  <view class="card" wx:if="{{!vm.binding}}">
+    <view class="section-title">还没有绑定兼职</view>
+    <view class="muted">向兼职要完整兼职编号（P-XXX-XXX，如 P-7K2-M9X），输入后即可下单。</view>
+    <view class="form-row">
+      <input class="form-input" placeholder="完整兼职编号，如 P-7K2-M9X" value="{{bindInput}}" bindinput="onBindInput" />
+    </view>
+    <button class="btn btn-primary btn-block" bindtap="onBindTap">去绑定</button>
+  </view>
+
+  <view class="card order-card" wx:if="{{order}}">
+    <view class="row between">
+      <view class="section-title">进行中的订单</view>
+      <view class="small">{{waitedText}}</view>
+    </view>
+    <order-row order="{{order}}" data-order-no="{{order.orderNo}}" bind:tap="onOrderTap" />
+  </view>
+
+  <view class="card" wx:if="{{!loading && !order && vm.binding}}">
+    <view class="empty-text">还没有进行中的订单，上传取件码截图就能下单。</view>
+  </view>
+
+  <view class="card" wx:if="{{error}}">
+    <view class="muted">{{error}}</view>
+    <button class="btn btn-ghost btn-small" bindtap="onRetry">重新加载</button>
+  </view>
+
+  <button class="btn btn-primary btn-block {{canOrder ? '' : 'btn-disabled'}}" bindtap="onOrderCreateTap">
+    {{canOrder ? '上传取件码截图下单' : orderDisabledReason}}
+  </button>
+
+  <view class="row home-links">
+    <view class="flex-1 center link-item" bindtap="onMessagesTap">消息中心</view>
+    <view class="flex-1 center link-item" bindtap="onProfileTap">我的</view>
+  </view>
+</view>

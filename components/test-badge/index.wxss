@@ -1,0 +1,14 @@
+.test-badge {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 1000;
+  padding: 8rpx 18rpx;
+  border-radius: 0 0 0 12rpx;
+  background: #2B6DE5;
+  color: #FFFFFF;
+  font-size: 22rpx;
+  font-weight: 600;
+  letter-spacing: 2rpx;
+  line-height: 1.2;
+}

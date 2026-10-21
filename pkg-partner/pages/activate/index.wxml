@@ -1,0 +1,57 @@
+<!-- pkg-partner/pages/activate/index.wxml · 邀请码激活 -->
+<view class="page-body">
+  <switch-bar />
+  <view class="activate-head">
+    <view class="title">成为兼职</view>
+    <view class="subtitle">邀请码由开发者发放，一次性有效；没有邀请码请联系开发者。</view>
+  </view>
+
+  <view class="card">
+    <view class="form-row">
+      <view class="form-label">邀请码</view>
+      <input
+        class="form-input code-input"
+        type="text"
+        maxlength="14"
+        placeholder="XXXX-XXXX-XXXX"
+        value="{{codeDisplay}}"
+        bindinput="onCodeInput"
+        bindconfirm="onCodeConfirm"
+      />
+    </view>
+    <view class="form-row">
+      <view class="form-label">昵称</view>
+      <input
+        class="form-input"
+        type="nickname"
+        maxlength="20"
+        placeholder="一键取微信昵称，也可以自己填"
+        value="{{displayName}}"
+        bindinput="onNameInput"
+      />
+    </view>
+    <view class="form-row avatar-row">
+      <view class="form-label">头像</view>
+      <view class="row flex-1">
+        <avatar-view fileId="{{avatarFileId}}" name="{{displayName}}" size="96" />
+        <button class="btn btn-ghost avatar-btn" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">
+          {{uploadAvataring ? '上传中…' : '选择头像'}}
+        </button>
+        <text class="muted">可跳过，默认头像</text>
+      </view>
+    </view>
+    <view class="agree-row">
+      <checkbox-group bindchange="onAgreeChange">
+        <label class="agree-label">
+          <checkbox value="agree" checked="{{agreed}}" />
+          <text>我已阅读《用户协议》《隐私政策》</text>
+        </label>
+      </checkbox-group>
+    </view>
+    <view wx:if="{{errorText}}" class="error">{{errorText}}</view>
+    <button class="btn btn-primary btn-block submit" disabled="{{!canSubmit}}" bindtap="onSubmit">
+      {{submitting ? '激活中…' : '激活并开始接单'}}
+    </button>
+    <view class="small contact">激活失败？联系开发者（可在「我的 → 帮助与隐私」复制微信号）</view>
+  </view>
+</view>

@@ -1,0 +1,14 @@
+<view class="image-picker">
+  <view wx:if="{{files.length}}" class="image-picker-previews">
+    <view wx:for="{{files}}" wx:key="index" class="image-picker-item">
+      <image class="image-picker-thumb" src="{{item.localPath}}" mode="aspectFill" data-index="{{index}}" bindtap="onPreview" />
+      <text class="image-picker-remove" data-index="{{index}}" bindtap="onRemove">删除</text>
+    </view>
+  </view>
+  <view wx:if="{{uploading}}" class="image-picker-progress">{{progressText}}</view>
+  <view class="image-picker-actions">
+    <button class="image-picker-btn" bindtap="onChooseAlbum">从相册选择</button>
+    <button class="image-picker-btn" bindtap="onChooseCamera">拍照</button>
+    <button class="image-picker-btn" bindtap="onChooseChat">从聊天选择</button>
+  </view>
+</view>

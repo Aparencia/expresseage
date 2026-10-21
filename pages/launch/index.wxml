@@ -1,0 +1,12 @@
+<view class="page-body launch-page">
+  <view wx:if="{{loading}}" class="launch-box">
+    <view class="launch-logo">代</view>
+    <view class="launch-title">校园快递代取</view>
+    <view class="launch-tip">正在进入…</view>
+  </view>
+  <view wx:elif="{{errorText}}" class="launch-box">
+    <view class="launch-title">暂时无法进入</view>
+    <view class="launch-error">{{errorText}}</view>
+    <button class="btn btn-primary btn-block" bindtap="onRetry">重试</button>
+  </view>
+</view>

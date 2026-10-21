@@ -1,0 +1,40 @@
+<view class="page-body">
+  <switch-bar />
+
+  <view class="tabs row">
+    <view
+      wx:for="{{tabs}}"
+      wx:key="key"
+      class="tab-item flex-1 center {{activeKey === item.key ? 'tab-active' : ''}}"
+      data-key="{{item.key}}"
+      bindtap="onTabTap"
+    >{{item.label}}</view>
+  </view>
+
+  <view class="card" wx:if="{{error}}">
+    <view class="muted">{{error}}</view>
+    <button class="btn btn-ghost btn-small" bindtap="onRetry">重新加载</button>
+  </view>
+
+  <view wx:if="{{list.length > 0}}">
+    <view
+      wx:for="{{list}}"
+      wx:key="orderNo"
+      class="list-item"
+      data-order-no="{{item.orderNo}}"
+      bindtap="onOrderTap"
+    >
+      <order-row order="{{item}}" />
+    </view>
+  </view>
+
+  <empty-state
+    wx:if="{{!loading && list.length === 0 && !error}}"
+    text="{{activeKey === 'ONGOING' ? '这里还没有进行中的订单。' : (activeKey === 'COMPLETED' ? '还没有已完成的订单。' : '没有取消过的订单。')}}"
+    action-text="{{activeKey === 'ONGOING' ? '去下单' : '回首页'}}"
+    bind:action="onEmptyAction"
+  />
+
+  <view class="empty-text" wx:if="{{loading}}">加载中…</view>
+  <view class="empty-text" wx:if="{{!loading && list.length > 0 && !hasMore}}">没有更多了</view>
+</view>

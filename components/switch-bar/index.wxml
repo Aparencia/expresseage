@@ -1,0 +1,11 @@
+<view wx:if="{{visible}}" class="switch-bar {{readonly ? 'switch-bar-readonly' : 'switch-bar-blue'}}">
+  <test-badge wx:if="{{blue}}" />
+  <view class="switch-bar-main">
+    <text wx:if="{{readonly}}" class="switch-bar-text">开发者只读视角 · {{roleLabel}} {{targetNoDisplay}} {{targetDisplayName}}</text>
+    <text wx:else class="switch-bar-text">测试账号 · {{roleLabel}} {{targetNoDisplay}}（测试） · {{developerText}}</text>
+  </view>
+  <view class="switch-bar-side">
+    <text wx:if="{{remaining}}" class="switch-bar-time {{expiring ? 'switch-bar-time-warn' : ''}}">{{remaining}}</text>
+    <text class="switch-bar-exit" bindtap="onExit">退出</text>
+  </view>
+</view>

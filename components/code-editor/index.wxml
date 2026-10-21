@@ -1,0 +1,3 @@
+<view class="code-editor">
+  <input class="code-editor-input" value="{{value}}" placeholder="{{placeholder}}" maxlength="{{maxlength}}" bindinput="onInput" bindblur="onBlur" />
+</view>

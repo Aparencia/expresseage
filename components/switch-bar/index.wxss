@@ -1,0 +1,52 @@
+.switch-bar {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12rpx 24rpx;
+  font-size: 24rpx;
+  line-height: 1.4;
+}
+
+.switch-bar-readonly {
+  background: #FFF4CE;
+  color: #8A6D00;
+}
+
+.switch-bar-blue {
+  background: #E8F0FF;
+  color: #2B6DE5;
+}
+
+.switch-bar-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.switch-bar-text {
+  font-size: 24rpx;
+}
+
+.switch-bar-side {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-shrink: 0;
+  margin-left: 16rpx;
+}
+
+.switch-bar-time {
+  font-size: 22rpx;
+  margin-right: 16rpx;
+  opacity: 0.8;
+}
+
+.switch-bar-time-warn {
+  font-weight: 600;
+}
+
+.switch-bar-exit {
+  font-size: 24rpx;
+  font-weight: 600;
+  padding: 4rpx 0 4rpx 12rpx;
+}

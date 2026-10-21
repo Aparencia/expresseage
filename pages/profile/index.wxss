@@ -1,0 +1,185 @@
+.profile-page {
+  padding-bottom: 48rpx;
+}
+
+.head-card {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.head-main {
+  flex: 1;
+  min-width: 0;
+  margin-left: 24rpx;
+}
+
+.head-name {
+  font-size: 36rpx;
+  font-weight: 600;
+  color: #1A1A1A;
+  margin-bottom: 8rpx;
+}
+
+.head-sub {
+  font-size: 26rpx;
+  color: #666666;
+}
+
+.head-edit {
+  font-size: 28rpx;
+  color: #1F7A5C;
+  padding: 16rpx 0 16rpx 24rpx;
+}
+
+.avatar-preview {
+  width: 192rpx;
+  height: 192rpx;
+  border-radius: 50%;
+  background: #F0F2F5;
+  flex-shrink: 0;
+}
+
+.avatar-pick {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.mini-btn {
+  min-height: 64rpx;
+  padding: 0 24rpx;
+  font-size: 26rpx;
+  line-height: 64rpx;
+  border-radius: 12rpx;
+  background: #F6F7F9;
+  color: #1F7A5C;
+  margin: 0;
+}
+
+.mini-btn::after {
+  border: none;
+}
+
+.avatar-default-link {
+  font-size: 26rpx;
+  color: #999999;
+  margin-left: 24rpx;
+}
+
+.dorm-preview {
+  font-size: 26rpx;
+  color: #1F7A5C;
+  padding: 12rpx 0;
+}
+
+.form-actions {
+  display: flex;
+  flex-direction: row;
+  gap: 16rpx;
+  margin-top: 24rpx;
+}
+
+.id-card {
+  padding: 24rpx;
+}
+
+.id-main {
+  align-items: center;
+}
+
+.id-label {
+  font-size: 26rpx;
+  color: #666666;
+  margin-right: 16rpx;
+}
+
+.id-hint {
+  margin-top: 8rpx;
+}
+
+.link {
+  font-size: 28rpx;
+  color: #1F7A5C;
+  padding: 8rpx 0 8rpx 24rpx;
+}
+
+.link-danger {
+  color: #E54D42;
+}
+
+.binding-row {
+  align-items: center;
+  margin-bottom: 16rpx;
+}
+
+.binding-main {
+  flex: 1;
+  min-width: 0;
+  margin-left: 16rpx;
+}
+
+.binding-name {
+  font-size: 30rpx;
+  font-weight: 500;
+}
+
+.binding-actions {
+  gap: 16rpx;
+}
+
+.list-title {
+  font-size: 26rpx;
+  color: #999999;
+  margin-bottom: 8rpx;
+}
+
+.row-item {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 96rpx;
+  border-bottom: 1rpx solid #EEEEEE;
+  font-size: 30rpx;
+  color: #1A1A1A;
+}
+
+.row-item:last-child {
+  border-bottom: none;
+}
+
+.row-arrow {
+  font-size: 34rpx;
+  color: #999999;
+}
+
+.badge-num {
+  min-width: 32rpx;
+  height: 32rpx;
+  line-height: 32rpx;
+  text-align: center;
+  border-radius: 16rpx;
+  background: #E54D42;
+  color: #FFFFFF;
+  font-size: 22rpx;
+  margin-left: 12rpx;
+  padding: 0 8rpx;
+}
+
+.banner-warn {
+  background: #FFF4CE;
+  color: #8A6D00;
+  font-size: 28rpx;
+}
+
+.banner-danger {
+  background: #FDECEA;
+  color: #E54D42;
+  font-size: 28rpx;
+}
+
+.order-summary {
+  font-size: 28rpx;
+  color: #666666;
+}

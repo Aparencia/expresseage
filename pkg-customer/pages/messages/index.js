@@ -1,0 +1,114 @@
+// pkg-customer/pages/messages/index.js · 消息中心（服务端聚合视图；分页 30）
+'use strict';
+
+const store = require('../../../store/index');
+const messageApi = require('../../../api/modules/message');
+const format = require('../../parts/format');
+
+const DETAIL_PAGE = '/pkg-customer/pages/order-detail/index';
+const PAGE_SIZE = 30;
+
+function mapItem(item) {
+  return {
+    id: item.id || item.messageId || (item.type + '_' + (item.at || item.createdAt)),
+    type: item.type || 'ORDER',
+    title: item.title || (item.type === 'ANNOUNCEMENT' ? '公告' : '订单动态'),
+    text: item.text || item.summary || '',
+    orderNo: item.orderNo || '',
+    unread: item.unread === true,
+    time: format.formatTimeAgo(item.at || item.createdAt)
+  };
+}
+
+Page({
+  data: {
+    list: [],
+    cursor: null,
+    hasMore: true,
+    loading: true,
+    error: '',
+    announcement: ''
+  },
+
+  onLoad() {
+    this.setData({ announcement: (store.get('config') && store.get('config').announcement) || '' });
+  },
+
+  onShow() {
+    this.refresh();
+  },
+
+  onPullDownRefresh() {
+    this.refresh().then(function done() { wx.stopPullDownRefresh(); });
+  },
+
+  onReachBottom() {
+    this.loadMore();
+  },
+
+  refresh() {
+    this.setData({ loading: true, error: '' });
+    return messageApi.list({ limit: PAGE_SIZE }).then((data) => {
+      const list = ((data && data.list) || []).map(mapItem);
+      this.setData({
+        loading: false,
+        list: list,
+        cursor: (data && data.nextCursor) || null,
+        hasMore: !!(data && data.nextCursor)
+      });
+      this.markRead();
+    }).catch((err) => {
+      this.setData({ loading: false, error: (err && err.message) || '网络开小差了，请下拉重试' });
+    });
+  },
+
+  loadMore() {
+    if (this.data.loading || !this.data.hasMore || !this.data.cursor) return;
+    this.setData({ loading: true });
+    messageApi.list({ limit: PAGE_SIZE, cursor: this.data.cursor }).then((data) => {
+      const page = ((data && data.list) || []).map(mapItem);
+      this.setData({
+        loading: false,
+        list: this.data.list.concat(page),
+        cursor: (data && data.nextCursor) || null,
+        hasMore: !!(data && data.nextCursor)
+      });
+    }).catch((err) => {
+      this.setData({ loading: false, error: (err && err.message) || '加载失败，请重试' });
+    });
+  },
+
+  markRead() {
+    messageApi.markRead({ scope: 'ALL' }).then((data) => {
+      if (data && data.messageReadAt) store.patch({ messageReadAt: data.messageReadAt });
+      this.markAllReadLocally();
+    }).catch(function ignore() {
+      // 水位上报失败不影响浏览，下次进入会再次上报
+    });
+  },
+
+  markAllReadLocally() {
+    const list = this.data.list.map(function mark(item) {
+      return Object.assign({}, item, { unread: false });
+    });
+    this.setData({ list: list });
+  },
+
+  onItemTap(e) {
+    const orderNo = (e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.orderNo) || '';
+    if (!orderNo) {
+      wx.showToast({ title: '这是一条公告，没有关联订单', icon: 'none' });
+      return;
+    }
+    wx.navigateTo({ url: DETAIL_PAGE + '?orderNo=' + encodeURIComponent(orderNo) });
+  },
+
+  onRetry() {
+    this.refresh();
+  },
+
+  onAllRead() {
+    this.markRead();
+    wx.showToast({ title: '已标为已读', icon: 'none' });
+  }
+});

@@ -1,0 +1,123 @@
+<view class="page-body">
+  <switch-bar />
+
+  <view class="card" wx:if="{{loading}}">
+    <view class="empty-text">加载中…</view>
+  </view>
+
+  <view class="card" wx:if="{{error}}">
+    <view class="muted">{{error}}</view>
+    <button class="btn btn-ghost btn-small" bindtap="onRetry">重新加载</button>
+    <button class="btn btn-ghost btn-small" bindtap="onRetry">回到订单列表</button>
+  </view>
+
+  <block wx:if="{{order}}">
+    <view class="card">
+      <view class="row between">
+        <status-pill status="{{order.status}}" />
+        <view class="small">{{order.orderNo}}</view>
+      </view>
+      <view class="status-title">{{statusText}}</view>
+      <view class="muted" wx:if="{{waitingHint}}">{{waitingHint}}</view>
+      <view class="progress row">
+        <view wx:for="{{progress}}" wx:key="label" class="progress-step flex-1 center">
+          <view class="progress-dot {{item.state}}"></view>
+          <view class="progress-label {{item.state}}">{{item.label}}</view>
+        </view>
+      </view>
+    </view>
+
+    <view class="card order-section">
+      <view class="row between">
+        <view class="section-title">取件信息</view>
+        <view class="small" wx:if="{{actions.image}}" bindtap="onViewImage">查看截图</view>
+      </view>
+      <view class="row between line">
+        <view class="muted">站点</view>
+        <view class="flex-1 right">{{order.parcel.stationName || '未识别'}}</view>
+      </view>
+      <view class="row between line">
+        <view class="muted">取件码</view>
+        <view class="flex-1 right">{{order.parcel.pickupCode || (order.parcel.codeStatus === 'NEED_CODE' ? '需查明（兼职正在查码）' : '—')}}</view>
+      </view>
+      <view class="row between line">
+        <view class="muted">柜号 / 尾号</view>
+        <view class="flex-1 right">{{order.parcel.lockerNo || '—'}} / {{order.parcel.trackingTail || '—'}}</view>
+      </view>
+      <view class="row between line">
+        <view class="muted">服务类型</view>
+        <view class="flex-1 right">{{order.service.name}}</view>
+      </view>
+      <view class="row between line">
+        <view class="muted">送达地址</view>
+        <view class="flex-1 right">{{order.dorm.buildingText || ''}} {{order.dorm.room || ''}}</view>
+      </view>
+      <view class="row between line" wx:if="{{order.dorm.roomTag}}">
+        <view class="muted">同寝室标识</view>
+        <room-tag-text dorm-key="{{order.dorm.dormKey}}" tag="{{order.dorm.roomTag}}" />
+      </view>
+      <view class="row between line" wx:if="{{order.appoint.type}}">
+        <view class="muted">预约</view>
+        <view class="flex-1 right">{{order.appoint.type === 'ASAP' ? '尽快' : (order.appoint.startAt || '')}}</view>
+      </view>
+      <view class="row between line" wx:if="{{order.note}}">
+        <view class="muted">备注</view>
+        <view class="flex-1 right">{{order.note}}</view>
+      </view>
+      <view class="row between line" wx:if="{{order.deliveryNote}}">
+        <view class="muted">送达备注</view>
+        <view class="flex-1 right">{{order.deliveryNote}}</view>
+      </view>
+    </view>
+
+    <view class="card">
+      <view class="section-title">对方档案</view>
+      <view class="row" wx:if="{{order.counterpart}}">
+        <avatar-view file-id="{{order.counterpart.avatarFileId}}" name="{{order.counterpart.displayName}}" size="96" />
+        <view class="col counterpart-meta">
+          <view class="strong">{{order.counterpart.displayName}}</view>
+          <id-text kind="PARTNER" no="{{order.partnerNo}}" />
+        </view>
+      </view>
+      <view class="muted" wx:else>对方已解除绑定，头像/昵称不再展示。</view>
+      <view class="row between id-line">
+        <id-text kind="CUSTOMER" no="{{order.customerNo}}" />
+        <id-text kind="PARTNER" no="{{order.partnerNo}}" />
+      </view>
+    </view>
+
+    <view class="card actions">
+      <button class="btn btn-danger btn-block" wx:if="{{actions.cancel}}" bindtap="onCancelTap">取消订单</button>
+      <button class="btn btn-primary btn-block" wx:if="{{actions.confirm}}" bindtap="onConfirmDeliveryTap">确认已收到</button>
+      <button class="btn btn-ghost btn-block" wx:if="{{actions.deleteRecord}}" bindtap="onDeleteRecordTap">删除这条记录</button>
+      <view class="small" wx:if="{{readonly}}">开发者只读视角不能操作。</view>
+    </view>
+
+    <view class="card">
+      <view class="section-title">留言</view>
+      <view wx:if="{{messages.length === 0}}" class="muted">还没有留言，有问题可以在这里和兼职沟通。</view>
+      <view wx:for="{{messages}}" wx:key="id" class="message-item {{item.mine ? 'message-mine' : ''}}">
+        <view class="message-text">{{item.text}}</view>
+        <view class="small">{{item.time}}</view>
+      </view>
+      <view class="row message-input-row" wx:if="{{actions.message}}">
+        <input
+          class="form-input"
+          value="{{messageText}}"
+          placeholder="给兼职留言（≤200 字）"
+          maxlength="200"
+          bindinput="onMessageInput"
+        />
+        <button class="btn btn-primary btn-small" bindtap="onSendMessage">发送</button>
+      </view>
+    </view>
+
+    <view class="card">
+      <view class="section-title">订单动态</view>
+      <view wx:for="{{events}}" wx:key="id" class="event-item">
+        <view class="event-text flex-1">{{item.text}}</view>
+        <view class="small event-time">{{item.time}}</view>
+      </view>
+    </view>
+  </block>
+</view>

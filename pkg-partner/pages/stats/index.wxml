@@ -1,0 +1,55 @@
+<!-- pkg-partner/pages/stats/index.wxml · 单量统计（无费用口径） -->
+<view class="page-body">
+  <switch-bar />
+  <view class="row range-tabs">
+    <view
+      wx:for="{{ranges}}"
+      wx:key="key"
+      class="range-tab {{range === item.key ? 'range-tab-active' : ''}}"
+      data-range="{{item.key}}"
+      bindtap="onRangeTap"
+    >{{item.label}}</view>
+  </view>
+
+  <view wx:if="{{loading}}" class="empty-text">加载中…</view>
+  <view wx:elif="{{error}}" class="card">
+    <empty-state text="{{error}}" actionText="重试" bind:action="load" />
+  </view>
+
+  <block wx:else>
+    <view class="card stat-grid">
+      <view class="stat-cell">
+        <view class="stat-value">{{metrics.completed}}</view>
+        <view class="small">完成单量</view>
+      </view>
+      <view class="stat-cell">
+        <view class="stat-value">{{metrics.rateText}}</view>
+        <view class="small">完成率</view>
+      </view>
+      <view class="stat-cell">
+        <view class="stat-value">{{metrics.running}}</view>
+        <view class="small">进行中</view>
+      </view>
+      <view class="stat-cell">
+        <view class="stat-value">{{metrics.exception}} / {{metrics.canceled}}</view>
+        <view class="small">异常 / 取消</view>
+      </view>
+    </view>
+
+    <view class="card">
+      <view class="section-title">近 7 天单量</view>
+      <view class="bars">
+        <view wx:for="{{bars}}" wx:key="label" class="bar-col">
+          <view class="bar" style="height: {{item.height}}rpx"></view>
+          <view class="small">{{item.label}}</view>
+        </view>
+      </view>
+      <view class="divider"></view>
+      <view class="row between small">
+        <text>今日完成 {{metrics.todayCompleted}} 单</text>
+        <text>异常 {{metrics.exception}} · 取消 {{metrics.canceled}}</text>
+      </view>
+      <view class="small stat-note">统计不含测试账号与测试订单；本程序不涉及任何费用收付。</view>
+    </view>
+  </block>
+</view>

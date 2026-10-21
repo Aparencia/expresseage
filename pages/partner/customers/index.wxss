@@ -1,0 +1,42 @@
+/* pages/partner/customers/index.wxss · 客户档案局部样式 */
+.head {
+  padding: 8rpx 0 24rpx;
+}
+
+.head-btn {
+  min-height: 64rpx;
+  padding: 0 20rpx;
+  font-size: 26rpx;
+  margin-left: 16rpx;
+}
+
+.search-card {
+  padding: 8rpx 24rpx;
+}
+
+.guide-card {
+  background: #E8F0FF;
+}
+
+.customer-item {
+  display: flex;
+  align-items: center;
+}
+
+.customer-main {
+  margin-left: 20rpx;
+  min-width: 0;
+}
+
+.customer-main .muted,
+.customer-main .small {
+  margin-top: 4rpx;
+}
+
+.bottom-actions {
+  padding: 8rpx 0 24rpx;
+}
+
+.share-btn {
+  background: #FFFFFF;
+}

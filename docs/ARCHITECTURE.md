@@ -145,13 +145,17 @@ const off = store.subscribe((snapshot) => { this.setData({ vm: snapshot }); });
 - `index.js`：唯一 `require('wx-server-sdk')` 的文件。`exports.main = async (event, context) => { cloud.init({env}); const wx = cloud.getWXContext(); return invoke(event, { db: cloud.database(), cloud, env: process.env, openid: wx.OPENID, requestId: event && event.requestId, now: Date.now }); }`。
 - `app.js`：`invoke(event, deps)` → 解包 `{action, data, clientRequestId, expectedVersion, viewTicket}` → `router` 取 handler（未登记/非 client 可见一律 `FORBIDDEN`）→ 中间件链 `auth → switch-session → validate → ratelimit → idempotency → audit` → handler → 统一包络。
 - `router.js`：`createRouter()` 返回 `action → handler` 映射；显式列出 `./handlers/<domain>` 的十一个域（`user customer partner bind order message upload config admin ai health`），每个域模块导出 `{ actions: { 'user.bootstrap': fn, ... } }`。
-- handler 签名：`async (ctx, payload) => data`（返回对象进 `data`；抛 `AppError` 走失败包络）。`ctx = { dao, now, env, cloud, openid, identity, requestId, config }`，`identity = { actorOpenid, effectiveOpenid, role, isTestAccount, viewMode, viewTicketId, developerNo }`。
+- handler 签名：`async (ctx, payload) => data`（返回对象进 `data`；抛 `AppError` 走失败包络）。`ctx = { dao, ids, now, env, cloud, openid, identity, requestId, clientRequestId, expectedVersion, config }`；`identity = { actorOpenid, effectiveOpenid, role, isTestAccount, viewMode, viewTicketId, developerNo }`。
+- `ctx.ids`（由 `lib/id-generator` 绑定 dao 后注入，handler 不自建随机/编号）：`customerNo()`、`partnerNo()`、`orderNo(nowMs)`、`failureNo()`、`inviteCode()`、`randomId(len)`、`uploadTicket()`；均为同步返回 string（内部冲突重试 ≤5 次，失败抛 `DEPENDENCY_FAILED`）。
+- `ctx.dao` 返回形状：`get/findOne` → `doc | null`；`find` → `[]`；`count` → number；`add` → `{ _id }`；`update/updateWhere/remove/removeWhere` → `{ updated }` 或 `{ removed }`；`transaction(fn)` → fn 返回值，fn 收到同接口的 `trxDao`。
+- 失败构造：`const { AppError, errors } = require('./lib/errors')`；`new AppError(code, message, data?)`，code 必须 ∈ 13 码；常用 `errors.validation(field,message)`（自动带 `data.field`）、`errors.forbidden()`、`errors.notFound()`、`errors.invalidState()`、`errors.invalidTransition()`、`errors.conflict()`、`errors.rateLimited()`、`errors.partnerClosed()`、`errors.inviteExpired()`、`errors.inviteUsed()`、`errors.viewTicketExpired()`、`errors.dependencyFailed()`、`errors.internalError()`。
+- 幂等键：`ctx.clientRequestId` 即请求包络的 `clientRequestId`；订单创建 `requestKey = {customerId|partnerId}:{clientRequestId}`、订单写动作 `order_events.requestKey = {orderId}:{action}:{clientRequestId}`（均唯一索引兜底）。
 - 中间件签名：`async (state) => state`；`state = { action, payload, ctx, meta }`；抛 `AppError` 即终止。
 - 包络：`{ ok:true, data, serverTime, requestId }`；失败 `{ ok:false, code, message, data?, serverTime, requestId }`。`serverTime` 由 app.js 统一填。
 
 ### 4.2 `db/dao.js`（唯一出现 `db.collection` 的位置）
 
-`createDao(db)` → `{ get, findOne, find({where,orderBy,skip,limit}), count, add, update, updateWhere, remove, removeWhere, transaction(fn), serverDate(), inc(value) }`；集合名一律从 `require('../shared/collections')` 的 `COLLECTIONS.*` 取。
+`createDao(db)` → `{ get, findOne, find({where,orderBy,skip,limit}), count, add, update, updateWhere, remove, removeWhere, transaction(fn), serverDate(), inc(value) }`；集合名一律从 `require('../shared/collections')` 的 `COLLECTIONS.*` 取。返回值形状见 §4.1。
 
 ### 4.3 共享注册表（`shared/**`，v3-data-model 产出；两边共同引用）
 

@@ -1,0 +1,74 @@
+<view class="page-body">
+  <view class="row between">
+    <text class="section-title">邀请码</text>
+    <view class="btn btn-primary btn-small" bindtap="onOpenCreate">生成邀请码</view>
+  </view>
+
+  <scroll-view class="filter-row" scroll-x="true">
+    <view class="filter-chip" wx:for="{{statusTabs}}" wx:key="key" data-key="{{item.key}}" bindtap="onTabChange">
+      <text>{{item.label}}{{item.countText}}</text>
+      <view class="chip-bar" wx:if="{{item.active}}"></view>
+    </view>
+  </scroll-view>
+
+  <view class="empty-text" wx:if="{{loading}}">加载中…</view>
+
+  <view class="card" wx:if="{{error}}" bindtap="onRetry">
+    <text class="muted">没连上服务器，先检查网络；刚才的数据是 {{errorAt}} 的。</text>
+    <text class="link"> 点此重试</text>
+  </view>
+
+  <view class="empty-text" wx:if="{{!loading && !error && list.length === 0}}">{{activeStatus === '' ? '还没有邀请码。生成后可线下发给要开通兼职的同学。' : '没有符合当前状态的邀请码。'}}</view>
+
+  <view class="card" wx:for="{{list}}" wx:key="invitationCode">
+    <view class="row between">
+      <text class="code-text">{{item.codeMasked}}</text>
+      <text class="tag">{{item.statusText}}</text>
+    </view>
+    <view class="muted">批次 {{item.batchText}} · 有效期至 {{item.expiresText}}</view>
+    <view class="small">创建 {{item.createdAtText}}{{item.note ? ' · 备注：' + item.note : ''}}</view>
+    <view class="tag" wx:if="{{item.usedByText}}">使用人 {{item.usedByText}} · {{item.usedAtText}}</view>
+    <view class="btn btn-danger btn-small" wx:if="{{item.isUnused}}" data-index="{{index}}" bindtap="onRevoke">作废</view>
+  </view>
+
+  <view class="mask" wx:if="{{showCreate}}" bindtap="onCloseCreate">
+    <view class="panel" catchtap="noop">
+      <text class="section-title">生成邀请码</text>
+      <view class="form-row">
+        <text class="form-label">数量</text>
+        <input class="form-input" type="number" value="{{form.count}}" maxlength="2" bindinput="onCountInput" />
+      </view>
+      <view class="small">单个或批量，单批 1~50。</view>
+      <view class="form-row">
+        <text class="form-label">有效期</text>
+        <picker class="flex-1" range="{{expiresLabels}}" value="{{expiresIndex}}" bindchange="onExpiresChange">
+          <view class="pick-value">{{expiresLabels[expiresIndex]}}</view>
+        </picker>
+      </view>
+      <view class="form-row">
+        <text class="form-label">备注</text>
+        <input class="form-input" value="{{form.note}}" maxlength="50" placeholder="可留空，最多 50 字" bindinput="onNoteInput" />
+      </view>
+      <view class="danger-text" wx:if="{{createError}}">{{createError}}</view>
+      <view class="row between">
+        <view class="btn btn-ghost" bindtap="onCloseCreate">取消</view>
+        <view class="btn btn-primary" bindtap="onCreateSubmit">{{submitting ? '生成中…' : '确认生成'}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="mask" wx:if="{{showResult}}" bindtap="onCloseResult">
+    <view class="panel" catchtap="noop">
+      <text class="section-title">生成成功</text>
+      <view class="muted">批次 {{result.batchId}} · 有效期至 {{result.expiresAtText}} · 共 {{result.count}} 个</view>
+      <scroll-view class="code-box" scroll-y="true">
+        <text class="code-line" wx:for="{{result.codes}}" wx:key="*this">{{item}}</text>
+      </scroll-view>
+      <view class="danger-text">离开本页后将无法再次查看完整邀请码，请及时复制并线下发放。</view>
+      <view class="row between">
+        <view class="btn btn-ghost" bindtap="onCloseResult">完成</view>
+        <view class="btn btn-primary" bindtap="onCopyAll">复制全部</view>
+      </view>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,11 @@
+<view class="order-row" bindtap="onTap">
+  <view class="order-row-head">
+    <status-pill status="{{order.status}}" />
+    <text class="order-row-code">{{order.codeText}}</text>
+  </view>
+  <view wx:if="{{order.customerLine}}" class="order-row-line">{{order.customerLine}}</view>
+  <view class="order-row-foot">
+    <text class="order-row-meta">{{order.serviceName}}</text>
+    <text class="order-row-meta">{{order.timeText}}</text>
+  </view>
+</view>

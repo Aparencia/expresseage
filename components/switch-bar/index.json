@@ -1,0 +1,6 @@
+{
+  "component": true,
+  "usingComponents": {
+    "test-badge": "/components/test-badge/index"
+  }
+}

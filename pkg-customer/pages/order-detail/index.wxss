@@ -1,0 +1,102 @@
+/* pkg-customer/pages/order-detail/index.wxss */
+.status-title {
+  margin: 16rpx 0 8rpx;
+  font-size: 36rpx;
+  font-weight: 600;
+}
+
+.progress {
+  margin-top: 24rpx;
+}
+
+.progress-step {
+  flex-direction: column;
+}
+
+.progress-dot {
+  width: 20rpx;
+  height: 20rpx;
+  border-radius: 50%;
+  background: #D9DEE5;
+  margin-bottom: 8rpx;
+}
+
+.progress-dot.done {
+  background: var(--v4-brand);
+}
+
+.progress-dot.current {
+  background: var(--v4-customer);
+}
+
+.progress-label {
+  font-size: 22rpx;
+  color: var(--v4-text-3);
+}
+
+.progress-label.current {
+  color: var(--v4-customer);
+  font-weight: 600;
+}
+
+.progress-label.done {
+  color: var(--v4-brand);
+}
+
+.order-section .line {
+  min-height: 72rpx;
+}
+
+.right {
+  text-align: right;
+}
+
+.counterpart-meta {
+  margin-left: 20rpx;
+}
+
+.id-line {
+  margin-top: 20rpx;
+  gap: 20rpx;
+}
+
+.actions .btn {
+  margin-bottom: 20rpx;
+}
+
+.message-item {
+  padding: 12rpx 0;
+  border-bottom: 1rpx solid var(--v4-line);
+}
+
+.message-mine {
+  text-align: right;
+}
+
+.message-text {
+  font-size: 28rpx;
+}
+
+.message-input-row {
+  margin-top: 20rpx;
+  gap: 16rpx;
+}
+
+.event-item {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  padding: 12rpx 0;
+  border-bottom: 1rpx solid var(--v4-line);
+}
+
+.event-time {
+  margin-left: 16rpx;
+  flex-shrink: 0;
+}
+
+.btn-small {
+  min-height: 64rpx;
+  font-size: 26rpx;
+  padding: 0 24rpx;
+}

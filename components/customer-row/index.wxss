@@ -1,0 +1,44 @@
+.customer-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 20rpx 0;
+  border-bottom: 1rpx solid #EEEEEE;
+}
+
+.customer-row:last-child {
+  border-bottom: none;
+}
+
+.customer-row-main {
+  flex: 1;
+  min-width: 0;
+  margin-left: 20rpx;
+}
+
+.customer-row-name {
+  font-size: 30rpx;
+  font-weight: 500;
+  color: #1A1A1A;
+}
+
+.customer-row-meta {
+  font-size: 24rpx;
+  color: #666666;
+  margin-top: 4rpx;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.customer-row-no {
+  font-size: 22rpx;
+  color: #999999;
+  margin-top: 2rpx;
+}
+
+.customer-row-arrow {
+  font-size: 34rpx;
+  color: #999999;
+  margin-left: 16rpx;
+}

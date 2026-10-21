@@ -1,0 +1,9 @@
+.room-tag {
+  display: inline-block;
+  padding: 2rpx 12rpx;
+  border-radius: 8rpx;
+  background: #E8F0EA;
+  color: #1F7A5C;
+  font-size: 24rpx;
+  font-family: Menlo, Consolas, "Courier New", monospace;
+}

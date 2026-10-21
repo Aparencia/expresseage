@@ -1,0 +1,9 @@
+<view class="failure-image">
+  <view wx:if="{{loading}}" class="failure-image-tip">正在获取原图…</view>
+  <block wx:elif="{{errorText}}">
+    <view class="failure-image-tip">{{errorText}}</view>
+    <view class="failure-image-retry" bindtap="onRetry">重试</view>
+  </block>
+  <image wx:elif="{{url}}" class="failure-image-img" src="{{url}}" mode="widthFix" show-menu-by-longpress="{{false}}" binderror="onImageError" />
+  <view class="failure-image-note">原图仅用于开发者复核，请勿保存或转发（每次查看均已记录审计）</view>
+</view>

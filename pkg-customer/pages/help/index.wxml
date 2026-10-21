@@ -1,0 +1,39 @@
+<view class="page-body">
+  <switch-bar />
+
+  <view class="card">
+    <view class="section-title">常见问题</view>
+    <view wx:for="{{faqs}}" wx:key="q" class="faq-item">
+      <view class="row between faq-question" data-index="{{index}}" bindtap="onFaqTap">
+        <view class="flex-1 strong">{{item.q}}</view>
+        <view class="small">{{expanded === index ? '收起' : '展开'}}</view>
+      </view>
+      <view class="muted faq-answer" wx:if="{{expanded === index}}">{{item.a}}</view>
+    </view>
+  </view>
+
+  <view class="card">
+    <view class="section-title">口径说明</view>
+    <view class="muted statement">{{statements.zeroMoney}}</view>
+    <view class="muted statement">{{statements.audit}}</view>
+    <view class="muted statement">{{statements.ai}}</view>
+    <view class="muted statement">{{statements.avatar}}</view>
+  </view>
+
+  <view class="card">
+    <view class="tabs row">
+      <view
+        wx:for="{{docTabs}}"
+        wx:key="key"
+        class="tab-item flex-1 center {{doc === item.key ? 'tab-active' : ''}}"
+        data-key="{{item.key}}"
+        bindtap="onDocTap"
+      >{{item.label}}</view>
+    </view>
+    <view wx:for="{{paragraphs}}" wx:key="*this" class="muted paragraph">{{item}}</view>
+  </view>
+
+  <view class="card version-card">
+    <view class="muted">版本 {{version}} · 客服：请联系你的兼职</view>
+  </view>
+</view>

@@ -1,0 +1,78 @@
+<!-- pkg-partner/pages/customer-detail/index.wxml · 顾客档案（头像/昵称/编号/备注/历史单/解绑） -->
+<view class="page-body">
+  <switch-bar />
+  <view wx:if="{{loading}}" class="empty-text">加载中…</view>
+  <view wx:elif="{{error}}" class="card">
+    <empty-state text="{{error}}" actionText="重试" bind:action="load" />
+  </view>
+
+  <block wx:elif="{{view}}">
+    <view class="card head-card">
+      <view class="row">
+        <avatar-view fileId="{{view.avatarFileId}}" name="{{view.displayName}}" size="96" />
+        <view class="flex-1 head-main">
+          <view class="row between">
+            <view class="strong">{{view.displayName || '未填称呼'}}</view>
+            <view wx:if="{{view.activeOrderCount}}" class="tag">进行中 {{view.activeOrderCount}}</view>
+          </view>
+          <view class="muted">{{view.anchorKeyText}}</view>
+          <view class="row small number-row" bindtap="onCopyCustomerNo">
+            <text>顾客编号 {{view.customerNo}} · 复制</text>
+          </view>
+        </view>
+      </view>
+      <view class="divider"></view>
+      <view class="between row small">
+        <text>绑定时间 {{view.boundAtText || '—'}}</text>
+        <text>roomTag {{view.anchorText || '—'}}</text>
+      </view>
+    </view>
+
+    <view class="card">
+      <view class="row between">
+        <view class="section-title">备注（仅自己可见）</view>
+        <view wx:if="{{!noteEditing}}" class="btn btn-ghost mini-btn" bindtap="onEditNote">编辑</view>
+      </view>
+      <block wx:if="{{noteEditing}}">
+        <textarea
+          class="note-input"
+          maxlength="100"
+          placeholder="写一句只有自己能看到的备注（≤100 字）"
+          value="{{noteValue}}"
+          bindinput="onNoteInput"
+        />
+        <view class="row note-actions">
+          <view class="btn btn-ghost mini-btn" bindtap="onCancelNote">取消</view>
+          <view class="btn btn-primary mini-btn" bindtap="onSaveNote">{{savingNote ? '保存中…' : '保存'}}</view>
+        </view>
+      </block>
+      <view wx:else class="muted">{{view.partnerNote || '还没有备注'}}</view>
+    </view>
+
+    <view class="card">
+      <view class="section-title">历史订单</view>
+      <view wx:if="{{!orders.length}}" class="empty-text">还没有历史订单</view>
+      <view
+        wx:for="{{orders}}"
+        wx:key="orderNo"
+        class="order-line row between"
+        data-order-no="{{item.orderNo}}"
+        bindtap="onOrderTap"
+      >
+        <view>
+          <view class="strong">{{item.orderNo}}</view>
+          <view class="small">{{item.statusText || item.status}} · {{item.deliveredAtText || item.completedAtText || ''}}</view>
+        </view>
+        <view class="muted">›</view>
+      </view>
+    </view>
+
+    <view class="card bind-note">
+      <view class="small">绑定只能由顾客发起：解绑后对方需重新发起绑定，才能恢复下单与进度展示。</view>
+    </view>
+
+    <button class="btn btn-danger btn-block" disabled="{{unbinding || readonly}}" bindtap="onUnbindTap">
+      {{unbinding ? '解绑中…' : '解绑顾客'}}
+    </button>
+  </block>
+</view>

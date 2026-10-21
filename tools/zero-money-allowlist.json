@@ -1,0 +1,672 @@
+[
+  {
+    "file": "docs/privacy/发布前填写清单.md",
+    "string": "> **零金钱口径**：本程序不涉及任何金钱交易（无支付/收款/记账/结算/运费/价格表），提审材料与产品描述必须一致，不得出现\"支付/收费/运费/价格\"表述。",
+    "reason": "口径声明：零金额/零金钱政策声明行"
+  },
+  {
+    "file": "docs/privacy/发布前填写清单.md",
+    "string": "| 2.8 | 订单/地址等业务信息 | 使用 | 在指引正文说明用途、保存期限；**不含金额/费用** |",
+    "reason": "口径声明：不涉及金额/无金额语义的声明行"
+  },
+  {
+    "file": "docs/privacy/发布前填写清单.md",
+    "string": "| 3.11 | 零金额扫描 | 扫描 `Fen\\|price\\|fee\\|pay\\|amount\\|金额\\|价格\\|费用\\|运费\\|收款\\|结算\\|支付`（生产代码/UI 文案/数据库 DTO） | 0 命中（白名单仅\"本程序不涉及费用收付\"声明文本） |",
+    "reason": "门禁定义块：零金额门禁/词表/判据定义行"
+  },
+  {
+    "file": "docs/privacy/发布前填写清单.md",
+    "string": "| 3.6 | 日志脱敏 | 云函数日志不打印 openid 之外的敏感信息、不打印完整取件码；**不打印头像地址与完整昵称**；**不打印金额（本无金额）** | 抽查 |",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/privacy/发布前填写清单.md",
+    "string": "| 5.2 | 用户协议/服务说明（含服务范围、免责、**零费用收付**说明；不含线下支付/收款内容） | [ ] |",
+    "reason": "口径声明：不涉及金额/无金额语义的声明行"
+  },
+  {
+    "file": "docs/privacy/发布前填写清单.md",
+    "string": "| 5.9 | 产品名称/简介/截图文案零金额检查（不含支付/收费/运费/价格字样） | [ ] |",
+    "reason": "口径声明：零金额/零金钱政策声明行"
+  },
+  {
+    "file": "docs/privacy/发布前填写清单.md",
+    "string": "| 7 | 用户协议文本 | 有 / 无（并入隐私指引） | 建议单独有，含服务范围、免责说明与零费用收付说明（**不含**线下支付/收款内容） |",
+    "reason": "口径声明：不涉及金额/无金额语义的声明行"
+  },
+  {
+    "file": "docs/privacy/隐私保护指引.md",
+    "string": "- **不涉及任何金钱交易**：不收集、不处理、不保存支付信息、银行卡信息、运费或价格信息；本小程序没有支付、收款、记账、结算功能。",
+    "reason": "口径声明：不涉及金额/无金额语义的声明行"
+  },
+  {
+    "file": "docs/privacy/隐私保护指引.md",
+    "string": "> **零金钱声明：本小程序只提供下单、接单与取件信息整理，不涉及任何金钱交易；不提供支付、收款、记账、结算、运费计算、价格表或任何费用信息。**",
+    "reason": "口径声明：零金额/零金钱政策声明行"
+  },
+  {
+    "file": "docs/privacy/隐私保护指引.md",
+    "string": "| 金钱/支付 | 无 | **不涉及任何金钱交易**（无支付/收款/记账/结算/运费/价格） | 用户硬性要求；本程序只做下单、接单与信息整理 |",
+    "reason": "口径声明：不涉及金额/无金额语义的声明行"
+  },
+  {
+    "file": "docs/privacy/隐私保护指引.md",
+    "string": "7. **订单信息（必填）**：快递站点（取件点）、取件码、柜号、运单后 5 位（可选）、服务类型、预约时间、备注、订单状态与时间。用于下单、履约、进度展示与问题处理。**订单不包含任何金额、价格或费用信息。**",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/V4_CONTRACT.md",
+    "string": "- **接单撤销**：`order.undo` **不覆盖 `ACCEPTED → SUBMITTED`**。误接单走 `order.cancel`（选原因并通知顾客）；`order.undo` 只覆盖 `order.markPicked`/`order.markDelivered`（分别回 `order.unmarkPicked`/`order.unmarkDelivered`）；**无任何收款动作/撤销**。",
+    "reason": "口径声明：不涉及金额/无金额语义的声明行"
+  },
+  {
+    "file": "docs/V4_CONTRACT.md",
+    "string": "- **零金额**：界面不出现任何金额、价格、运费、费用、收款、结算字样（英文 `price/fee/pay/amount` 同样禁止）；失败文案说真话并给下一步；禁止\"请稍后重试\"式空话。",
+    "reason": "口径声明：零金额/零金钱政策声明行"
+  },
+  {
+    "file": "docs/V4_CONTRACT.md",
+    "string": "- **零金额门禁**：源码/页面文案/文档扫描 `Fen|price|fee|pay|amount|金额|价格|运费|收款|结算`，命中即失败（白名单：说明性文档中\"本程序不涉及费用\"的声明文本单独登记）。",
+    "reason": "门禁定义块：零金额门禁/词表/判据定义行"
+  },
+  {
+    "file": "docs/V4_CONTRACT.md",
+    "string": "- **没有价格、没有运费、没有报价、没有金额快照**；订单只快照 `service{code,name}`。",
+    "reason": "口径声明：不涉及金额/无金额语义的声明行"
+  },
+  {
+    "file": "docs/V4_CONTRACT.md",
+    "string": "- **取消原因枚举**：顾客侧 `CHANGED_MIND`（不需要了）｜`WRONG_INFO`（信息填错）｜`DUPLICATE`（重复下单）｜`PARTNER_UNREACHABLE`（联系不上兼职）｜`OTHER`（必填备注）；兼职侧 `TOO_BUSY`（忙不过来）｜`OUT_OF_RANGE`（不在服务范围）｜`SERVICE_OFF`（服务未开）｜`OTHER`（必填备注）；系统侧 `TIMEOUT_UNACCEPTED`（超时未接单）。中文文案由服务端下发。**已删除 `PRICE_ISSUE`（价格问题）与 `PAYMENT_TIMEOUT`（零金钱口径）**。",
+    "reason": "口径声明：零金额/零金钱政策声明行"
+  },
+  {
+    "file": "docs/V4_CONTRACT.md",
+    "string": "- **子状态**：`codeStatus='NEED_CODE'`（需查明，可与状态并存；补码后置 OK 并记 event）；`urgent`（加急服务类型携带）。**无任何支付/收款子状态**。",
+    "reason": "口径声明：不涉及金额/无金额语义的声明行"
+  },
+  {
+    "file": "docs/V4_CONTRACT.md",
+    "string": "- **D5 服务 = 只定义\"服务类型\"（标准代取/送寝上门/加急代取/代寄/其他代办），不含价格、不做定价权、不做运费**。开发者给默认类型模板，兼职在服务配置里启用/停用并设接单范围。**用户已定，无定价口径（v0.7 关闭原\"兼职定价\"方案）**。",
+    "reason": "口径声明：不涉及金额/无金额语义的声明行"
+  },
+  {
+    "file": "docs/V4_CONTRACT.md",
+    "string": "- **D6 金钱 = 零交易**：不做在线支付、收款、记账、结算、运费计算、价格表与任何金额字段。**用户已定（v0.7 关闭）**。原 v0.6 的\"线下收款记账/payStatus/结算文本\"全部删除。",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/V4_CONTRACT.md",
+    "string": "- **v0.8 识别兜底字段（字段名以 `docs/V4_DATA_MODEL.md` 定稿）**：`orders.parcel` 增识别来源与置信度（`recognitionSource ∈ {RULE, DEEPSEEK, MANUAL}`、`confidence?`）；`orders.image` 增 `failureId?` 关联复核队列；同一截图的多张订单**共享同一 `fileId`**；若多单都识别失败，则**每单各一条失败记录**（`failureId` 按单独立，便于逐单补录/逐单回填）。**均为可选字段，不加任何金额语义**。",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/V4_CONTRACT.md",
+    "string": "- `order_events.type` 至少包含：`ORDER_CREATED / ACCEPTED / REJECTED / PICKED / PICKED_REVERTED / DELIVERED / DELIVERED_REVERTED / COMPLETED / AUTO_COMPLETED / CANCELLED / TIMEOUT_CANCELLED / EXCEPTION_REPORTED / EXCEPTION_RESOLVED / ORDER_CORRECTED / DELETED_BY_CUSTOMER / GUEST_ORDER_CLAIMED(P1)`；`actorRole ∈ {CUSTOMER, PARTNER, ADMIN, SYSTEM}`。**不含任何支付/收款类事件**。",
+    "reason": "口径声明：不涉及金额/无金额语义的声明行"
+  },
+  {
+    "file": "docs/V4_CONTRACT.md",
+    "string": "- 顾客端只展示兼职已启用的服务类型名称；**不展示任何价格/费用信息**。",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/V4_CONTRACT.md",
+    "string": "- 通知文案不带敏感信息；不带完整手机号、不带链接参数里的 openid；**不涉及任何金额/费用文案**。",
+    "reason": "口径声明：不涉及金额/无金额语义的声明行"
+  },
+  {
+    "file": "docs/V4_CONTRACT.md",
+    "string": "**`orders` 补充字段**：`cancelReason`、`cancelledBy('CUSTOMER'|'PARTNER'|'SYSTEM'|'ADMIN')`、`deletedByCustomerAt`、`deliveryNote`(≤100)、`exception{code,text,fromStatus,by,at}`、`batchActionId`、`version`、`isTest`（测试数据标记，快照自参与账号）、`impersonatedBy`（测试写会话的 `developerNo`，真实流程为空）。**订单无 `fee`/`addons`/任何金额字段**。",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/V4_CONTRACT.md",
+    "string": "**本程序不涉及任何金钱交易（用户硬口径，工程禁用词）**：不做在线支付，不做收款/记账/结算，不做运费计算，不做价格表/报价/费用分摊，**不出现任何金额字段、金额计算或金额文案**。服务只保留\"服务类型\"（做什么），不表达\"多少钱\"。费用与支付不在本程序内发生、记录、计算或展示。",
+    "reason": "口径声明：不涉及金额/无金额语义的声明行"
+  },
+  {
+    "file": "docs/V4_CONTRACT.md",
+    "string": "**金额**：本程序**不存在**金额字段、金额计算与金额文案；任何文档/代码出现 `*Fen`、`price`、`fee`、`pay`、`金额`、`价格`、`运费`、`收款`、`结算` 均为缺陷（工程门禁扫描项，见 `docs/V4_ENGINEERING.md`）。",
+    "reason": "门禁定义块：零金额门禁/词表/判据定义行"
+  },
+  {
+    "file": "docs/V4_CONTRACT.md",
+    "string": "**明确不做（本期）**：任何金钱/支付/收费/运费/价格相关；地图路线规划；自动派单/多兼职抢单市场；多校区；评分评价（P2）；快递公司接口/电子面单；原生客服 IM（用订单留言 + 订阅消息/红点）；**真实账号的可写视角**（禁止；只有测试账号可写，见 §1.3）；**小程序内切换登录微信账号本身**（平台不支持，只能换微信登录）；**测试账号与真实账号互绑/互下单**（严格隔离）；**客户端直连任何第三方 AI/外部网关**（API Key 只允许存在云函数环境变量）；**把原图直传第三方**（DeepSeek 当前无视觉能力，原图只留私有云存储供内部复核）；用 AI 结果替换用户手填（AI 只做预填建议，手填优先）。",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/V4_CONTRACT.md",
+    "string": "## 6. 服务类型（只有类型，无价格，用户硬口径）",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/V4_CONTRACT.md",
+    "string": "> 版本：v0.9 草案（2026-10-21，按用户二次 + 三次 + 四次修订：①本程序只负责顾客下单/兼职接单/信息整理，**不涉及任何金钱交易：不做支付、收款、记账、结算、运费计算、价格表**；②顾客与兼职都有**不同样式的唯一编号**；③新增**开发者账号**：邀请码生效控制、后台数据查看、可**只读切换**顾客/兼职视角；④**OCR 识别失败兜底**：云函数调 **DeepSeek API** 对去敏文本做结构化兜底并**格式化返回**站点/取件码，仍失败则把**含原图的识别失败记录**反馈到开发者后台复核；⑤（v0.9）**绑定方向固化**：只能顾客绑定兼职，兼职**不能绑定顾客**；⑥（v0.9）开发者账号可**切换账号**：真实账号只读、**测试账号可写**（单机验收两端）；⑦（v0.9）同寝室标识 `roomTag` **恒大写**（`D4-522A`）；⑧（v0.9）顾客与兼职**均采集微信头像与微信昵称**，绑定双方档案可见）｜维护：lead｜状态：**待用户裁决 D1~D21**（见 §13；D5/D6 已按用户指示定；D16/D17 为三次修订新增；D18~D21 为四次修订新增）",
+    "reason": "口径声明：不涉及金额/无金额语义的声明行"
+  },
+  {
+    "file": "docs/V4_CONTRACT.md",
+    "string": "| `config` | `_id='global'` | `zoneLabels`、`serviceCatalog[{code,name,desc}]`（无价格）、`announcement`、`maintenance`、`orderTimeoutMinutes`、`autoCompleteHours`、`screenshotRetentionDays`、`recognitionFailureRetentionDays`（7~30，默认 30）、`aiFallback{enabled,model,timeoutMs,maxPerUserPerDay,dailyQuota,cooldownMinutes}`、`viewTicketTtlMinutes`、`avatarMaxBytes`（默认 200KB）、`testAccountMaxPerRole`（默认 3）、`testDataRetentionDays`（默认 30）、`privacyVersion`、`updatedAt` | 全局配置（admin 维护，无金额项；`aiFallback` v0.8 新增，值为次数/毫秒/布尔，**无费用字段**；v0.9 新增头像与测试账号配置） |",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/V4_CONTRACT.md",
+    "string": "| `config` | `getPublic`（返回 `zoneLabels/serviceCatalog(无价格)/announcement/maintenance/screenshotRetentionDays/orderTimeoutMinutes/autoCompleteHours/privacyVersion` 等公开配置） |",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/V4_CONTRACT.md",
+    "string": "| `orders` | 自增 | `orderNo`(唯一)、`requestKey`(唯一)、`customerId`/`customerOpenid`/**`customerNo`快照**/`partnerId`/`partnerOpenid`/**`partnerNo`快照**、`source('CUSTOMER'|'PARTNER')`、`isTest`(bool，测试数据标记)、`impersonatedBy?`(测试写时的 `developerNo`)、`status`、`parcel{...}`、`dorm{...}`、`guest{...}`(代客单)、`service{code,name}`、`appoint{...}`、`note`、`image{fileId,...}`、`exception{...}`、`deliveryNote`、`cancelReason`、`cancelledBy`、`deletedByCustomerAt`、`anonymizedAt`、显式时间戳、`batchActionId`、`clientRequestId`、`version` | 订单主表；**无任何金额字段** |",
+    "reason": "口径声明：不涉及金额/无金额语义的声明行"
+  },
+  {
+    "file": "docs/V4_CONTRACT.md",
+    "string": "| 服务类型 | `serviceCode` / `serviceName` | 默认：`PICKUP_STD` / `PICKUP_DOOR` / `PICKUP_URGENT` / `DROP_OFF` / `CUSTOM`；**只有类型名称与说明，无价格** |",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/V4_CONTRACT.md",
+    "string": "| 任何金额/支付/收款/运费/价格操作 | — | — | **不存在（零金额）** |",
+    "reason": "口径声明：零金额/零金钱政策声明行"
+  },
+  {
+    "file": "docs/V4_CONTRACT.md",
+    "string": "| D5 | 服务只分类型（标准/送寝/加急/代寄/其他），**不含价格** | ✅ 已按用户指示定（v0.7） | 原\"兼职定价/金额快照\"作废 |",
+    "reason": "口径声明：不涉及金额/无金额语义的声明行"
+  },
+  {
+    "file": "docs/V4_CONTRACT.md",
+    "string": "| D6 | **零金钱交易**：不做支付/收款/记账/结算/运费计算/价格表/任何金额 | ✅ 已按用户指示定（v0.7） | 无金额相关验收；未来若做支付另立项目 |",
+    "reason": "口径声明：零金额/零金钱政策声明行"
+  },
+  {
+    "file": "docs/V4_CONTRACT.md",
+    "string": "1. **零金钱**：见上；UI/数据库/接口/隐私文本全部清掉金额语义。",
+    "reason": "口径声明：零金额/零金钱政策声明行"
+  },
+  {
+    "file": "docs/V4_CONTRACT.md",
+    "string": "7. **零金额纪律**：任何设计文档不得新增金额/价格/运费/收款/结算/支付语义；引用旧口径必须显式标注\"已废弃（v0.7）\"。",
+    "reason": "口径声明：零金额/零金钱政策声明行"
+  },
+  {
+    "file": "docs/V4_CONTRACT.md",
+    "string": "pkg-partner/pages/service-settings/index 服务配置（启用服务类型/范围/接单开关，无价格）",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/V4_CONTRACT.md",
+    "string": "pkg-partner/pages/stats/index          单量统计（今日/本周完成量、状态分布，无金额）",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "- [ ] 零金额：字段/动作/事件/取消原因/统计/配置/DTO 均无金额语义；v0.8 `aiFallback` 只含次数/毫秒/布尔/枚举、`recognition_failures`/DTO 无金额键；扫描词表仅 §0.3/§0.4 声明行与带“已删除/已废弃”标注的旧口径行命中，其余正文零命中。",
+    "reason": "门禁定义块：零金额门禁/词表/判据定义行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "- [ ] v0.7 回填 17 项逐项落点可核对（§13.1），v0.8 回填 10 项逐项落点可核对（§13.1b），**v0.9 回填 10 项逐项落点可核对（§13.1c）**；无 `activation_codes`/`CODE_EXPIRED`/`CODE_USED`/`PAYMENT_`/`payStatus`/`VIEW_AS_*`/`partnerCode`/`D4-522a`/`excelLower` 残留。",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "**2.3.1 `serviceConfig`**：`services[]{code,enabled}`（5 服务码、至少 1 个 enabled、**无价格/金额字段**；名称由 `config.serviceCatalog` 下发）｜`zones[]`（`D|X|N|B|C` 子集，空=不接单）｜`acceptingOrders`（boolean，CLOSED/SUSPENDED 强制 false；**`false` ⇒ `order.create/createBatch` 一律 `PARTNER_CLOSED`，顾客端下单入口置灰**）｜`buildingNos?/maxDailyOrders?/businessHours?/autoAccept?`（[P1] 预留可空）。范围以 `serviceConfig.zones` 为唯一事实源（partners 无顶层 `zones[]`）。**测试兼职（v0.9）**：`openid='TEST-<random>'`（合成）、`serviceConfig` 默认全开（5 服务码全 `enabled`、`zones=['D','X','N','B','C']`、`acceptingOrders=true`）、`stats` 全 0、**不计任何统计**；不消耗邀请码、由 `admin.createTestAccount` 创建（§4.10）。",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "**动作级（不存在）**：`order.markPaid`/`order.unmarkPaid`、任何收款/结算/记账动作、`order_events` 的 `PAYMENT_*`、取消原因 `PRICE_ISSUE`/`PAYMENT_TIMEOUT`、支付类错误码；`order.undo` 只覆盖 `markPicked`/`markDelivered`。",
+    "reason": "口径声明：不涉及金额/无金额语义的声明行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "**动作级**：新增 `ai.parseParcel` + `admin.listRecognitionFailures/getRecognitionFailure/fixRecognitionFailure/ignoreRecognitionFailure`；新增审计 `FAILURE_IMAGE_VIEW/FAILURE_FIX/FAILURE_IGNORE`；**无任何金额/收费类动作或事件**（§0.3 零金额词表与门禁继续生效）。",
+    "reason": "门禁定义块：零金额门禁/词表/判据定义行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "**旧口径关闭**：O-01~O-27 均已关闭（v0.4 独立 `upload_tickets`/删 `tagSeq`/三键族；v0.5 动作表全量、`deleteRecord`/`markRead`/`saveCustomerNote`/`cancel`/`getPublic`；v0.6 换宿舍重绑、DTO 分级、激活码错误映射、解绑 reason、客户列表排序、工作台 6 counts、截图路径、订阅模板入 config 等）。**v0.7 起明确作废**：v0.6“线下收款记账”口径（`payStatus`/`markPaid`/`PAYMENT_*`/统计收入，已删）、`activation_codes`/“激活码”术语（改 `invitation_codes`/“邀请码”）、旧 `partnerCode`（改 `partnerNo`）、`CODE_EXPIRED`/`CODE_USED`（改 `INVITE_*`）；v0.7 不重开任何 O 项。**v0.8 追加口径**（不删除历史结论）：OCR 兜底只做预填建议、失败静默降级入队、不新增错误码；识别失败原图是后台默认脱敏的**唯一例外**（临时 URL+审计+不批量）；`aiFallback` 值只有次数/毫秒/布尔/枚举，零金额口径继续有效。**v0.9 追加作废**：旧小写 roomTag/`D4-522a`、`VIEW_AS_*` 审计名、“不收集头像”“第二个微信号验收/MVP 单账号”“所有视角一律只读”等表述；`partner.getPublic` 绑定前回头像、头像路径含 openid、测试账号 `openid=''` 全部作废；`TEST_WRITE` 仅测试账号（真实账号不可写）；测试数据与真实数据同集合但严格隔离（**不建 `test_accounts`**）；绑定只能顾客发起（兼职可写视角不存在）。",
+    "reason": "口径声明：零金额/零金钱政策声明行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "**口径**：本程序只负责顾客下单、兼职接单履约、信息整理；**不存在金钱交易**——不做在线支付、收款/记账/结算、运费计算、价格表/报价/费用分摊；服务类型只表达\"做什么\"，不表达\"多少钱\"（CONTRACT §0/§6）。",
+    "reason": "口径声明：不涉及金额/无金额语义的声明行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "**扫描门禁**：`[门禁词表]` `Fen|price|fee|pay|amount|金额|价格|运费|收款|结算|费用|支付`；源码/页面文案/文档命中即失败（门禁见 `docs/V4_ENGINEERING.md`）。`[门禁词表]` 白名单=本小节声明行、标题/正文中的「零金额」概念引用、以及带「已删除/已废弃/不存在」标注的旧口径对照行；其余语境出现即缺陷（CONTRACT §14 第 7 条）。",
+    "reason": "门禁定义块：零金额门禁/词表/判据定义行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "**扫描门禁**：`[门禁词表]` 本小节声明行豁免；测试/头像相关字段只允许 `isTest` 布尔、`impersonatedBy` 编号、次数/天数/B 数，**不得引入任何金额语义**（§0.3 继续生效）。",
+    "reason": "门禁定义块：零金额门禁/词表/判据定义行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "**扫描门禁**：`[门禁词表]` 本小节声明行豁免；AI 相关正文只允许出现次数/毫秒/布尔/枚举，不得引入金额语义；`DEEPSEEK_API_KEY`/`api.deepseek.com` 出现在客户端目录即门禁失败（CONTRACT §12）。",
+    "reason": "门禁定义块：零金额门禁/词表/判据定义行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "**字段级（全部为非敏感、无金额语义）**：`config.aiFallback{enabled,model,timeoutMs,maxPerUserPerDay,dailyQuota,cooldownMinutes}`（布尔/字符串/整数次数/毫秒，**无金额字段、无 Key**）与 `config.recognitionFailureRetentionDays`（7~30，默认 30）；`orders.parcel.recognitionSource∈{RULE,DEEPSEEK,MANUAL}`、`orders.parcel.confidence?`、`orders.image.failureId?`（**均为可选字段**，缺失的旧单按 `RULE`/`MANUAL` 展示，不阻断任何动作）。",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "**字段级（全集合无金额字段）**：`orders` 无 `fee/addons/priceFen/totalFen/payStatus`，`service` 只 `{code,name}`，无金额快照与子状态｜`partners.stats` 只含单量（`todayOrders/totalOrders/completedOrders/cancelledOrders/activeOrders/updatedAt`）、无收入/流水字段，`serviceConfig.services` 只 `{code,enabled}`｜`config.serviceCatalog` 只 `{code,name,desc}`、`config` 无价格/费率项｜`order_messages` 模板只含状态/地址/时间话术，`order_events.payload`/`admin_audit.detail`/通知/日志均无金额键｜接口入参/出参/DTO 无金额字段，未知字段（含金额键）被 schema 白名单拒绝。",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "### 2.10 `config`（单文档 `_id='global'`；**无金额项**）",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "### 2.5 `orders`（订单主表 + 快照；**无任何金额字段**）",
+    "reason": "口径声明：不涉及金额/无金额语义的声明行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "### 7.5 `order.*`（**无任何金额入参/出参**）",
+    "reason": "口径声明：不涉及金额/无金额语义的声明行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "`ORDER_CREATED`/`ACCEPTED`/`REJECTED`/`PICKED`/`PICKED_REVERTED`/`DELIVERED`/`DELIVERED_REVERTED`/`COMPLETED`/`AUTO_COMPLETED`/`CANCELLED`/`TIMEOUT_CANCELLED`/`EXCEPTION_REPORTED`/`EXCEPTION_RESOLVED`/`ORDER_CORRECTED`/`DELETED_BY_CUSTOMER`/`GUEST_ORDER_CLAIMED`(P1 预留)。**无任何支付/收款类事件**（`PAYMENT_MARKED`/`PAYMENT_MARK_REVERTED` 已删除）。",
+    "reason": "口径声明：不涉及金额/无金额语义的声明行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "`order.undo` 可撤销集合：`markPicked`→`PICKED_REVERTED`、`markDelivered`→`DELIVERED_REVERTED`；**接单不可撤销**（误接单走 `order.cancel`）；**不存在任何收款/标记已收/撤销收款动作**；批量动作不设 batch 云函数：客户端逐单调用、共享 `batchActionId`、逐单返回并汇总“成功 N/失败 M”（不得把部分成功显示为全部成功）。**v0.9 订单 DTO/隔离**：`order.get/listCustomer/listPartner` 可内联 `counterpart{displayName,avatarFileId?}`（**仅当前 ACTIVE 绑定关系内**；解绑/停用/注销后不再返回，历史单只留编号）；`orders.isTest`/`impersonatedBy` **服务端派生**、客户端传入忽略；真实用户永不返回测试单；测试单在后台以 `TEST` 标签标识；跨测试/真实的 `order.create/createBatch` 一律 `FORBIDDEN`。`order.create` 的 `order` 出参含 `customerNo/partnerNo` 快照（顾客看自己的 `customerNo`、兼职看 `customerNo`；双方看对方编号），但**编号不可用于越权查询**。",
+    "reason": "口径声明：不涉及金额/无金额语义的声明行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "`parcel.codeStatus`：下单空码→`NEED_CODE`，`order.correct` 补码→`OK`（payload 标 `codeStatusChanged`）；`NEED_CODE` 不阻断建单但 `markPicked` 需码。**无任何支付/收款子状态**（`fee.payStatus` 已删除）。`appoint.type`：ASAP/SLOT，下单后不可改（改时间取消重下）；SLOT 校验未来+start<end。`urgent`：由 `service.code==='PICKUP_URGENT'` 派生。`exception.fromStatus`：上报写、恢复消费（仅 ACCEPTED/PICKED/DELIVERED，否则 ACCEPTED）；**EXCEPTION 下顾客取消条件 = `exception.fromStatus∈{SUBMITTED,ACCEPTED}`（CONTRACT §5；`fromStatus=PICKED/DELIVERED` 时顾客不能单方取消，须兼职恢复或取消）**。`cancelReason`（CONTRACT §5.2）：顾客侧 `CHANGED_MIND/WRONG_INFO/DUPLICATE/PARTNER_UNREACHABLE/OTHER`（5）；兼职侧 `TOO_BUSY/OUT_OF_RANGE/SERVICE_OFF/OTHER`（4）；系统侧 `TIMEOUT_UNACCEPTED`（1）；`OTHER` 必填备注，中文文案由服务端下发；**`PRICE_ISSUE`/`PAYMENT_TIMEOUT` 已删除（零金额口径）**。**v0.9**：`orders.isTest` 为订单级测试标记（服务端按参与账号派生、不可改、不参与流转判断）；测试单状态机与真实一致，但**不计统计/不进真实用户列表/后台默认过滤**；`impersonatedBy` 只对 admin/测试会话可见。",
+    "reason": "口径声明：零金额/零金钱政策声明行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "> v0.7 变更（用户二次修订三条）：①**零金额**——本程序只做下单/履约/信息整理，删除全部金额类字段、动作与文案，`orders.service` 只留 `{code,name}`（§0.3）；②**双角色唯一编号**——`customers.customerNo`（`C-XXXX-XXXX`）/`partners.partnerNo`（`P-XXX-XXX`）全面替换旧 `partnerCode`，`orders` 存编号快照，`developerNo=DEV-01` 由环境映射给出（§4.2）；③**开发者账号与只读视角**——`invitation_codes` 替换 `activation_codes`、开发者后台动作全表与默认脱敏、`admin_view_sessions` 票据/读白名单/写拒绝（§2.8/§2.13/§6/§7.7）。",
+    "reason": "口径声明：零金额/零金钱政策声明行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "| `admin.updateConfig` | `{config}`（白名单字段：`viewTicketTtlMinutes`/`recognitionFailureRetentionDays(7~30)`/**`avatarMaxBytes`(102400~512000)**/**`testAccountMaxPerRole`(1~3)**/**`testDataRetentionDays`(7~90)**；**不含 `aiFallback`**（MVP 只读展示、P1 再开）；**无金额字段**）→ `{config}` | 仅 admin | `admin_audit.requestKey†`；审计 `CONFIG_UPDATE` | `VALIDATION_FAILED` |",
+    "reason": "口径声明：不涉及金额/无金额语义的声明行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "| `aiFallback` | object | 是 | **v0.8**：`{enabled,model,timeoutMs,maxPerUserPerDay,dailyQuota,cooldownMinutes}`；默认 `{enabled:true,model:'deepseek-chat',timeoutMs:8000,maxPerUserPerDay:5,dailyQuota:200,cooldownMinutes:10}`；值只含布尔/字符串/整数次数与毫秒，**无金额字段、无 API Key**（`DEEPSEEK_API_KEY` 只在云函数环境变量，§7.9）；`enabled=false` 即整体关停（不调、直接入队）；**MVP 后台只读展示、不开放编辑**——`admin.updateConfig` 白名单**不含该键**（P1 再开），改值走部署配置脚本/控制台，且必须与隐私文本同步、落 `admin_audit`；**不下发客户端** | 部署配置脚本/控制台（MVP 不开放后台编辑） | 仅 admin（只读展示）/内部 | L1 |",
+    "reason": "口径声明：不涉及金额/无金额语义的声明行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "| `config.getPublic` | `{}` → `{zoneLabels,serviceCatalog(无金额),announcement,maintenance,privacyVersion,orderTimeoutMinutes,autoCompleteHours,screenshotRetentionDays,avatarMaxBytes,subscribeEnabled}` | 任意登录用户 | 读 | — |",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "| `config` | `_id='global'` | 全局配置（无金额项；`aiFallback` MVP 只读；**v0.9 增头像/测试账号配置**） | `admin.updateConfig`（`aiFallback` 除外：部署配置脚本/控制台） | ❌ | 长期 |",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "| `note`/`payload` | string/object | 否 | ≤100 字/`{before,after,undoneAction,reason,code,...}`；不得含截图、完整手机号、金额键 | 同上 | 双方/仅 admin | L2 |",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "| `parcel.recognitionSource`/`parcel.confidence` | string/number | 否 | **v0.8 可选**：`RULE`/`DEEPSEEK`/`MANUAL`（缺省按 `RULE`；用户手填/修改过=`MANUAL`）+ `HIGH\\|MEDIUM\\|LOW`（规则或 AI 置信，可空）；**只表识别来源与置信，无金额语义**；AI 结果只预填、不覆盖手填（§4.9/§7.9） | 下单/`order.correct`（按已确认识别结果写） | 双方（来源）/admin | L1 |",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "| `partner.saveServiceConfig` | `{serviceConfig}`（§2.3.1 白名单，**无价格字段**）→ `{serviceConfig}` | 该兼职 ACTIVE | 字段级幂等 | `PARTNER_CLOSED`/`VALIDATION_FAILED` |",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "| `service` | object | 是 | **只有** `{code,name}`；code∈5 服务码、name 为下单时服务名称快照；**无价格/金额字段** | 下单 | 双方 | L1 |",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "| `serviceCatalog` | object[] | 是 | **只有** `{code,name,desc}`；5 默认服务模板；**无价格/金额字段** | `admin.updateConfig` | 顾客/兼职（公开子集） | L1 |",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "| `serviceConfig` | object | 是 | §2.3.1；MVP 只实现 `services/zones/acceptingOrders`；**无价格字段** | `partner.saveServiceConfig` | 公开预览（仅启用的服务码/范围/接单开关）/本人 | L1 |",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "| `templateCode` | string | 否 | 快捷模板码；**模板只含状态/地址/时间类话术，无金额模板**；无则 null | `message.send` | 双方 | L1 |",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "| `type` | string | 是 | **16 种**事件（§8.4；无任何支付/收款类） | 同上 | 双方（裁剪） | L1 |",
+    "reason": "口径声明：不涉及金额/无金额语义的声明行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "| 1 | 零金额字段删除（orders 金额字段、`service` 只 `{code,name}`；stats 去收入；config/serviceCatalog/serviceConfig/模板去金额） | §0.3/§2.3/§2.3.1/§2.5/§2.10/§3/§4.8 块 A/§7.5 |",
+    "reason": "口径声明：零金额/零金钱政策声明行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "| 12 | 零金额断言 | `order.create` 传 `fee/price/addons/payStatus` 等未知字段；调 `order.markPaid` | `VALIDATION_FAILED`（`data.field`/action 未登记），库中无金额字段 |",
+    "reason": "口径声明：零金额/零金钱政策声明行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "| 15 | `serviceConfig` 去价格（`services[{code,enabled}]`/`zones`/`acceptingOrders`）；`config.viewTicketTtlMinutes` | §2.3.1/§2.10/§6.3/§7.7 |",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "| 17 | 头部版本/依据改 CONTRACT v0.7；旧 v0.6 收款/激活码口径标注作废 | 文首/§13.2 |",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "| 2 | `config` 增 `recognitionFailureRetentionDays`（7~30 默认 30，**可后台配**）与 `aiFallback{enabled,model,timeoutMs,maxPerUserPerDay,dailyQuota,cooldownMinutes}`（无金额、无 Key、不下发客户端；**MVP 后台只读展示、`admin.updateConfig` 白名单不含、改值走部署脚本/控制台**） | §2.10/§6.5/§7.6/§7.9 |",
+    "reason": "口径声明：不涉及金额/无金额语义的声明行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "| 兼职历史订单/单量统计 | `partnerId=me + status=COMPLETED` 按 `completedAt desc`（CANCELLED 按 `cancelledAt desc`）→ 20/页；`order.listPartner({view:'history',from,to})` 分页 + `counts` → 客户端按页累加**单量**（`stats` 只含单量，**不做金额/结算，不新增聚合云函数**） |",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "| 任何金额/支付/收款/运费/价格操作 | — | — | **不存在（零金额）** |",
+    "reason": "口径声明：零金额/零金钱政策声明行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "读屏蔽：客户端不直读；`config.getPublic` 返回 `{zoneLabels,serviceCatalog,announcement,maintenance,privacyVersion,orderTimeoutMinutes,autoCompleteHours,screenshotRetentionDays,avatarMaxBytes,subscribeEnabled}`（`serviceCatalog` 无金额；**不含 `viewTicketTtlMinutes`/`recognitionFailureRetentionDays`/`aiFallback`/`testAccountMaxPerRole`/`testDataRetentionDays`/`subscribeTemplates`**）；`user.bootstrap` 内联同一 `configPublic`；admin 读配置由 `admin.stats` 复合返回（§7.6，`aiFallback` 只读展示）。`recognitionFailureRetentionDays`/`avatarMaxBytes`/`testAccountMaxPerRole`/`testDataRetentionDays`/`viewTicketTtlMinutes` 由 `admin.updateConfig` 白名单维护（逐项范围校验，改动落 `admin_audit{CONFIG_UPDATE}`）；**`aiFallback` 的写入不在 `admin.updateConfig` 白名单内**（MVP 只读；改值走部署配置脚本/控制台并同步隐私文本）。",
+    "reason": "口径声明：不涉及金额/无金额语义的声明行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "统一 schema 校验（长度/字符集/枚举/数字范围/时间格式），**未登记字段拒绝**并带 `data.field`（任何金额键因此天然被拒）；`pickupCode/trackingTail/lockerNo` 形态闸复用 v3 规则（`utils/parse.js`+`utils/migrate.js`，v4 纯函数移植+单测）；编号输入走 `utils/ids.js`（格式/前缀/容错提示，CONTRACT §12）；留言/`note`/`deliveryNote`/`cancelReason` 过 `security.msgSecCheck` v2（失败 `VALIDATION_FAILED` + `data.field='text'/'note'`）；**昵称 `displayName`（顾客/兼职）必过 `security.msgSecCheck` v2**（≤20 字截断后送检，失败 `data.field='displayName'`）；**头像**校验 `purpose='AVATAR'`/路径前缀/≤`config.avatarMaxBytes`（默认 200KB）/jpg\\|png/可解码（`chooseAvatar` 来源由微信平台审核；允许自定义上传才需补 `security.mediaCheckAsync`，[P1]）；截图 [P1] 过 `security.mediaCheckAsync`，未过审兼职端标“待审”（CONTRACT §11.3）。",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "允许冗余（写时快照、之后不可变）：`orders.dorm.*`（来源 customers+当前 binding.roomTag，下单写，匿名化置空）｜`orders.guest.*`（代客单填写，下单写，匿名化置空）｜`orders.phoneTail`（同源快照，匿名化置空；**v0.9 起订单不存昵称/头像快照**，对方昵称/头像按当前 ACTIVE 绑定关系现查）｜`orders.parcel.*`（截图识别/用户确认，仅 `order.correct` 可改，匿名化清码/尾号/柜号/站名、保留 stationId）｜`orders.service.{code,name}`（下单快照，服务改名不影响历史单，**无金额**）｜`bindings.dormSnapshot`（绑定成功写死，换宿舍走重绑，注销随绑定清理）｜`order_events.orderNo`（对账快照）｜`orders.customerOpenid/partnerOpenid`（身份快照，匿名化清空）｜**`orders.customerNo/partnerNo`（编号快照，下单/接单时写，仅展示与后台搜索，不参与鉴权，匿名化清空）**｜`orders.parcel.recognitionSource/confidence`（v0.8 识别写入时快照：手改过字段→`MANUAL`、AI 兜底被采纳→`DEEPSEEK`、规则直接可用→`RULE`；**AI 不覆盖用户手填**）｜`orders.image.failureId`（**本单自己**的 `recognition_failures._id`，一次关联；同图多单各自独立；不复制原图/OCR 文本，cleanup 清空）｜**`orders.isTest`（参与账号 `isTestAccount` 快照，服务端派生、写一次不改）与 `orders.impersonatedBy`（`TEST_WRITE` 会话 `developerNo`，真实流程空）**。",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "if !role → FORBIDDEN; req=validate(spec.schema,data)   # 未知字段拒绝（含金额键），失败带 data.field",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "svc=pickEnabledService(partner.serviceConfig,input.serviceCode); appoint=validateAppoint(input.appoint,now)   # svc={code,name}，无金额",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/V4_DECISIONS.md",
+    "string": "- **A（已定）零金钱**：程序内不存在任何金额字段、金额计算、支付/收款/结算流程与文案；订单只有状态与信息；用户体验为\"下单—接单—取件—送达—完成\"。",
+    "reason": "口径声明：零金额/零金钱政策声明行"
+  },
+  {
+    "file": "docs/V4_DECISIONS.md",
+    "string": "- **A（已定）只定义服务类型**：开发者给默认 5 类模板（标准代取/送寝上门/加急代取/代寄/其他代办），兼职启用/停用并设接单范围；订单只快照 `service{code,name}`；**无价格字段、无金额计算、无报价**。",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/V4_DECISIONS.md",
+    "string": "- B 平台统一定价：与\"不负责价格表\"直接冲突，作废。",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/V4_DECISIONS.md",
+    "string": "- C 线下收款记账：仍会在程序内记录金钱，违反\"不涉及金钱交易\"，作废。",
+    "reason": "口径声明：不涉及金额/无金额语义的声明行"
+  },
+  {
+    "file": "docs/V4_DECISIONS.md",
+    "string": "**背景**：用户 2026-10-21 二次修订明确：本程序只负责顾客下单、兼职接单、信息整理（取件码与站点），**不负责运费计算、价格表等一切**。原 v0.6 的\"兼职定价/金额快照/分存\"方案作废。",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/V4_DECISIONS.md",
+    "string": "**背景**：用户 2026-10-21 二次修订明确：程序**不涉及金钱交易**——不做在线支付、收款、记账、结算，不计算运费，不做价格表等一切。原 v0.6 \"线下收款记账 + payStatus + 结算文本\"方案全部删除。",
+    "reason": "口径声明：不涉及金额/无金额语义的声明行"
+  },
+  {
+    "file": "docs/V4_DECISIONS.md",
+    "string": "**代价如实记**：1) 程序不提供收款凭证/账单；2) 双方费用相关事宜完全在程序外自理，程序不介入；3) 未来若做支付另立项目。",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/V4_DECISIONS.md",
+    "string": "**代价如实记**：1) 代客单的顾客资料由兼职录入，准确性由兼职负责；2) **MVP 未绑定顾客看不到代客单进度**（认领卡片列 P1），需兼职口头分享绑定卡片补充；3) 代客单与顾客单在**单量统计**上要分开口径（无收入/金额口径）；4) 代客单不带来绑定，兼职仍需顾客本人绑定后才能接其后续订单。",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/V4_DECISIONS.md",
+    "string": "**代价如实记**：1) 双方费用沟通完全在程序外（本程序不记录、不展示）；2) 未来若要做价格/费用，需另立项目并重新过合规。",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/V4_DECISIONS.md",
+    "string": "**理由**：1) 用户硬口径优先；2) 服务类型仍足以表达\"做什么\"，不影响下单/履约/验收；3) 避免任何金额合规与纠纷面。",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/V4_DECISIONS.md",
+    "string": "**落了什么（v0.7）**：`config.serviceCatalog[{code,name,desc}]`（无价格）+ `partner.serviceConfig.services[{code,enabled}]` + 服务设置页\"服务类型与范围\" + 零金额门禁（禁止 `price/fee/Fen/金额/价格/运费` 字段与文案）。",
+    "reason": "门禁定义块：零金额门禁/词表/判据定义行"
+  },
+  {
+    "file": "docs/V4_DECISIONS.md",
+    "string": "**落了什么（v0.7）**：删除 `fee/payStatus/markPaid/unmarkPaid/PAYMENT_*`、结算页、收入统计、价格设置、`PRICE_ISSUE/PAYMENT_TIMEOUT` 取消原因、隐私文本金额项；新增零金额门禁 + UI 口径声明\"本程序不涉及任何费用收付\"。",
+    "reason": "门禁定义块：零金额门禁/词表/判据定义行"
+  },
+  {
+    "file": "docs/V4_DECISIONS.md",
+    "string": "## D5 · 服务目录（**无价格**；已按用户指示关闭）",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/V4_DECISIONS.md",
+    "string": "| D5 | 服务只分类型（标准/送寝/加急/代寄/其他），**不含价格** | ✅ 已按用户指示定（2026-10-21 二次修订） | ✅ 已关闭 |",
+    "reason": "口径声明：不涉及金额/无金额语义的声明行"
+  },
+  {
+    "file": "docs/V4_DECISIONS.md",
+    "string": "| D5 | 兼职定价、金额分存 | **服务只分类型，无价格**（用户已定） |",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "docs/V4_DECISIONS.md",
+    "string": "| D6 | **零金钱交易**：不做支付/收款/记账/结算/运费计算/价格表/任何金额 | ✅ 已按用户指示定（2026-10-21 二次修订） | ✅ 已关闭 |",
+    "reason": "口径声明：零金额/零金钱政策声明行"
+  },
+  {
+    "file": "docs/V4_DECISIONS.md",
+    "string": "| D6 | 不做在线支付、线下收款记账 | **零金钱交易**：无支付/收款/记账/结算/运费/价格表（用户已定） |",
+    "reason": "口径声明：零金额/零金钱政策声明行"
+  },
+  {
+    "file": "docs/V4_ENGINEERING.md",
+    "string": "- **词表（唯一单源，写在 `tools/zero-money-scan.js`）**：中文 `金额`（**例外**：固定术语「零金额」整体放行）、`价格`、`运费`、`收款`、`结算`；英文大小写不敏感 token：`price(s)`、`fee(s)`、`pay`/`pays`/`paid`/`payment(s)`/`payStatus`、`amount(s)`、以及标识符后缀 `*Fen`（如 `totalFen`）。英文按 token/标识符边界匹配，**不因子串误报**（`payload` 等不是命中，但词表本身不放宽）。",
+    "reason": "门禁定义块：零金额门禁/词表/判据定义行"
+  },
+  {
+    "file": "docs/V4_UX_CUSTOMER.md",
+    "string": "- [ ] AC-C-49 **零金钱扫描**：顾客端 WXML/JS/页面文案扫描 `Fen|price|fee|pay|金额|价格|运费|收款|结算` 命中 = 0（白名单仅：本页零金钱声明文本「本程序不涉及任何费用收付」，以及本条门禁词表本身）。",
+    "reason": "门禁定义块：零金额门禁/词表/判据定义行"
+  },
+  {
+    "file": "README.md",
+    "string": "- **兼职人员**：凭**开发者发放的邀请码**开通 → 采集**头像/昵称** → 获得**兼职编号** → 沿用 v3 按驿站站点聚合的取件清单 → 接单/取件/送达/异常处理 → 单量统计；**只能看到绑定自己的顾客与订单**，**不能绑定顾客、只能分享绑定卡片邀请顾客自己绑定**。**无收款/结算/收入功能**。",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "README.md",
+    "string": "- **已按你的指示关闭**：D5（服务只分类型、不含价格）、D6（零金钱交易，不算运费、无价格表）、D20（绑定只能顾客发起）、D21（roomTag 恒大写）。",
+    "reason": "口径声明：零金额/零金钱政策声明行"
+  },
+  {
+    "file": "README.md",
+    "string": "- 复用 v3 的纯逻辑资产（OCR/取件码解析/站点/楼栋/门禁思路），但**丢弃** chatpick 会话键、本机单键存储、无账号模型、以及任何收款/金额相关实现。",
+    "reason": "门禁定义块：零金额门禁/词表/判据定义行"
+  },
+  {
+    "file": "README.md",
+    "string": "**本期不做**：任何金钱/支付/收费/运费/价格相关；地图路线规划；自动派单/抢单市场；多校区；评分评价（P2）；快递公司接口/电子面单；**真实账号可写视角**（只读；可写只给测试账号）；**应用内切换微信登录账号**（平台不支持）；**真实账号与测试账号互绑/互下单**（严格隔离）；客户端直连第三方 AI（Key 只允许在云函数环境变量）；把原图直传第三方（DeepSeek 当前无视觉 API，原图只留私有云存储供复核）。",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "README.md",
+    "string": "**零金钱口径（用户硬性要求）**：不做在线支付、收款、记账、结算，**不计算运费、不做价格表、不出现任何金额字段/计算/文案**；服务只保留\"服务类型\"（做什么），不表达\"多少钱\"。",
+    "reason": "口径声明：零金额/零金钱政策声明行"
+  },
+  {
+    "file": "V4_REBUILD_SPEC.md",
+    "string": "- **丢弃**：`chatpick/`、`chat-tool.js`、`storage-*.js`、`migrate.js`、v3 旧断言、v3 的\"只存本机/不上传\"承诺与隐私文本、任何收款/结算/金额相关实现或文案。",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "V4_REBUILD_SPEC.md",
+    "string": "- **改造**：`aggregate*.js`（Parcel→Order 视图；删除收款/金额相关）、`customer-input.js`、`parcel-edit.js`、`privacy.js`。",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "V4_REBUILD_SPEC.md",
+    "string": "- **零金额门禁**：扫描 `Fen|price|fee|pay|amount|金额|价格|费用|运费|收款|结算|支付`，命中即失败（唯一白名单：\"本程序不涉及任何费用收付\"声明文本，单独登记）。",
+    "reason": "门禁定义块：零金额门禁/词表/判据定义行"
+  },
+  {
+    "file": "V4_REBUILD_SPEC.md",
+    "string": "- 场景 C·运营：客户档案（显示绑定顾客的**头像/昵称**、顾客编号与 roomTag）、服务类型与范围、单量统计、异常上报、消息通知、绑定卡片分享；**兼职不能绑定顾客，只能分享卡片邀请顾客自己绑定**；**无收款/结算/收入功能**。",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "V4_REBUILD_SPEC.md",
+    "string": "- 服务：`service{code,name}` 快照；**无价格、无金额字段**。",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "V4_REBUILD_SPEC.md",
+    "string": "- 集合：`users`、`customers`、`partners`、`bindings`、`orders`、`order_events`、`order_messages`、`invitation_codes`、`admin_view_sessions`、`counters`、`config`、`admin_audit`、`upload_tickets`、`recognition_failures`（v0.8 第 14 个，字段级见 `docs/V4_DATA_MODEL.md`；**无金额相关集合/字段**）。",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "V4_REBUILD_SPEC.md",
+    "string": "- 兼职分包 `pkg-partner`：邀请码激活（昵称+头像可跳过）、订单详情、代客下单、顾客详情（顾客头像/昵称）、服务类型与范围、单量统计、消息（**无结算页**）。",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "V4_REBUILD_SPEC.md",
+    "string": "- 识别兜底（v0.8）：`orders.parcel.recognitionSource(RULE|DEEPSEEK|MANUAL)`、`confidence?`、`orders.image.failureId?`；`recognition_failures{failureNo,failureCode,status,fileId,uploaderOpenid,ocrTextMasked,aiResult,resolution,retentionDays}`；`config.aiFallback{enabled,model,timeoutMs,maxPerUserPerDay,dailyQuota,cooldownMinutes}`；**均无金额语义**。",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "V4_REBUILD_SPEC.md",
+    "string": "**本期不做**：任何金钱/支付/收费/运费/价格相关；地图路线规划；自动派单/多兼职抢单市场；多校区；评分评价（P2）；快递公司接口/电子面单；原生客服 IM（用订单留言 + 订阅消息/红点）；**真实账号可写视角**（只读，可写只给测试账号）；**应用内切换登录微信账号本身**（平台不支持）；**真实账号与测试账号互绑/互下单**（严格隔离）。",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "V4_REBUILD_SPEC.md",
+    "string": "**零金钱（用户硬口径）**：本程序**不涉及任何金钱交易**——不做在线支付、收款、记账、结算，**不计算运费、不做价格表、不出现任何金额字段/计算/文案**。服务只保留\"服务类型\"（做什么），不表达\"多少钱\"。",
+    "reason": "口径声明：零金额/零金钱政策声明行"
+  },
+  {
+    "file": "V4_REBUILD_SPEC.md",
+    "string": "**无任何支付/收款/结算/价格实体或字段。**",
+    "reason": "口径声明：不涉及金额/无金额语义的声明行"
+  },
+  {
+    "file": "V4_REBUILD_SPEC.md",
+    "string": "| 5 | 程序只负责下单/接单/信息整理，不涉及金钱交易、不负责运费计算与价格表 | 零金额口径：删支付/收款/记账/结算/运费/价格/金额；服务只留类型 | 零金额机器扫描（0 命中）+ UI 口径声明 |",
+    "reason": "门禁定义块：零金额门禁/词表/判据定义行"
+  },
+  {
+    "file": "V4_REBUILD_SPEC.md",
+    "string": "| 服务 | 无服务/价格/收费 | **只有服务类型，无价格、无费用、无运费** |",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "V4_REBUILD_SPEC.md",
+    "string": "| 金额/收款逻辑曾混入业务 | v4 从口径层禁止金额；零金额门禁机器扫描 |",
+    "reason": "门禁定义块：零金额门禁/词表/判据定义行"
+  },
+  {
+    "file": "V4_REBUILD_SPEC.md",
+    "string": "| 零金额 | 本程序不涉及任何金钱交易：无支付/收款/记账/结算/运费/价格/金额 |",
+    "reason": "口径声明：零金额/零金钱政策声明行"
+  },
+  {
+    "file": "V4_REBUILD_SPEC.md",
+    "string": "| 零金额 | 源码/UI 文案/数据库字段扫描无 `Fen/price/fee/pay/amount/金额/价格/运费/收款/结算`；无结算入口；服务类型无价格 | 门禁扫描 + 人工走查 |",
+    "reason": "门禁定义块：零金额门禁/词表/判据定义行"
+  },
+  {
+    "file": "V4_REBUILD_SPEC.md",
+    "string": "| 批 7 | 兼职客户与运营 | 客户档案/详情（**顾客头像/昵称**、顾客编号/roomTag）、代客下单（不产生绑定）、单量统计、绑定卡片分享/解绑 | 批 6 | 代客单→顾客自己绑定→看进度闭环；统计无金额；解绑后头像昵称消失 |",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "V4_REBUILD_SPEC.md",
+    "string": "| D5 | 服务只分类型，**不含价格**（用户已定） | ✅ 已关闭 | — |",
+    "reason": "口径声明：不涉及金额/无金额语义的声明行"
+  },
+  {
+    "file": "V4_REBUILD_SPEC.md",
+    "string": "| D6 | **零金钱交易**：无支付/收款/记账/结算/运费/价格表（用户已定） | ✅ 已关闭 | — |",
+    "reason": "口径声明：零金额/零金钱政策声明行"
+  },
+  {
+    "file": "V4_REBUILD_SPEC.md",
+    "string": "2. **零金额**：程序内不存在金额、价格、运费、收款、结算、支付语义；服务只描述\"做什么\"。",
+    "reason": "口径声明：零金额/零金钱政策声明行"
+  },
+  {
+    "file": "V4_REBUILD_SPEC.md",
+    "string": "2. 程序只做下单/接单/信息整理（取件码与站点）；**零金钱，不算运费，无价格表**。",
+    "reason": "口径声明：零金额/零金钱政策声明行"
+  },
+  {
+    "file": "V4_REBUILD_SPEC.md",
+    "string": "5. **零金钱**：程序内无金额字段、无价格表、无运费计算、无支付/收款/记账/结算；UI 无金额文案（机器扫描为门禁）。",
+    "reason": "门禁定义块：零金额门禁/词表/判据定义行"
+  },
+  {
+    "file": "V4_REBUILD_SPEC.md",
+    "string": "6. **选择服务类型**：仅展示绑定兼职已启用的类型（标准代取/送寝上门/加急/代寄/其他），可选预约时段/备注；**不展示任何价格、费用、金额**。",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "V4_REBUILD_SPEC.md",
+    "string": "7. **单量统计**：今日/本周完成单量、状态分布、异常数；**无收入/收款/结算/金额**。",
+    "reason": "口径声明：无金额语义的说明行"
+  },
+  {
+    "file": "V4_REBUILD_SPEC.md",
+    "string": "9. **零金钱提示**：确认页/帮助页固定一句「本程序不涉及任何费用收付」；不出现价格/运费/合计等任何金额。",
+    "reason": "口径声明：零金额/零金钱政策声明行"
+  },
+  {
+    "file": "V4_REBUILD_SPEC.md",
+    "string": "七状态：`SUBMITTED`（待接单）→ `ACCEPTED`（已接单）→ `PICKED`（已取件·配送中）→ `DELIVERED`（已送达·待确认）→ `COMPLETED`（已完成）；旁路 `CANCELLED`（已取消）、`EXCEPTION`（异常·待处理）。子状态：`codeStatus='NEED_CODE'`、`urgent`（仅服务类型语义）。**无任何支付/收款子状态**。超时/自动完成/异常解除/非法转移规则见 CONTRACT §5 与 DATA_MODEL 转移矩阵。",
+    "reason": "口径声明：不涉及金额/无金额语义的声明行"
+  },
+  {
+    "file": "V4_REBUILD_SPEC.md",
+    "string": "收集：openid、**顾客/兼职唯一编号**、**微信昵称（必填，可改/手填）与微信头像（`chooseAvatar`，可拒绝→默认头像；v0.9）**、宿舍身份（苑/楼栋/宿舍号）、可选手机尾号 4 位、订单信息（站点/取件码/柜号/服务类型/预约/备注）、取件码截图、订单留言、邀请码使用记录、开发者访问/切换审计日志、**识别失败记录与原图引用（30 天，v0.8）**、**测试账号数据（后台合成、不含真实微信资料；30 天清理，v0.9）**（**不收集任何支付/金额信息**）。期限：订单 180 天、截图 7 天、**识别失败原图/记录 30 天**、**头像账号存续期（换头像删旧、注销删）**、**测试数据 30 天**、账号存续期、审计日志 ≥180 天。永不收集：完整手机号、定位、通讯录、身份证、支付信息。**外发例外（v0.8）**：仅识别失败时把去敏 OCR 文本发 DeepSeek API（不含原图/openid/头像/昵称，不用于训练）。",
+    "reason": "口径声明：不涉及金额/无金额语义的声明行"
+  }
+]

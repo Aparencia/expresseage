@@ -1,0 +1,48 @@
+/* pkg-partner/pages/customer-detail/index.wxss · 顾客档案局部样式 */
+.head-card {
+  padding-bottom: 16rpx;
+}
+
+.head-main {
+  margin-left: 20rpx;
+  min-width: 0;
+}
+
+.number-row {
+  margin-top: 6rpx;
+  color: #2B6DE5;
+}
+
+.mini-btn {
+  min-height: 64rpx;
+  padding: 0 20rpx;
+  font-size: 26rpx;
+}
+
+.note-input {
+  width: 100%;
+  min-height: 140rpx;
+  box-sizing: border-box;
+  padding: 16rpx;
+  background: #F6F7F9;
+  border-radius: 12rpx;
+  font-size: 28rpx;
+}
+
+.note-actions {
+  justify-content: flex-end;
+  margin-top: 16rpx;
+}
+
+.note-actions .mini-btn {
+  margin-left: 16rpx;
+}
+
+.order-line {
+  padding: 20rpx 0;
+  border-bottom: 1rpx solid #EEEEEE;
+}
+
+.bind-note {
+  background: #F6F7F9;
+}

@@ -1,0 +1,34 @@
+.form-field {
+  border-bottom: 1rpx solid #EEEEEE;
+}
+
+.form-field-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  min-height: 96rpx;
+}
+
+.form-field-label {
+  width: 180rpx;
+  flex-shrink: 0;
+  font-size: 30rpx;
+  color: #666666;
+}
+
+.form-field-required {
+  color: #E54D42;
+  margin-right: 4rpx;
+}
+
+.form-field-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 30rpx;
+}
+
+.form-field-error {
+  font-size: 24rpx;
+  color: #E54D42;
+  padding: 0 0 12rpx 180rpx;
+}

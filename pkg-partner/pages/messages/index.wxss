@@ -1,0 +1,33 @@
+/* pkg-partner/pages/messages/index.wxss · 消息中心局部样式 */
+.msg-head {
+  padding: 8rpx 0 24rpx;
+}
+
+.mark-read {
+  min-height: 64rpx;
+  padding: 0 20rpx;
+  font-size: 26rpx;
+}
+
+.msg-item {
+  position: relative;
+}
+
+.msg-dot {
+  width: 16rpx;
+  height: 16rpx;
+  border-radius: 8rpx;
+  background: #E54D42;
+  margin-right: 12rpx;
+  flex-shrink: 0;
+}
+
+.msg-text {
+  margin: 12rpx 0;
+  word-break: break-all;
+}
+
+.msg-more {
+  text-align: center;
+  padding: 24rpx 0;
+}

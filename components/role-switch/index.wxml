@@ -1,0 +1,4 @@
+<view class="role-switch">
+  <view class="role-switch-item {{activeRole === 'CUSTOMER' ? 'role-switch-active' : ''}}" data-role="CUSTOMER" bindtap="onSelect">顾客</view>
+  <view class="role-switch-item {{activeRole === 'PARTNER' ? 'role-switch-active' : ''}}" data-role="PARTNER" bindtap="onSelect">兼职</view>
+</view>

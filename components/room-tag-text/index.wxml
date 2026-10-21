@@ -1,0 +1,1 @@
+<text wx:if="{{text}}" class="room-tag">{{text}}</text>

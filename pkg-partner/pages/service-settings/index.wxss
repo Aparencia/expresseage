@@ -1,0 +1,54 @@
+/* pkg-partner/pages/service-settings/index.wxss · 服务设置局部样式 */
+.head-title {
+  padding: 8rpx 0 24rpx;
+}
+
+.first-tip {
+  background: #FFF4CE;
+}
+
+.service-row {
+  display: flex;
+  align-items: flex-start;
+  padding: 20rpx 0;
+  border-bottom: 1rpx solid #EEEEEE;
+}
+
+.service-main {
+  margin-left: 16rpx;
+}
+
+.zone-row {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.zone-tag {
+  min-height: 64rpx;
+  line-height: 64rpx;
+  padding: 0 28rpx;
+  border-radius: 32rpx;
+  border: 2rpx solid #D9DEE5;
+  color: #666666;
+  font-size: 26rpx;
+  margin: 0 16rpx 16rpx 0;
+}
+
+.zone-tag-active {
+  border-color: #2B6DE5;
+  background: #E8F0FF;
+  color: #2B6DE5;
+}
+
+.zone-note {
+  margin-top: 8rpx;
+}
+
+.error {
+  margin-bottom: 16rpx;
+  padding: 16rpx 20rpx;
+  border-radius: 12rpx;
+  background: #FDECEA;
+  color: #E54D42;
+  font-size: 26rpx;
+}

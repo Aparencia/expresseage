@@ -1,0 +1,24 @@
+/* pkg-customer/pages/bind/index.wxss */
+.bind-actions {
+  margin-top: 24rpx;
+  gap: 20rpx;
+}
+
+.btn-half {
+  flex: 1;
+}
+
+.hint-text {
+  margin-top: 16rpx;
+  color: var(--v4-warning);
+}
+
+.error-text {
+  margin-top: 16rpx;
+  color: var(--v4-danger);
+}
+
+.bind-tip {
+  margin-top: 32rpx;
+  text-align: center;
+}

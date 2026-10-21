@@ -1,0 +1,30 @@
+<!-- pkg-partner/pages/messages/index.wxml · 消息中心 -->
+<view class="page-body">
+  <switch-bar />
+  <view class="row between msg-head">
+    <view class="title">消息</view>
+    <view class="btn btn-ghost mark-read" bindtap="onMarkAllRead">全部已读</view>
+  </view>
+
+  <view wx:if="{{loading}}" class="empty-text">加载中…</view>
+  <view wx:elif="{{error}}" class="card">
+    <empty-state text="{{error}}" actionText="重试" bind:action="loadList" />
+  </view>
+  <view wx:elif="{{!list.length}}" class="card">
+    <empty-state text="还没有消息" />
+  </view>
+
+  <view wx:for="{{list}}" wx:key="id" class="card msg-item" data-index="{{index}}" bindtap="onItemTap">
+    <view class="row between">
+      <view class="row flex-1">
+        <view wx:if="{{item.unread}}" class="msg-dot"></view>
+        <view class="strong ellipsis">{{item.title}}</view>
+      </view>
+      <view class="small">{{item.atText}}</view>
+    </view>
+    <view class="subtitle msg-text">{{item.text}}</view>
+    <view wx:if="{{item.orderNo}}" class="small">订单 {{item.orderNo}} ›</view>
+  </view>
+
+  <view wx:if="{{loadingMore}}" class="small msg-more">加载中…</view>
+</view>

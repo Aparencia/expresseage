@@ -1,0 +1,42 @@
+.status-pill {
+  display: inline-block;
+  padding: 4rpx 14rpx;
+  border-radius: 8rpx;
+  font-size: 22rpx;
+  line-height: 1.4;
+}
+
+.status-pending {
+  background: #EDF2F7;
+  color: #5B7B9A;
+}
+
+.status-accepted {
+  background: #E8F0FF;
+  color: #2B6DE5;
+}
+
+.status-picked {
+  background: #FDF0E6;
+  color: #F2994A;
+}
+
+.status-delivered {
+  background: #E8F0EA;
+  color: #1F7A5C;
+}
+
+.status-completed {
+  background: #1F7A5C;
+  color: #FFFFFF;
+}
+
+.status-cancelled {
+  background: #F0F0F0;
+  color: #999999;
+}
+
+.status-exception {
+  background: #FDECEA;
+  color: #E54D42;
+}

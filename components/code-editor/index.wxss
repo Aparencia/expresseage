@@ -1,0 +1,13 @@
+.code-editor {
+  flex: 1;
+  min-width: 0;
+}
+
+.code-editor-input {
+  min-height: 64rpx;
+  padding: 8rpx 16rpx;
+  border-radius: 8rpx;
+  background: #F6F7F9;
+  font-size: 28rpx;
+  font-family: Menlo, Consolas, "Courier New", monospace;
+}

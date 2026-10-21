@@ -1,0 +1,4 @@
+<view class="id-text" bindtap="onCopy">
+  <text class="id-no">{{display || no}}</text>
+  <text wx:if="{{display}}" class="id-copy">复制</text>
+</view>

@@ -1,0 +1,29 @@
+/* pages/role/index.wxss · 身份选择页（只用页面级类；通用样式走 app.wxss） */
+.role-hero {
+  padding: 48rpx 8rpx 32rpx;
+}
+
+.role-cards {
+  display: flex;
+  flex-direction: row;
+  gap: 24rpx;
+}
+
+.role-card {
+  flex: 1;
+  min-height: 220rpx;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.role-action {
+  margin-top: 24rpx;
+  font-size: 26rpx;
+  color: var(--v4-brand);
+}
+
+.role-tip {
+  margin: 8rpx 0 24rpx;
+  text-align: center;
+}

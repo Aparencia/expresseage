@@ -1,0 +1,31 @@
+.avatar-wrap {
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: #F0F2F5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.avatar-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  display: block;
+}
+
+.avatar-default {
+  width: 100%;
+  height: 100%;
+  background: #E8F0EA;
+  color: #1F7A5C;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.avatar-initial {
+  font-size: 44%;
+  font-weight: 600;
+}

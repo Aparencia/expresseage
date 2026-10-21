@@ -1,0 +1,6 @@
+<view class="avatar-wrap" style="width:{{size}}rpx;height:{{size}}rpx;">
+  <image wx:if="{{fileId && !failed}}" class="avatar-img" src="{{fileId}}" mode="aspectFill" binderror="onError" />
+  <view wx:else class="avatar-default">
+    <text class="avatar-initial">{{initial}}</text>
+  </view>
+</view>
