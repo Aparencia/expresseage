@@ -226,10 +226,10 @@ function defineRefSets() {
   (eText.match(/\bE(\d{1,2})\b/g) || []).forEach((m) => eDefined.add(Number(m.slice(1))));
   return { dDefined, eDefined };
 }
-check(5, 'D#/E# 引用可解析（D1~D21；E1~E18）', () => {
+check(5, 'D#/E# 引用可解析（D1~D22；E1~E18）', () => {
   const { dDefined, eDefined } = defineRefSets();
   const out = [];
-  if (dDefined.size !== 21) out.push('CONTRACT §13 D 条目数 ' + dDefined.size + ' ≠ 21');
+  if (dDefined.size !== 22) out.push('CONTRACT §13 D 条目数 ' + dDefined.size + ' ≠ 22');
   [1, 2].forEach((i) => {
     if (!dDefined.has(i)) out.push('CONTRACT §13 缺 D' + i);
   });
@@ -238,7 +238,7 @@ check(5, 'D#/E# 引用可解析（D1~D21；E1~E18）', () => {
     const s = text(rel) || '';
     (s.match(/\bD(\d{1,2})\b/g) || []).forEach((tok) => {
       const n = Number(tok.slice(1));
-      if (n < 1 || n > 21) out.push(rel + ': D' + n + ' 越界（D1~D21）');
+      if (n < 1 || n > 22) out.push(rel + ': D' + n + ' 越界（D1~D22）');
     });
     (s.match(/\bE(\d{1,2})\b/g) || []).forEach((tok) => {
       const n = Number(tok.slice(1));
@@ -380,9 +380,9 @@ check(10, 'v0.9 文档一致性（旧口径禁词/审计枚举/roomTag 大写/�
     });
   });
   if (exempt) console.log('  · 旧口径历史修订说明行（带作废/清扫上下文）' + exempt + ' 处，按修订说明豁免');
-  // ② D# 引用可解析（复用 #5 的判定）
+  // ② D# 引用可解析（复用 #5 的判定：D1~D22，D22 起为批 4 登记的新待裁项）
   const { dDefined } = defineRefSets();
-  if (dDefined.size !== 21) out.push('CONTRACT §13 D 条目数 ≠ 21');
+  if (dDefined.size !== 22) out.push('CONTRACT §13 D 条目数 ≠ 22');
   // ③ 审计枚举：CONTRACT §4.2 列全 16 个；注册表（代码侧）集合相等
   const contract = text('docs/V4_CONTRACT.md') || '';
   const auditSection = (contract.match(/\*\*admin 审计\*\*[^\n]*/) || [''])[0];

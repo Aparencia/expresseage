@@ -1,5 +1,5 @@
 # V4_DATA_MODEL · v4 数据模型与安全隔离细节设计
-> 版本：v0.9-draft（2026-10-21）｜依据：`docs/V4_CONTRACT.md` **v0.9**（唯一口径）+ v3 只读调研报告｜状态：待 lead 审阅；用户裁决项见 §13.3（D1~D21）
+> 版本：v0.9-draft（2026-10-21）｜依据：`docs/V4_CONTRACT.md` **v0.9**（唯一口径）+ v3 只读调研报告｜状态：待 lead 审阅；用户裁决项见 §13.3（D1~D22）
 > v0.9 变更（用户四次修订五条 + 审计补丁）：⑥**绑定方向固化**——`bind.create` 仅 CUSTOMER 可调、**自绑拒绝**、代客单不写 `bindings`（§0.5/§2.4/§4.8C/§7.4/§12#33）；⑦**账号切换**——真实账号只读（`READONLY`）+ **测试账号可写**（`TEST_WRITE`；`users.isTestAccount`、**合成 openid `TEST-<random>`（`users._id`/`customers._id`/`partners.openid` 同值，非空串、不来自微信）**、仅测试账号互通、不计统计），后台「切换账号」+ 测试账号管理四动作（§0.5/§2.1/§2.13/§4.10/§7.6/§7.7）；⑧**roomTag 恒大写**——`A…Z/AA…`、展示 `D4-522A`、按大写字母序排序（§2.4/§4.1/§4.6/§9）；⑨**头像与微信昵称**——顾客/兼职均采集（`displayName` 必填 + `avatarFileId`，`upload.prepare({purpose:'AVATAR'})`、**路径 `avatars/{role}/{random}.jpg`（不含 openid）**、≤200KB、替换删旧/注销删文件），仅当前 ACTIVE 绑定双方可见、**绑定前 `partner.getPublic` 只回昵称不回头像**、后台不展示头像、卡片/通知不含（§0.5/§2.2/§2.3/§2.12/§7.3/§7.4/§10）；⑩**测试数据隔离**——`orders.isTest`（服务端按参与账号派生、禁客户端传）/`impersonatedBy`、`order_events.impersonatedBy`、统计/红点/邀请码/报表排除测试数据、30 天清理与 `purgeTestData` 安全闸（§0.5/§2.5/§2.6/§7.8/§10）。
 > v0.9 身份传播铁律：`actorOpenid`（真实开发者：白名单/会话/审计）与 `effectiveOpenid`（测试账号：业务身份/业务限流/`upload_tickets.openid`/`message.fromId`/`event.actorId`）**分离**；写动作交叉校验 `targetIsTest && viewTicket.targetId===effectiveOpenid`；删除测试账号须使其相关会话 `endedAt`（§0.5/§4.10/§6.1/§6.2）。
 > v0.9 另按 CONTRACT §14 第 9 条清扫旧口径（小写 roomTag、不收集头像、第二微信号验收、单账号等表述一律不保留），并吸收 CONTRACT §15 O1~O18 优化项（§13.1c 逐项落点）。
@@ -294,7 +294,7 @@ v0.7 关闭全部非 D 级缺口：零金额（§0.3）、双角色唯一编号�
 | `sourceRole` | string | 是 | `CUSTOMER`/`PARTNER`（上传者提交时的业务角色） | `ai.parseParcel` | admin | L1 |
 | `uploaderOpenid` | string | 是 | 上传者 openid（测试会话上传时=目标测试账号**合成 openid `TEST-<random>`**）；**永不返回客户端明文**（后台显示脱敏编号/昵称，仅审计内部可追溯） | `ai.parseParcel` | 内部/admin（脱敏） | L2 |
 | `uploadTicketId` | string | 是 | 上传票据标识=`upload_tickets.ticket` 值；入队时校验归属（非本人/过期仍入队供排查，记 `ruleResult.ticketInvalid=true`）；**不返回客户端** | `ai.parseParcel` | 内部/admin | L2 |
-| `fileId` | string | 是 | 原图云存储 `fileId`（与 `orders.image.fileId` 可同源共享；**同图多单/多条记录共享时按文件引用计数清理**；只经云函数临时 URL 查看，不落任何列表 DTO） | `ai.parseParcel` | admin（复核页临时 URL） | L3 |
+| `fileId` | string | 是 | 原图云存储 `fileId`（与 `orders.image.fileId` 可同源共享；**同图多单/多条记录共享时按文件引用计数清理**；只经云函数临时 URL 查看，不落任何列表 DTO）；**入队时可为 `''`**——`ai.parseParcel` 入参白名单不含 `fileId`（端侧只传 `uploadTicketId`），建单成功后由 `order.create/createBatch` 回填本单 `image.fileId`（未建单记录保持 `''`，复核页降级为无原图 `hasImage=false`，见 TECH_DEBT TD-019） | `ai.parseParcel`（入队）/`order.create`·`createBatch`（回填） | admin（复核页临时 URL） | L3 |
 | `orderId` | string | 否 | 关联订单 `orders._id`；**未建单时 `''`**，建单/补码后回填**本记录自己**那条订单（不返回客户端，后台展示 `orderNo`） | `ai.parseParcel`/`fixRecognitionFailure`（回填） | admin（显 `orderNo`） | L2 |
 | `ocrTextMasked` | string | 是 | 服务端二次去敏后的 OCR 文本，**≤2000 字**；掩码手机号/身份证/连续长数字，去掉详细门牌；不含原图 | `ai.parseParcel` | admin | L2 |
 | `ruleResult` | object | 是 | 端侧规则解析快照 `{stationId,stationName,pickupCode,trackingTail,lockerNo,codeStatus,conflicts[],ticketInvalid}`；`conflicts` 记冲突原因码（如 `STATION_MISMATCH/CODE_CONFLICT`） | `ai.parseParcel` | admin | L2 |
@@ -983,6 +983,6 @@ cleanup(serverNow):
 - [ ] 每个集合有读屏蔽口径；每个写动作有权限、幂等键、限流、错误码；重复请求返回 `duplicated:true`；错误码仅 13 个（AI 失败不占错误码）。
 - [ ] 索引覆盖 §5.2 每个查询路径（含编号搜索/邀请码/切换会话/**识别失败队列与到期清理**/**测试账号与测试数据清理**），分页禁止 skip；负向测试 **40 条**（§12：v0.7 26 + v0.8 6 + v0.9 8）覆盖越权/票据/前缀/编号/零金额/脱敏/复核/AI 外发与降级/绑定方向/真实×测试/头像昵称/测试隔离。
 - [ ] 留存/cleanup/注销/匿名化字段级可执行（§10，含邀请码/切换会话（`READONLY`/`TEST_WRITE`）/编号快照/**识别失败记录与原图引用到期、上传者注销匿名化**/**头像文件与测试数据 30 天清理、`purgeTestData`/`deleteTestAccount` 级联**）；v3→v4 映射与 D11 一致（§11，含 OCR 来源映射与头像/昵称/测试账号空库起）。
-- [ ] 与 CONTRACT v0.9 无冲突（冲突已按 v0.9 回填并在 §13.1c 逐项登记；审计补丁：合成 openid `TEST-<random>`、头像路径不含 openid、绑定前只回昵称、`actorOpenid/effectiveOpenid`、`ACCOUNT_SWITCH_*` 统管两种模式已吸收）；用户裁决项仅 §13.3（**D1~D21**）；无实现代码、无「略/TODO」占位。
+- [ ] 与 CONTRACT v0.9 无冲突（冲突已按 v0.9 回填并在 §13.1c 逐项登记；审计补丁：合成 openid `TEST-<random>`、头像路径不含 openid、绑定前只回昵称、`actorOpenid/effectiveOpenid`、`ACCOUNT_SWITCH_*` 统管两种模式已吸收）；用户裁决项仅 §13.3（**D1~D22**）；无实现代码、无「略/TODO」占位。
 
 *本文与 `docs/V4_CONTRACT.md` 冲突时以 CONTRACT 为准；CONTRACT 更新后本文需同步并记录版本变更。*

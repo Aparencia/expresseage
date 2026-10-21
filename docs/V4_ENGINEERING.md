@@ -1,6 +1,6 @@
 # V4_ENGINEERING · v4 工程结构 / 环境 / 测试 / 门禁 / 部署设计
 
-> 版本：v0.9 草案（2026-10-21，按 CONTRACT **v0.9** 四次修订回写：①**绑定方向固化**——只能顾客发起绑定，兼职无任何绑定入口，代客单不产生绑定，真实账号×测试账号互绑/互下单一律拒绝；②**开发者账号切换**——真实账号只读（`READONLY`）、**测试账号可写**（`TEST_WRITE`：后台创建合成测试账号（`openid='TEST-<random>'`，非真实微信），隔离/标记/排除统计/30 天清理），并写明"小程序不能切换微信登录账号"的平台限制；③**头像与昵称**——顾客/兼职均采集微信头像（`chooseAvatar`）与昵称（`nickname` 输入），仅绑定双方可见、默认头像兜底、后台/卡片/通知不展示；④**roomTag 恒大写**（`A…Z/AA…`，展示 `D4-522A`）；⑤新增门禁 #28~#31、风险 R23/R24）｜维护：lead｜状态：**待用户裁决 D1~D21（D5/D6 已定；D16/D17 三次修订；D18~D21 四次修订；平台实测 E5/E12、用户确认 E11）**
+> 版本：v0.9 草案（2026-10-21，按 CONTRACT **v0.9** 四次修订回写：①**绑定方向固化**——只能顾客发起绑定，兼职无任何绑定入口，代客单不产生绑定，真实账号×测试账号互绑/互下单一律拒绝；②**开发者账号切换**——真实账号只读（`READONLY`）、**测试账号可写**（`TEST_WRITE`：后台创建合成测试账号（`openid='TEST-<random>'`，非真实微信），隔离/标记/排除统计/30 天清理），并写明"小程序不能切换微信登录账号"的平台限制；③**头像与昵称**——顾客/兼职均采集微信头像（`chooseAvatar`）与昵称（`nickname` 输入），仅绑定双方可见、默认头像兜底、后台/卡片/通知不展示；④**roomTag 恒大写**（`A…Z/AA…`，展示 `D4-522A`）；⑤新增门禁 #28~#31、风险 R23/R24）｜维护：lead｜状态：**待用户裁决 D1~D22（D5/D6 已定；D16/D17 三次修订；D18~D21 四次修订；D22 批 4 登记；平台实测 E5/E12、用户确认 E11）**
 > 上游（冲突以它们为准）：`docs/V4_CONTRACT.md` **v0.9**（唯一口径）、`V4_REBUILD_SPEC.md` §9.1/§10、`docs/V4_DATA_MODEL.md`（字段/索引/API 契约细节；**v0.9 字段增量以 CONTRACT §4.2 补充字段为准**，DATA_MODEL 回写后同版）、`docs/V4_DECISIONS.md`、`docs/V4_UX_CUSTOMER.md` / `V4_UX_PARTNER.md` / `V4_UX_DEVELOPER.md`。
 > 引用规则：口径用 CONTRACT `§/D#`；字段/索引/action 入参出参以 DATA_MODEL 为契约载体（残差由 `tools/check-docs.js` 双向兜底）；工程缺口标 `[E#]`（§13）；引用 v3 用"文件 + 函数名"（不写行号）；数字给取数命令。
 > 版本标注约定（v0.9 统一）：正文"（v0.5/v0.6/v0.7 定稿）"= 该口径在 CONTRACT v0.5/v0.6/v0.7 冻结、v0.9 未改；"（v0.8）"= 三次修订新增；"（v0.9）"= 四次修订新增/变更；本文自身版本 = v0.9。**UX 页面上的版本号一律运行时取**（App 版本取 `wx.getAccountInfoSync().miniProgram.version`，隐私版本取 `config.getPublic.privacyVersion`），文档与代码不写死。
@@ -12,9 +12,9 @@
 
 - 本文回答"**怎么搭、怎么测、怎么卡、怎么发**"：工程结构、配置、云资源、客户端架构、开发调试、测试、门禁、文档维护、部署、批次技术拆分、风险、待裁。
 - 不回答：产品规则（CONTRACT）、逐字段/索引/action 入参（DATA_MODEL）、逐页交互（三份 UX）、裁决理由（DECISIONS）。
-- 三种口径状态：①已定稿（CONTRACT v0.9 / DATA_MODEL（v0.9 字段增量待其回写，最新字段口径以 CONTRACT 为准）/ UX 三份）；②工程提案（本文 `[E#]`，仅余 E5/E12 平台实测、E11 待用户确认）；③待用户裁决（D1~D21，不重开；D5/D6 已定；D16/D17 为三次修订；D18~D21 为四次修订）。
+- 三种口径状态：①已定稿（CONTRACT v0.9 / DATA_MODEL（v0.9 字段增量待其回写，最新字段口径以 CONTRACT 为准）/ UX 三份）；②工程提案（本文 `[E#]`，仅余 E5/E12 平台实测、E11 待用户确认）；③待用户裁决（D1~D22，不重开；D5/D6 已定；D16/D17 为三次修订；D18~D21 为四次修订；D22 为批 4 登记）。
 - **零金额铁律（v0.7）**：本程序不涉及任何费用收付；全部工程产物（源码/页面文案/DTO/`config`/审计/测试/文档）不得出现费用语义。全文只在"口径声明、门禁定义、已废弃说明"处出现相关词，且这些行统一登记进零金额白名单（§8.2 #22）；实现侧一律以门禁扫描结果为准。
-- 数据敏感级别统一写 **L1/L2/L3**（L3=取件码/手机尾号/门牌/截图等），**不写 "D3"**（避免与裁决编号 D1~D21 混淆）；L3 明文字段禁入本地存储/日志/通知/分享卡片；**开发者后台默认脱敏（不展示头像、昵称脱敏），完整 L3 只经 READONLY 只读视角（带审计）**。
+- 数据敏感级别统一写 **L1/L2/L3**（L3=取件码/手机尾号/门牌/截图等），**不写 "D3"**（避免与裁决编号 D1~D22 混淆）；L3 明文字段禁入本地存储/日志/通知/分享卡片；**开发者后台默认脱敏（不展示头像、昵称脱敏），完整 L3 只经 READONLY 只读视角（带审计）**。
 - **编号规格单源**：`utils/ids.js`（格式/校验/展示/错前缀提示，纯件零 `wx`）同步为云函数 `shared/ids.js`；随机生成只在云端（§5.3）。
 - **AI 兜底铁律（v0.8）**：仅当端侧 OCR + 规则解析不出站点或取件码时触发；外呼**只在云函数层**（`ai.parseParcel`），客户端零外呼、零 Key（`DEEPSEEK_API_KEY` 只存云函数环境变量）；**只发去敏文本**（字段白名单，不发原图/openid/订单归属）；8s 超时、仅网络/5xx 重试 1 次、连续 5 次失败熔断 10 分钟、5 次/人/日 + 全局日配额；任何失败/超限**静默降级**（返回 `recognized=false`）且**不新增错误码**；失败必写 `recognition_failures`，原图只在复核页临时 URL 查看并逐次审计。
 - **识别失败复核（v0.8）**：开发者后台 `pkg-admin/pages/recognition-review/index` 一页；补录只回填订单识别字段（不改状态/归属、不建单）；忽略须备注；原图仅白名单开发者 + 5 分钟临时 URL + 每次 `FAILURE_IMAGE_VIEW` 审计；不批量/不下载/不导出。
@@ -407,11 +407,11 @@ expressage_college_v4/
 
 **4.10.1 数据流（唯一路径）**
 1. 客户端 `utils/recognize/` 端侧 OCR + 规则解析（v3 阶梯保留）；站点或取件码缺失/不可信（`NEED_CODE`、`stationId=''`、结果与 OCR 文本冲突）时进入兜底。
-2. 客户端 `api/modules/ai.js` 调 `ai.parseParcel`（**唯一外呼出口；客户端不直连任何第三方**），入参先过长/去敏闸：`ocrTextMasked ≤2000`、`hintTrackingTail?`、`uploadTicketId`、`role`；**写动作幂等键 `clientRequestId` 必传**（落 `recognition_failures.requestKey`）。
+2. 客户端 `api/modules/ai.js` 调 `ai.parseParcel`（**唯一外呼出口；客户端不直连任何第三方**），入参先过长/去敏闸：`ocrTextMasked ≤2000`、`hintTrackingTail?`、`uploadTicketId`、`role`；**写动作幂等键 `clientRequestId` 必传**（落 `recognition_failures.requestKey`）。**同图多单时按单调用**（DATA_MODEL §4.9）：每张缺码/缺站点的订单各调一次（同一 `uploadTicketId`、各自独立 `clientRequestId` 与 `failureId`），非缺字段件不外呼（规则优先）。
 3. 云函数 `handlers/ai/parseParcel.js`：auth → 二次去敏（手机号/身份证/连续长数字掩码；姓名行保留但不带详细门牌）→ 配额/开关/熔断判定 → `lib/ai/deepseek.js` 外呼 → `lib/ai/parse.js` 校验并裁剪 DTO。
 4. 成功且 `recognized=true`：返回 DTO 供本页**预填建议**；客户端合并策略 = 用户已手填字段优先（AI 不覆盖），用户可改可弃。
-5. 仍失败/低置信/LLM 异常：写 `recognition_failures`（含 `uploadTicketId`/`fileId` 引用；**未建单时 `orderId=''` 也保留记录**）→ 返回 `recognized=false` + `failureId`；客户端静默降级为手填，不阻断下单（`NEED_CODE` 机制不变）。
-6. 订单创建时可携可选 `recognition:{source:'RULE'|'DEEPSEEK'|'MANUAL', failureId?}`：服务端校验 `failureId` 的 `uploaderOpenid`/`uploadTicketId` 与本人一致（只做快照/关联，不参与鉴权），写 `orders.parcel.recognitionSource/confidence?`、`orders.image.failureId?`。关联规则：该 `failureId` 尚未关联订单 → 回填其 `orderId`；**一图多码拆 N 单且多单失败** → 首单回填原记录，从第二单起以同一 `fileId`/`uploadTicketId` **补建记录**（`failureId` 按单独立，`requestKey` 用 `{uploaderOpenid}:{clientRequestId}:{itemIndex}`，与 createBatch 幂等后缀一致），保证**每张失败订单各有一条记录**（CONTRACT §4.2 补充字段）。
+5. 仍失败/低置信/LLM 异常：写 `recognition_failures`（含 `uploadTicketId`；`fileId` 入队时可为 `''`，建单后由下单动作回填；**未建单时 `orderId=''` 也保留记录**）→ 返回 `recognized=false` + `failureId`；客户端静默降级为手填，不阻断下单（`NEED_CODE` 机制不变）。
+6. 订单创建时可携可选 `recognition:{source:'RULE'|'DEEPSEEK'|'MANUAL', failureId?}`（**逐单**：`order.create` 放顶层；`order.createBatch` 放 `items[i].recognition`，顶层只回退 item0）：服务端校验 `failureId` 的 `uploaderOpenid` 与本人一致（形态/归属非法静默丢弃、不阻断建单，只做快照/关联，不参与鉴权），写 `orders.parcel.recognitionSource/confidence?`、本单 `orders.image.failureId?`；建单成功后回填该记录的 `orderId`/`fileId`（每单只回填**本单自己**那条记录）。**同图多单的记录粒度由调用粒度保证**：客户端对每张缺码/缺站点订单各调一次 `ai.parseParcel`（同一 `uploadTicketId`、各自独立 `clientRequestId`/`failureId`，见 DATA_MODEL §4.9）；**服务端不在建单时补建失败记录**（写入唯一入口仍是 `ai.parseParcel`）。
 7. 开发者后台复核：红点 + 首屏 `PENDING` 列表 → 原图（临时 URL 5 分钟、逐次审计）→ 补录/忽略/通知上传者。
 8. `cleanup.recognitionFailures` 到期清理；订单截图 7 天规则不受影响（§4.1/§4.7）。
 
@@ -442,8 +442,8 @@ expressage_college_v4/
 **4.10.5 失败入队（禁止静默丢弃）**
 - `failureCode` 5 枚举：`NO_TEXT`（OCR 无文本）/`PARSE_MISS`（有文本但规则+AI 均缺站点或码）/`LOW_CONFIDENCE`/`LLM_ERROR`（AI 不可用/超限/熔断/解析失败）/`IMAGE_UNREADABLE`（图片打不开/压缩失败）。
 - 写入字段：`failureNo(唯一)/requestKey(唯一：{uploaderOpenid}:{clientRequestId})/failureCode/sourceRole/uploaderOpenid/uploadTicketId/fileId/orderId?(未建单为 '')/ocrTextMasked/ruleResult/aiTried/aiModel/aiResult/aiErrorCode/status='PENDING'/createdAt`。
-- **写入幂等**：`requestKey` 唯一；同键重放返回已有 `failureId`（客户端重试/连点必须复用同一 `clientRequestId`，不重复入队）；不同 `clientRequestId` 各自成记录；一图多码的**补建记录** `requestKey = {uploaderOpenid}:{clientRequestId}:{itemIndex}`（与 `order.createBatch` 的 `:{itemIndex}` 后缀一致），保证**每单各一条**且重放不重复。
-- 降级矩阵：开关关闭 → `LLM_ERROR`（`aiTried=false`，`aiErrorCode='AI_DISABLED'`）；Key 缺失 → `LLM_ERROR`（`KEY_MISSING`）；超时/5xx/熔断 → `LLM_ERROR`（`TIMEOUT/UPSTREAM/BREAKER`）；配额超限 → `LLM_ERROR`（`QUOTA`，**不外呼**）；解析失败 → `PARSE_MISS`/`LLM_ERROR`。全部返回 `ok:true + recognized:false`，对用户静默。
+- **写入幂等**：`requestKey` 唯一；同键重放返回已有 `failureId`（客户端重试/连点必须复用同一 `clientRequestId`，不重复入队）；不同 `clientRequestId` 各自成记录（**同图多单逐单调用即不同 `clientRequestId`**，服务端不按文本相似度合并、也不在 `order.create` 时补建记录）。
+- 降级矩阵（`aiErrorCode` 值域以 `DATA_MODEL §2.14` 为唯一单源）：开关关闭 → `LLM_ERROR`（`aiTried=false`，`aiErrorCode='DISABLED'`）；Key 缺失 → `LLM_ERROR`（`DISABLED`）；超时 → `LLM_ERROR`（`TIMEOUT`）；网络/5xx → `LLM_ERROR`（`HTTP_5XX`）；熔断 → `LLM_ERROR`（`CIRCUIT_OPEN`）；配额超限 → `LLM_ERROR`（`QUOTA_EXCEEDED`，**不外呼**）；解析失败 → `LLM_ERROR`（`PARSE_ERROR`）/`PARSE_MISS`。全部返回 `ok:true + recognized:false`，对用户静默。
 
 **4.10.6 复核队列与后台动作（开发者）**
 - `admin.listRecognitionFailures`：按 `status/failureCode/时间` 筛选分页（`limit ≤100`）；`admin.getRecognitionFailure`：返回**原图临时 URL（5 分钟）+ 审计 `FAILURE_IMAGE_VIEW`（每次查看一条）**、脱敏上传人、`ocrTextMasked`、AI 尝试结果、关联订单。
@@ -773,12 +773,12 @@ expressage_college_v4/
 2. CONTRACT §7 页面路径全集 = app.json 声明（主包 7 + 分包 23 = 30 页；批 1 后生效）。
 3. CONTRACT §5.3 action 表 = `shared/actions.js`（双向；`visibility=internal` 单列，不对客户端开放；**`admin.createInvites/revokeInvite/listInvites/listCustomers/getCustomer/listPartners/setPartnerStatus/listOrders/getOrder/listAudit/updateConfig/stats/viewAsStart/viewAsEnd/createTestAccount/listTestAccounts/deleteTestAccount/purgeTestData/listRecognitionFailures/getRecognitionFailure/fixRecognitionFailure/ignoreRecognitionFailure`、`ai.parseParcel` 全部在册**）；DATA_MODEL §7 的 action 名 ⊆ CONTRACT 表。
 4. CONTRACT §4 集合表 = `shared/collections.js`（**14 集合**，含 `invitation_codes`、`admin_view_sessions`、`recognition_failures`）；`shared/error-codes.js` **恰好等于** CONTRACT §5.3 的 13 码（双向，旧码零命中；AI 兜底失败不入码）。
-5. D#/E# 引用可解析（CONTRACT §13 的 **D1~D21** 与本文 §13 的 E# 存在对应条目）。
+5. D#/E# 引用可解析（CONTRACT §13 的 **D1~D22** 与本文 §13 的 E# 存在对应条目）。
 6. 正文无未完成占位标记（英文待办缩写、\"以后再补\"类措辞、单字占位符）；`[E#]`、`[R#]`、`P1/P2`、`[D#]`、`⏳` 不算占位。
 7. **零金额文档扫描**：docs/ + 根 md 按 §7.6 词表命中 0（白名单精确项例外），失败输出 `file:line`。
 8. **编号规格一致性**：CONTRACT §3.1 表 = 本文 §5.3 表 = `utils/ids.js` 导出的字母表/长度/展示分组常量；错前缀三句文案在 `shared/error-copy.js` 存在且被引用；`developerNo` 只来自 `ADMIN_OPENIDS` 映射。
 9. **AI 兜底文档判据（v0.8）**：CONTRACT §4.3/§11.3/§12 与本文 §4.10 必须同时覆盖**三项语义**（外发字段 = 白名单、失败必写 `recognition_failures`、原图访问必落 `FAILURE_IMAGE_VIEW` 审计；按关键词集合匹配，不要求逐字同句）；`failureCode` 5 枚举两侧逐字一致；`config.aiFallback` 键名一致；复核页路径在 CONTRACT §7 = `pkg-admin/pages/recognition-review/index`；文档只出现 `DEEPSEEK_API_KEY` 键名、绝无明文 Key。
-10. **v0.9 文档一致性**：①旧口径禁词表（旧头像采集声明、旧双机验收说法、旧单账号说明、小写 roomTag 后缀变量、旧视角页名）在 docs/ + 根 md 零命中——**词表唯一单源在 `tools/check-docs.js`，文档不重复字面量**；②D# 引用可全部解析到 CONTRACT §13 的 D1~D21；③审计枚举双向：`shared/audit-actions.js` = CONTRACT §4.2 列表（`ACCOUNT_SWITCH_*`/`TEST_ACCOUNT_*`/`TEST_DATA_PURGE` 在册，`VIEW_AS_*` 零残留）；④roomTag：CONTRACT D7/§3 = 本文 §5.3b/§4.12 = `utils/room-tag.js` 四端一致且大写；⑤切换会话：`viewMode ∈ {READONLY,TEST_WRITE}`、真实只读、测试可写、票据不落盘、删除测试账号结束会话五条同时覆盖；⑥QA_CHECKLIST 的 v0.9 点检项（账号切换/测试账号/头像/绑定方向）存在。
+10. **v0.9 文档一致性**：①旧口径禁词表（旧头像采集声明、旧双机验收说法、旧单账号说明、小写 roomTag 后缀变量、旧视角页名）在 docs/ + 根 md 零命中——**词表唯一单源在 `tools/check-docs.js`，文档不重复字面量**；②D# 引用可全部解析到 CONTRACT §13 的 D1~D22；③审计枚举双向：`shared/audit-actions.js` = CONTRACT §4.2 列表（`ACCOUNT_SWITCH_*`/`TEST_ACCOUNT_*`/`TEST_DATA_PURGE` 在册，`VIEW_AS_*` 零残留）；④roomTag：CONTRACT D7/§3 = 本文 §5.3b/§4.12 = `utils/room-tag.js` 四端一致且大写；⑤切换会话：`viewMode ∈ {READONLY,TEST_WRITE}`、真实只读、测试可写、票据不落盘、删除测试账号结束会话五条同时覆盖；⑥QA_CHECKLIST 的 v0.9 点检项（账号切换/测试账号/头像/绑定方向）存在。
 ### 8.4 `gate.ps1` 适配
 - 入参不变：`-Anchor <哈希> -ScopeFiles "<逗号串>" -Estimate <行数>`；退出码 0 绿 / 1 红 / 2 黄。
 - 六项：①锚点可解析 ②变更集 = 锚点..HEAD + 工作区（`-uall`、`git -c core.quotepath=false`）③范围前缀匹配（含 `cloudfunctions/`、`docs/`、`shared/`、**`utils/ids.js`**、**`utils/room-tag.js`**、`assets/`）④行数（**全文本口径**；`tools/` 档 ≤1000 与 #18 一致、其余 ≤500；本批新增越线红、锚点前已超黄）⑤lockfile/package.json 变更黄（`cloudfunctions/*/package.json` 也算）⑥体量 ≤ 预估×1.5。
@@ -815,7 +815,7 @@ expressage_college_v4/
 | `docs/V4_UX_CUSTOMER.md` / `V4_UX_PARTNER.md` | 逐页交互/验收清单（顾客/兼职） | UI 与交互变更时 |
 | `docs/V4_UX_DEVELOPER.md`（v0.7 新增；v0.8 增识别失败复核；**v0.9 增账号切换/测试账号管理**） | 开发者后台/邀请码/数据查看/审计/**账号切换（真实只读/测试可写/测试账号管理）**/识别失败复核（原图+补录/忽略）逐页交互与验收 | 开发者能力或后台变更时 |
 | `docs/V4_ENGINEERING.md` | 工程结构/环境/测试/门禁/部署/批次技术拆分 | 本文 |
-| `docs/V4_DECISIONS.md` | **D1~D21** 裁决卡（D16/D17 三次修订、D18~D21 四次修订） | 用户裁决时 |
+| `docs/V4_DECISIONS.md` | **D1~D22** 裁决卡（D16/D17 三次修订、D18~D21 四次修订、D22 批 4 登记待裁） | 用户裁决时 |
 | `docs/V4_FIXTURES.md` / `docs/privacy/` | 识别层真机语料与指纹 / 隐私指引草案 + 发布前填写清单（**含第三方 AI 与复核原图披露**） | 批 1 建骨架、批 4 落语料；上线前人执行 |
 | `docs/ARCHITECTURE.md` / `docs/RUNBOOK.md` | 分层铁律与落点表 / 启动/检查/环境变量/部署/故障/未验证清单 | 架构或部署变化时（批 1 建立） |
 | `docs/QA_CHECKLIST.md` | 真机/**测试账号单机验收**/开发者后台/**切换会话（只读/测试可写）**/识别兜底与复核/**头像昵称/绑定方向**/隐私/性能点检清单 | 每批新增验收项 |
@@ -872,7 +872,7 @@ expressage_college_v4/
 | **批 1** 工程骨架与云端基础设施 | 批 0 | `git init`+身份；check/gate/doctor/check.js/check-docs/**zero-money-scan**；selftest harness + fake DB + selftest-cloud/selftest-ai 骨架 + **selftest-{bind,profile,switch,testaccount} 骨架**（EXPECTED_ASSERTIONS 闸先立）；`shared/` 注册表与校验件（**含 `actions.js` 的 `write` 标记**）；`utils/ids.js`/`utils/room-tag.js` 规格件 + `lib/id-generator`/`tag-allocator` 骨架；`lib/ai/` 适配层骨架；`api`/`cleanup` 骨架 + `health.check`/`admin.bootstrap`；**14 集合**+索引+安全规则；`config/env.js`/种子（含 `aiFallback`、`viewTicketTtlMinutes`、`avatarMaxBytes`、`testAccountMaxPerRole`、`testDataRetentionDays`）；`DEEPSEEK_API_KEY` 环境变量记录；sync 脚本；RUNBOOK | `check.ps1` 0（含零金额 0 命中 + AI 门禁 #24~#27；**#28~#31 判据骨架已登记，对象批次必须真红**）；`check-docs` 0；云函数调通 `health.check`；集合/索引导出证据 | 云环境未开/索引唯一冲突；限流键族；DeepSeek 账号未就绪（可留空降级） |
 | **批 2** 账号入口 + 切换会话/测试账号/头像采集（v0.9 前移） | 批 1 | `user.bootstrap`（`isDeveloper` + `viewContext{viewMode,role,target}`）/users；`api/client` 包络 + `api/mode-guard`；`store`；`launch`/`role`/`profile` 骨架；`custom-tab-bar`；顾客资料 →**`customerNo` 首次生成** + **头像/昵称采集（chooseAvatar / nickname 输入 / msgSecCheck / AVATAR ticket）**；隐私同意；**邀请码激活 + `partnerNo` 生成**；**开发者分流**；**`switch-session` 中间件 + `admin_view_sessions` + 黄条/蓝条/TEST 角标 + 测试账号四动作 + `account-switch` 页** | 纯件/云单测（编号生成/激活映射/票据解析/头像 payload/昵称截断）；真机双角色切换；邀请码负向；**测试账号单机双端验收（绑定→下单→确认）**；真实账号传 `TEST_WRITE` → `FORBIDDEN`；开发者 entry 真机 | tabBar 平台约束；隐私声明前置；白名单误配；头像/昵称接口能力 [E12] |
 | **批 3** 绑定与服务配置（绑定方向固化，v0.9） | 批 2 | `bind.create`（**仅顾客 + 完整 `partnerNo` + 错前缀提示 + 自绑/真实×测试拒绝**）/`release`/`getCurrent` + `activeKey` + **roomTag 绑定成功时事务分配（大写 `A…Z/AA…`）**；`bind` 页/绑定卡片（只带 `partnerNo`，无头像昵称）；`partner.getPublic`（含头像/昵称、测试账号 `NOT_FOUND`）；`partner.saveServiceConfig`（接单开关）；改宿舍 = RELEASED + 新建 binding；**解绑后 DTO 不再返回对方头像/昵称** | 云单测：绑定角色守卫（PARTNER → `FORBIDDEN`）、**#28 静态检查**、roomTag 并发/大写/不复用/换绑/解绑/改宿舍、解绑失联；`acceptingOrders=false` 下单 `PARTNER_CLOSED`；编号归一/错前缀用例；真机绑定与换绑 | 事务冲突；进行中订单时解绑/换绑拦截 |
-| **批 4** 顾客下单链路 | 批 3 | `upload.prepare`/`upload.cancel` + 存储权限（路径 `orders/{ticket}/image.jpg`）+ `api/upload`；识别层移植（`utils/recognize`）；`order-create` 四步/多码拆单/手填兜底/结果内嵌第 4 步；**`ai.parseParcel`（v0.8 兜底：只发去敏文本/超时重试熔断/配额静默降级/失败入队）+ 识别来源快照**；`order.create`/`order.createBatch`（≤5 单原子建，受 acceptingOrders 守卫）；站点 P1~P8 选择器；**服务类型选择只有类型名与说明** | `selftest-recognize`（v3 语料）；`selftest-ai`（payload/DTO/降级/入队）；云单测幂等/ticket 路径/批量原子性；真机截图→订单全通；关开关/造假失败图降级冒烟；零金额扫描 0 命中 | OCR 真机形态 [R3]；截图隐私 [R5]；AI 误预填/外部可用性 [R20] |
+| **批 4** 顾客下单链路 | 批 3 | `upload.prepare`/`upload.cancel` + 存储权限（路径 `orders/{ticket}/image.jpg`）+ `api/upload`；识别层移植（`utils/recognize`）；`order-create` 四步/多码拆单/手填兜底/结果内嵌第 4 步；**`ai.parseParcel`（v0.8 兜底：只发去敏文本/超时重试熔断/配额静默降级/失败入队）+ 识别来源快照**；`order.create`/`order.createBatch`（≤5 单原子建，受 acceptingOrders 守卫）；站点 P1~P8 选择器；**服务类型选择只有类型名与说明** | `selftest-recognize`（v3 语料）；`selftest-ai`（payload/DTO/降级/入队/配额/票据）；新增 `selftest-order`（建单引擎：幂等/ticket 路径/批量原子性/守卫/字段闸/逐单失败回填）与 `selftest-order-flow`（四步端侧：幂等键生命周期/逐件 AI/识别来源/逐件预约备注）；真机截图→订单全通；关开关/造假失败图降级冒烟；零金额扫描 0 命中 | OCR 真机形态 [R3]；截图隐私 [R5]；AI 误预填/外部可用性 [R20] |
 | **批 5** 顾客订单闭环 | 批 4 | 顾客订单列表/详情/进度轮询；取消/确认送达；留言；异常展示；`order.confirmDelivery/cancel` + 事件流水；顾客编号展示与复制 | 七状态顾客视角走通；双机进度对照；越权负向 | 轮询与弱网；状态竞态 |
 | **批 6** 兼职工作台（v3 清单 + 补全） | 批 5 | 工作台站点分组/四档排序（服务端）/接单/取件/送达/异常/改码；批量=客户端循环+`batchActionId`；撤销条（`order.undo` 仅取件/送达 5s）/搜索/性能/首用引导；`order.unmarkPicked`/`order.unmarkDelivered`/`order.correct` | 真机跑站动线；批量部分失败如实；四档排序断言；CLOSED/SUSPENDED 用例 | 批量部分失败；撤销并发 |
 | **批 7** 兼职客户与运营（**无费用模块，v0.7**） | 批 6 | 客户档案/详情/`partnerNote`/**顾客编号展示**；代客下单（guest 单）；**单量统计（今日/本周完成量、状态分布、异常数；无收入类字段）**；绑定卡片分享/解绑；`partner.listBindings/unbindCustomer`；`partner.saveCustomerNote` | 代客单→顾客绑定→看进度闭环；guest 单无顾客访问路径；统计只含单量；绑定卡片只带 `partnerNo` | guest 单归属与后续绑定衔接 |
@@ -911,7 +911,7 @@ expressage_college_v4/
 ---
 ## 13. 待裁决项（本文 v0.9：E1~E4/E6~E10 已关闭；平台实测 E5/E12 待实测；E11 待用户确认；D18~D21 为四次修订新增）
 
-**继承 CONTRACT §13（D1~D21，不重开）**：D1 云开发、D2 appid、D3 邀请码、D4 一顾客一兼职、D5 服务只分类型（**已定：无定价**）、D6 **零金钱交易（已定）**、D7 roomTag（**v0.9 恒大写**）、D8 苑名待用户给正式名称、D9 截图、D10 通知、D11 不迁移、D12 代客单（**不产生绑定**）、D13 主体/类目、**D14 开发者只读视角**、**D15 双角色编号样式（C+8 / P+6 / DEV-01）**、**D16 OCR 失败用 DeepSeek 兜底**、**D17 识别失败原图在开发者复核页可见**、**D18 账号切换（真实账号只读 + 测试账号可写）**、**D19 头像/昵称采集与可见范围**、**D20 绑定方向（只能顾客发起）**、**D21 roomTag 恒大写**。
+**继承 CONTRACT §13（D1~D22，D22 批 4 登记，其余不重开）**：D1 云开发、D2 appid、D3 邀请码、D4 一顾客一兼职、D5 服务只分类型（**已定：无定价**）、D6 **零金钱交易（已定）**、D7 roomTag（**v0.9 恒大写**）、D8 苑名待用户给正式名称、D9 截图、D10 通知、D11 不迁移、D12 代客单（**不产生绑定**）、D13 主体/类目、**D14 开发者只读视角**、**D15 双角色编号样式（C+8 / P+6 / DEV-01）**、**D16 OCR 失败用 DeepSeek 兜底**、**D17 识别失败原图在开发者复核页可见**、**D18 账号切换（真实账号只读 + 测试账号可写）**、**D19 头像/昵称采集与可见范围**、**D20 绑定方向（只能顾客发起）**、**D21 roomTag 恒大写**。
 
 **已关闭（CONTRACT v0.5/v0.6/v0.7 裁决、v0.8 复核；由 `tools/check-docs.js` 持续验证）**
 | # | 原缺口 | 落点 / 关闭依据 |

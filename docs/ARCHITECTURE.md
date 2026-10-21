@@ -53,6 +53,7 @@ const data = await call('order.accept', { orderNo, expectedVersion }, { retry: f
 
 - `call(action, data, opts)` → `Promise<data>`；失败抛 `CallError`（`code/message/data/requestId`）。
 - 自动注入 `clientRequestId`（16~32 位随机串）与（内存有 `viewContext` 时）`viewTicket`；`opts.readRetry` 默认 `true`（读动作 ≤2 次，300/900ms），写动作默认不重试。
+- `opts.clientRequestId`：页面可显式指定幂等键（**重试复用同一 id，内容变更后重新生成**，UX_CUSTOMER §4.8）；形态为 16~32 位 `[A-Za-z0-9_-]`，非法时静默回退自生成（不把格式错误抛给页面；服务端仍按 `shared/validate.validateClientRequestId` 校验）。
 - 超时 10s；校验 flat 包络 `{ok, code?, message?, data?, serverTime, requestId?}`；写 `store.serverTimeSkew`。
 - 页面只 catch 后 toast `err.message`，不得自行拼错误码文案。
 
@@ -66,7 +67,7 @@ const data = await call('order.accept', { orderNo, expectedVersion }, { retry: f
 | `api/modules/customer.js` | `saveProfile(payload)`、`getProfile()` |
 | `api/modules/partner.js` | `activate({invitationCode,displayName,avatarTicket})`、`saveProfile`、`saveServiceConfig`、`getPublic({partnerNo})`、`listBindings`、`unbindCustomer({bindingId,reason,note})`、`saveCustomerNote({bindingId,note})` |
 | `api/modules/bind.js` | `create({partnerNo})`、`release({reason,note})`、`getCurrent()` |
-| `api/modules/order.js` | `create`、`createBatch`、`get`、`listCustomer`、`listPartner`、`accept`、`reject`、`markPicked`、`unmarkPicked`、`markDelivered`、`unmarkDelivered`、`reportException`、`resolveException`、`cancel`、`confirmDelivery`、`correct`、`undo`、`deleteRecord`、`imageUrl` |
+| `api/modules/order.js` | `create(payload, opts?)`、`createBatch(payload, opts?)`（`opts.clientRequestId` 透传幂等键；拆单重试复用同一键）、`get`、`listCustomer`、`listPartner`、`accept`、`reject`、`markPicked`、`unmarkPicked`、`markDelivered`、`unmarkDelivered`、`reportException`、`resolveException`、`cancel`、`confirmDelivery`、`correct`、`undo`、`deleteRecord`、`imageUrl` |
 | `api/modules/message.js` | `send`、`list`、`markRead` |
 | `api/modules/upload.js` | `prepare({purpose})`、`cancel({uploadTicketId})` |
 | `api/modules/config.js` | `getPublic()` |
