@@ -18,7 +18,7 @@
 | :-- | :-- | :-- | :-- |
 | 批 0 | 设计定稿与开工门 | **设计定稿完成（2026-10-21）** | CONTRACT v0.9、DATA_MODEL、三份 UX、ENGINEERING、DECISIONS、QA_CHECKLIST、ARCHITECTURE、`docs/privacy/` 两件均落盘；D18~D21 四次修订已回写；**用户侧开工门（D1/D2/D3/D13）未闭环** |
 | 批 1 | 工程骨架与云端基础设施 | **完成并收口（2026-10-21）** | 真实证据见 §6：`check.ps1` 退出码 0；`check.js` 31/31、`check-docs` 10/10、零金额 0、`selftest.js` 9 套 1,014 断言全 PASS；sync 16 源×2 套 hash 一致；提交与 gate 见 §7 收口记录 |
-| 批 2 | 账号入口 + 切换会话/测试账号/头像采集 | **离线部分完成并收口（2026-10-22）** | 工程侧（代码/判据/文档）已收口（提交 `619f39a`）：5 个离线工作流见 §3b；9 套 selftest **1,261** 断言全 PASS、`check.ps1` 退出码 0；**真机项（E12 头像/昵称能力、切换条视觉、测试账号单机双端验收、开发者 entry）与云环境验收待用户** |
+| 批 2 | 账号入口 + 切换会话/测试账号/头像采集 | **离线部分完成并收口（2026-10-22）** | 工程侧（代码/判据/文档）已收口（提交 `619f39a`）：5 个离线工作流见 §3b；9 套 selftest **1,279** 断言全 PASS、`check.ps1` 退出码 0；**真机项（E12 头像/昵称能力、切换条视觉、测试账号单机双端验收、开发者 entry）与云环境验收待用户** |
 | 批 3~批 9 | 见 `docs/V4_ENGINEERING.md` §11 | 未开工 | 范围、依赖与风险以 ENGINEERING §11 为准 |
 
 ## 3. 批 1 并行交付快照（全部收口）
@@ -47,8 +47,8 @@
 | :-- | :-- | :-- |
 | 批2-A 云端身份域 | `partner.activate` 修「Date 型 `expiresAt` 恒判未过期」安全缺口（过期码可激活）；头像票据 `usedAt` 统一 Date；`selftest-cloud` 身份域 +41 断言（bootstrap/acceptPrivacy/saveProfile/activate/upload 五组，EXPECTED 125→166） | 已交付 |
 | 批2-B 端侧入口 | `config/route.js` 角色解析单源（`activeRole > 单角色直进 > 双角色 CHOOSE_ROLE`，route 纯件零 storage）；`lastRole` 接入 launch/role/profile/activate（TD-008 剩余项关闭，只走 `utils/storage` 白名单）；profile 头像预览断图兜底；activate 成功结果块/显式跳过头像/输入禁用；`avatar-view` 默认头像改走 `utils/avatar` 纯件；`selftest-profile` +45 断言（47→92） | 已交付 |
-| 批2-C 切换会话/测试账号 | 修两个真虫：①退出会话必失败（票据只在包络、handler 读 payload + adminScope 拒会话身份）→ 中间件 EXIT 注入 + `requireAdmin(allowViewMode)`；②兼职 READONLY targetId 口径错（`partners.openid` vs `_id`）→ 分模式存 id + 交叉校验 `targetId===effectiveOpenid`。另修 dryRun 条数/真实引用闸/purge 失败原图与会话/审计重放误判/配额错误码/dryRun 二次确认等 8 项；`selftest-switch` 74→140、`selftest-testaccount` 48→135 | 已交付 |
-| 批2-D 变异电池 | `tools/mutation.ps1` + #29/#30/#31 首红证据（任务 task-51，批 2 收口后补，TD-002 部分关闭） | 进行中 |
+| 批2-C 切换会话/测试账号 | 修两个真虫：①退出会话必失败（票据只在包络、handler 读 payload + adminScope 拒会话身份）→ 中间件 EXIT 注入 + `requireAdmin(allowViewMode)`；②兼职 READONLY targetId 口径错（`partners.openid` vs `_id`）→ 分模式存 id + 交叉校验 `targetId===effectiveOpenid`。另修 dryRun 条数/真实引用闸/purge 失败原图与会话/审计重放误判/配额错误码/dryRun 二次确认等 8 项；`selftest-switch` 74→140、`selftest-testaccount` 48→153（含后台 DTO 脱敏行为 18 条） | 已交付 |
+| 批2-D 变异电池 | `tools/mutation.ps1`（366 行/BOM/LF，锚点唯一→注入→首红→SHA256 还原→复跑）+#31（页面注入孤立 `TEST`）/#30（删 switch-session 目标 `isTestAccount` 校验）首红证据；M21 复验暴露并修掉**门禁 #29 空集全绿**（check.js 脱敏件路径写死不存在 → 缺失判红 + `_dto.js` 禁词 + admin handler 键扫描；selftest-testaccount +18 行为断言）；TD-002 关闭 | 已交付 |
 | 批2-E 上传/时间闸 | `api/upload.js` 顺序改「本地校验/压缩 → `upload.prepare({purpose,size,contentType})` → 上传」，关闭「服务端 size/类型闸空转」（TD-026）；`lib/time.isPast` 归一 Date/字符串；变异电池 5/5 红、SHA256 还原复跑全绿；`selftest-cloud` 166→168、`selftest-profile` 92→98 | 已交付 |
 
 ## 4. 用户待办（阻塞项）
@@ -106,12 +106,12 @@
 | `node tools/check.js` | 通过 **31 项**；失败 0 项 |
 | `node tools/check-docs.js --batch 1` | 通过 **10 项**；失败 0 项 |
 | `node tools/zero-money-scan.js` | **0 命中**（白名单 136 项；allowlist 由 682 行 pretty-print 压成 138 行「一条一行」以过 gate 行数门禁） |
-| `node tools/selftest.js` | 运行 **9 套**；失败 0 套；SKIP 0；**1,261 断言全 PASS**（core 58 / state 341 / recognize 187 / cloud 168 / ai 86 / bind 48 / profile 98 / switch 140 / testaccount 135） |
+| `node tools/selftest.js` | 运行 **9 套**；失败 0 套；SKIP 0；**1,279 断言全 PASS**（core 58 / state 341 / recognize 187 / cloud 168 / ai 86 / bind 48 / profile 98 / switch 140 / testaccount 153） |
 | 批 2 代码收口提交 | `619f39a`（39 文件 +1740/-286；批 2 离线收口） |
 | `gate.ps1 -Anchor 2b0bbe5 -ScopeFiles "api/,cloudfunctions/,components/,config/,docs/,pages/,pkg-admin/,pkg-partner/,tools/" -Estimate 1500` | 红色 **0** 项；首次回读黄色 1（`zero-money-allowlist.json` 682 行 > 500，锚点前已超线）→ 已把 allowlist 压成 138 行后复跑 |
 
-- 突变/首红证据：task-48 activate 过期判定（旧 `time.isPast(number)` 对 Date 恒 false）临时回退→2 条判据红；task-52 上传顺序/time 归一变异 5/5 红 + SHA256 逐字节还原后复跑全绿。
-- 关闭债务：TD-008 剩余项（lastRole 生产接入）、TD-010（privacyConsent 进 store）、TD-017/020/021（排序/模型/隐私 DTO）、TD-026（上传服务端闸空转）、TD-028（DATA_MODEL 事务措辞）；新增 TD-027（票据一次性 vs 幂等重放，接受为预期）、TD-029（selftest-cloud 999/1000 行红线）、TD-030（后台「测试」行标签待批 8 补）。
+- 突变/首红证据：task-48 activate 过期判定（旧 `time.isPast(number)` 对 Date 恒 false）临时回退→2 条判据红；task-52 上传顺序/time 归一变异 5/5 红 + SHA256 逐字节还原后复跑全绿；task-51/53 `tools/mutation.ps1` 变异电池——**#31**（业务页注入孤立 `TEST`）check.js 首红、**#30**（删 switch-session 目标 `isTestAccount` 校验）selftest-switch 首红、**M21** 首轮判绿暴露 **#29 空集全绿**（check.js 读不存在的 `handlers/admin/dto/mask.js` 且 null 时跳过）→ 修后 M21 复验 exit 0（两条测试首红 + SHA256 还原 + 复跑全绿）。
+- 关闭债务：TD-002（#28~#31 判据必须有牙，批 2 取 #29/#30/#31；#28 转 TD-031）、TD-008 剩余项（lastRole 生产接入）、TD-010（privacyConsent 进 store）、TD-017/020/021（排序/模型/隐私 DTO）、TD-026（上传服务端闸空转）、TD-028（DATA_MODEL 事务措辞）；新增 TD-027（票据一次性 vs 幂等重放，接受为预期）、TD-029（selftest-cloud 999/1000 行红线）、TD-030（后台「测试」行标签待批 8 补）、TD-031（#28 变异留批 3）、TD-032（#29 静态扫描 `{ avatarFileId }` 简写盲区，行为套兜底）。
 - 文档回写：ARCHITECTURE §3.3 上传顺序 + §3.6 reason/导出；DATA_MODEL §2.10/§7.3/§7.7 + 23 处「测试」标签口径；CONTRACT §1.3 后台行标签裁决；UX_CUSTOMER §3.1 分流顺序；UX_DEVELOPER/QA_CHECKLIST 同步。
 
 ## 7. 当前风险与红灯（如实记录）
@@ -125,6 +125,7 @@
 7. **已知口径差异/欠账**：`docs/TECH_DEBT.md` 开放/跟踪中项（E5/E12/D8、AI 兜底、订阅消息、cleanup 成本、fake DB 差异、TD-019、TD-022~025、TD-027、TD-029、TD-030）均为明账；不阻塞批 2 离线收口。
 8. **TD-029 行数红线**：`tools/selftest-cloud.js` 已 999/1000 行，下批加断言前必须先压减/拆分（批 3 bind 判据需提前规划）。
 9. **TD-030 后台测试标签**：后台列表行内「测试」标签未实现（仅中文 tab 承载），批 8 后台页收口时补；不涉及安全隔离。
+10. **安全判据自检**：#28（绑定方向）变异首红留批 3（TD-031）；`check.js` #29 admin 静态扫描不覆盖 `{ avatarFileId }` 简写（TD-032，`_dto.js` 整文件禁词 + selftest-testaccount 行为递归键集已覆盖输出面）。
 
 ## 8. 最近更新
 
@@ -139,13 +140,14 @@
 | 2026-10-22 | **批 2 离线开工**（Agent Team 并行 task-48/49/50/52）：云端身份域、端侧入口、切换会话/测试账号、上传/时间闸四个工作流；D1/D2 未到前只做离线代码与机器判据，真机项不代验 |
 | 2026-10-22 | **批 2 离线收口提交 `619f39a`**（39 文件 +1740/-286）：修 2 个真虫（activate 过期码可激活、退出会话必失败）+ 兼职 READONLY targetId 口径 + 上传服务端闸空转 + 后台测试账号 8 项缺口；9 套 selftest 1,261 断言、`check.ps1` 退出码 0；文档回写 ARCHITECTURE/DATA_MODEL/CONTRACT/UX_CUSTOMER/UX_DEVELOPER/QA/TECH_DEBT |
 | 2026-10-22 | **批 2 证据回写**（docs-only）：STATE/CHANGELOG 同步 1,261 断言与 TD 关闭；`zero-money-allowlist.json` 压成 138 行以过 gate 500 行门禁；批 2-D 变异电池（task-51）随后补 |
+| 2026-10-22 | **批 2 变异电池 + 门禁 #29 自检修复**：新增 `tools/mutation.ps1`（366 行/BOM/LF，支持 `-File` 逗号串多命令）与 `docs/lessons/` 首卡；#31/#30 首红取证；M21 暴露并修复 **#29 空集全绿**（脱敏件路径 `db/dto/mask.js` 缺失判红 + `_dto.js` 禁词 + admin 键扫描 + selftest-testaccount +18 行为断言，135→153）；`gate.ps1` 行数档对齐 `check.js #18`（`tools/` ≤1000）；TD-002 关闭、TD-031/032 登记；9 套 **1,279** 断言全 PASS、`check.ps1` 退出码 0 |
 
 ## 9. 下一步（按序）
 
 1. **用户闭环开工门**：D1/D2/D3/D13 + D8；创建云开发环境与 14 集合/索引/安全规则，配置 `ADMIN_OPENIDS`、存储权限、定时触发器（可选 `DEEPSEEK_API_KEY`）；证据按 `docs/RUNBOOK.md` 采集。
 2. **首次部署冒烟**：`node tools/sync-cloud-shared.js` → 部署 `api`/`cleanup` → `health.check`/`admin.bootstrap` → 单条 10 分钟定时触发器 → RUNBOOK「首次部署」清单。
 3. **批 2 真机点检**（只能用户）：E12 头像/昵称能力、隐私弹窗、切换条黄/蓝与退出、测试账号单机双端（绑定→下单→确认）、邀请码负向、开发者 entry；按 `docs/QA_CHECKLIST.md` 批 2 分区（A1~A10、A13~A14、B1~B5、Q5、Q7、P9、P13~P14）取证。
-4. **批 3 离线收口**（agent，不依赖云环境）：`bind.create` 角色守卫/自绑/真实×测试拒绝、`partnerNo` 归一与错前缀、roomTag 大写事务分配/并发/换绑/解绑失联、`partner.getPublic` 绑定前不回头像、`saveServiceConfig` 接单开关 → `selftest-bind`（新增判据需先处理 TD-029 行数红线）与 `check.js #28` 变异首红。
+4. **批 3 离线收口**（agent，不依赖云环境）：`bind.create` 角色守卫/自绑/真实×测试拒绝、`partnerNo` 归一与错前缀、roomTag 大写事务分配/并发/换绑/解绑失联、`partner.getPublic` 绑定前不回头像、`saveServiceConfig` 接单开关 → `selftest-bind`（新增判据需先处理 TD-029 行数红线）+ `tools/mutation.ps1` 对 #28 变异首红（TD-031）。
 5. **批 4~批 9** 按 ENGINEERING §11 推进；每批 DoD = `check.ps1` 退出码 0 + 真实输出 + 本批验收逐条打勾 + 文档回写；真机/控制台项由用户执行。
 
 ## 10. 维护规则

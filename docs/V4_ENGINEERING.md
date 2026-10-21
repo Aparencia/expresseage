@@ -762,7 +762,7 @@ expressage_college_v4/
 | 26 | **失败必入队**（v0.8）：`handlers/ai/**` 每个 `recognized:false` 返回点都必须有 `recordFailure(`（失败分支数 ≤ 入队调用数，少一个即红）；`catch` 不得空吞直接 return；`shared/collections.js` 必须含 `recognition_failures` | 失败静默丢弃、无法复核 | v4 新增（v0.8） |
 | 27 | **复核原图访问必审计**（v0.8）：`admin.getRecognitionFailure` 内 `getTempFileURL` 与 `FAILURE_IMAGE_VIEW` 审计同函数出现；复核页零 `getTempFileURL`（只经 `api/`）；`fix/ignore` 必写 `FAILURE_FIX`/`FAILURE_IGNORE` | 原图被无审计读取 | v4 新增（v0.8） |
 | 28 | **绑定方向（v0.9）**：`bind.create` handler 出现 CUSTOMER 角色断言（关键词扫描）且自绑拒绝；代客单路径零 `bindings` 集合访问；`pkg-partner/**` 零 `bind.create`/`bind.release` 调用与"绑定顾客/添加顾客/导入顾客"文案；业务写点为 `handlers/bind`（测试数据清理走 `handlers/admin/testAccounts` 专用 purge，不经业务路径） | 兼职越权绑定/代客单隐式绑定 | v4 新增（v0.9，CONTRACT §12） |
-| 29 | **头像昵称（v0.9）**：`avatars/` 路径只在 `handlers/upload` 与 `api/upload.js`，模板 `avatars/{role}/{random}.jpg`（**零 openid**）；`avatarFileId` 不出现于 `dto/mask.js`/`pkg-admin/**`；昵称截断 + `msgSecCheck` 在 customer/partner 保存路径；roomTag 落库前 `^[A-Z]+$`、`utils/room-tag.js` 零 `random` | 头像外泄/昵称违规/小写 tag | v4 新增（v0.9） |
+| 29 | **头像昵称（v0.9）**：`avatars/` 路径只在 `handlers/upload` 与 `api/upload.js`，模板 `avatars/{role}/{random}.jpg`（**零 openid**）；`avatarFileId` 不出现于**脱敏单源 `cloudfunctions/api/db/dto/mask.js`（文件缺失即判红，缺失≠跳过）**、`handlers/admin/_dto.js`（去注释后整文件禁词）、其它 admin handler 的返回/赋值键（`avatarFileId: ''` 默认空头像写入豁免）、`pkg-admin/**`；昵称截断 + `msgSecCheck` 在 customer/partner 保存路径；roomTag 落库前 `^[A-Z]+$`、`utils/room-tag.js` 零 `random` | 头像外泄/昵称违规/小写 tag | v4 新增（v0.9）；批 2 修 #29 空集全绿 |
 | 30 | **账号切换与测试数据隔离（v0.9）**：`admin_view_sessions` 写入含 `viewMode/targetIsTest`；TEST_WRITE 签发处断言 `isTestAccount`；统计/红点/邀请码/后台列表查询含 `isTest`/`isTestAccount` 过滤；`orders` 写入含 `isTest` 派生与 `impersonatedBy`；`shared/audit-actions.js` 枚举 = 本文 §4.9 列表（`ACCOUNT_SWITCH_*`/`TEST_ACCOUNT_*`/`TEST_DATA_PURGE` 在册，`VIEW_AS_*` 零残留） | 测试数据污染真实统计 | v4 新增（v0.9，CONTRACT §12） |
 | 31 | **测试视觉（v0.9）**：`TEST` 字面量只允许在 `components/test-badge`；蓝条/黄条颜色常量只在 `components/switch-bar` wxss；`pkg-admin/**` 零引用两组件；角标渲染受 `viewMode=TEST_WRITE` 条件控制 | 测试会话视觉混入真实页面 | v4 新增（v0.9） |
 
@@ -780,7 +780,7 @@ expressage_college_v4/
 10. **v0.9 文档一致性**：①旧口径禁词表（旧头像采集声明、旧双机验收说法、旧单账号说明、小写 roomTag 后缀变量、旧视角页名）在 docs/ + 根 md 零命中——**词表唯一单源在 `tools/check-docs.js`，文档不重复字面量**；②D# 引用可全部解析到 CONTRACT §13 的 D1~D21；③审计枚举双向：`shared/audit-actions.js` = CONTRACT §4.2 列表（`ACCOUNT_SWITCH_*`/`TEST_ACCOUNT_*`/`TEST_DATA_PURGE` 在册，`VIEW_AS_*` 零残留）；④roomTag：CONTRACT D7/§3 = 本文 §5.3b/§4.12 = `utils/room-tag.js` 四端一致且大写；⑤切换会话：`viewMode ∈ {READONLY,TEST_WRITE}`、真实只读、测试可写、票据不落盘、删除测试账号结束会话五条同时覆盖；⑥QA_CHECKLIST 的 v0.9 点检项（账号切换/测试账号/头像/绑定方向）存在。
 ### 8.4 `gate.ps1` 适配
 - 入参不变：`-Anchor <哈希> -ScopeFiles "<逗号串>" -Estimate <行数>`；退出码 0 绿 / 1 红 / 2 黄。
-- 六项：①锚点可解析 ②变更集 = 锚点..HEAD + 工作区（`-uall`、`git -c core.quotepath=false`）③范围前缀匹配（含 `cloudfunctions/`、`docs/`、`shared/`、**`utils/ids.js`**、**`utils/room-tag.js`**、`assets/`）④行数（**全文本口径**，本批新增越线红、锚点前已超黄）⑤lockfile/package.json 变更黄（`cloudfunctions/*/package.json` 也算）⑥体量 ≤ 预估×1.5。
+- 六项：①锚点可解析 ②变更集 = 锚点..HEAD + 工作区（`-uall`、`git -c core.quotepath=false`）③范围前缀匹配（含 `cloudfunctions/`、`docs/`、`shared/`、**`utils/ids.js`**、**`utils/room-tag.js`**、`assets/`）④行数（**全文本口径**；`tools/` 档 ≤1000 与 #18 一致、其余 ≤500；本批新增越线红、锚点前已超黄）⑤lockfile/package.json 变更黄（`cloudfunctions/*/package.json` 也算）⑥体量 ≤ 预估×1.5。
 - 纪律（v3 教训）：并行写只走 `git worktree`；同树并行声明并集；锚点 = 本批真实前驱（开工自取 `HEAD`），提交后回读 `git rev-parse --short HEAD`；零变更 = 黄不是绿。
 - 提交信息必须匹配 `^(feat|fix|docs|test|chore)\(v4\):`（`git log --format=%s` 检查）。
 ### 8.5 git 身份与提交规范
