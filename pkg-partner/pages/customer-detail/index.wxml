@@ -1,4 +1,4 @@
-<!-- pkg-partner/pages/customer-detail/index.wxml · 顾客档案（头像/昵称/编号/备注/历史单/解绑） -->
+<!-- pkg-partner/pages/customer-detail/index.wxml · 顾客详情（档案/仅自己可见备注/自然日历史单/解绑） -->
 <view class="page-body">
   <switch-bar />
   <view wx:if="{{loading}}" class="empty-text">加载中…</view>
@@ -12,31 +12,33 @@
         <avatar-view fileId="{{view.avatarFileId}}" name="{{view.displayName}}" size="{{96}}" />
         <view class="flex-1 head-main">
           <view class="row between">
-            <view class="strong">{{view.displayName || '未填称呼'}}</view>
-            <view wx:if="{{view.activeOrderCount}}" class="tag">进行中 {{view.activeOrderCount}}</view>
+            <view class="strong">{{view.displayNameText}}</view>
+            <view wx:if="{{view.activeOrderCountText}}" class="tag">{{view.activeOrderCountText}}</view>
           </view>
           <view class="muted">{{view.anchorKeyText}}</view>
-          <view class="row small number-row" bindtap="onCopyCustomerNo">
-            <text>顾客编号 {{view.customerNo}} · 复制</text>
+          <view wx:if="{{view.phoneTailText}}" class="small">{{view.phoneTailText}}</view>
+          <view class="row small number-row">
+            <text class="number-label">顾客编号</text>
+            <id-text kind="CUSTOMER" no="{{view.customerNo}}" />
           </view>
         </view>
       </view>
       <view class="divider"></view>
-      <view class="between row small">
+      <view class="row between small">
         <text>绑定时间 {{view.boundAtText || '—'}}</text>
-        <text>门牌 {{view.anchorText || '—'}}</text>
+        <text>{{view.zoneText}} · {{view.buildingText}} · 宿舍 {{view.roomText}}</text>
       </view>
     </view>
 
     <view class="card">
       <view class="row between">
         <view class="section-title">备注（仅自己可见）</view>
-        <view wx:if="{{!noteEditing}}" class="btn btn-ghost mini-btn" bindtap="onEditNote">编辑</view>
+        <view wx:if="{{!noteEditing && !readonly}}" class="btn btn-ghost mini-btn" bindtap="onEditNote">编辑</view>
       </view>
       <block wx:if="{{noteEditing}}">
         <textarea
           class="note-input"
-          maxlength="100"
+          maxlength="{{noteMax}}"
           placeholder="写一句只有自己能看到的备注（≤100 字）"
           value="{{noteValue}}"
           bindinput="onNoteInput"
@@ -50,29 +52,50 @@
     </view>
 
     <view class="card">
-      <view class="section-title">历史订单</view>
-      <view wx:if="{{!orders.length}}" class="empty-text">还没有历史订单</view>
-      <view
-        wx:for="{{orders}}"
-        wx:key="orderNo"
-        class="order-line row between"
-        data-order-no="{{item.orderNo}}"
-        bindtap="onOrderTap"
-      >
-        <view>
-          <view class="strong">{{item.orderNo}}</view>
-          <view class="small">{{item.statusText}}{{item.codeText ? ' · 码 ' + item.codeText : ''}}{{item.timeText ? ' · ' + item.timeText : ''}}</view>
+      <view class="row between section-head">
+        <view class="section-title">订单</view>
+        <view wx:if="{{!readonly}}" class="btn btn-ghost mini-btn" bindtap="goCreateOnBehalf">代客下单</view>
+      </view>
+      <view wx:if="{{!hasOrders}}" class="empty-text">{{emptyOrdersText}}</view>
+      <block wx:for="{{sections}}" wx:key="key" wx:for-item="section">
+        <view class="day-head row between">
+          <view class="strong">{{section.label}}</view>
+          <view class="small">{{section.summaryText}}</view>
         </view>
-        <view class="muted">›</view>
+        <view
+          wx:for="{{section.rows}}"
+          wx:key="orderNo"
+          class="order-line row between"
+          data-order-no="{{item.orderNo}}"
+          bindtap="onOrderTap"
+        >
+          <view class="flex-1">
+            <view class="strong">{{item.orderNo}}</view>
+            <view class="small">{{item.statusText}} · {{item.serviceName}}<text wx:if="{{item.timeText}}"> · {{item.timeText}}</text></view>
+          </view>
+          <view class="muted">›</view>
+        </view>
+      </block>
+      <view wx:if="{{showMore}}" class="row center more-row">
+        <view class="btn btn-ghost mini-btn" bindtap="onLoadMore">{{moreText}}</view>
       </view>
     </view>
 
-    <view class="card bind-note">
-      <view class="small">绑定只能由顾客发起：解绑后对方需重新发起绑定，才能恢复下单与进度展示。</view>
+    <view class="card unbind-card">
+      <view class="small">解绑后顾客需重新发起绑定才能继续下单；历史订单与绑定期间的宿舍标识会保留。</view>
+      <view wx:if="{{unbind.lockText}}" class="small lock-text">{{unbind.lockText}}</view>
+      <button
+        class="btn btn-danger btn-block unbind-btn"
+        disabled="{{unbinding || unbind.disabled}}"
+        bindtap="onUnbindTap"
+      >{{unbinding ? '解绑中…' : unbind.buttonText}}</button>
+      <view class="small unbind-reason">解绑原因：{{unbind.reasonText}}（会通知顾客）</view>
     </view>
 
-    <button class="btn btn-danger btn-block" disabled="{{unbinding || readonly}}" bindtap="onUnbindTap">
-      {{unbinding ? '解绑中…' : '解绑顾客'}}
-    </button>
+    <view class="footer-id row center">
+      <text class="small">服务兼职编号</text>
+      <id-text kind="PARTNER" no="{{partnerNo}}" />
+      <text class="small">（我）</text>
+    </view>
   </block>
 </view>

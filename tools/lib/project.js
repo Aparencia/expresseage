@@ -94,7 +94,7 @@ add('user', ['acceptPrivacy', 'deleteAccount'], WRITE);
 add('customer', ['saveProfile'], WRITE);
 add('customer', ['getProfile'], READ);
 add('partner', ['activate', 'saveProfile', 'saveServiceConfig', 'unbindCustomer', 'saveCustomerNote'], WRITE);
-add('partner', ['getPublic', 'listBindings'], READ);
+add('partner', ['getPublic', 'listBindings', 'getCustomer', 'stats'], READ);
 add('bind', ['create', 'release'], WRITE);
 add('bind', ['getCurrent'], READ);
 add('bind', ['claimGuestOrder'], WRITE);

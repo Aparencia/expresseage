@@ -1,6 +1,7 @@
-<!-- pkg-partner/pages/stats/index.wxml · 单量统计（无费用口径） -->
+<!-- pkg-partner/pages/stats/index.wxml · 单量统计（今日/本周/本月；近 7 天自绘柱 + 今日日报；零费用口径） -->
 <view class="page-body">
   <switch-bar />
+
   <view class="row range-tabs">
     <view
       wx:for="{{ranges}}"
@@ -11,12 +12,26 @@
     >{{item.label}}</view>
   </view>
 
-  <view wx:if="{{loading}}" class="empty-text">加载中…</view>
-  <view wx:elif="{{error}}" class="card">
-    <empty-state text="{{error}}" actionText="重试" bind:action="load" />
-  </view>
+  <!-- 骨架屏：首次进入不显示 0 值假数据 -->
+  <block wx:if="{{stage === 'skeleton'}}">
+    <view class="card">
+      <view class="skeleton-line skeleton-wide"></view>
+      <view class="skeleton-line skeleton-half"></view>
+      <view class="skeleton-line"></view>
+    </view>
+  </block>
+
+  <!-- 首屏失败：错误卡 + 重试 -->
+  <block wx:elif="{{stage === 'error'}}">
+    <view class="card">
+      <empty-state text="{{errorText}}" actionText="重试" bind:action="onRetryTap" />
+    </view>
+  </block>
 
   <block wx:else>
+    <!-- 有旧值时请求失败：保留数据 + 顶部提示上次成功时间（UX §10） -->
+    <view wx:if="{{errorText}}" class="card sync-error-tip">{{errorText}}</view>
+
     <view class="card stat-grid">
       <view class="stat-cell">
         <view class="stat-value">{{metrics.completed}}</view>
@@ -27,29 +42,48 @@
         <view class="small">完成率</view>
       </view>
       <view class="stat-cell">
-        <view class="stat-value">{{metrics.running}}</view>
+        <view class="stat-value">{{metrics.active}}</view>
         <view class="small">进行中</view>
       </view>
       <view class="stat-cell">
-        <view class="stat-value">{{metrics.exception}} / {{metrics.canceled}}</view>
+        <view class="stat-value">{{metrics.exceptions}} / {{metrics.cancelled}}</view>
         <view class="small">异常 / 取消</view>
       </view>
     </view>
 
+    <view wx:if="{{rangeEmptyText}}" class="card">
+      <empty-state text="{{rangeEmptyText}}" />
+    </view>
+
     <view class="card">
       <view class="section-title">近 7 天单量</view>
-      <view class="bars">
-        <view wx:for="{{bars}}" wx:key="label" class="bar-col">
-          <view class="bar" style="height: {{item.height}}rpx"></view>
+      <view wx:if="{{chartEmpty}}" class="empty-text">{{chartEmptyText}}</view>
+      <view wx:else class="bars">
+        <view wx:for="{{bars}}" wx:key="date" class="bar-col">
+          <view class="bar-wrap">
+            <view wx:if="{{item.hasBar}}" class="bar" style="height: {{item.heightRpx}}rpx"></view>
+          </view>
           <view class="small">{{item.label}}</view>
         </view>
       </view>
       <view class="divider"></view>
       <view class="row between small">
-        <text>今日完成 {{metrics.todayCompleted}} 单</text>
-        <text>异常 {{metrics.exception}} · 取消 {{metrics.canceled}}</text>
+        <text>{{summaryText}}</text>
+        <text wx:if="{{updatedAtText}}">{{updatedAtText}} 更新</text>
       </view>
-      <view class="small stat-note">统计基于最近 {{loadedCount}} 单（按服务端分页累计）；不含测试账号与测试订单；本程序不涉及任何费用收付。</view>
+      <view class="today-line" bindtap="onTodayCompletedTap">
+        <text>今日完成 {{metrics.todayCompleted}} 单</text>
+        <text class="today-link">去已完结区查看 ></text>
+      </view>
+    </view>
+
+    <view class="card">
+      <view class="section-title">今日日报摘要</view>
+      <view wx:if="{{report.visible}}" class="report-text">{{report.text}}</view>
+      <view wx:else class="empty-text">今天还没有可复制的订单记录</view>
+      <button wx:if="{{report.visible}}" class="btn btn-ghost btn-block" bindtap="onCopyReport">复制日报</button>
     </view>
   </block>
+
+  <view class="small compliance-note">本程序不涉及任何费用收付。</view>
 </view>

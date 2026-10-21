@@ -207,6 +207,31 @@ async function getActiveBinding(ctx, customerId) {
   });
 }
 
+async function getBindingById(ctx, bindingId) {
+  if (!bindingId) {
+    return null;
+  }
+  return ctx.dao.get(COLLECTIONS.BINDINGS, bindingId);
+}
+
+// 已绑定顾客代客下单（DATA_MODEL §4.8 块 A）：绑定必须属于当前兼职且 ACTIVE；顾客资料必须存在且未注销。
+// 归属不符 → FORBIDDEN（不暴露绑定是否存在）；非 ACTIVE/顾客已注销 → INVALID_STATE。
+async function loadBoundCustomer(ctx, partner, bindingId) {
+  const binding = await getBindingById(ctx, bindingId);
+  if (!binding || String(binding.partnerId) !== String(partner && partner._id)) {
+    throw errors.forbidden('绑定顾客不存在或不属于当前兼职');
+  }
+  if (binding.status !== enums.BINDING_STATUS.ACTIVE) {
+    throw errors.invalidState('该顾客的绑定已解除，请刷新客户列表后重试');
+  }
+  const customer = await getCustomerByOpenid(ctx, binding.customerId);
+  if (!customer || customer.deletedAt || customer.anonymizedAt) {
+    throw errors.invalidState('顾客资料已不可用，无法代客下单');
+  }
+  const customerUser = await getUser(ctx, binding.customerId);
+  return { binding, customer, customerIsTest: !!(customerUser && customerUser.isTestAccount) };
+}
+
 async function getOrderByNo(ctx, orderNo) {
   if (!orderNo) {
     return null;
@@ -339,6 +364,8 @@ module.exports = {
   getPartnerByOpenid,
   getPartnerById,
   getActiveBinding,
+  getBindingById,
+  loadBoundCustomer,
   getOrderByNo,
   getOrderById,
   normalizeOrderNoInput,

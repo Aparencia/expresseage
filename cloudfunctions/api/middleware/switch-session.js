@@ -17,6 +17,8 @@ const VIEW_READ_WHITELIST = Object.freeze([
   'user.bootstrap',
   'customer.getProfile',
   'partner.listBindings',
+  'partner.getCustomer',
+  'partner.stats',
   'bind.getCurrent',
   'order.get',
   'order.listCustomer',

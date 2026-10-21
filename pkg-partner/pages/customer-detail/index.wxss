@@ -1,4 +1,4 @@
-/* pkg-partner/pages/customer-detail/index.wxss · 顾客档案局部样式 */
+/* pkg-partner/pages/customer-detail/index.wxss · 顾客详情局部样式 */
 .head-card {
   padding-bottom: 16rpx;
 }
@@ -11,6 +11,10 @@
 .number-row {
   margin-top: 6rpx;
   color: #2B6DE5;
+}
+
+.number-label {
+  margin-right: 12rpx;
 }
 
 .mini-btn {
@@ -38,11 +42,46 @@
   margin-left: 16rpx;
 }
 
+.section-head {
+  margin-bottom: 8rpx;
+}
+
+.day-head {
+  padding: 16rpx 0 8rpx;
+  border-bottom: 1rpx solid #EEEEEE;
+}
+
 .order-line {
   padding: 20rpx 0;
   border-bottom: 1rpx solid #EEEEEE;
 }
 
-.bind-note {
-  background: #F6F7F9;
+.more-row {
+  padding-top: 20rpx;
+}
+
+.unbind-card {
+  background: #FFFFFF;
+}
+
+.lock-text {
+  color: #E54D42;
+  margin-top: 12rpx;
+}
+
+.unbind-btn {
+  margin-top: 20rpx;
+}
+
+.unbind-reason {
+  margin-top: 12rpx;
+  text-align: center;
+}
+
+.footer-id {
+  padding: 8rpx 0 32rpx;
+}
+
+.footer-id .id-text {
+  margin: 0 12rpx;
 }

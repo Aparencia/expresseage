@@ -1,224 +1,254 @@
-// pkg-partner/pages/create-on-behalf/index.js · 代客下单（服务端一律落 guest 快照：不写 bindings）
-// 真实 DTO：可选服务/苑范围取自 store.partner.serviceConfig（bootstrap 水合）；档案信息来自 partner.listBindings
+// pkg-partner/pages/create-on-behalf/index.js · 代客下单（两条顾客路径：已绑定 bindingId / 新顾客 guest；均不写 bindings）
+// 口径：docs/V4_UX_PARTNER.md §3.4；docs/V4_DATA_MODEL.md §7.5 批 7（bindingId 与 guest 二选一）
 const orderApi = require('../../../api/modules/order');
 const partnerApi = require('../../../api/modules/partner');
 const configApi = require('../../../api/modules/config');
 const aiApi = require('../../../api/modules/ai');
+const client = require('../../../api/client');
 const store = require('../../../store/index');
-const stations = require('../../../shared/stations');
-const zoneUtil = require('../../../shared/zones');
-const enums = require('../../../shared/enums');
 const modeGuard = require('../../../api/mode-guard');
+const formModel = require('./parts/form-model');
+const resultModel = require('./parts/result-model');
 
-const SERVICE_FALLBACK = [
-  { code: 'PICKUP_STD', name: '标准代取' },
-  { code: 'PICKUP_DOOR', name: '送寝上门' },
-  { code: 'PICKUP_URGENT', name: '加急代取' },
-  { code: 'DROP_OFF', name: '代寄快递' },
-  { code: 'CUSTOM', name: '其他代办' }
-];
-const NOTE_MAX = 200;
-const ROOM_PATTERN = /^[0-9]{3,}$/;
+const BINDING_OPTIONS_LIMIT = 50;
 
 function textOf(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-function arr(value) {
-  return Array.isArray(value) ? value : [];
-}
-
-// 切换会话（TEST_WRITE）下写操作成功提示必须点明"测试数据"
-function writeHint(text) {
-  return modeGuard.isTestWrite() ? text + '（将写入测试数据）' : text;
-}
-
-function buildDormKey(zone, buildingNo, room) {
-  const building = textOf(buildingNo);
-  const roomNo = textOf(room);
-  if (!zone || !building || !roomNo) {
-    return '';
-  }
-  return zone + building + '-' + roomNo;
-}
-
-function startOfNextHour() {
-  const date = new Date(Date.now() + 60 * 60 * 1000);
-  date.setMinutes(0, 0, 0);
-  return date.getTime();
+function clone(value) {
+  return value === undefined ? value : JSON.parse(JSON.stringify(value));
 }
 
 Page({
   data: {
     step: 1,
+    customerMode: 'GUEST',
+    modes: [],
     bindingOptions: [],
-    customerMode: 'BOUND',
-    guest: { displayName: '', phoneTail: '', zone: '', buildingNo: '', room: '', dormKey: '' },
+    bindingIndex: 0,
+    bindingLabel: '',
+    bindingSub: '',
+    guest: {},
+    guestDormKeyText: '',
     zones: [],
     services: [],
     serviceIndex: 0,
+    serviceName: '',
+    servicesEmpty: true,
     stationOptions: [],
     stationIndex: 0,
-    parcel: { pickupCode: '', lockerNo: '', trackingTail: '' },
-    appointOptions: [{ key: 'ASAP', label: '尽快' }],
+    stationName: '',
+    items: [],
+    itemsCount: 0,
+    canAddItem: true,
+    appointOptions: [],
     appointIndex: 0,
+    appointLabel: '',
     note: '',
+    noteMax: formModel.NOTE_MAX,
+    pickupCodeMax: formModel.PICKUP_CODE_MAX,
+    lockerNoMax: formModel.LOCKER_NO_MAX,
+    tailLength: formModel.TRACKING_TAIL_LENGTH,
+    displayNameMax: formModel.DISPLAY_NAME_MAX,
     imageFileId: '',
     imageTicketId: '',
-    recognitionFailureId: '',
-    recognizing: false,
-    recognizeText: '',
     reviewText: '',
+    recognizing: false,
     submitting: false,
     readonly: false,
-    errorText: ''
+    errorText: '',
+    customerSummary: '',
+    result: null
   },
 
-  onLoad() {
+  onLoad(options) {
+    this.state = null;
+    this.result = null;
+    this.requestKey = { clientRequestId: '', signature: '' };
+    this.step = 1;
     this.setData({ readonly: !modeGuard.canRenderWriteButton() });
-    this.loadBase();
+    this.loadBase((options && options.bindingId) || '');
   },
 
   onShow() {
     this.setData({ readonly: !modeGuard.canRenderWriteButton() });
   },
 
-  loadBase() {
+  loadBase(presetBindingId) {
     const cachedConfig = store.get('config');
     const configPromise = cachedConfig ? Promise.resolve(cachedConfig) : configApi.getPublic();
-    Promise.all([configPromise, partnerApi.listBindings()])
+    Promise.all([configPromise, partnerApi.listBindings({ limit: BINDING_OPTIONS_LIMIT })])
       .then((results) => {
         const config = results[0] || {};
         const bindings = results[1] || {};
         const partner = store.get('partner') || {};
-        const serviceConfig = partner.serviceConfig || {};
-        const catalog = arr(config.serviceCatalog);
-        const enabledCodes = arr(serviceConfig.services)
-          .filter((item) => item && item.enabled === true)
-          .map((item) => item.code);
-        const services = this.pickServices(enabledCodes, catalog);
-        const zoneLabels = config.zoneLabels || {};
-        const scopedZones = arr(serviceConfig.zones);
-        const zoneKeys = scopedZones.length ? scopedZones : Object.keys(zoneLabels);
-        const zones = zoneKeys.map((key) => ({ key: key, label: zoneLabels[key] || key }));
-        const bindingOptions = arr(bindings.list).map((item) => this.buildBindingOption(item));
-        const firstOption = bindingOptions[0];
-        this.setData({
-          services: services,
-          zones: zones,
-          bindingOptions: bindingOptions,
-          customerMode: bindingOptions.length ? 'BOUND' : 'GUEST',
-          guest: firstOption && firstOption.guest ? Object.assign({}, this.data.guest, firstOption.guest) : this.data.guest,
-          appointOptions: this.buildAppointOptions(),
-          stationOptions: [{ id: '', name: '暂不指定（需查明）' }].concat(stations.listStations())
+        this.state = formModel.createInitialState({
+          config: config,
+          partner: partner,
+          bindingList: bindings.list,
+          nowMs: Date.now()
         });
+        this.applyPresetBinding(textOf(presetBindingId));
+        this.render();
       })
       .catch((err) => {
         this.setData({ errorText: (err && err.message) || '页面没加载出来，检查网络后重试' });
       });
   },
 
-  // 只列本兼职已启用的服务类型（serviceConfig.services）；目录文案来自公开配置，缺省回 enums
-  pickServices(enabledCodes, catalog) {
-    if (!enabledCodes.length) {
-      return catalog.length ? catalog : SERVICE_FALLBACK;
+  // 从客户列表「代客下单」带 bindingId 进来：定位到该档案（找不到不猜，留给用户手选/新顾客）
+  applyPresetBinding(bindingId) {
+    if (!bindingId || !this.state) {
+      return;
     }
-    return enabledCodes.map((code) => {
-      const hit = catalog.filter((item) => item.code === code)[0];
-      return hit || { code: code, name: enums.SERVICE_NAME[code] || code, desc: '' };
-    });
-  },
-
-  // 绑定档案 → 代客单 guest 预填：服务端代客单只落 guest 快照（不写绑定），所以这里用档案信息填 guest
-  buildBindingOption(item) {
-    const row = item || {};
-    const parsed = zoneUtil.parseDormKey(row.dormKey);
-    return {
-      bindingId: row.bindingId || '',
-      label: textOf(row.displayName) || '未填称呼',
-      sub: textOf(row.dormKey) + (row.roomTag ? row.roomTag : ''),
-      guest: {
-        displayName: textOf(row.displayName),
-        phoneTail: textOf(row.phoneTail),
-        zone: parsed.ok ? parsed.zone : '',
-        buildingNo: parsed.ok ? String(parsed.buildingNo) : '',
-        room: parsed.ok ? parsed.room : '',
-        dormKey: parsed.ok ? parsed.dormKey : ''
+    const options = this.state.bindingOptions;
+    for (let index = 0; index < options.length; index += 1) {
+      if (options[index].bindingId === bindingId) {
+        this.state = Object.assign({}, this.state, { customerMode: 'BOUND', bindingIndex: index });
+        return;
       }
-    };
+    }
   },
 
-  buildAppointOptions() {
-    const now = new Date();
-    const base = now.getTime() + 2 * 60 * 60 * 1000;
-    const slots = [{ key: 'ASAP', label: '尽快' }];
-    ['上午 08:00-12:00', '下午 12:00-18:00', '晚上 18:00-22:00'].forEach((label, index) => {
-      slots.push({ key: 'SLOT', label: '今天 ' + label, offset: index, baseTime: base });
+  render() {
+    const state = this.state;
+    if (!state) {
+      return;
+    }
+    const binding = formModel.currentBinding(state);
+    const service = formModel.currentService(state);
+    const station = formModel.currentStation(state);
+    const appoint = formModel.currentAppoint(state);
+    const guest = state.guest || {};
+    const guestName = textOf(guest.displayName) || '未填称呼';
+    this.setData({
+      step: this.step,
+      customerMode: state.customerMode,
+      modes: formModel.CUSTOMER_MODES.map((key) => ({ key: key, label: formModel.MODE_LABEL[key] })),
+      bindingOptions: state.bindingOptions,
+      bindingIndex: state.bindingIndex,
+      bindingLabel: binding ? binding.label : '',
+      bindingSub: binding ? binding.sub : '',
+      guest: state.guest,
+      guestDormKeyText: formModel.guestDormKey(guest),
+      zones: state.zones,
+      services: state.services,
+      servicesEmpty: state.services.length === 0,
+      serviceIndex: state.serviceIndex,
+      serviceName: service ? service.name : '',
+      stationOptions: state.stationOptions,
+      stationIndex: state.stationIndex,
+      stationName: station ? station.name : '',
+      items: state.items,
+      itemsCount: state.items.length,
+      canAddItem: state.items.length < formModel.BATCH_MAX,
+      appointOptions: state.appointOptions,
+      appointIndex: state.appointIndex,
+      appointLabel: appoint.label || '',
+      note: state.note,
+      imageFileId: state.imageFileId,
+      imageTicketId: state.imageTicketId,
+      reviewText: state.reviewText,
+      customerSummary: state.customerMode === 'BOUND' ? '已绑定：' + (binding ? binding.label : '未选择')
+        : '新顾客（代客单）：' + guestName + (textOf(guest.phoneTail) ? ' · 尾号' + textOf(guest.phoneTail) : ''),
+      result: this.result
     });
-    return slots;
+  },
+
+  update(patch) {
+    this.state = Object.assign({}, this.state, patch);
+    this.render();
   },
 
   onStepTap(event) {
     const step = Number(event.currentTarget.dataset.step);
     if (step >= 1 && step <= 3) {
-      this.setData({ step: step });
+      this.step = step;
+      this.render();
     }
   },
 
-  onCustomerModeTap(event) {
-    const mode = event.currentTarget.dataset.mode || 'GUEST';
-    this.setData({ customerMode: mode });
-    if (mode === 'BOUND') {
-      this.applyGuestFromBinding(Number(this.data.guest.boundIndex || 0));
-    }
-  },
-
-  // 选已绑定档案：用档案信息预填 guest（服务端代客单只落 guest 快照，不写 bindings）
-  applyGuestFromBinding(index) {
-    const option = (this.data.bindingOptions || [])[index];
-    if (!option || !option.guest) {
+  onModeTap(event) {
+    if (this.data.readonly) {
       return;
     }
-    this.setData({
-      'guest.boundIndex': index,
-      guest: Object.assign({}, this.data.guest, option.guest)
-    });
+    const mode = event.currentTarget.dataset.mode === 'BOUND' ? 'BOUND' : 'GUEST';
+    if (mode === this.state.customerMode) {
+      return;
+    }
+    this.update({ customerMode: mode });
   },
 
   onBindingPick(event) {
-    this.applyGuestFromBinding(Number(event.detail.value));
+    this.update({ bindingIndex: Number(event.detail.value) });
   },
 
   onGuestInput(event) {
+    if (this.data.readonly) {
+      return;
+    }
     const field = event.currentTarget.dataset.field;
-    this.setData({ ['guest.' + field]: (event.detail && event.detail.value) || '' });
+    const guest = Object.assign({}, this.state.guest);
+    guest[field] = (event.detail && event.detail.value) || '';
+    this.update({ guest: guest, result: null });
   },
 
   onZoneTap(event) {
-    const zone = event.currentTarget.dataset.zone;
-    this.setData({ 'guest.zone': zone });
+    if (this.data.readonly) {
+      return;
+    }
+    const guest = Object.assign({}, this.state.guest);
+    guest.zone = event.currentTarget.dataset.zone;
+    this.update({ guest: guest });
   },
 
-  onParcelInput(event) {
+  onItemInput(event) {
+    if (this.data.readonly) {
+      return;
+    }
+    const index = Number(event.currentTarget.dataset.index);
     const field = event.currentTarget.dataset.field;
-    this.setData({ ['parcel.' + field]: textOf((event.detail && event.detail.value) || '') });
+    const items = clone(this.state.items);
+    if (!items[index]) {
+      return;
+    }
+    items[index][field] = (event.detail && event.detail.value) || '';
+    this.update({ items: items, result: null });
+  },
+
+  onAddItem() {
+    if (this.data.readonly || this.state.items.length >= formModel.BATCH_MAX) {
+      return;
+    }
+    this.update({ items: clone(this.state.items).concat([formModel.emptyParcel()]) });
+  },
+
+  onRemoveItem(event) {
+    if (this.data.readonly || this.state.items.length <= 1) {
+      return;
+    }
+    const index = Number(event.currentTarget.dataset.index);
+    const items = clone(this.state.items);
+    items.splice(index, 1);
+    this.update({ items: items });
   },
 
   onServiceChange(event) {
-    this.setData({ serviceIndex: Number(event.detail.value) });
+    this.update({ serviceIndex: Number(event.detail.value) });
   },
 
   onStationChange(event) {
-    this.setData({ stationIndex: Number(event.detail.value) });
+    this.update({ stationIndex: Number(event.detail.value) });
   },
 
   onAppointChange(event) {
-    this.setData({ appointIndex: Number(event.detail.value) });
+    this.update({ appointIndex: Number(event.detail.value) });
   },
 
   onNoteInput(event) {
-    const value = textOf((event.detail && event.detail.value) || '');
-    this.setData({ note: value.slice(0, NOTE_MAX) });
+    const raw = (event.detail && event.detail.value) || '';
+    this.update({ note: raw.slice(0, formModel.NOTE_MAX) });
   },
 
   onImageChange(event) {
@@ -227,11 +257,10 @@ Page({
       return;
     }
     const uploaded = files[0] || {};
-    this.setData({
-      recognizeText: '',
-      reviewText: '',
+    this.update({
       imageFileId: uploaded.fileId || '',
-      imageTicketId: uploaded.uploadTicketId || ''
+      imageTicketId: uploaded.uploadTicketId || '',
+      reviewText: ''
     });
   },
 
@@ -241,59 +270,31 @@ Page({
   },
 
   onRecognizeTap() {
+    if (this.data.readonly) {
+      wx.showToast({ title: '开发者只读视角不能操作', icon: 'none' });
+      return;
+    }
     if (this.data.recognizing) {
       return;
     }
-    if (!this.data.imageTicketId) {
+    if (!this.state.imageTicketId) {
       wx.showToast({ title: '先选一张取件截图，或直接手填', icon: 'none' });
       return;
     }
     this.setData({ recognizing: true, errorText: '' });
-    aiApi
-      .parseParcel({
-        ocrTextMasked: '',
-        hintTrackingTail: this.data.parcel.trackingTail || undefined,
-        uploadTicketId: this.data.imageTicketId,
-        role: 'PARTNER'
-      })
+    aiApi.parseParcel({
+      ocrTextMasked: '',
+      hintTrackingTail: textOf(this.state.items[0] && this.state.items[0].trackingTail) || undefined,
+      uploadTicketId: this.state.imageTicketId,
+      role: 'PARTNER'
+    })
       .then((result) => {
-        const data = result || {};
-        const parcel = Object.assign({}, this.data.parcel);
-        let stationIndex = this.data.stationIndex;
-        if (data.recognized) {
-          if (data.pickupCode) {
-            parcel.pickupCode = parcel.pickupCode || data.pickupCode;
-          }
-          if (data.lockerNo) {
-            parcel.lockerNo = parcel.lockerNo || data.lockerNo;
-          }
-          if (data.trackingTail) {
-            parcel.trackingTail = parcel.trackingTail || data.trackingTail;
-          }
-          const stationId = textOf(data.stationId).toUpperCase();
-          if (stationId) {
-            const options = this.data.stationOptions || [];
-            for (let index = 0; index < options.length; index += 1) {
-              if (options[index].id === stationId) {
-                stationIndex = index;
-                break;
-              }
-            }
-          }
-        }
-        const review = data.recognized
-          ? '已按截图预填，请核对（以手填为准）'
-          : '这次没认出取件码/站点，已反馈开发者复核；可手填，或稍后看复核结果';
-        this.setData({
-          parcel: parcel,
-          stationIndex: stationIndex,
-          recognitionFailureId: textOf(data.failureId),
-          recognizing: false,
-          reviewText: review
-        });
+        this.update(formModel.applyRecognition(this.state, result || {}));
+        this.setData({ recognizing: false });
       })
       .catch((err) => {
-        this.setData({ recognizing: false, reviewText: '识别没完成，可以直接手填' });
+        this.setData({ recognizing: false });
+        this.update({ reviewText: '识别没完成，可以直接手填' });
         if (err && err.code === 'VIEW_TICKET_EXPIRED') {
           store.clearViewContext();
           wx.reLaunch({ url: '/pkg-admin/pages/account-switch/index' });
@@ -301,130 +302,47 @@ Page({
       });
   },
 
-  validateForm() {
-    const services = this.data.services || [];
-    if (!services.length) {
-      return '服务类型还没加载出来，请稍后重试';
-    }
-    const guest = this.data.guest;
-    if (this.data.customerMode === 'BOUND') {
-      const options = this.data.bindingOptions;
-      const index = Number(guest.boundIndex || 0);
-      if (!options.length || !options[index]) {
-        return '请选择一位已绑定的顾客';
-      }
-      if (!textOf(guest.zone) || !textOf(guest.buildingNo) || !ROOM_PATTERN.test(textOf(guest.room))) {
-        return '该顾客档案缺宿舍信息，请切到「新顾客」手填';
-      }
-    } else {
-      if (!textOf(guest.displayName)) {
-        return '代客单需要填顾客称呼（送达时要用）';
-      }
-      if (!guest.zone) {
-        return '请选择苑';
-      }
-      if (!textOf(guest.buildingNo)) {
-        return '请填楼栋号';
-      }
-      if (!ROOM_PATTERN.test(textOf(guest.room))) {
-        return '宿舍号至少 3 位数字';
-      }
-    }
-    if (guest.phoneTail && !/^[0-9]{4}$/.test(textOf(guest.phoneTail))) {
-      return '手机尾号是 4 位数字，或留空';
-    }
-    const parcel = this.data.parcel;
-    if (!textOf(parcel.pickupCode) && !textOf(parcel.trackingTail)) {
-      return '至少填取件码或运单尾号，两者都空无法建单';
-    }
-    if (textOf(parcel.trackingTail) && !/^[0-9]{5}$/.test(textOf(parcel.trackingTail))) {
-      return '运单尾号必须是 5 位数字';
-    }
-    return '';
-  },
-
-  // 服务端代客单恒落 guest 快照（customerId=''，不写 bindings）；BOUND 模式用的也是档案预填的 guest
-  buildGuest() {
-    const guest = this.data.guest;
-    return {
-      displayName: textOf(guest.displayName),
-      phoneTail: textOf(guest.phoneTail),
-      zone: guest.zone,
-      buildingNo: Number(guest.buildingNo),
-      room: textOf(guest.room),
-      dormKey: buildDormKey(guest.zone, guest.buildingNo, guest.room)
-    };
-  },
-
-  buildPayload() {
-    const parcel = this.data.parcel;
-    const appointOption = this.data.appointOptions[this.data.appointIndex] || { key: 'ASAP' };
-    const appoint = { type: appointOption.key };
-    if (appointOption.key === 'SLOT') {
-      const start = new Date(appointOption.baseTime + appointOption.offset * 6 * 60 * 60 * 1000);
-      const end = new Date(start.getTime() + 6 * 60 * 60 * 1000);
-      appoint.startAt = start.getTime();
-      appoint.endAt = end.getTime();
-    }
-    const service = this.data.services[this.data.serviceIndex] || this.data.services[0] || {};
-    const stationOption = (this.data.stationOptions || [])[this.data.stationIndex] || {};
-    const payload = {
-      parcel: {
-        pickupCode: textOf(parcel.pickupCode),
-        lockerNo: textOf(parcel.lockerNo),
-        trackingTail: textOf(parcel.trackingTail),
-        stationId: stationOption.id || '',
-        stationName: stationOption.name || ''
-      },
-      serviceCode: service.code,
-      appoint: appoint,
-      note: this.data.note,
-      ticket: this.data.imageTicketId,
-      image: this.data.imageFileId ? { fileId: this.data.imageFileId } : undefined
-    };
-    // AI 兜底失败记录关联：failureId 由识别接口（经 api/modules/ai 出口）下发，服务端据此把失败记录挂到订单上
-    const failureId = textOf(this.data.recognitionFailureId);
-    if (failureId) {
-      payload.recognition = { failureId: failureId };
-    }
-    const guest = this.buildGuest();
-    if (guest) {
-      payload.guest = guest;
-    }
-    return payload;
-  },
-
   onSubmit() {
-    if (this.data.submitting || this.data.readonly) {
+    if (this.data.readonly) {
+      wx.showToast({ title: '开发者只读视角不能操作', icon: 'none' });
       return;
     }
-    const message = this.validateForm();
-    if (message) {
-      this.setData({ errorText: message });
+    if (this.data.submitting) {
       return;
     }
+    const built = formModel.buildPayload(this.state);
+    if (!built.ok) {
+      this.setData({ errorText: built.message, step: 1 });
+      return;
+    }
+    const signature = formModel.contentSignature(this.state);
+    this.requestKey = formModel.ensureRequestKey(this.requestKey, signature, {
+      makeId: client.createRequestId,
+      isValid: client.isValidClientRequestId
+    });
     this.setData({ submitting: true, errorText: '' });
-    orderApi
-      .create(this.buildPayload())
+    const apiCall = built.batch ? orderApi.createBatch : orderApi.create;
+    apiCall(built.data, { clientRequestId: this.requestKey.clientRequestId })
       .then((result) => {
-        const orderNo = (result && result.orderNo) || '';
-        const content = '本次为代客单：顾客未绑定，进度需线下告知；送达后由系统自动完成。绑定必须由顾客本人发起。';
-        this.setData({ submitting: false });
-        wx.showModal({
-          title: '订单已提交',
-          content: writeHint(content),
-          showCancel: false,
-          success: () => {
-            if (orderNo) {
-              wx.redirectTo({ url: '/pkg-partner/pages/order-detail/index?orderNo=' + orderNo });
-            } else {
-              wx.navigateBack({ delta: 1 });
-            }
-          }
-        });
+        this.result = resultModel.buildResult(result || {}, { customerMode: this.state.customerMode });
+        if (modeGuard.isTestWrite() && this.result.visible) {
+          this.result = Object.assign({}, this.result, {
+            hintLines: this.result.hintLines.concat(['本次写入的是测试数据（开发者切换会话）'])
+          });
+        }
+        this.setData({ submitting: false, errorText: '' });
+        this.render();
       })
       .catch((err) => {
-        this.setData({ submitting: false, errorText: (err && err.message) || '提交失败，请稍后重试' });
+        this.setData({ submitting: false, errorText: formModel.failureText(err) });
       });
+  },
+
+  onResultOrderTap(event) {
+    const orderNo = textOf(event.currentTarget.dataset.orderNo);
+    if (!orderNo) {
+      return;
+    }
+    wx.navigateTo({ url: '/pkg-partner/pages/order-detail/index?orderNo=' + encodeURIComponent(orderNo) });
   }
 });

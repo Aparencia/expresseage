@@ -15,9 +15,9 @@ const MAX_BATCH = orderState.MAX_CREATE_BATCH;
 
 // 入参白名单（DATA_MODEL §12 #12）：不认识的顶层/条目字段一律 VALIDATION_FAILED 并回 data.field，
 // 不做"静默忽略"——否则未知键会被悄悄丢弃，掩盖客户端契约漂移（零金额口径：交易类字段同样不得入库）。
-const CREATE_FIELDS = ['parcel', 'serviceCode', 'appoint', 'note', 'ticket', 'image', 'recognition', 'guest', 'batchActionId'];
+const CREATE_FIELDS = ['parcel', 'serviceCode', 'appoint', 'note', 'ticket', 'image', 'recognition', 'guest', 'bindingId', 'batchActionId'];
 const BATCH_ITEM_FIELDS = ['parcel', 'serviceCode', 'appoint', 'note', 'guest', 'recognition'];
-const CREATE_BATCH_FIELDS = ['items', 'ticket', 'image', 'recognition', 'batchActionId'];
+const CREATE_BATCH_FIELDS = ['items', 'ticket', 'image', 'recognition', 'batchActionId', 'bindingId'];
 
 function assertKnownFields(input, allowed) {
   const value = parcelUtil.isPlainObject(input) ? input : {};
@@ -39,61 +39,88 @@ async function loadConfigOf(ctx) {
 }
 
 // 下单上下文：顾客=资料完整+ACTIVE 绑定；兼职=ACTIVE+接单开关；真实×测试双方必须同侧
-async function prepareContext(ctx) {
+// 兼职代客（批 7）：bindingId（已绑定顾客，走正常订单）与 guest（新顾客）二选一；
+// 绑定顾客的身份/dorm/phoneTail 在上下文里一次性定好，逐单字段组装复用（不写 bindings）。
+async function prepareCustomerContext(ctx, scope, config, now) {
+  const customerId = common.customerScope(ctx);
+  const customer = await common.getCustomerByOpenid(ctx, customerId);
+  if (!customer || customer.profileCompleted !== true) {
+    throw errors.invalidState('请先完善个人资料（苑/栋/宿舍号/昵称）');
+  }
+  const binding = await common.getActiveBinding(ctx, customerId);
+  if (!binding) {
+    throw errors.invalidState('还没有绑定兼职，请先在绑定页输入兼职编号完成绑定');
+  }
+  const partner = await common.getPartnerById(ctx, binding.partnerId);
+  parcelUtil.assertPartnerOpen(partner);
+  parcelUtil.assertAcceptingOrders(partner);
+  const customerUser = await common.getUser(ctx, customerId);
+  const partnerUser = await common.getUser(ctx, partner.openid);
+  const customerIsTest = !!(customerUser && customerUser.isTestAccount);
+  const partnerIsTest = !!(partnerUser && partnerUser.isTestAccount);
+  if (!common.isSameTestSide(customerIsTest, partnerIsTest)) {
+    throw errors.forbidden('测试账号与真实账号不能互相下单');
+  }
+  return {
+    scope,
+    config,
+    now,
+    mode: 'CUSTOMER',
+    customerId,
+    customerNo: typeof customer.customerNo === 'string' ? customer.customerNo : '',
+    customer,
+    binding,
+    partner,
+    dorm: parcelUtil.customerDorm(customer, binding.roomTag),
+    isTest: customerIsTest,
+    impersonatedBy: scope.impersonatedBy
+  };
+}
+
+async function preparePartnerContext(ctx, scope, config, now, selector, bindingId) {
+  const partner = await common.loadWritablePartner(ctx);
+  parcelUtil.assertAcceptingOrders(partner);
+  const partnerUser = await common.getUser(ctx, partner.openid);
+  const base = {
+    scope,
+    config,
+    now,
+    mode: 'PARTNER',
+    partner,
+    isTest: !!(partnerUser && partnerUser.isTestAccount),
+    impersonatedBy: scope.impersonatedBy
+  };
+  if (selector !== 'BOUND') {
+    return Object.assign(base, {
+      customerMode: 'GUEST',
+      customerId: '',
+      customerNo: '',
+      customer: null,
+      binding: null,
+      dorm: null,
+      phoneTail: ''
+    });
+  }
+  const bound = await common.loadBoundCustomer(ctx, partner, bindingId);
+  if (!common.isSameTestSide(bound.customerIsTest, base.isTest)) {
+    throw errors.forbidden('测试账号与真实账号不能互相下单');
+  }
+  return Object.assign(base, parcelUtil.boundCustomerContext(bound, base.isTest));
+}
+
+async function prepareContext(ctx, payload) {
   common.assertWritable(ctx);
   const scope = common.scopeOf(ctx);
+  const input = parcelUtil.isPlainObject(payload) ? payload : {};
+  const bindingId = parcelUtil.readBindingId(input);
+  const selector = parcelUtil.assertCreateSelector(scope.role, bindingId, parcelUtil.hasGuestField(input));
   const config = await loadConfigOf(ctx);
   const now = common.nowMsOf(ctx);
   if (scope.role === enums.ROLES.CUSTOMER) {
-    const customerId = common.customerScope(ctx);
-    const customer = await common.getCustomerByOpenid(ctx, customerId);
-    if (!customer || customer.profileCompleted !== true) {
-      throw errors.invalidState('请先完善个人资料（苑/栋/宿舍号/昵称）');
-    }
-    const binding = await common.getActiveBinding(ctx, customerId);
-    if (!binding) {
-      throw errors.invalidState('还没有绑定兼职，请先在绑定页输入兼职编号完成绑定');
-    }
-    const partner = await common.getPartnerById(ctx, binding.partnerId);
-    parcelUtil.assertPartnerOpen(partner);
-    parcelUtil.assertAcceptingOrders(partner);
-    const customerUser = await common.getUser(ctx, customerId);
-    const partnerUser = await common.getUser(ctx, partner.openid);
-    const customerIsTest = !!(customerUser && customerUser.isTestAccount);
-    const partnerIsTest = !!(partnerUser && partnerUser.isTestAccount);
-    if (!common.isSameTestSide(customerIsTest, partnerIsTest)) {
-      throw errors.forbidden('测试账号与真实账号不能互相下单');
-    }
-    return {
-      scope,
-      config,
-      now,
-      mode: 'CUSTOMER',
-      customerId,
-      customerNo: typeof customer.customerNo === 'string' ? customer.customerNo : '',
-      customer,
-      binding,
-      partner,
-      dorm: parcelUtil.customerDorm(customer, binding.roomTag),
-      isTest: customerIsTest,
-      impersonatedBy: scope.impersonatedBy
-    };
+    return prepareCustomerContext(ctx, scope, config, now);
   }
   if (scope.role === enums.ROLES.PARTNER) {
-    const partner = await common.loadWritablePartner(ctx);
-    parcelUtil.assertAcceptingOrders(partner);
-    const partnerUser = await common.getUser(ctx, partner.openid);
-    return {
-      scope,
-      config,
-      now,
-      mode: 'PARTNER',
-      customerId: '',
-      customerNo: '',
-      partner,
-      isTest: !!(partnerUser && partnerUser.isTestAccount),
-      impersonatedBy: scope.impersonatedBy
-    };
+    return preparePartnerContext(ctx, scope, config, now, selector, bindingId);
   }
   throw errors.forbidden('仅顾客或兼职可以下单');
 }
@@ -116,6 +143,19 @@ function buildItemFields(context, item, fallbackSource) {
       dorm: context.dorm,
       guest: null,
       phoneTail: typeof context.customer.phoneTail === 'string' ? context.customer.phoneTail : ''
+    };
+  }
+  // 绑定顾客代客单：身份/地址/尾号全部来自绑定上下文，与顾客本人下单同构（顾客可见进度）。
+  if (context.customerMode === 'BOUND') {
+    parcelUtil.assertServiceRange(context.partner, context.dorm.zone);
+    return {
+      parcel,
+      service,
+      appoint,
+      note,
+      dorm: context.dorm,
+      guest: null,
+      phoneTail: context.phoneTail
     };
   }
   const guest = parcelUtil.normalizeGuest(input.guest);
@@ -210,9 +250,13 @@ function buildImageSnapshot(imageInput, ticket, failureRecord, nowDate) {
   return image;
 }
 
+// 幂等键归属（§4.7/§4.8 块 A）：顾客本人与绑定顾客代客单用 customerId，guest 单用 partnerId。
+function requestOwnerOf(context) {
+  return context.customerId ? context.customerId : String(context.partner._id);
+}
+
 function buildRequestKey(context, clientRequestId, itemIndex) {
-  const owner = context.mode === 'CUSTOMER' ? context.customerId : String(context.partner._id);
-  const base = owner + ':' + clientRequestId;
+  const base = requestOwnerOf(context) + ':' + clientRequestId;
   return typeof itemIndex === 'number' ? base + ':' + itemIndex : base;
 }
 
@@ -305,7 +349,7 @@ async function createOne(ctx, payload) {
   assertKnownFields(payload, CREATE_FIELDS);
   // 批量分组标识按统一形态闸校验后再落库（DATA_MODEL §4.1：≤32 随机；不静默接收任意客户端串）。
   const batchActionId = common.readBatchActionId(payload);
-  const context = await prepareContext(ctx);
+  const context = await prepareContext(ctx, payload);
   const clientRequestId = ctx.clientRequestId || '';
   const fields = buildItemFields(context, payload, itemRecognitionSource(null, payload, 0));
   const imageCtx = await prepareImage(ctx, payload, context);
@@ -313,8 +357,9 @@ async function createOne(ctx, payload) {
   const requestKey = buildRequestKey(context, clientRequestId);
   const existing = await findExistingByRequestKey(ctx, requestKey);
   if (existing) {
-    const side = existing.customerId === context.customerId ? 'CUSTOMER' : 'PARTNER';
-    return { orderNo: existing.orderNo, order: await dto.buildOrderDto(ctx, existing, { side }), duplicated: true };
+    // 回放侧别按调用方模式取（guest 单两侧 customerId 都是 ''、绑定单两侧都是顾客 id，
+    // 用 customerId 相等判侧会把代客单回放成顾客视图：guest=null + 顾客动作条）。
+    return { orderNo: existing.orderNo, order: await dto.buildOrderDto(ctx, existing, { side: context.mode }), duplicated: true };
   }
   const nowDate = common.toDate(context.now);
   const image = buildImageSnapshot(imageCtx.image, imageCtx.ticket, failureRecord, nowDate);
@@ -359,7 +404,7 @@ async function createOne(ctx, payload) {
 async function createBatch(ctx, payload) {
   assertKnownFields(payload, CREATE_BATCH_FIELDS);
   const batchActionId = common.readBatchActionId(payload);
-  const context = await prepareContext(ctx);
+  const context = await prepareContext(ctx, payload);
   const clientRequestId = ctx.clientRequestId || '';
   const items = Array.isArray(payload.items) ? payload.items : [];
   if (items.length < 1 || items.length > MAX_BATCH) {
@@ -368,6 +413,8 @@ async function createBatch(ctx, payload) {
   items.forEach((item) => {
     assertKnownFields(item, BATCH_ITEM_FIELDS);
   });
+  // 条目级二选一（批 7）：顾客单/绑定顾客批量都不得再给 items[i].guest（整批不建）。
+  parcelUtil.assertBatchGuestFields(context, items);
   const fieldsList = items.map((item, index) => buildItemFields(context, item, itemRecognitionSource(item, payload, index)));
   const imageCtx = await prepareImage(ctx, payload, context);
   // 逐单失败记录（items[i].recognition.failureId；顶层 recognition.failureId 只回退 item0）：

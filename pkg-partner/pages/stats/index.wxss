@@ -1,4 +1,4 @@
-/* pkg-partner/pages/stats/index.wxss · 单量统计局部样式 */
+/* pkg-partner/pages/stats/index.wxss · 单量统计局部样式（view 自绘柱，不引第三方图表库） */
 .range-tabs {
   padding: 8rpx 0 24rpx;
 }
@@ -20,6 +20,27 @@
   color: #FFFFFF;
 }
 
+.skeleton-line {
+  height: 28rpx;
+  border-radius: 14rpx;
+  background: #EEF1F6;
+  margin-bottom: 20rpx;
+}
+
+.skeleton-wide {
+  width: 60%;
+}
+
+.skeleton-half {
+  width: 40%;
+}
+
+.sync-error-tip {
+  color: #B45309;
+  background: #FFF7E6;
+  font-size: 26rpx;
+}
+
 .stat-grid {
   display: flex;
   flex-wrap: wrap;
@@ -39,7 +60,7 @@
 .bars {
   display: flex;
   align-items: flex-end;
-  height: 160rpx;
+  height: 200rpx;
   padding: 16rpx 0;
 }
 
@@ -51,6 +72,12 @@
   justify-content: flex-end;
 }
 
+.bar-wrap {
+  height: 140rpx;
+  display: flex;
+  align-items: flex-end;
+}
+
 .bar {
   width: 24rpx;
   border-radius: 8rpx 8rpx 0 0;
@@ -58,6 +85,29 @@
   margin-bottom: 8rpx;
 }
 
-.stat-note {
-  margin-top: 8rpx;
+.today-line {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 20rpx;
+  padding-top: 20rpx;
+  border-top: 1rpx solid #EEF1F6;
+  font-size: 26rpx;
+  color: #2B6DE5;
+}
+
+.today-link {
+  color: #2B6DE5;
+}
+
+.report-text {
+  font-size: 26rpx;
+  line-height: 1.7;
+  color: #333333;
+  word-break: break-all;
+}
+
+.compliance-note {
+  margin-top: 24rpx;
+  color: #999999;
+  text-align: center;
 }

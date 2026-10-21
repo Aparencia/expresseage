@@ -1,5 +1,6 @@
 {
   "navigationBarTitleText": "客户",
   "navigationBarBackgroundColor": "#FFFFFF",
-  "enablePullDownRefresh": true
+  "enablePullDownRefresh": true,
+  "onReachBottomDistance": 80
 }

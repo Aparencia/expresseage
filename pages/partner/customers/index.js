@@ -1,74 +1,158 @@
-// pages/partner/customers/index.js · 客户档案（绑定只能由顾客发起；兼职端无添加/绑定/导入顾客入口）
+// pages/partner/customers/index.js · 客户列表（只列已被顾客绑定的顾客；兼职端无任何添加/绑定/导入入口）
+// 口径：docs/V4_UX_PARTNER.md §3.5；docs/V4_DATA_MODEL.md §7.4 listBindings（搜索/分页/排序全在服务端）
 const partnerApi = require('../../../api/modules/partner');
 const store = require('../../../store/index');
-const customerView = require('../../../utils/customer-view');
+const modeGuard = require('../../../api/mode-guard');
+const listModel = require('./parts/list-model');
 const shareCard = require('../../profile/parts/share-card');
+
+const SEARCH_DEBOUNCE_MS = 350;
 
 Page({
   data: {
-    list: [],
+    rows: [],
     keyword: '',
-    total: 0,
-    loading: true,
-    error: '',
+    bannerText: '',
+    headingText: '客户',
     partnerNo: '',
+    readonly: false,
     session: false,
-    guideVisible: false
+    showCreateEntry: true,
+    showShare: true,
+    mode: 'skeleton',
+    showRows: false,
+    showSkeleton: true,
+    showError: false,
+    showEmpty: false,
+    skeletonRows: [1, 2, 3],
+    emptyText: '',
+    emptyActionText: '',
+    errorText: '',
+    staleText: '',
+    lastSuccessText: '',
+    footerText: '',
+    hasMore: false
   },
 
   onLoad() {
-    const partner = store.get('partner') || {};
-    this.setData({ partnerNo: partner.partnerNo || '' });
-    this.refreshSession();
+    this.state = listModel.createState();
+    this.searchTimer = null;
+    this.setData({ partnerNo: this.partnerNoOf(), session: !!store.getViewContext() });
+    this.render();
   },
 
   onShow() {
-    this.refreshSession();
-    this.load();
+    // 解绑/顾客新绑定后回来自动刷新（服务端已排序分页，不依赖本地缓存）
+    this.setData({
+      session: !!store.getViewContext(),
+      readonly: !modeGuard.canRenderWriteButton(),
+      partnerNo: this.partnerNoOf()
+    });
+    this.load(true);
+  },
+
+  onUnload() {
+    this.clearSearchTimer();
   },
 
   onPullDownRefresh() {
-    this.load().then(() => wx.stopPullDownRefresh());
+    this.load(true).then(() => wx.stopPullDownRefresh());
   },
 
-  refreshSession() {
-    const view = store.getViewContext();
-    this.setData({ session: !!view });
+  onReachBottom() {
+    const query = listModel.nextQuery(this.state);
+    if (!query) {
+      return;
+    }
+    this.load(false);
   },
 
-  load() {
-    this.setData({ loading: true, error: '' });
-    return partnerApi
-      .listBindings()
+  partnerNoOf() {
+    const partner = store.get('partner') || {};
+    return partner.partnerNo || '';
+  },
+
+  clearSearchTimer() {
+    if (this.searchTimer) {
+      clearTimeout(this.searchTimer);
+      this.searchTimer = null;
+    }
+  },
+
+  render() {
+    this.setData(listModel.buildSnapshot(this.state, {
+      partnerNo: this.data.partnerNo,
+      readonly: this.data.readonly,
+      session: this.data.session
+    }));
+  },
+
+  // reset=true：首屏/下拉/搜索（整页替换）；false：触底追加（游标分页）
+  load(reset) {
+    const append = reset !== true;
+    const query = append ? listModel.nextQuery(this.state) : listModel.refreshQuery(this.state);
+    if (append && !query) {
+      return Promise.resolve();
+    }
+    if (append && (this.state.loading || this.state.loadingMore)) {
+      return Promise.resolve();
+    }
+    this.state = listModel.beginLoad(this.state, append);
+    this.render();
+    return partnerApi.listBindings(query)
       .then((data) => {
-        this.allViews = customerView.buildCustomerViews(data && data.list);
-        this.applyFilter();
-        this.setData({ loading: false, total: this.allViews.length, guideVisible: this.allViews.length === 0 });
+        this.state = append
+          ? listModel.applyMoreResponse(this.state, data || {}, { nowMs: Date.now() })
+          : listModel.applyResponse(this.state, data || {}, { nowMs: Date.now() });
+        this.render();
       })
       .catch((err) => {
-        this.setData({ loading: false, error: (err && err.message) || '客户没加载出来，检查网络后重试' });
+        this.state = listModel.applyError(this.state, err && err.message);
+        this.render();
       });
   },
 
-  applyFilter() {
-    const filtered = customerView.filterByKeyword(this.allViews || [], this.data.keyword);
-    this.setData({ list: filtered });
-  },
-
   onKeywordInput(event) {
-    this.setData({ keyword: (event.detail && event.detail.value) || '' });
-    this.applyFilter();
+    const keyword = (event.detail && event.detail.value) || '';
+    this.setData({ keyword: keyword });
+    this.clearSearchTimer();
+    this.searchTimer = setTimeout(() => this.search(), SEARCH_DEBOUNCE_MS);
   },
 
-  onKeywordConfirm(event) {
-    this.onKeywordInput(event);
+  onKeywordConfirm() {
+    this.clearSearchTimer();
+    this.search();
   },
 
-  goCreateOnBehalf() {
-    wx.navigateTo({ url: '/pkg-partner/pages/create-on-behalf/index' });
+  search() {
+    this.searchTimer = null;
+    this.state = listModel.applyKeyword(this.state, this.data.keyword);
+    this.render();
+    this.load(true);
   },
 
-  onShareTap() {
+  onClearSearch() {
+    this.clearSearchTimer();
+    this.setData({ keyword: '' });
+    this.state = listModel.applyKeyword(this.state, '');
+    this.render();
+    this.load(true);
+  },
+
+  onRetry() {
+    this.load(true);
+  },
+
+  onDismissBanner() {
+    this.state = listModel.dismissBanner(this.state);
+    this.render();
+  },
+
+  onEmptyAction() {
+    if (this.data.keyword) {
+      this.onClearSearch();
+      return;
+    }
     if (this.data.session) {
       wx.showToast({ title: '切换会话下不能分享', icon: 'none' });
       return;
@@ -76,13 +160,23 @@ Page({
     wx.showToast({ title: '点底部「分享绑定卡片」发给顾客', icon: 'none' });
   },
 
-  onRowTap(event) {
-    const index = event.currentTarget.dataset.index;
-    const item = this.data.list[index];
-    if (!item || !item.bindingId) {
+  goCreateOnBehalf(event) {
+    const bindingId = (event && event.currentTarget && event.currentTarget.dataset.bindingId) || '';
+    if (!modeGuard.canRenderWriteButton()) {
+      wx.showToast({ title: '开发者只读视角不能操作', icon: 'none' });
       return;
     }
-    wx.navigateTo({ url: '/pkg-partner/pages/customer-detail/index?bindingId=' + item.bindingId });
+    const base = '/pkg-partner/pages/create-on-behalf/index';
+    wx.navigateTo({ url: bindingId ? base + '?bindingId=' + encodeURIComponent(bindingId) : base });
+  },
+
+  onRowTap(event) {
+    const index = Number(event.currentTarget.dataset.index);
+    const row = (this.data.rows || [])[index];
+    if (!row || !row.bindingId) {
+      return;
+    }
+    wx.navigateTo({ url: '/pkg-partner/pages/customer-detail/index?bindingId=' + encodeURIComponent(row.bindingId) });
   },
 
   onCopyPartnerNo() {
@@ -98,12 +192,12 @@ Page({
     });
   },
 
-  // 分享绑定卡片：判据/encode/path 全部来自 parts/share-card 纯件（单一来源；无编号回通用分享）
+  // 分享绑定卡片 = 邀请顾客自己发起绑定（卡片只带兼职编号；切换会话隐藏分享）
   onShareAppMessage() {
     return shareCard.buildShareMessage({
       isCustomer: false,
-      viewSession: !!this.data.session,
-      partnerCard: { partnerNo: this.data.partnerNo || '' }
+      viewSession: this.data.session,
+      partnerCard: { partnerNo: this.data.partnerNo }
     });
   }
 });

@@ -30,6 +30,8 @@ const CLIENT_RULES = defineRules('client', [
   ['partner.saveServiceConfig', true],
   ['partner.getPublic', false],
   ['partner.listBindings', false],
+  ['partner.getCustomer', false],
+  ['partner.stats', false],
   ['partner.unbindCustomer', true],
   ['partner.saveCustomerNote', true],
   // bind（create 仅顾客可调；claimGuestOrder 为 P1 预留）

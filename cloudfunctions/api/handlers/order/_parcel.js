@@ -180,6 +180,84 @@ function customerDorm(customer, roomTag) {
   };
 }
 
+// ── 兼职代客下单的「顾客二选一」（批 7，DATA_MODEL §7.5 批 7 段①/§4.8 块 A）─────────────
+// 已绑定顾客走 bindingId（正常订单、顾客可见进度），新顾客走 guest；同时给/都不给 → VALIDATION_FAILED。
+const BINDING_ID_MAX = 64;
+
+// bindingId 形态闸：缺省/null/空串=未给；非字符串或超长 → VALIDATION_FAILED（不静默当 guest 落库）。
+function readBindingId(input) {
+  const value = input && typeof input === 'object' ? input.bindingId : undefined;
+  if (value === undefined || value === null) {
+    return '';
+  }
+  if (typeof value !== 'string') {
+    throw errors.validation('bindingId', '绑定顾客参数不正确，请刷新客户列表后重试');
+  }
+  const text = value.trim();
+  if (text === '') {
+    return '';
+  }
+  if (text.length > BINDING_ID_MAX) {
+    throw errors.validation('bindingId', '绑定顾客参数不正确，请刷新客户列表后重试');
+  }
+  return text;
+}
+
+function hasGuestField(input) {
+  return !!(input && typeof input === 'object' && input.guest !== undefined && input.guest !== null);
+}
+
+// 单笔下单二选一：顾客单不得带 bindingId/guest（服务端拒绝，不静默忽略）；兼职单不得两者同时给。
+// 兼职单「都不给」不在这里抛：留给 guest 必填闸报 data.field='guest'（缺 guest 的唯一入口）。
+function assertCreateSelector(role, bindingId, guestGiven) {
+  if (role === enums.ROLES.CUSTOMER) {
+    if (bindingId) {
+      throw errors.validation('bindingId', '顾客下单不能指定绑定顾客，请刷新页面后重试');
+    }
+    if (guestGiven) {
+      throw errors.validation('guest', '顾客下单不能填写代客信息，请刷新页面后重试');
+    }
+    return 'CUSTOMER';
+  }
+  if (role !== enums.ROLES.PARTNER) {
+    return '';
+  }
+  if (bindingId && guestGiven) {
+    throw errors.validation('guest', '已选择绑定顾客，不能再填写代客信息');
+  }
+  return bindingId ? 'BOUND' : 'GUEST';
+}
+
+// 批量条目级二选一：顾客单逐条不得带 guest；绑定顾客批量时 items[i] 不得再给 guest（整批不建）。
+function assertBatchGuestFields(context, items) {
+  items.forEach((item, index) => {
+    if (!hasGuestField(item)) {
+      return;
+    }
+    if (context.mode === 'CUSTOMER') {
+      throw errors.validation('guest', '顾客下单不能填写代客信息，请刷新页面后重试');
+    }
+    if (context.customerMode === 'BOUND') {
+      throw errors.validation('guest', '已选择绑定顾客，第 ' + (index + 1) + ' 条不能再填写代客信息');
+    }
+  });
+}
+
+// 绑定顾客代客单的订单上下文：身份取绑定、地址取顾客当前资料 + 绑定当前 roomTag（不抄 dormSnapshot）。
+function boundCustomerContext(bound, partnerIsTest) {
+  const customer = bound.customer;
+  return {
+    customerMode: 'BOUND',
+    customerId: bound.binding.customerId,
+    customerNo: typeof customer.customerNo === 'string' ? customer.customerNo : '',
+    customer,
+    binding: bound.binding,
+    isTest: partnerIsTest === true,
+    dorm: customerDorm(customer, bound.binding.roomTag),
+    phoneTail: typeof customer.phoneTail === 'string' ? customer.phoneTail : ''
+  };
+}
+
 // 代客单地址：顾客不在场时由兼职填写；dormKey/建筑文案由服务端 derive
 function normalizeGuest(input) {
   const guest = isPlainObject(input) ? input : null;
@@ -229,6 +307,11 @@ module.exports = {
   assertAcceptingOrders,
   assertPartnerOpen,
   customerDorm,
+  readBindingId,
+  hasGuestField,
+  assertCreateSelector,
+  assertBatchGuestFields,
+  boundCustomerContext,
   normalizeGuest,
   normalizeOrderNote,
   guestPhoneTail,

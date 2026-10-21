@@ -1,4 +1,4 @@
-/* pages/partner/customers/index.wxss · 客户档案局部样式 */
+/* pages/partner/customers/index.wxss · 客户列表局部样式 */
 .head {
   padding: 8rpx 0 24rpx;
 }
@@ -10,16 +10,50 @@
   margin-left: 16rpx;
 }
 
+.banner-card {
+  background: #E8F0FF;
+}
+
+.banner-text {
+  font-size: 26rpx;
+  color: #2B6DE5;
+}
+
 .search-card {
   padding: 8rpx 24rpx;
 }
 
-.guide-card {
-  background: #E8F0FF;
+.stale-card {
+  background: #FFF4CE;
+}
+
+.skeleton-card {
+  align-items: center;
+}
+
+.skeleton-avatar {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 50%;
+  background: #EEF0F3;
+}
+
+.skeleton-main {
+  margin-left: 20rpx;
+}
+
+.skeleton-line {
+  height: 28rpx;
+  border-radius: 8rpx;
+  background: #EEF0F3;
+  margin-bottom: 12rpx;
+}
+
+.skeleton-line.short {
+  width: 40%;
 }
 
 .customer-item {
-  display: flex;
   align-items: center;
 }
 
@@ -28,9 +62,25 @@
   min-width: 0;
 }
 
-.customer-main .muted,
-.customer-main .small {
+.customer-main .muted {
   margin-top: 4rpx;
+}
+
+.meta-row {
+  margin-top: 8rpx;
+}
+
+.row-btn {
+  min-height: 56rpx;
+  padding: 0 16rpx;
+  font-size: 24rpx;
+}
+
+.footer-text {
+  text-align: center;
+  font-size: 24rpx;
+  color: #999999;
+  padding: 16rpx 0;
 }
 
 .bottom-actions {

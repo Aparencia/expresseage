@@ -568,7 +568,7 @@ function register(h) {
     const pubApi = apiOf(pubDb, 'openid-e-pub-p');
     const notMine = await pubApi.call('partner.unbindCustomer', { bindingId: 'binding-e-other', reason: 'PARTNER_INITIATED' },
       { clientRequestId: 'bind-e-000000000008' });
-    t.eq(notMine.code, 'NOT_FOUND', 'E12 partner.unbindCustomer 非本人 binding → NOT_FOUND');
+    t.eq(notMine.code, 'FORBIDDEN', 'E12 partner.unbindCustomer 非本人 binding → FORBIDDEN（DATA_MODEL §7.4：不泄露绑定存在性）');
     const unbind = await pubApi.call('partner.unbindCustomer', { bindingId: 'binding-e-mine', reason: 'PARTNER_INITIATED' },
       { clientRequestId: 'bind-e-000000000009' });
     t.check(unbind.ok === true && unbind.data.duplicated === false && unbind.data.releaseReason === 'PARTNER_INITIATED',

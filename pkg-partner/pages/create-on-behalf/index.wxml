@@ -1,117 +1,199 @@
-<!-- pkg-partner/pages/create-on-behalf/index.wxml · 代客下单（guest 不产生绑定） -->
+<!-- pkg-partner/pages/create-on-behalf/index.wxml · 代客下单（两条顾客路径：已绑定 / 新顾客；均不产生绑定） -->
 <view class="page-body">
   <switch-bar />
   <view class="row step-row">
-    <view class="step {{step === 1 ? 'step-active' : ''}}" data-step="1" bindtap="onStepTap">① 取件信息</view>
-    <view class="step {{step === 2 ? 'step-active' : ''}}" data-step="2" bindtap="onStepTap">② 顾客</view>
-    <view class="step {{step === 3 ? 'step-active' : ''}}" data-step="3" bindtap="onStepTap">③ 提交</view>
+    <view class="step {{step === 1 ? 'step-active' : ''}}" data-step="1" bindtap="onStepTap">① 顾客</view>
+    <view class="step {{step === 2 ? 'step-active' : ''}}" data-step="2" bindtap="onStepTap">② 取件信息</view>
+    <view class="step {{step === 3 ? 'step-active' : ''}}" data-step="3" bindtap="onStepTap">③ 服务与提交</view>
   </view>
 
   <view wx:if="{{errorText}}" class="card error-card">{{errorText}}</view>
 
-  <view wx:if="{{step === 1}}" class="card">
-    <view class="section-title">取件信息</view>
-    <view class="form-row">
-      <view class="form-label">取件码</view>
-      <input class="form-input" maxlength="40" placeholder="如 27-2-7016" value="{{parcel.pickupCode}}" data-field="pickupCode" bindinput="onParcelInput" />
-    </view>
-    <view class="form-row">
-      <view class="form-label">柜号</view>
-      <input class="form-input" maxlength="10" placeholder="如 3号柜（可空）" value="{{parcel.lockerNo}}" data-field="lockerNo" bindinput="onParcelInput" />
-    </view>
-    <view class="form-row">
-      <view class="form-label">运单尾号</view>
-      <input class="form-input" maxlength="5" type="number" placeholder="5 位数字（可空）" value="{{parcel.trackingTail}}" data-field="trackingTail" bindinput="onParcelInput" />
-    </view>
-    <view class="form-row">
-      <view class="form-label">站点</view>
-      <picker range="{{stationOptions}}" range-key="name" value="{{stationIndex}}" bindchange="onStationChange">
-        <view class="form-input picker-value">{{stationOptions[stationIndex].name || '暂不指定（需查明）'}}</view>
-      </picker>
-    </view>
+  <block wx:if="{{step === 1}}">
+    <view class="card">
+      <view class="section-title">顾客</view>
+      <view class="row mode-row">
+        <view
+          wx:for="{{modes}}"
+          wx:key="key"
+          class="mode-tag {{customerMode === item.key ? 'mode-tag-active' : ''}}"
+          data-mode="{{item.key}}"
+          bindtap="onModeTap"
+        >{{item.label}}</view>
+      </view>
 
-    <view class="divider"></view>
-    <view class="row between">
-      <view class="strong">取件截图</view>
-      <image-picker purpose="TICKET" maxCount="{{1}}" bind:change="onImageChange" bind:error="onImageError" />
-    </view>
-    <view wx:if="{{reviewText}}" class="review-text">{{reviewText}}</view>
-    <view class="row ai-row">
-      <view class="btn btn-ghost mini-btn" bindtap="onRecognizeTap">{{recognizing ? '识别中…' : '识别失败兜底'}}</view>
-      <text class="small">识别不出时会反馈开发者复核，手填优先、不阻断提交</text>
-    </view>
-  </view>
+      <block wx:if="{{customerMode === 'BOUND'}}">
+        <view wx:if="{{!bindingOptions.length}}" class="small">还没有顾客绑定你，可切到「新顾客（代客单）」建单。</view>
+        <picker wx:else range="{{bindingOptions}}" range-key="label" value="{{bindingIndex}}" bindchange="onBindingPick">
+          <view class="form-input picker-value">{{bindingLabel || '选择已绑定档案'}}<text wx:if="{{bindingSub}}"> · {{bindingSub}}</text></view>
+        </picker>
+        <view class="small guest-note">顾客已绑定：走正常订单，顾客可见进度；代客单不改变绑定关系。</view>
+      </block>
 
-  <view wx:if="{{step === 2}}" class="card">
-    <view class="section-title">顾客</view>
-    <view class="row mode-row">
-      <view class="mode-tag {{customerMode === 'BOUND' ? 'mode-tag-active' : ''}}" data-mode="BOUND" bindtap="onCustomerModeTap">已绑定（对方发起）</view>
-      <view class="mode-tag {{customerMode === 'GUEST' ? 'mode-tag-active' : ''}}" data-mode="GUEST" bindtap="onCustomerModeTap">新顾客（代客单）</view>
+      <block wx:else>
+        <view class="form-row">
+          <view class="form-label">称呼</view>
+          <input class="form-input" maxlength="{{displayNameMax}}" placeholder="顾客称呼（必填）" value="{{guest.displayName}}" data-field="displayName" bindinput="onGuestInput" />
+        </view>
+        <view class="form-row">
+          <view class="form-label">手机尾号</view>
+          <input class="form-input" maxlength="4" type="number" placeholder="4 位数字（可空）" value="{{guest.phoneTail}}" data-field="phoneTail" bindinput="onGuestInput" />
+        </view>
+        <view class="form-row">
+          <view class="form-label">苑</view>
+          <view class="row zone-row">
+            <view
+              wx:for="{{zones}}"
+              wx:key="key"
+              class="mode-tag {{guest.zone === item.key ? 'mode-tag-active' : ''}}"
+              data-zone="{{item.key}}"
+              bindtap="onZoneTap"
+            >{{item.label}}</view>
+          </view>
+        </view>
+        <view class="form-row">
+          <view class="form-label">楼栋号</view>
+          <input class="form-input" type="number" maxlength="2" placeholder="如 4" value="{{guest.buildingNo}}" data-field="buildingNo" bindinput="onGuestInput" />
+        </view>
+        <view class="form-row">
+          <view class="form-label">宿舍号</view>
+          <input class="form-input" type="number" maxlength="4" placeholder="如 522" value="{{guest.room}}" data-field="room" bindinput="onGuestInput" />
+        </view>
+        <view class="small guest-note">宿舍标识：{{guestDormKeyText || '填完苑/楼栋/宿舍号后生成（送达要用）'}}</view>
+        <view class="small guest-note">新顾客代客单不产生绑定关系；之后要建立绑定，只能由顾客本人在顾客端发起。</view>
+      </block>
     </view>
+    <view class="row nav-row">
+      <view class="btn btn-primary nav-btn" data-step="2" bindtap="onStepTap">下一步：取件信息</view>
+    </view>
+  </block>
 
-    <block wx:if="{{customerMode === 'BOUND'}}">
-      <view wx:if="{{!bindingOptions.length}}" class="small">还没有顾客绑定你，可切到「新顾客（代客单）」建单。</view>
-      <picker wx:else range="{{bindingOptions}}" range-key="label" bindchange="onBindingPick">
-        <view class="form-input picker-value">选择一份已绑定档案，用它的信息预填</view>
-      </picker>
-      <view class="small guest-note">用已绑定档案信息建单仍是代客单：不写入 bindings 集合、不改变绑定关系；进度需线下告知。</view>
-    </block>
-
-    <block wx:else>
-      <view class="form-row">
-        <view class="form-label">称呼</view>
-        <input class="form-input" maxlength="20" placeholder="顾客称呼（必填）" value="{{guest.displayName}}" data-field="displayName" bindinput="onGuestInput" />
+  <block wx:if="{{step === 2}}">
+    <view class="card">
+      <view class="row between">
+        <view class="section-title">取件信息（第 1 件）</view>
+        <view wx:if="{{itemsCount > 1}}" class="small">共 {{itemsCount}} 件</view>
       </view>
       <view class="form-row">
-        <view class="form-label">手机尾号</view>
-        <input class="form-input" maxlength="4" type="number" placeholder="4 位数字（可空）" value="{{guest.phoneTail}}" data-field="phoneTail" bindinput="onGuestInput" />
+        <view class="form-label">取件码</view>
+        <input class="form-input" maxlength="{{pickupCodeMax}}" placeholder="如 27-2-7016" value="{{items[0].pickupCode}}" data-index="{{0}}" data-field="pickupCode" bindinput="onItemInput" />
       </view>
       <view class="form-row">
-        <view class="form-label">苑</view>
-        <view class="row zone-row">
-          <view
-            wx:for="{{zones}}"
-            wx:key="key"
-            class="mode-tag {{guest.zone === item.key ? 'mode-tag-active' : ''}}"
-            data-zone="{{item.key}}"
-            bindtap="onZoneTap"
-          >{{item.label}}</view>
+        <view class="form-label">柜号</view>
+        <input class="form-input" maxlength="{{lockerNoMax}}" placeholder="如 3号柜（可空）" value="{{items[0].lockerNo}}" data-index="{{0}}" data-field="lockerNo" bindinput="onItemInput" />
+      </view>
+      <view class="form-row">
+        <view class="form-label">运单尾号</view>
+        <input class="form-input" maxlength="{{tailLength}}" type="number" placeholder="5 位数字（可空）" value="{{items[0].trackingTail}}" data-index="{{0}}" data-field="trackingTail" bindinput="onItemInput" />
+      </view>
+      <view class="form-row">
+        <view class="form-label">站点</view>
+        <picker range="{{stationOptions}}" range-key="name" value="{{stationIndex}}" bindchange="onStationChange">
+          <view class="form-input picker-value">{{stationOptions[stationIndex].name || '暂不指定（需查明）'}}</view>
+        </picker>
+      </view>
+    </view>
+
+    <block wx:for="{{items}}" wx:key="index" wx:for-item="piece">
+      <view wx:if="{{index > 0}}" class="card item-card">
+        <view class="row between item-head">
+          <view class="strong">第 {{index + 1}} 件</view>
+          <view wx:if="{{!readonly}}" class="muted remove-btn" data-index="{{index}}" bindtap="onRemoveItem">移除</view>
+        </view>
+        <view class="form-row">
+          <view class="form-label">取件码</view>
+          <input class="form-input" maxlength="{{pickupCodeMax}}" placeholder="如 27-2-7016" value="{{piece.pickupCode}}" data-index="{{index}}" data-field="pickupCode" bindinput="onItemInput" />
+        </view>
+        <view class="form-row">
+          <view class="form-label">柜号</view>
+          <input class="form-input" maxlength="{{lockerNoMax}}" placeholder="如 3号柜（可空）" value="{{piece.lockerNo}}" data-index="{{index}}" data-field="lockerNo" bindinput="onItemInput" />
+        </view>
+        <view class="form-row">
+          <view class="form-label">运单尾号</view>
+          <input class="form-input" maxlength="{{tailLength}}" type="number" placeholder="5 位数字（可空）" value="{{piece.trackingTail}}" data-index="{{index}}" data-field="trackingTail" bindinput="onItemInput" />
         </view>
       </view>
-      <view class="form-row">
-        <view class="form-label">楼栋号</view>
-        <input class="form-input" type="number" maxlength="2" placeholder="如 4" value="{{guest.buildingNo}}" data-field="buildingNo" bindinput="onGuestInput" />
-      </view>
-      <view class="form-row">
-        <view class="form-label">宿舍号</view>
-        <input class="form-input" type="number" maxlength="4" placeholder="如 522" value="{{guest.room}}" data-field="room" bindinput="onGuestInput" />
-      </view>
-      <view class="small guest-note">代客单不产生绑定关系；之后要建立绑定，必须由顾客本人在顾客端发起。guest 显示默认头像 + "代客单"标签。</view>
     </block>
-  </view>
 
-  <view wx:if="{{step === 3}}" class="card">
-    <view class="section-title">服务与预约</view>
-    <view class="form-row">
-      <view class="form-label">服务类型</view>
-      <picker range="{{services}}" range-key="name" value="{{serviceIndex}}" bindchange="onServiceChange">
-        <view class="form-input picker-value">{{services[serviceIndex].name}}</view>
-      </picker>
+    <view wx:if="{{canAddItem && !readonly}}" class="btn btn-ghost add-item-btn" bindtap="onAddItem">再填一件（同一张截图，逐条核对）</view>
+
+    <view class="card">
+      <view class="row between">
+        <view class="strong">取件截图</view>
+        <image-picker wx:if="{{!readonly}}" purpose="TICKET" maxCount="{{1}}" bind:change="onImageChange" bind:error="onImageError" />
+      </view>
+      <view wx:if="{{reviewText}}" class="review-text">{{reviewText}}</view>
+      <view wx:if="{{!readonly}}" class="row ai-row">
+        <view class="btn btn-ghost mini-btn" bindtap="onRecognizeTap">{{recognizing ? '识别中…' : '识别失败兜底'}}</view>
+        <text class="small">识别不出会反馈开发者复核；手填优先、不阻断提交</text>
+      </view>
     </view>
-    <view class="form-row">
-      <view class="form-label">预约</view>
-      <picker range="{{appointOptions}}" range-key="label" value="{{appointIndex}}" bindchange="onAppointChange">
-        <view class="form-input picker-value">{{appointOptions[appointIndex].label}}</view>
-      </picker>
+
+    <view class="row nav-row">
+      <view class="btn btn-ghost nav-btn" data-step="1" bindtap="onStepTap">上一步</view>
+      <view class="btn btn-primary nav-btn" data-step="3" bindtap="onStepTap">下一步：服务与提交</view>
     </view>
-    <view class="form-row">
-      <view class="form-label">备注</view>
-      <input class="form-input" maxlength="200" placeholder="≤200 字（可空）" value="{{note}}" bindinput="onNoteInput" />
+  </block>
+
+  <block wx:if="{{step === 3}}">
+    <view class="card">
+      <view class="section-title">服务与预约</view>
+      <view wx:if="{{servicesEmpty}}" class="warn-text">还没有启用任何服务类型：先去「服务类型与范围」启用，再回来提交。</view>
+      <view class="form-row">
+        <view class="form-label">服务类型</view>
+        <picker range="{{services}}" range-key="name" value="{{serviceIndex}}" bindchange="onServiceChange">
+          <view class="form-input picker-value">{{serviceName || '未选择'}}</view>
+        </picker>
+      </view>
+      <view class="form-row">
+        <view class="form-label">预约</view>
+        <picker range="{{appointOptions}}" range-key="label" value="{{appointIndex}}" bindchange="onAppointChange">
+          <view class="form-input picker-value">{{appointLabel || '尽快'}}</view>
+        </picker>
+      </view>
+      <view class="form-row">
+        <view class="form-label">备注</view>
+        <input class="form-input" maxlength="{{noteMax}}" placeholder="≤200 字（可空）" value="{{note}}" bindinput="onNoteInput" />
+      </view>
     </view>
-    <view class="divider"></view>
-    <button class="btn btn-primary btn-block" disabled="{{submitting || readonly}}" bindtap="onSubmit">
-      {{submitting ? '提交中…' : '提交代客单'}}
-    </button>
-    <view class="small submit-note">提交后可在订单详情查看进度；顾客未绑定，进度需线下告知。</view>
+
+    <view class="card">
+      <view class="small">顾客：{{customerSummary}}</view>
+      <view class="small">件数：{{itemsCount}} 件（{{itemsCount > 1 ? '同一张截图拆单提交，逐条返回结果' : '单件提交'}}）</view>
+      <view class="small">服务：{{serviceName || '未选择'}} · 预约：{{appointLabel || '尽快'}}</view>
+      <view class="small">站点：{{stationName || '暂不指定（需查明）'}}</view>
+    </view>
+
+    <view class="card">
+      <button class="btn btn-primary btn-block" disabled="{{submitting || readonly || servicesEmpty}}" bindtap="onSubmit">{{submitting ? '提交中…' : '提交代客单'}}</button>
+      <view class="small submit-note">提交后可在订单详情查看进度；按钮加载期间请勿重复点击。</view>
+    </view>
+
+    <view class="row nav-row">
+      <view class="btn btn-ghost nav-btn" data-step="2" bindtap="onStepTap">上一步</view>
+    </view>
+  </block>
+
+  <view wx:if="{{result}}" class="card result-card">
+    <view class="strong">{{result.title}}</view>
+    <view wx:if="{{result.duplicateText}}" class="small duplicate-text">{{result.duplicateText}}</view>
+    <view
+      wx:for="{{result.rows}}"
+      wx:key="orderNo"
+      class="result-line row between"
+      data-order-no="{{item.orderNo}}"
+      bindtap="onResultOrderTap"
+    >
+      <view class="flex-1">
+        <view class="strong result-order">{{item.orderNo}}</view>
+        <view class="small">{{item.label}}</view>
+      </view>
+      <view class="muted">›</view>
+    </view>
+    <view wx:if="{{result.hintLines.length}}" class="hint-block">
+      <view class="strong hint-title">顾客提示</view>
+      <view wx:for="{{result.hintLines}}" wx:key="*this" class="small hint-line">{{item}}</view>
+    </view>
+    <view wx:if="{{result.tip}}" class="small result-tip">{{result.tip}}</view>
   </view>
 </view>

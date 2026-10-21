@@ -18,6 +18,20 @@ const guideView = require('./parts/guide-view');
 const DETAIL_PAGE = '/pkg-partner/pages/order-detail/index?orderNo=';
 const ACCOUNT_SWITCH_PAGE = '/pkg-admin/pages/account-switch/index';
 const CHUNK_DELAY_MS = 16;
+const TZ_OFFSET_MS = 8 * 60 * 60 * 1000;
+const COMPLETED_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+// 统计页「今日完成」跳入参数：只接受 YYYY-MM-DD（其它/非法一律忽略，不改既有行为）
+function focusDateOf(options) {
+  const value = options && typeof options.completedDate === 'string' ? options.completedDate : '';
+  return COMPLETED_DATE_RE.test(value) ? value : '';
+}
+
+// 服务端自然日日期键（UTC+8，与统计页/云端同口径）
+function naturalDayKeyOf(ms) {
+  const now = typeof ms === 'number' && isFinite(ms) ? ms : Date.now();
+  return new Date(now + TZ_OFFSET_MS).toISOString().slice(0, 10);
+}
 
 const base = {
   data: {
@@ -54,7 +68,7 @@ const base = {
     partnerNoText: ''
   },
 
-  onLoad() {
+  onLoad(options) {
     this._list = [];
     this._page1Keys = [];
     this._historyRows = [];
@@ -62,6 +76,7 @@ const base = {
     this._ack = null;
     this._chunkToken = 0;
     this._lastBatch = null;
+    this._completedFocusDate = focusDateOf(options);
     this.setData({ empty: Object.assign({}, this.data.empty, filterView.emptyOf({ filter: this.data.filter })) });
     this.syncMode();
     this.watchStore();
@@ -71,8 +86,24 @@ const base = {
   onShow() {
     this.syncMode();
     // onShow 也走增量：已加载过就只发变化行补丁，不整页重拉（UX §4.11）
-    this.load({ poll: this.data.stage === 'ready' }).then(() => this.loadHistorySummary());
+    this.load({ poll: this.data.stage === 'ready' }).then(() => {
+      this.loadHistorySummary();
+      this.applyCompletedFocus();
+    });
     this.startPolling();
+  },
+
+  // 统计页「今日完成」跳转：带 completedDate=今天 时自动展开已完结区（复用既有 onCompletedToggle）
+  applyCompletedFocus() {
+    const date = this._completedFocusDate;
+    if (!date) {
+      return;
+    }
+    this._completedFocusDate = '';
+    if (date !== naturalDayKeyOf(Date.now()) || this.data.completed.expanded) {
+      return;
+    }
+    this.onCompletedToggle();
   },
 
   onHide() {
