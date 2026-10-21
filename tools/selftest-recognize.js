@@ -22,7 +22,7 @@ const ocr = require(path.join(ROOT, 'utils/ocr/index.js'));
 const sharedStations = require(path.join(ROOT, 'shared/stations.js'));
 const sharedValidate = require(path.join(ROOT, 'shared/validate.js'));
 
-const EXPECTED_ASSERTIONS = 162; // 改为实际断言数时同步核对 `node tools/selftest-recognize.js` 读数
+const EXPECTED_ASSERTIONS = 187; // 改为实际断言数时同步核对 `node tools/selftest-recognize.js` 读数
 
 // v3 真机语料（sha256 指纹钉：改动语料必须同步改这里的期望与解析断言）
 const CORPUS_ONE = [
@@ -88,12 +88,18 @@ function sectionTrackingTail(h) {
 
 // ---------------------------------------------------------------- 站点
 function sectionStation(h) {
-  h.section('§3/§4.2 站点归一（P1~P8 正式名 + 别名）', (t) => {
+  h.section('§3/§4.2 站点归一（单源 shared/stations：P1~P8 正式名 + 别名）', (t) => {
     const list = station.listStations();
     t.eq(list.length, 8, '§4.2 站点恰好 P1~P8 八个');
     t.eq(list.map((item) => item.id), ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8'],
       '§4.2 站点 id 顺序固定');
-    t.eq(station.STATIONS, sharedStations.STATIONS, '§4.2 识别站点表与 shared/stations 同源');
+    // 单源判据有牙：同一数组对象（本地再复制一份表就会红，不只是"值相等"）
+    t.check(station.STATIONS === sharedStations.STATIONS,
+      '§4.2 识别站点表是 shared/stations 同一引用（无双份副本）');
+    t.check(station.ALIASES === sharedStations.STATION_ALIASES,
+      '§4.2 识别别名表是 shared/stations 同一引用（无双份副本）');
+    t.check(station.normalizeStation === sharedStations.normalizeStation,
+      '§4.2 归一函数直接委托 shared/stations.normalizeStation');
     t.check(station.ALIASES.every((item) => station.STATIONS.some((s) => s.id === item.id)),
       '§4.2 别名只指向已有站点（不自建站点）');
     t.eq(station.stationName('P1'), '西苑顺丰快递（西苑五食堂）', '§4.2 站点正式名');
@@ -101,17 +107,20 @@ function sectionStation(h) {
     t.eq(station.stationIdOfName('西苑一栋南面快递中心'), 'P3', '§4.2 正式名回查 id');
     t.eq(station.stationIdOfName('西苑顺丰快递(西苑五食堂)'), 'P1', '§4.2 标点差异仍可回查');
     t.eq(station.stationIdOfName('不存在驿站'), '', '§4.2 未登记站点不回查');
-    t.eq(station.canonical('西苑 顺丰快递（西苑五食堂）'), '西苑顺丰快递(西苑五食堂)',
-      '§4.2 归一去空白、全角转半角、去分隔标点');
+    t.eq(station.canonical('西苑 顺丰快递（西苑五食堂）'),
+      sharedStations.canonicalStationText('西苑 顺丰快递（西苑五食堂）'),
+      '§4.2 归一文本单源=shared/stations.canonicalStationText');
     const byName = station.matchStation('包裹已到西苑一栋南面快递中心，请及时领取');
     t.eq(byName.id, 'P3', '§4.3 文本命中正式名归一到 P3');
-    t.eq(byName.by, 'name', '§4.3 正式名命中来源标记');
-    const byAlias = station.matchStation('西苑顺丰 到件通知');
-    t.eq(byAlias.id, 'P1', '§4.3 别名归一到 P1');
+    t.check(['name', 'alias'].indexOf(byName.by) >= 0, '§4.3 命中来源标记在 name/alias 内');
+    const byAlias = station.matchStation('北苑食堂三楼 到件通知');
+    t.eq(byAlias.id, 'P4', '§4.3 shared 别名归一到 P4');
     t.eq(byAlias.by, 'alias', '§4.3 别名命中来源标记');
     t.eq(station.matchStation('西苑一栋南面快递中心 与 西苑一栋邮政'), null,
-      '§4.3 同时命中两个站点判歧义返回 null');
-    t.eq(station.matchStation('西苑顺丰 西苑京东'), null, '§4.3 两个别名指向不同站点判歧义');
+      '§4.3 同时命中两个正式名判歧义返回 null');
+    t.eq(station.matchStation('西苑邮政 与 北苑食堂三楼'), null, '§4.3 两个别名指向不同站点判歧义');
+    t.eq(station.matchStation('西苑顺丰 到件通知'), null,
+      '§4.3 别名表未登记（单源=shared）不猜，留空手选');
     t.eq(station.matchStation('自建驿站到件'), null, '§4.3 未登记站点不猜');
     t.eq(station.matchStation(''), null, '§4.3 空文本不猜');
   });
@@ -119,7 +128,7 @@ function sectionStation(h) {
 
 // ---------------------------------------------------------------- 形态闸
 function sectionCodes(h) {
-  h.section('§3 取件码/柜号/运单尾号形态闸', (t) => {
+  h.section('§3 取件码/柜号/运单尾号形态闸（含服务端紧凑闸复核）', (t) => {
     t.eq(codes.CODE_MAX, 40, '§3 取件码字段上限 40');
     t.eq(codes.LOCKER_MAX, sharedValidate.TEXT_LIMITS.lockerNo, '§3 柜号上限与服务端校验同源');
     t.eq(codes.normalizeCode('１２３４ ５６７８'), '12345678', '§3 取件码全角转半角去空白');
@@ -136,8 +145,10 @@ function sectionCodes(h) {
     t.eq(codes.pickCodes(['取件码：123456', '码 8-2-3021'])[0].value, '8-2-3021', '§3 候选按可信度降序');
     t.eq(codes.pickCodes(['运单尾号 34567']).length, 0, '§3 纯 5 位尾号不当取件码');
     t.eq(codes.normalizeLocker('A B 12'), 'AB12', '§3 柜号去空白');
-    t.eq(codes.normalizeLocker('ABCDEFGHIJK').length, 10, '§3 柜号归一截到 10 字以内');
+    t.eq(codes.normalizeLocker('ABCDEFGHIJK'), 'ABCDEFGHIJK', '§3 柜号归一不再静默截断（原样返回）');
     t.check(codes.isPlausibleLocker('A12') && codes.isPlausibleLocker('7-2'), '§3 柜号字符串都可收');
+    t.check(codes.isPlausibleLocker('ABCDEFGHIJ'), '§3 柜号恰好 10 字仍可收');
+    t.check(!codes.isPlausibleLocker('ABCDEFGHIJK'), '§3 柜号 11 字必须挡（先判原长再归一）');
     t.eq(codes.normalizeTail('１２３４５'), '12345', '§3 尾号全角转半角');
     t.eq(codes.normalizeTail('1234'), '', '§3 4 位不成尾号');
     t.eq(codes.normalizeTail('a12345b'), '12345', '§3 尾号从混排文本抽 5 位数字');
@@ -146,6 +157,23 @@ function sectionCodes(h) {
     t.eq(codes.deriveCodeStatus('', '12345'), 'NEED_CODE', '§3 无码有尾号为 NEED_CODE');
     t.eq(codes.deriveCodeStatus('', ''), 'NONE', '§3 都无为 NONE');
     t.eq(codes.deriveCodeStatus('12', ''), 'NONE', '§3 无效码且无尾号为 NONE');
+    // 紧凑闸（与服务端 validatePickupCode 同判；超长/奇怪符号的候选不自动填）
+    t.eq(codes.compactCode('8-2-3021'), '823021', '§3 紧凑码=去空格/连字符/下划线/#');
+    t.check(codes.isCompactCode('8-2-3021') && codes.isCompactCode('123456789012'),
+      '§3 紧凑 4~12 位字母数字合法（含分隔符原样）');
+    t.check(!codes.isCompactCode('1'.repeat(13)) && !codes.isCompactCode('1'.repeat(40)),
+      '§3 紧凑超 12 位必须挡（端侧与服务端同闸）');
+    t.check(!codes.isCompactCode('8*2*3021'), '§3 带 * 的候选过不了服务端紧凑闸');
+    t.check(codes.isAutoFillCode('8-2-3021') && !codes.isAutoFillCode('1'.repeat(13)),
+      '§3 自动填只认展示闸+紧凑闸都过的码');
+    t.eq(codes.pickCodes(['取件码 1234567890123']).length, 0, '§3 超长紧凑候选不当取件码自动填');
+    t.eq(codes.pickCodeCandidates(['取件码 1234567890123'])[0].compact, false,
+      '§3 超长候选仍进候选池并标 compact=false（供"认出但不像"提示）');
+    const compactSamples = ['1234', '8-2-3021', '123456789012', '1234567890123', '12-34',
+      'ABCD1234', 'A1-B2-C3', '1'.repeat(40), '8*2*3021'];
+    t.check(compactSamples.every((code) => codes.isCompactCode(code) === sharedValidate.validatePickupCode(code).ok),
+      '§3 紧凑闸与 shared/validate.validatePickupCode 同判（逐样本一致）');
+    t.eq(codes.deriveCodeStatus('1'.repeat(13), ''), 'NONE', '§3 紧凑超长码不可提交（避免服务端才拒）');
   });
 }
 
@@ -173,6 +201,12 @@ function sectionValidateParcel(h) {
     t.check(!!recognize.validateParcel({ stationId: 'P9' }).errors.station, '§4.3 非 P1~P8 站点给行内提示');
     t.check(!!recognize.validateParcel({ stationId: 'P1', pickupCode: '1'.repeat(41) }).errors.pickupCode,
       '§4.3 超长码给行内提示');
+    t.check(!!recognize.validateParcel({ stationId: 'P1', pickupCode: '1'.repeat(13) }).errors.pickupCode,
+      '§4.3 紧凑超 12 位给行内提示（服务端会拒的单子端侧先挡）');
+    t.check(!!recognize.validateParcel({ stationId: 'P1', lockerNo: 'ABCDEFGHIJK' }).errors.lockerNo,
+      '§4.3 柜号 11 字给行内提示（原长判定，不截断放行）');
+    t.check(recognize.validateParcel({ stationId: 'P1', trackingTail: '12345', lockerNo: 'ABCDEFGHIJ' }).ok === true,
+      '§4.3 柜号 10 字可通过');
   });
 }
 
@@ -213,6 +247,13 @@ function sectionParse(h) {
     t.eq(unknownStation.needsReview, true, '§4.3 缺站点需复核');
     t.check(recognize.parseOcrText(CORPUS_MULTI).items.every((item, index) => item.index === index),
       '§4.3 多件 index 从 0 递增');
+
+    // 紧凑超长候选：认出但不像 → 不自动填，只回候选给页面提示
+    const tooLong = recognize.parseOcrText('取件码：1234567890123');
+    t.check(tooLong.found === false && tooLong.items.length === 0, '§4.3 紧凑超长码不产出可提交件');
+    t.eq(tooLong.unalignedCodes, ['1234567890123'], '§4.3 超长候选进 unalignedCodes（认出但不像）');
+    t.check(!!tooLong.formErrors.pickupCode, '§4.3 超长候选给行内提示文案');
+    t.eq(tooLong.needsReview, true, '§4.3 超长候选需复核/可走 AI 兜底');
   });
 }
 
@@ -252,8 +293,18 @@ function sectionApplyAi(h) {
 
     const rejected = recognize.applyAiSuggestion({}, { pickupCode: 'ab', trackingTail: '1234' });
     t.eq(rejected.changed, [], '§4.3 不过形态闸的 AI 字段被丢弃');
+    const aiTooLong = recognize.applyAiSuggestion({}, { pickupCode: '1234567890123' });
+    t.eq(aiTooLong.changed, [], '§4.3 AI 给的紧凑超长码不自动填');
+    t.eq(aiTooLong.parcel.aiPickupCodeUnaligned, '1234567890123',
+      '§4.3 AI 超长候选只留痕"认出但不像"');
     const lowConf = recognize.applyAiSuggestion({}, { stationId: 'P1', confidence: 'LOW', recognized: false });
     t.eq(lowConf.parcel.needsReview, true, '§4.3 低置信/未识别置 needsReview');
+    const prefillDegraded = recognize.applyAiSuggestion({}, {
+      recognized: false, stationId: 'P1', trackingTail: '34567', needsReview: true, failureId: 'F-20260105-ABCDEF'
+    });
+    t.check(prefillDegraded.changed.indexOf('station') >= 0 && prefillDegraded.parcel.trackingTail === '34567',
+      '§4.3 认失败只预填（recognized:false 也填可填字段）');
+    t.eq(prefillDegraded.parcel.failureId, 'F-20260105-ABCDEF', '§4.3 失败单 failureId 透传');
     const recomputed = recognize.applyAiSuggestion({}, { stationId: 'P1', pickupCode: '123456' });
     t.eq(recomputed.parcel.codeStatus, 'OK', '§4.3 合并后重算 codeStatus');
   });

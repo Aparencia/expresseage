@@ -1,5 +1,7 @@
 // utils/recognize/index.js · OCR 文本 → 订单字段 DTO（单源形态闸；纯逻辑，零 wx）
 // 页面只消费本模块输出；失败不阻断手填（NEED_CODE 允许提交）。
+// 三处口径（task-45）：①自动填只认服务端同款紧凑码（4~12），超长候选标"认出但不像"不填；
+// ②柜号先判原长 ≤10 再归一（不截断放行）；③站点归一单源 = shared/stations（本层不复制站点表）。
 'use strict';
 
 const text = require('./text');
@@ -35,7 +37,7 @@ function validateParcel(parcel) {
   if (!value.stationId || !station.stationName(value.stationId)) {
     errors.station = FORM_ERROR.station;
   }
-  if (value.pickupCode && !codes.isPlausibleCode(value.pickupCode)) {
+  if (value.pickupCode && !codes.isAutoFillCode(value.pickupCode)) {
     errors.pickupCode = FORM_ERROR.pickupCode;
   }
   if (value.lockerNo && !codes.isPlausibleLocker(value.lockerNo)) {
@@ -53,7 +55,7 @@ function validateParcel(parcel) {
   };
 }
 
-/** 从行里抽柜号：支持「7号柜」「3-2柜」「柜A12」等形态 */
+/** 从行里抽柜号：支持「7号柜」「3-2柜」「柜A12」等形态（先判原长再归一，超长不截断） */
 function pickLocker(lines) {
   for (let i = 0; i < (lines || []).length; i += 1) {
     const line = String(lines[i]);
@@ -65,9 +67,10 @@ function pickLocker(lines) {
     for (let p = 0; p < patterns.length; p += 1) {
       const match = line.match(patterns[p]);
       if (match) {
-        const value = match.length > 2 ? match[1] + '-' + match[2] : match[1];
-        const locker = codes.normalizeLocker(value);
-        if (locker && codes.isPlausibleLocker(locker)) return locker;
+        const raw = match.length > 2 ? match[1] + '-' + match[2] : match[1];
+        if (!codes.isPlausibleLocker(raw)) continue;
+        const locker = codes.normalizeLocker(raw);
+        if (locker) return locker;
       }
     }
   }
@@ -84,16 +87,22 @@ function buildParcel(base) {
 
 /**
  * OCR 文本 → 订单字段 DTO。
- * 一图多码：每个可用码一件（共享同一 fileId，由页面组装）；无码有尾号 → 一件 NEED_CODE。
+ * 一图多码：每个紧凑码可提交的候选一件（共享同一 fileId，由页面组装）；无码有尾号 → 一件 NEED_CODE。
+ * 超长/带奇怪符号的候选「认出但不像」：不自动填，单独放 unalignedCodes 交给页面提示。
  * @param {string} rawText OCR 行文本
- * @returns {{items:object[], found:boolean, station:object|null, trackingTail:string, lockerNo:string, formErrors:object}}
+ * @returns {{items:object[], found:boolean, station:object|null, trackingTail:string, lockerNo:string,
+ *   unalignedCodes:string[], needsReview:boolean, formErrors:object}}
  */
 function parseOcrText(rawText) {
   const lines = text.splitLines(rawText);
   const joined = lines.join(' ');
   const matched = station.matchStation(joined);
   const tail = text.pickTrackingTail(lines);
-  const codeList = codes.pickCodes(lines);
+  const candidates = codes.pickCodeCandidates(lines);
+  const codeList = candidates.filter(function compact(item) { return item.compact; });
+  const unalignedCodes = candidates
+    .filter(function odd(item) { return !item.compact; })
+    .map(function value(item) { return item.value; });
   const lockerNo = pickLocker(lines);
   const shared = {
     stationId: matched ? matched.id : '',
@@ -119,15 +128,22 @@ function parseOcrText(rawText) {
   }
   const needsReview = items.some(function review(item) {
     return !item.stationId || item.codeStatus === 'NEED_CODE' || item.confidence === 'LOW';
-  });
+  }) || (unalignedCodes.length > 0 && codeList.length === 0);
+  let formErrors = {};
+  if (items.length === 0) {
+    formErrors = unalignedCodes.length > 0
+      ? { pickupCode: FORM_ERROR.pickupCode }
+      : { codeStatus: FORM_ERROR.codeStatus };
+  }
   return {
     items: items,
     found: items.length > 0,
     station: matched,
     trackingTail: tail.value || '',
     lockerNo: lockerNo,
+    unalignedCodes: unalignedCodes,
     needsReview: needsReview,
-    formErrors: items.length === 0 ? { codeStatus: FORM_ERROR.codeStatus } : {}
+    formErrors: formErrors
   };
 }
 
@@ -144,9 +160,12 @@ function applyAiSuggestion(parcel, suggestion) {
     target.stationName = ai.stationName || station.stationName(ai.stationId);
     changed.push('station');
   }
-  if (!target.pickupCode && codes.isPlausibleCode(ai.pickupCode)) {
+  if (!target.pickupCode && codes.isAutoFillCode(ai.pickupCode)) {
     target.pickupCode = codes.normalizeCode(ai.pickupCode);
     changed.push('pickupCode');
+  } else if (ai.pickupCode && !codes.isCompactCode(ai.pickupCode) && !target.pickupCode) {
+    // 「认出但不像」：原始候选只留痕给页面提示，不自动填（不阻断手填）
+    target.aiPickupCodeUnaligned = String(ai.pickupCode);
   }
   if (!target.trackingTail && codes.isPlausibleTail(ai.trackingTail)) {
     target.trackingTail = codes.normalizeTail(ai.trackingTail);

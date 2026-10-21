@@ -1,6 +1,6 @@
 # expressage_college_v4 · 校园快递代取（第四次重建 · 面向客户）
 
-> **当前阶段：细节设计 v0.9（2026-10-21，与 CONTRACT v0.9 同步）· 尚未开始编码 · 待用户裁决 D1~D21（D5/D6/D20/D21 已按用户指示定）**
+> **当前阶段：批 1 完成（2026-10-21 收口）· 工程骨架 + 两个云函数 + 30 页面 + 组件/工具链齐备，`check.ps1` 全绿（4 步、退出码 0）· 待用户闭环 D1/D2/D3/D13（云环境/主体）与 D8（苑名）后进入批 2 真机与云端联调**
 > 本目录从微信小程序默认模板重建；v1 / v2 / v3 已冻结为只读参照：
 > `D:\Code\expresseage\expresseage_college\`（v1）、`D:\Code\expresseage\expresseage_college_v2\`（v2）、`D:\Code\expresseage_college_v3\`（v3）。
 
@@ -30,6 +30,7 @@ v4 把 v3 的「兼职单人台账」升级为 **顾客下单 + 兼职接单履�
 | 8 | [`docs/V4_ENGINEERING.md`](docs/V4_ENGINEERING.md) | 工程结构、云开发资源、测试/门禁（零金额 + AI 兜底 + v0.9 #28~#31）、部署 runbook、批 0~9 技术拆分 |
 | 9 | [`docs/QA_CHECKLIST.md`](docs/QA_CHECKLIST.md) | 真机/双机/测试账号人工点检清单（发布前必须人执行，agent 不代宣布通过） |
 | 10 | [`docs/privacy/`](docs/privacy/) | 隐私指引**草案** + 发布前填写清单（含头像/昵称/账号切换披露；上线前由人填写/审核） |
+| 附 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · [`STATE.md`](STATE.md) · [`docs/RUNBOOK.md`](docs/RUNBOOK.md) · [`AGENTS.md`](AGENTS.md) | 代码分层/冻结接口与写作用域、当前状态唯一源、部署 runbook、仓库级 agent 纪律 |
 
 ## 需要你（用户）先裁决的 21 件事
 
@@ -55,6 +56,10 @@ v4 把 v3 的「兼职单人台账」升级为 **顾客下单 + 兼职接单履�
 - 新增**微信头像/昵称**（v0.9，仅绑定双方可见、后台不展示、注销删除）与**测试账号可写切换**（v0.9，后台合成账号、与真实数据严格隔离、不计统计）。
 - ⚠️ **隐私承诺变更**：v3 是"数据只存本机、不上传"；v4 面向客户必须存云端账号，并新增开发者后台治理访问（默认脱敏）、只读视角（审计）、**头像/昵称采集与展示**、**第三方 AI 文本处理与识别失败原图复核**。上线前必须先定稿隐私指引与用户协议（先改文本再改代码）。
 
-## 工程现状
+## 工程现状（批 1 收口，2026-10-21）
 
-当前目录仍是微信默认模板（`pages/index`、`pages/logs` 待删），**尚未执行** `git init`、修改 `app.json`、创建云开发环境——这些属于批 0/批 1，需等 D1/D2 裁决后开工。
+- **代码**：471 个文件 / 46,784 行；小程序端 30 页（主包 7 + `pkg-customer` 5 + `pkg-partner` 7 + `pkg-admin` 11）四件套齐全；`components/` 15 套 + `custom-tab-bar/`（根目录）+ tabbar 资产；`api/`（client 唯一出口 + 10 个域模块 + upload/privacy/mode-guard）、`store/`、`shared/` 13 件口径纯件 + `utils/` 纯件。
+- **云端**：`cloudfunctions/api`（index/router/app + 7 中间件 + db/dao + lib + 11 域 handlers 66 个 client 动作 + admin.bootstrap/health.check 内部动作）与 `cloudfunctions/cleanup`（13 个幂等 sweep + 独立 dao），依赖只 `wx-server-sdk`；14 集合/13 错误码/审计枚举三端一致。
+- **门禁**（真实输出）：`check.ps1` 4 步全 PASS（退出码 0）——`check.js` 31/31、`check-docs.js --batch 1` 10/10、零金额扫描 0 命中、`selftest.js` 9 套 1,011 条断言全 PASS（core 58 / state 341 / recognize 187 / cloud 122 / ai 86 / bind 48 / profile 47 / switch 74 / testaccount 48）。
+- **已闭环工程裁决**：`docs/TECH_DEBT.md` TD-017（四档排序归客户端）、TD-018（公开配置含 `viewTicketTtlMinutes`）、TD-007/008/009（upload/privacy 接纯件）等；未闭 TD 为 E5/E12 真机项、D8 苑名、P1 预留与已知口径差异。
+- **尚未执行（只能用户做）**：`git` 已初始化并提交；云开发环境创建、`config/env.js` 回填 envId、14 集合/索引/安全规则、`ADMIN_OPENIDS`/`DEEPSEEK_API_KEY` 环境变量、定时触发器、存储权限、真机点检、隐私后台声明与提审——按 `docs/RUNBOOK.md` 执行并留证据；未部署前云函数未在真实云环境跑过（fake-DB 单测已覆盖核心路径）。

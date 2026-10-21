@@ -9,14 +9,18 @@ const DETAIL_PAGE = '/pkg-customer/pages/order-detail/index';
 const PAGE_SIZE = 30;
 
 function mapItem(item) {
+  const row = item || {};
+  const at = row.at || row.createdAt || '';
+  const text = row.text || '';
   return {
-    id: item.id || item.messageId || (item.type + '_' + (item.at || item.createdAt)),
-    type: item.type || 'ORDER',
-    title: item.title || (item.type === 'ANNOUNCEMENT' ? '公告' : '订单动态'),
-    text: item.text || item.summary || '',
-    orderNo: item.orderNo || '',
-    unread: item.unread === true,
-    time: format.formatTimeAgo(item.at || item.createdAt)
+    // message.list 聚合项：{type,title,text,orderNo,at,read}（服务端已剔除 _id）
+    id: row.id || row.messageId || (row.type || 'ORDER') + '@' + at + '@' + text.slice(0, 8),
+    type: row.type || 'MESSAGE',
+    title: row.title || (row.type === 'ANNOUNCEMENT' ? '公告' : '订单动态'),
+    text: text,
+    orderNo: row.orderNo || '',
+    unread: row.read === false,
+    time: format.formatTimeAgo(at)
   };
 }
 
@@ -32,7 +36,7 @@ Page({
 
   onLoad() {
     const config = store.snapshot().config || {};
-    this.setData({ announcement: config.announcement || '' });
+    this.setData({ announcement: format.announcementText(config.announcement) });
   },
 
   onShow() {

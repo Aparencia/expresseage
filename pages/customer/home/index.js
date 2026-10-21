@@ -99,8 +99,9 @@ Page({
     const customer = vm.customer || {};
     const viewContext = vm.viewContext || null;
     const readonly = !!(viewContext && viewContext.viewMode === 'READONLY');
-    const announcement = (vm.config && vm.config.announcement) || '';
-    const active = !!(vm.binding && vm.binding.status !== 'RELEASED');
+    // bind.getCurrent 只回当前 ACTIVE 绑定；解绑后 binding=null（无 status 字段）
+    const announcement = format.announcementText(vm.config && vm.config.announcement);
+    const active = !!(vm.binding && vm.binding.bindingId);
     let reason = '';
     if (!customer.profileComplete) reason = '先完善资料';
     else if (!active) reason = '先绑定兼职';

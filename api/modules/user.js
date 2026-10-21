@@ -8,7 +8,10 @@ module.exports = {
   acceptPrivacy(version) {
     return client.call('user.acceptPrivacy', { version: version || '' });
   },
-  deleteAccount(reason) {
-    return client.call('user.deleteAccount', { reason: reason || '' });
+  deleteAccount(payload) {
+    const body = typeof payload === 'string'
+      ? { confirmText: payload }
+      : (payload || {});
+    return client.call('user.deleteAccount', body);
   }
 };

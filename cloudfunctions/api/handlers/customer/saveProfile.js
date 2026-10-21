@@ -55,9 +55,42 @@ async function ensureCustomerDoc(ctx, openid, base) {
   return { customer: await identity.loadCustomer(ctx, openid), created: true };
 }
 
+// 角色授予：auth 中间件对全新用户懒建 users 时 roles=[]，全仓没有别的入口写 CUSTOMER 角色；
+// 顾客资料首次保存成功即 union 授予 CUSTOMER（同一 openid 双角色允许；已含则幂等跳过）。
+async function grantCustomerRole(ctx, openid, nowDate) {
+  const user = await identity.loadUser(ctx, openid);
+  const roles = user && Array.isArray(user.roles) ? user.roles.slice() : [];
+  if (roles.indexOf(enums.ROLES.CUSTOMER) >= 0) {
+    return false;
+  }
+  roles.push(enums.ROLES.CUSTOMER);
+  if (user) {
+    await ctx.dao.update(COLLECTIONS.USERS, openid, { roles, updatedAt: nowDate });
+  } else {
+    // 极端路径（未过 auth 懒建，单测直调）：补建最小 users 文档，字段与 auth.ensureUser 对齐
+    await ctx.dao.add(COLLECTIONS.USERS, {
+      _id: openid,
+      roles,
+      status: enums.USER_STATUS.ACTIVE,
+      isTestAccount: false,
+      messageReadAt: 0,
+      privacyConsent: null,
+      deletionRequestedAt: 0,
+      createdAt: nowDate,
+      updatedAt: nowDate
+    });
+  }
+  return true;
+}
+
 async function handler(ctx, payload) {
   identity.assertWritable(ctx);
-  const scope = await identity.assertBusinessRole(ctx, enums.ROLES.CUSTOMER);
+  const scope = identity.scopeOf(ctx);
+  // 真实会话：资料只能写本人（saveProfile 无 target 入参），首存/双角色场景由末尾 grantCustomerRole union 授予；
+  // 切换会话按票据角色判定——TEST_WRITE 的兼职目标调顾客动作 → FORBIDDEN。
+  if (scope.viewMode && scope.role !== enums.ROLES.CUSTOMER) {
+    throw errors.forbidden('当前身份不能执行该操作');
+  }
   const input = payload && typeof payload === 'object' ? payload : {};
   const nowMs = identity.nowMs(ctx);
   const nowDate = identity.nowDate(ctx);
@@ -178,6 +211,9 @@ async function handler(ctx, payload) {
       }
     });
   }
+
+  // 资料落库成功后授予 CUSTOMER 角色（首次保存的关键一步；失败让请求整体失败，重试幂等）
+  await grantCustomerRole(ctx, scope.openid, nowDate);
 
   // 头像替换：写库成功后再删旧文件 + 消费票据（失败只告警，不回滚资料）
   if (avatarTicket) {

@@ -1,5 +1,6 @@
 // handlers/order/listPartner.js · order.listPartner：兼职工作台 / 历史订单 + counts 六项
-// 服务端返回「状态桶 + 站点分组 + 四档动线」视图（DATA_MODEL §5.2/§8.5）；客户端只渲染不重排。
+// 响应形状 = {list,nextCursor,counts}（DATA_MODEL §7）；四档动线排序由客户端零件层用 shared/order-view 执行，
+// 服务端只做状态桶 + 站点过滤；列表一律经 _dto 输出，绝不下发 raw order 文档（DATA_MODEL §6 DTO 铁律）。
 'use strict';
 
 const { COLLECTIONS } = require('../../shared/collections');
@@ -101,32 +102,6 @@ async function buildCounts(ctx, partnerId, nowMs) {
   return counts;
 }
 
-function stationSortKey(stationId) {
-  const index = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8'].indexOf(stationId);
-  return index < 0 ? 99 : index;
-}
-
-function buildGroups(orders) {
-  const map = {};
-  orders.forEach((order) => {
-    const parcel = order.parcel || {};
-    const stationId = typeof parcel.stationId === 'string' && parcel.stationId ? parcel.stationId : '';
-    const key = stationId || '__NONE__';
-    if (!map[key]) {
-      map[key] = { stationId, stationName: parcel.stationName || '', orders: [] };
-    }
-    map[key].orders.push(order);
-  });
-  return Object.keys(map)
-    .map((key) => map[key])
-    .sort((left, right) => stationSortKey(left.stationId) - stationSortKey(right.stationId))
-    .map((group) => ({
-      stationId: group.stationId,
-      stationName: group.stationName,
-      orders: orderView.sortByPickupRoute(group.orders)
-    }));
-}
-
 module.exports = async function orderListPartner(ctx, payload) {
   const partner = await common.loadScopePartner(ctx);
   if (!partner) {
@@ -173,7 +148,6 @@ module.exports = async function orderListPartner(ctx, payload) {
   return {
     list,
     nextCursor: hasMore && last ? common.makeCursor(last, filter.sortField) : null,
-    counts,
-    groups: buildGroups(page)
+    counts
   };
 };

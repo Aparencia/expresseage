@@ -27,35 +27,6 @@ function redirect(url) {
   wx.reLaunch({ url: url });
 }
 
-// 把 user.bootstrap 的平铺 DTO 归一成 store 的嵌套快照（store 由 S0 维护，这里只做防御性补齐）
-function normalizeBootstrap(data) {
-  if (!data) return {};
-  const patch = {};
-  if (Array.isArray(data.roles)) patch.roles = data.roles.slice();
-  if (data.activeRole !== undefined) patch.activeRole = data.activeRole || null;
-  if (data.isDeveloper !== undefined) patch.isDeveloper = !!data.isDeveloper;
-  if (data.viewContext !== undefined) patch.viewContext = data.viewContext || null;
-  if (data.customerProfileCompleted !== undefined || data.customerNo !== undefined) {
-    patch.customer = {
-      profileComplete: !!data.customerProfileCompleted,
-      customerNo: data.customerNo || '',
-      displayName: data.customerDisplayName || data.displayName || '',
-      avatarFileId: data.customerAvatarFileId || data.avatarFileId || '',
-      roomTag: data.roomTag || ''
-    };
-  }
-  if (data.partnerStatus !== undefined || data.partnerNo !== undefined) {
-    patch.partner = {
-      status: data.partnerStatus || '',
-      profileComplete: !!data.partnerNo,
-      partnerNo: data.partnerNo || '',
-      displayName: data.partnerDisplayName || ''
-    };
-  }
-  if (data.configPublic) patch.config = data.configPublic;
-  return patch;
-}
-
 Page({
   data: {
     vm: pickVm(),
@@ -103,8 +74,10 @@ Page({
   },
 
   hydrateBootstrap() {
+    // user.bootstrap 平铺 DTO 的唯一水合口在 store（roles/customer/partner/binding/configPublic），
+    // 页面不再自己猜字段名拼接嵌套快照。
     return userApi.bootstrap().then((data) => {
-      store.patch(normalizeBootstrap(data));
+      store.hydrateFromBootstrap(data);
       this.sync();
       return data;
     }).catch(function failed() {
@@ -115,7 +88,9 @@ Page({
   loadBindCard(bindNo) {
     this.setData({ bindLoading: true, bindError: '' });
     partnerApi.getPublic({ partnerNo: bindNo }).then((data) => {
-      const partner = (data && data.partnerPublic) || data || {};
+      // partner.getPublic 直接返回 partnerPublic DTO
+      // {partnerNo,displayName,services,zones,acceptingOrders,status}；绑定前不含 avatarFileId
+      const partner = data || {};
       this.setData({
         bindLoading: false,
         bindCard: {

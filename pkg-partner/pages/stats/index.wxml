@@ -49,7 +49,7 @@
         <text>今日完成 {{metrics.todayCompleted}} 单</text>
         <text>异常 {{metrics.exception}} · 取消 {{metrics.canceled}}</text>
       </view>
-      <view class="small stat-note">统计不含测试账号与测试订单；本程序不涉及任何费用收付。</view>
+      <view class="small stat-note">统计基于最近 {{loadedCount}} 单（按服务端分页累计）；不含测试账号与测试订单；本程序不涉及任何费用收付。</view>
     </view>
   </block>
 </view>

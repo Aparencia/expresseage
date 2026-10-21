@@ -110,7 +110,7 @@ function canSubmit(items) {
   return { ok: true, items: checked };
 }
 
-function buildPayload(items, ticket, image) {
+function buildPayload(items, ticket, image, recognition) {
   const list = (items || []).filter(function on(item) { return item.checked; }).map(function map(item) {
     const payload = {
       parcel: {
@@ -129,10 +129,13 @@ function buildPayload(items, ticket, image) {
     };
     return payload;
   });
+  // 识别失败关联：order.create/createBatch 认 payload.recognition.failureId（AI 兜底失败记录号）
+  const failureId = recognition && typeof recognition.failureId === 'string' ? recognition.failureId : '';
   return {
     ticket: ticket,
     image: image,
     items: list,
+    recognition: failureId ? { failureId: failureId } : null,
     single: list.length === 1,
     batch: list.length > 1
   };

@@ -124,9 +124,12 @@ Page({
       .activate({
         invitationCode: codeResult.canonical,
         displayName: nameResult.value,
-        avatarTicket: this.data.avatarTicket || undefined
+        // 头像两条入参：票据=上传凭证 ID、fileId=云存储文件 ID（服务端用票据校验归属/路径）
+        avatarTicket: this.data.avatarTicket || undefined,
+        avatarFileId: this.data.avatarTicket ? this.data.avatarFileId || undefined : undefined
       })
-      .then(() => {
+      .then((result) => {
+        this.applyActivated(result);
         this.setData({ submitting: false });
         wx.showToast({ title: '激活成功，先配置服务类型', icon: 'none' });
         setTimeout(() => {
@@ -136,5 +139,30 @@ Page({
       .catch((err) => {
         this.setData({ submitting: false, errorText: (err && err.message) || '激活失败，请稍后重试' });
       });
+  },
+
+  // partner.activate 返回 {partnerNo, partner, roles}；就地水合 store，后续页面无需再 bootstrap
+  applyActivated(result) {
+    const data = result || {};
+    const partner = data.partner || {};
+    const roles = Array.isArray(data.roles) && data.roles.length ? data.roles.slice() : ['PARTNER'];
+    const current = store.get('partner') || {};
+    store.patch({
+      roles: roles,
+      activeRole: 'PARTNER',
+      partner: Object.assign({}, current, {
+        status: partner.status || 'ACTIVE',
+        profileComplete: true,
+        partnerNo: partner.partnerNo || data.partnerNo || '',
+        displayName: partner.displayName || '',
+        avatarFileId: partner.avatarFileId || '',
+        serviceConfig: partner.serviceConfig || {},
+        acceptingOrders: true
+      }),
+      me: {
+        displayName: partner.displayName || '',
+        avatarFileId: partner.avatarFileId || ''
+      }
+    });
   }
 });

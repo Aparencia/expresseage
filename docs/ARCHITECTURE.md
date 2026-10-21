@@ -62,7 +62,7 @@ const data = await call('order.accept', { orderNo, expectedVersion }, { retry: f
 
 | 文件 | 导出方法 |
 | :-- | :-- |
-| `api/modules/user.js` | `bootstrap()`、`acceptPrivacy(version)`、`deleteAccount(reason)` |
+| `api/modules/user.js` | `bootstrap()`、`acceptPrivacy(version)`、`deleteAccount({confirmText:'注销', reason?})` |
 | `api/modules/customer.js` | `saveProfile(payload)`、`getProfile()` |
 | `api/modules/partner.js` | `activate({invitationCode,displayName,avatarTicket})`、`saveProfile`、`saveServiceConfig`、`getPublic({partnerNo})`、`listBindings`、`unbindCustomer({bindingId,reason,note})`、`saveCustomerNote({bindingId,note})` |
 | `api/modules/bind.js` | `create({partnerNo})`、`release({reason,note})`、`getCurrent()` |

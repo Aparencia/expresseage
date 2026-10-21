@@ -1,153 +1,249 @@
 <view class="page-body profile-page">
   <switch-bar />
 
-  <view wx:if="{{loading}}" class="empty-text">加载中…</view>
+  <!-- 兼职停用/注销：专用全屏态，隐藏全部业务入口（UX_PARTNER §3.10） -->
+  <block wx:if="{{!loading && !isCustomer && (suspended || closed)}}">
+    <view class="card state-card">
+      <view class="state-title">{{closed ? '账号已注销' : '账号已停用'}}</view>
+      <view class="state-text">{{closed ? '账号已注销，无法恢复。' : '账号已停用，暂时不能接单；恢复后订单与资料保持不变。'}}</view>
+      <button class="btn btn-primary btn-block state-btn" data-doc="about" bindtap="onDocTap">{{closed ? '查看说明' : '联系开发者'}}</button>
+    </view>
+    <view class="version-line">版本 {{version}}</view>
+  </block>
+
   <block wx:else>
-    <view wx:if="{{suspended}}" class="card banner-warn">账号已停用，请联系开发者；停用期间不接单。</view>
-    <view wx:if="{{closed}}" class="card banner-danger">账号已注销，无法恢复。</view>
-
-    <view class="card head-card">
-      <image wx:if="{{editMode && form.avatarPreview}}" class="avatar-preview" src="{{form.avatarPreview}}" mode="aspectFill" />
-      <avatar-view wx:else fileId="{{editMode ? form.avatarFileId : profile.avatarFileId}}" name="{{editMode ? form.displayName : profile.displayName}}" size="96" />
-      <view class="head-main">
-        <view class="head-name ellipsis">{{(editMode ? form.displayName : profile.displayName) || '未设置昵称'}}</view>
-        <view wx:if="{{isCustomer}}" class="head-sub">{{dormText || '未完善 · 去填写苑/楼栋/宿舍号'}}</view>
-        <view wx:else class="head-sub">{{partnerStatusText}}</view>
-      </view>
-      <view wx:if="{{canEdit && !editMode}}" class="head-edit" bindtap="onToggleEdit">编辑</view>
-    </view>
-
-    <view wx:if="{{editMode}}" class="card form-card">
-      <view class="form-row">
-        <view class="form-label">昵称</view>
-        <input class="form-input" type="nickname" maxlength="20" value="{{form.displayName}}" placeholder="填写昵称" bindinput="onNicknameInput" />
-      </view>
-      <view class="form-row">
-        <view class="form-label">头像</view>
-        <view class="form-input avatar-pick">
-          <button class="mini-btn" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">选择微信头像</button>
-          <text class="avatar-default-link" bindtap="onUseDefaultAvatar">使用默认头像</text>
+    <view wx:if="{{loading}}" class="empty-text">加载中…</view>
+    <block wx:else>
+      <!-- 头像 + 昵称 -->
+      <view class="card head-card">
+        <avatar-view fileId="{{profile.avatarFileId}}" name="{{profile.displayName}}" size="112" />
+        <view class="head-main">
+          <view class="head-name ellipsis">{{profile.displayName || '未设置昵称'}}</view>
+          <view wx:if="{{isCustomer}}" class="head-sub">{{profileCard.complete ? (profileCard.dormText || '资料已完善') : '未完善 · 去填写苑/楼栋/宿舍号'}}</view>
+          <view wx:else class="head-sub">{{partnerCard.statusText}}</view>
         </view>
-      </view>
-      <block wx:if="{{isCustomer}}">
-        <view class="form-row">
-          <view class="form-label">苑/楼区</view>
-          <picker class="form-input" mode="selector" range="{{zoneLabels}}" value="{{form.zoneIndex}}" bindchange="onZoneChange">
-            <view>{{zoneLabels[form.zoneIndex] || '请选择苑/楼区'}}</view>
-          </picker>
-        </view>
-        <view class="form-row">
-          <view class="form-label">楼栋号</view>
-          <picker class="form-input" mode="selector" range="{{buildingLabels}}" value="{{form.buildingIndex}}" bindchange="onBuildingChange">
-            <view>{{buildingLabels[form.buildingIndex] || '请选择楼栋号'}}</view>
-          </picker>
-        </view>
-        <view class="form-row">
-          <view class="form-label">宿舍号</view>
-          <input class="form-input" type="number" maxlength="6" value="{{form.room}}" placeholder="如 522" bindinput="onRoomInput" />
-        </view>
-        <view class="form-row">
-          <view class="form-label">手机尾号</view>
-          <input class="form-input" type="number" maxlength="4" value="{{form.phoneTail}}" placeholder="后 4 位，可不填" bindinput="onPhoneTailInput" />
-        </view>
-        <view wx:if="{{form.dormPreview}}" class="dorm-preview">你的宿舍：{{form.dormPreview}}</view>
-      </block>
-      <view class="form-actions">
-        <button class="btn btn-ghost flex-1" bindtap="onToggleEdit">取消</button>
-        <button class="btn btn-primary flex-1" loading="{{saving}}" bindtap="onSave">{{saving ? '保存中…' : '保存'}}</button>
-      </view>
-    </view>
-
-    <block wx:if="{{isCustomer && !editMode}}">
-      <view class="card id-card">
-        <view class="row between">
-          <view class="row id-main">
-            <view class="id-label">顾客编号</view>
-            <id-text kind="CUSTOMER" no="{{customerNo}}" />
-          </view>
-          <view class="link" bindtap="onCopyCustomerNo">复制</view>
-        </view>
-        <view class="muted id-hint">客服或问题排查时，把这段编号提供给兼职或开发者即可</view>
+        <view wx:if="{{canEdit && !editMode}}" class="head-edit" bindtap="onToggleEdit">编辑资料</view>
       </view>
 
-      <view class="card">
-        <view class="section-label">绑定兼职</view>
-        <block wx:if="{{binding}}">
-          <view class="row binding-row">
-            <avatar-view fileId="{{binding.partnerAvatarFileId}}" name="{{binding.partnerDisplayName}}" size="64" />
-            <view class="binding-main">
-              <view class="binding-name ellipsis">{{binding.partnerDisplayName}}</view>
-              <view class="muted">{{binding.partnerNoDisplay}}</view>
+      <!-- 编辑资料（昵称必填 ≤20 字；头像 chooseAvatar 可跳过→默认头像） -->
+      <view wx:if="{{editMode}}" class="card form-card">
+        <view class="form-row">
+          <view class="form-label">昵称</view>
+          <input
+            class="form-input"
+            type="nickname"
+            maxlength="{{nameLimit}}"
+            value="{{form.displayName}}"
+            placeholder="填写昵称（必填，≤20 字）"
+            bindinput="onNicknameInput"
+          />
+        </view>
+        <view class="form-row avatar-row">
+          <view class="form-label">头像</view>
+          <view class="form-input avatar-pick">
+            <image wx:if="{{form.avatarPreview}}" class="avatar-preview" src="{{form.avatarPreview}}" mode="aspectFill" />
+            <avatar-view wx:else fileId="{{form.avatarFileId}}" name="{{form.displayName}}" size="88" />
+            <view class="avatar-actions">
+              <button class="mini-btn" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">{{uploadingAvatar ? '上传中…' : '选择微信头像'}}</button>
+              <text class="avatar-default-link" bindtap="onUseDefaultAvatar">使用默认头像</text>
             </view>
-            <room-tag-text wx:if="{{roomTagText}}" dormKey="{{customerDormKey}}" tag="{{binding.roomTag}}" />
           </view>
-          <view wx:if="{{canEdit}}" class="row binding-actions">
-            <button class="btn btn-ghost flex-1" bindtap="onRebind">换绑</button>
-            <button class="btn btn-ghost flex-1" bindtap="onUnbind">解绑</button>
+        </view>
+        <view class="muted form-hint">头像与昵称只向当前绑定的对方展示；解绑、停用或注销后不再展示。</view>
+        <block wx:if="{{isCustomer}}">
+          <view class="form-row">
+            <view class="form-label">苑/楼区</view>
+            <picker class="form-input" mode="selector" range="{{zoneLabels}}" value="{{form.zoneIndex}}" bindchange="onZoneChange">
+              <view>{{zoneLabels[form.zoneIndex] || '请选择苑/楼区'}}</view>
+            </picker>
+          </view>
+          <view class="form-row">
+            <view class="form-label">楼栋号</view>
+            <picker class="form-input" mode="selector" range="{{buildingLabels}}" value="{{form.buildingIndex}}" bindchange="onBuildingChange">
+              <view>{{buildingLabels[form.buildingIndex] ? buildingLabels[form.buildingIndex] + ' 栋' : '请选择楼栋号'}}</view>
+            </picker>
+          </view>
+          <view class="form-row">
+            <view class="form-label">宿舍号</view>
+            <input class="form-input" type="number" maxlength="8" value="{{form.room}}" placeholder="如 522（≥100 的数字）" bindinput="onRoomInput" />
+          </view>
+          <view class="form-row">
+            <view class="form-label">手机尾号</view>
+            <input class="form-input" type="number" maxlength="4" value="{{form.phoneTail}}" placeholder="后 4 位，可不填（仅用于同寝室区分）" bindinput="onPhoneTailInput" />
+          </view>
+          <view wx:if="{{form.dormPreview}}" class="dorm-preview">你的宿舍：{{form.dormPreview}}</view>
+          <view class="muted form-hint">宿舍身份仅在无进行中订单时可改；保存后新订单使用这份资料，已提交的订单不受影响。</view>
+        </block>
+        <view class="form-actions">
+          <button class="btn btn-ghost flex-1" bindtap="onToggleEdit">取消</button>
+          <button class="btn btn-primary flex-1" loading="{{saving}}" bindtap="onSave">{{saving ? '保存中…' : '保存'}}</button>
+        </view>
+      </view>
+
+      <block wx:if="{{!editMode}}">
+        <!-- 顾客资料卡：宿舍锚 + 同寝室标识（roomTag 仅绑定成功后展示）+ 尾号 -->
+        <block wx:if="{{isCustomer}}">
+          <view class="card profile-card">
+            <view class="row between profile-line">
+              <text class="muted">宿舍</text>
+              <text class="profile-value">{{profileCard.dormText || '未完善'}}</text>
+            </view>
+            <view wx:if="{{profileCard.roomTag}}" class="row between profile-line">
+              <text class="muted">同寝室标识</text>
+              <room-tag-text dormKey="{{profileCard.roomTag.dormKey}}" tag="{{profileCard.roomTag.tag}}" />
+            </view>
+            <view wx:if="{{profileCard.tailText}}" class="row between profile-line">
+              <text class="muted">手机尾号</text>
+              <text class="profile-value">{{profileCard.tailText}}</text>
+            </view>
+            <view class="muted profile-hint">同寝室标识在绑定成功后分配；有进行中订单时不能改宿舍身份。</view>
+            <button wx:if="{{canEdit}}" class="btn btn-ghost btn-block" bindtap="onToggleEdit">编辑资料</button>
+          </view>
+
+          <view class="card id-card">
+            <view class="row between">
+              <view class="row id-main">
+                <view class="id-label">顾客编号</view>
+                <id-text kind="CUSTOMER" no="{{customerNo}}" />
+              </view>
+              <view class="link" bindtap="onCopyCustomerNo">复制</view>
+            </view>
+            <view class="muted id-hint">客服或问题排查时，把这段编号提供给兼职或开发者即可</view>
+          </view>
+
+          <view class="card">
+            <view class="section-label">绑定兼职</view>
+            <block wx:if="{{bindingCard}}">
+              <view class="row binding-row">
+                <avatar-view fileId="{{bindingCard.partnerAvatarFileId}}" name="{{bindingCard.partnerDisplayName}}" size="64" />
+                <view class="binding-main">
+                  <view class="binding-name ellipsis">{{bindingCard.hidden ? '对方档案已不可见' : bindingCard.partnerDisplayName}}</view>
+                  <view class="muted">{{bindingCard.hidden ? '对方已解除绑定，头像/昵称不再展示' : bindingCard.partnerNoDisplay}}</view>
+                </view>
+              </view>
+              <view wx:if="{{canEdit && !bindingCard.hidden}}" class="row binding-actions">
+                <button class="btn btn-ghost flex-1" bindtap="onRebind">换绑</button>
+                <button class="btn btn-ghost flex-1" bindtap="onUnbind">解绑</button>
+              </view>
+            </block>
+            <view wx:else class="row between">
+              <view class="muted">未绑定兼职，绑定后才能下单</view>
+              <button wx:if="{{canEdit}}" class="btn btn-primary mini-btn" bindtap="onGoBind">去绑定</button>
+            </view>
+          </view>
+
+          <view class="card" bindtap="onOrders">
+            <view class="row between">
+              <view>
+                <view class="section-label">订单</view>
+                <view class="order-summary">{{orderSummaryText}}</view>
+              </view>
+              <text class="row-arrow">›</text>
+            </view>
+            <view wx:if="{{!orderSummaryFromDto}}" class="muted order-hint">订单计数以服务端数据为准，暂未下发时显示「—」。</view>
           </view>
         </block>
-        <view wx:else class="row between">
-          <view class="muted">未绑定兼职，绑定后才能下单</view>
-          <button class="btn btn-primary mini-btn" bindtap="onGoBind">去绑定</button>
-        </view>
-      </view>
 
-      <view wx:if="{{orderSummary}}" class="card order-summary">订单：{{orderSummary}}</view>
-    </block>
-
-    <block wx:if="{{!isCustomer && !editMode}}">
-      <view class="card id-card">
-        <view class="row between">
-          <view class="row id-main">
-            <view class="id-label">兼职编号</view>
-            <id-text kind="PARTNER" no="{{partnerNo}}" />
+        <!-- 兼职：编号 + 分享绑定卡片（卡片只带编号，不含头像/昵称） -->
+        <block wx:else>
+          <view class="card id-card">
+            <view class="row between">
+              <view class="row id-main">
+                <view class="id-label">兼职编号</view>
+                <id-text kind="PARTNER" no="{{partnerCard.partnerNo}}" />
+              </view>
+              <view class="link" bindtap="onCopyPartnerNo">复制</view>
+            </view>
+            <view class="muted id-hint">把兼职编号发给顾客，顾客在自己手机上确认后才建立绑定</view>
           </view>
-          <view class="link" bindtap="onCopyPartnerNo">复制</view>
-        </view>
-        <view class="muted id-hint">把兼职编号发给顾客，顾客在自己手机上确认后才建立绑定</view>
-      </view>
 
-      <view class="card list-card">
-        <view class="list-title">经营</view>
-        <view class="row-item" bindtap="onService">
-          <text>服务类型与范围</text>
-          <text class="row-arrow">›</text>
-        </view>
-        <view class="row-item" bindtap="onStats">
-          <text>单量统计</text>
-          <text class="row-arrow">›</text>
-        </view>
-        <view class="row-item" bindtap="onMessages">
-          <view class="row">
-            <text>消息</text>
-            <text wx:if="{{messagesBadge}}" class="badge-num">{{messagesBadge}}</text>
+          <view wx:if="{{!viewSession}}" class="card">
+            <button class="btn btn-primary btn-block" open-type="share">分享绑定卡片给顾客</button>
+            <view class="muted share-hint">卡片只带兼职编号，不含头像/昵称；分享不等于绑定，顾客确认后才建立。</view>
           </view>
-          <text class="row-arrow">›</text>
-        </view>
-      </view>
-    </block>
 
-    <view wx:if="{{!editMode}}" class="card list-card">
-      <view class="list-title">账号</view>
-      <view wx:if="{{roles.length > 1}}" class="row-item" bindtap="onSwitchRole">
-        <text>切换身份</text>
-        <text class="row-arrow">›</text>
+          <view class="card list-card">
+            <view class="list-title">经营</view>
+            <view class="row-item {{canEdit ? '' : 'row-item-disabled'}}" bindtap="onService">
+              <text>服务类型与范围</text>
+              <text class="row-arrow">›</text>
+            </view>
+            <view class="row-item" bindtap="onStats">
+              <text>单量统计</text>
+              <text class="row-arrow">›</text>
+            </view>
+            <view class="row-item" bindtap="onMessages">
+              <view class="row">
+                <text>消息中心</text>
+                <text wx:if="{{messagesBadge}}" class="badge-num">{{messagesBadge}}</text>
+              </view>
+              <text class="row-arrow">›</text>
+            </view>
+          </view>
+        </block>
+
+        <!-- 顾客：消息入口（我的格未读红点） -->
+        <view wx:if="{{isCustomer}}" class="card list-card">
+          <view class="row-item" bindtap="onMessages">
+            <view class="row">
+              <text>消息中心</text>
+              <text wx:if="{{messagesBadge}}" class="badge-num">{{messagesBadge}}</text>
+            </view>
+            <text class="row-arrow">›</text>
+          </view>
+        </view>
+
+        <view class="card list-card">
+          <view class="list-title">账号</view>
+          <view wx:if="{{showSwitchRole}}" class="row-item" bindtap="onSwitchRole">
+            <text>{{isCustomer ? '切换到兼职身份' : '切换到顾客身份'}}</text>
+            <text class="row-arrow">›</text>
+          </view>
+          <view class="row-item" data-doc="privacy" bindtap="onDocTap">
+            <text>隐私与协议</text>
+            <text class="row-arrow">›</text>
+          </view>
+          <view class="row-item" data-doc="terms" bindtap="onDocTap">
+            <text>用户协议</text>
+            <text class="row-arrow">›</text>
+          </view>
+          <view class="row-item" bindtap="onDocTap">
+            <text>帮助与反馈</text>
+            <text class="row-arrow">›</text>
+          </view>
+          <view wx:if="{{isCustomer && canEdit}}" class="row-item" bindtap="onDeleteAccount">
+            <text class="link-danger">注销账号</text>
+            <text class="row-arrow">›</text>
+          </view>
+          <view class="row-item">
+            <text class="muted">版本 {{version}}</text>
+          </view>
+        </view>
+      </block>
+    </block>
+  </block>
+
+  <!-- 解绑确认层：原因取 shared/enums（顾客侧只发 CUSTOMER_INITIATED），备注 ≤100 字 -->
+  <view wx:if="{{unbindVisible}}" class="mask" catchtouchmove="noop">
+    <view class="dialog">
+      <view class="dialog-title">解绑确认</view>
+      <view class="dialog-text">解绑后这位兼职看不到你的新订单，历史订单仍保留。确定解绑？</view>
+      <view class="row between profile-line">
+        <text class="muted">解绑原因</text>
+        <text class="dialog-value">{{unbindReasonText}}</text>
       </view>
-      <view class="row-item" bindtap="onHelp">
-        <text>隐私与协议</text>
-        <text class="row-arrow">›</text>
-      </view>
-      <view class="row-item" bindtap="onHelp">
-        <text>帮助与反馈</text>
-        <text class="row-arrow">›</text>
-      </view>
-      <view wx:if="{{canEdit && !closed}}" class="row-item" bindtap="onDeleteAccount">
-        <text class="link-danger">注销账号</text>
-        <text class="row-arrow">›</text>
-      </view>
-      <view class="row-item">
-        <text class="muted">版本 {{version}}</text>
+      <textarea
+        class="dialog-input"
+        value="{{unbindNote}}"
+        maxlength="{{unbindNoteLimit}}"
+        placeholder="补充说明（可选，≤100 字）"
+        bindinput="onUnbindNoteInput"
+      ></textarea>
+      <view class="muted dialog-hint">有进行中的订单时不能解绑，请先完成或取消。</view>
+      <view class="dialog-actions">
+        <button class="btn btn-ghost flex-1" bindtap="onUnbindCancel">取消</button>
+        <button class="btn btn-danger flex-1" loading="{{unbindSubmitting}}" bindtap="onUnbindConfirm">确认解绑</button>
       </view>
     </view>
-  </block>
+  </view>
 </view>

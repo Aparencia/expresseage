@@ -60,6 +60,16 @@ async function handler(ctx, payload) {
 
   const existingBinding = await identity.getActiveBinding(ctx, scope.openid);
   if (existingBinding) {
+    // 幂等重放：去重键按 DATA_MODEL §4.7 = bindings.activeKey（同顾客）；同顾客+同兼职再次提交
+    //（网络重试 / 同 clientRequestId 重放）返回当前对象 + duplicated=true，不报错也不再写。
+    if (existingBinding.partnerId === partner._id) {
+      return {
+        binding: bindingDto(existingBinding),
+        partnerPublic: partnerPublic(partner, { bound: true }),
+        duplicated: true
+      };
+    }
+    // 换绑（不同兼职）仍需先 release（DATA_MODEL §12#7：已绑定再绑定 → CONFLICT）
     throw errors.conflict('你已绑定兼职，如需更换请先解绑');
   }
   const activeOrder = await identity.hasActiveOrder(ctx, scope.openid, '');
@@ -69,12 +79,29 @@ async function handler(ctx, payload) {
 
   const nowMs = identity.nowMs(ctx);
   const nowDate = identity.nowDate(ctx);
-  const binding = await ctx.dao.transaction(async (trx) => bindCommon.createBindingInTx(trx, {
-    customer,
-    partner,
-    nowMs,
-    nowDate
-  }));
+  let binding = null;
+  try {
+    binding = await ctx.dao.transaction(async (trx) => bindCommon.createBindingInTx(trx, {
+      customer,
+      partner,
+      nowMs,
+      nowDate
+    }));
+  } catch (error) {
+    // 并发重复提交：activeKey 唯一索引兜底；冲突说明同一顾客的 ACTIVE 绑定已存在，读回后幂等返回
+    if (!ctx.dao.isDuplicateError(error)) {
+      throw error;
+    }
+    const raced = await identity.getActiveBinding(ctx, scope.openid);
+    if (raced && raced.partnerId === partner._id) {
+      return {
+        binding: bindingDto(raced),
+        partnerPublic: partnerPublic(partner, { bound: true }),
+        duplicated: true
+      };
+    }
+    throw errors.conflict('你已绑定兼职，如需更换请先解绑');
+  }
   return {
     binding: bindingDto(binding),
     partnerPublic: partnerPublic(partner, { bound: true })

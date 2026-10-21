@@ -1,5 +1,5 @@
 // pages/partner/workbench/index.js · 取件清单（服务端给状态桶+站点过滤后的 list/counts；四档动线排序在 parts/group-view.js）
-// 批量=客户端循环+同一 batchActionId；本页只做加载/筛选/交互，不复制排序与状态判定。
+// 批量=客户端循环 + 同一 batchActionId；本页只做加载/筛选/交互，不复制排序与状态判定。
 const orderApi = require('../../../api/modules/order');
 const store = require('../../../store/index');
 const client = require('../../../api/client');
@@ -30,6 +30,11 @@ const BATCH_ACTIONS = [
   { key: 'deliver', label: '送达', confirmText: '顾客可确认；24h 未确认自动完成。', undoable: true },
   { key: 'undoPick', label: '撤销已取件', confirmText: '顾客会看到进度回退。' }
 ];
+
+// 切换会话（TEST_WRITE）下写操作的成功提示必须点明"测试数据"（避免误以为动了真实单）
+function writeHint(text) {
+  return modeGuard.isTestWrite() ? text + '（将写入测试数据）' : text;
+}
 
 function nowText() {
   const date = new Date();
@@ -252,9 +257,20 @@ Page({
       wx.showToast({ title: '先勾选要处理的订单', icon: 'none' });
       return;
     }
+    // 取件前必须已有取件码（服务端同判据）；这里先挡全选都缺码的情况，避免整批失败
+    if (key === 'pick') {
+      const blocked = rows.filter((row) => row.needCode);
+      if (blocked.length === rows.length) {
+        wx.showToast({ title: '这些单还没有取件码，先补码再标记已取件', icon: 'none' });
+        return;
+      }
+      if (blocked.length) {
+        wx.showToast({ title: '有 ' + blocked.length + ' 单缺取件码，将跳过', icon: 'none' });
+      }
+    }
     wx.showModal({
       title: action.label,
-      content: '将 ' + rows.length + ' 单标记为「' + action.label + '」。' + action.confirmText,
+      content: writeHint('将 ' + rows.length + ' 单标记为「' + action.label + '」。' + action.confirmText),
       confirmText: '确认',
       success: (res) => {
         if (res.confirm) {
@@ -268,20 +284,21 @@ Page({
     this.batchRunning = true;
     this.setData({ batchRunning: true });
     const batchActionId = client.createRequestId();
+    const queue = action.key === 'pick' ? rows.filter((row) => !row.needCode) : rows;
     const results = [];
     const runNext = (index) => {
-      if (index >= rows.length) {
+      if (index >= queue.length) {
         this.finishBatch(action, results);
         return;
       }
-      this.callBatchAction(action.key, rows[index].orderNo, batchActionId)
+      this.callBatchAction(action.key, queue[index].orderNo, batchActionId)
         .then(() => {
-          results.push({ orderNo: rows[index].orderNo, ok: true, message: '' });
+          results.push({ orderNo: queue[index].orderNo, ok: true, message: '' });
           runNext(index + 1);
         })
         .catch((err) => {
           results.push({
-            orderNo: rows[index].orderNo,
+            orderNo: queue[index].orderNo,
             ok: false,
             message: (err && err.message) || '失败'
           });
@@ -316,7 +333,7 @@ Page({
       '成功 ' + okRows.length + ' · 失败 ' + failRows.length + (failRows.length ? '（失败项已保留，可重试）' : '');
     wx.showModal({
       title: '批量结果',
-      content: content,
+      content: writeHint(content),
       showCancel: false,
       success: () => {
         if (action.undoable && okRows.length) {
@@ -376,7 +393,7 @@ Page({
         const okCount = results.filter((item) => item.ok).length;
         const failCount = results.length - okCount;
         wx.showToast({
-          title: '撤销成功 ' + okCount + (failCount ? ' · 失败 ' + failCount : ''),
+          title: writeHint('撤销成功 ' + okCount + (failCount ? ' · 失败 ' + failCount : '')),
           icon: 'none'
         });
         this.load();

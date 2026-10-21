@@ -1,4 +1,4 @@
-// pkg-partner/pages/service-settings/index.js · 服务类型与范围（启用/停用 + 苑级范围 + 接单开关；不含费用字段）
+// pkg-partner/pages/service-settings/index.js · 服务类型与范围（真实 DTO：partner.serviceConfig{services,zones,acceptingOrders}；不含费用字段）
 const partnerApi = require('../../../api/modules/partner');
 const configApi = require('../../../api/modules/config');
 const store = require('../../../store/index');
@@ -6,6 +6,11 @@ const modeGuard = require('../../../api/mode-guard');
 
 function arr(value) {
   return Array.isArray(value) ? value : [];
+}
+
+// 切换会话（TEST_WRITE）下写操作成功提示必须点明"测试数据"
+function writeHint(text) {
+  return modeGuard.isTestWrite() ? text + '（将写入测试数据）' : text;
 }
 
 Page({
@@ -29,12 +34,16 @@ Page({
     this.setData({ readonly: !modeGuard.canRenderWriteButton() });
   },
 
+  // 首屏只用 store：bootstrap 已水合 partner.serviceConfig；configPublic 也已缓存，缺时才回源
   load() {
     this.setData({ loading: true, errorText: '' });
-    Promise.all([configApi.getPublic(), Promise.resolve(store.get('partner') || {})])
-      .then((results) => {
-        const config = results[0] || {};
-        const partner = results[1];
+    const cachedConfig = store.get('config');
+    const configPromise = cachedConfig ? Promise.resolve(cachedConfig) : configApi.getPublic();
+    return configPromise
+      .then((config) => {
+        const publicConfig = config || {};
+        const partner = store.get('partner') || {};
+        this.partner = partner;
         const current = partner.serviceConfig || {};
         const enabledMap = {};
         arr(current.services).forEach((item) => {
@@ -42,25 +51,19 @@ Page({
             enabledMap[item.code] = item.enabled === true;
           }
         });
-        const services = arr(config.serviceCatalog).map((item) => ({
+        const services = arr(publicConfig.serviceCatalog).map((item) => ({
           code: item.code,
           name: item.name,
           desc: item.desc || '',
           enabled: enabledMap[item.code] === true
         }));
-        const zoneLabels = config.zoneLabels || {};
+        const zoneLabels = publicConfig.zoneLabels || {};
         const selectedZones = arr(current.zones);
         const zones = Object.keys(zoneLabels).map((key) => ({
           key: key,
           label: zoneLabels[key],
           selected: selectedZones.indexOf(key) >= 0
         }));
-        this.preserved = {
-          buildingNos: arr(current.buildingNos),
-          maxDailyOrders: current.maxDailyOrders,
-          businessHours: current.businessHours,
-          autoAccept: current.autoAccept
-        };
         this.setData({
           services: services,
           zones: zones,
@@ -129,19 +132,14 @@ Page({
     this.setData({ zones: zones });
   },
 
+  // 只提交服务端真正持久化的三键（services/zones/acceptingOrders）；不夹带客户端保留字段
   buildPayload() {
-    const services = this.data.services
-      .filter((item) => item.enabled)
-      .map((item) => ({ code: item.code, enabled: true }));
+    const services = this.data.services.map((item) => ({ code: item.code, enabled: item.enabled === true }));
     const zones = this.data.zones.filter((item) => item.selected).map((item) => item.key);
     return {
       services: services,
       zones: zones,
-      acceptingOrders: this.data.acceptingOrders,
-      buildingNos: (this.preserved && this.preserved.buildingNos) || [],
-      maxDailyOrders: this.preserved && this.preserved.maxDailyOrders,
-      businessHours: this.preserved && this.preserved.businessHours,
-      autoAccept: this.preserved && this.preserved.autoAccept
+      acceptingOrders: this.data.acceptingOrders
     };
   },
 
@@ -150,7 +148,8 @@ Page({
       return;
     }
     const payload = this.buildPayload();
-    if (!payload.services.length) {
+    const enabledServices = payload.services.filter((item) => item.enabled);
+    if (!enabledServices.length) {
       this.setData({ errorText: '至少启用 1 个服务类型，顾客才能下单' });
       return;
     }
@@ -161,9 +160,15 @@ Page({
     this.setData({ saving: true, errorText: '' });
     partnerApi
       .saveServiceConfig(payload)
-      .then(() => {
+      .then((data) => {
+        const saved = (data && data.serviceConfig) || payload;
+        const partner = Object.assign({}, this.partner || store.get('partner') || {}, {
+          serviceConfig: saved,
+          acceptingOrders: saved.acceptingOrders === true
+        });
+        store.set({ partner: partner });
         this.setData({ saving: false });
-        wx.showToast({ title: '已保存，顾客端立即生效', icon: 'none' });
+        wx.showToast({ title: writeHint('已保存，顾客端立即生效'), icon: 'none' });
         setTimeout(() => {
           wx.switchTab({ url: '/pages/partner/workbench/index' });
         }, 600);

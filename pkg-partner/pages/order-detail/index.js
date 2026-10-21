@@ -1,28 +1,24 @@
-// pkg-partner/pages/order-detail/index.js · 兼职订单详情（动作可见性来自服务端 order.actions）
+// pkg-partner/pages/order-detail/index.js · 兼职订单详情（真实 DTO：order.actions 决定动作条、counterpart 只在 ACTIVE 绑定内下发）
 const orderApi = require('../../../api/modules/order');
 const messageApi = require('../../../api/modules/message');
 const modeGuard = require('../../../api/mode-guard');
+const enums = require('../../../shared/enums');
 const orderEdit = require('../../../utils/order-edit');
 const actionsPart = require('./parts/actions');
 const eventView = require('./parts/event-view');
+const orderView = require('./parts/order-view');
 
 const UNDO_SECONDS = 5;
 const NOTE_MAX = 100;
 const MESSAGE_MAX = 200;
-const CANCEL_REASONS = [
-  { code: 'TOO_BUSY', label: '忙不过来' },
-  { code: 'OUT_OF_RANGE', label: '不在服务范围' },
-  { code: 'SERVICE_OFF', label: '服务未开' },
-  { code: 'OTHER', label: '其他（备注必填）' }
-];
-const EXCEPTION_REASONS = [
-  { code: 'CODE_INVALID', label: '取件码/柜号无效' },
-  { code: 'PARCEL_NOT_FOUND', label: '驿站找不到件' },
-  { code: 'CABINET_ERROR', label: '柜门/设备故障' },
-  { code: 'CUSTOMER_UNREACHABLE', label: '联系不上顾客' },
-  { code: 'ADDRESS_ISSUE', label: '宿舍地址问题' },
-  { code: 'OTHER', label: '其他（备注必填）' }
-];
+// 原因表单源在 shared/enums（服务端同一份校验）；页面只负责展示与选择
+const CANCEL_REASONS = enums.CANCEL_REASONS[enums.ROLES.PARTNER].map((item) => ({ code: item.code, label: item.text }));
+const EXCEPTION_REASONS = enums.EXCEPTION_CODES.map((item) => ({ code: item.code, label: item.text }));
+
+// 切换会话（TEST_WRITE）下写操作成功提示必须点明"测试数据"
+function writeHint(text) {
+  return modeGuard.isTestWrite() ? text + '（将写入测试数据）' : text;
+}
 
 Page({
   data: {
@@ -76,12 +72,12 @@ Page({
       .get({ orderNo: this.data.orderNo })
       .then((data) => {
         const order = (data && data.order) || {};
-        const customerNo = order.customerNo || (order.counterpart && order.counterpart.customerNo) || '';
+        const detail = orderView.buildDetail(order);
         this.setData({
-          order: order,
+          order: Object.assign({}, order, detail),
           events: eventView.buildEvents(data && data.events),
           actions: actionsPart.buildVisibleActions(order, this.data.readonly),
-          customerNoText: customerNo,
+          customerNoText: detail.customerNoText,
           loading: false
         });
         return this.loadMessages();
@@ -242,7 +238,7 @@ Page({
     return promise
       .then(() => {
         this.setData({ sending: false });
-        wx.showToast({ title: successText, icon: 'none' });
+        wx.showToast({ title: writeHint(successText), icon: 'none' });
         if (startUndo) {
           this.startUndo(successText);
         }
@@ -251,7 +247,8 @@ Page({
       .catch((err) => {
         this.setData({ sending: false });
         wx.showToast({ title: (err && err.message) || '操作没成功，请重试', icon: 'none' });
-        if (err && err.code === 'INVALID_TRANSITION') {
+        // 状态/版本对不上就重新拉详情，避免用旧动作条继续点
+        if (err && (err.code === 'INVALID_TRANSITION' || err.code === 'CONFLICT')) {
           this.load();
         }
       });
@@ -288,7 +285,7 @@ Page({
       .undo({ orderNo: this.data.orderNo })
       .then(() => {
         this.setData({ undo: { visible: false, remaining: 0, label: '' } });
-        wx.showToast({ title: '已撤销', icon: 'none' });
+        wx.showToast({ title: writeHint('已撤销'), icon: 'none' });
         this.load();
       })
       .catch((err) => {
@@ -321,21 +318,23 @@ Page({
       return;
     }
     const order = this.data.order || {};
-    const picked = order.pickedAt ? true : false;
-    const checked = orderEdit.validatePatch(this.data.codeEditor, { pickedOnly: picked });
-    if (!checked.ok) {
-      wx.showToast({ title: checked.message, icon: 'none' });
+    const parcel = order.parcel || {};
+    const patch = orderView.diffPatch(this.data.codeEditor, parcel);
+    if (!Object.keys(patch).length) {
+      this.setData({ panel: '' });
       return;
     }
-    if (!Object.keys(checked.patch).length) {
-      this.setData({ panel: '' });
+    const picked = !!order.pickedAt;
+    const checked = orderEdit.validatePatch(patch, { pickedOnly: picked });
+    if (!checked.ok) {
+      wx.showToast({ title: checked.message, icon: 'none' });
       return;
     }
     orderApi
       .correct({ orderNo: this.data.orderNo, patch: checked.patch, expectedVersion: order.version })
       .then(() => {
         this.setData({ panel: '' });
-        wx.showToast({ title: '已更正，顾客端同步', icon: 'none' });
+        wx.showToast({ title: writeHint('已更正，顾客端同步'), icon: 'none' });
         this.load();
       })
       .catch((err) => {
@@ -366,7 +365,7 @@ Page({
     api({ orderNo: this.data.orderNo, reason: reason.code, note: note || undefined })
       .then(() => {
         this.setData({ panel: '' });
-        wx.showToast({ title: '已提交，顾客会看到原因', icon: 'none' });
+        wx.showToast({ title: writeHint('已提交，顾客会看到原因'), icon: 'none' });
         this.load();
       })
       .catch((err) => {
@@ -396,7 +395,7 @@ Page({
       .reportException({ orderNo: this.data.orderNo, code: reason.code, text: note || undefined })
       .then(() => {
         this.setData({ panel: '' });
-        wx.showToast({ title: '已上报异常，顾客已收到提醒', icon: 'none' });
+        wx.showToast({ title: writeHint('已上报异常，顾客已收到提醒'), icon: 'none' });
         this.load();
       })
       .catch((err) => {
@@ -417,6 +416,7 @@ Page({
       .send({ orderNo: this.data.orderNo, text: this.data.messageText })
       .then(() => {
         this.setData({ sending: false, messageText: '' });
+        wx.showToast({ title: writeHint('留言已发送'), icon: 'none' });
         return this.loadMessages();
       })
       .catch((err) => {

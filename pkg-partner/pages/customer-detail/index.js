@@ -13,6 +13,42 @@ function noteText(raw) {
   return value.length > NOTE_MAX ? value.slice(0, NOTE_MAX) : value;
 }
 
+function pad2(value) {
+  return value < 10 ? '0' + value : String(value);
+}
+
+// 服务端时间是 ISO 字符串；历史单展示到分钟即可
+function timeTextOf(value) {
+  if (!value) {
+    return '';
+  }
+  const ms = typeof value === 'number' ? value : Date.parse(value);
+  if (!ms || Number.isNaN(ms)) {
+    return '';
+  }
+  const date = new Date(ms);
+  return pad2(date.getMonth() + 1) + '-' + pad2(date.getDate()) + ' ' + pad2(date.getHours()) + ':' + pad2(date.getMinutes());
+}
+
+// order.listPartner(history) 的 DTO 行 → 历史单展示行（statusText 由服务端下发，页面不自判状态）
+function buildHistoryRows(list) {
+  return (Array.isArray(list) ? list : []).map((order) => {
+    const item = order || {};
+    const parcel = item.parcel || {};
+    return {
+      orderNo: item.orderNo || '',
+      statusText: item.statusText || '',
+      codeText: parcel.pickupCode || '',
+      timeText: timeTextOf(item.completedAt || item.cancelledAt || item.statusUpdatedAt)
+    };
+  });
+}
+
+// 切换会话（TEST_WRITE）下写操作成功提示必须点明"测试数据"
+function writeHint(text) {
+  return modeGuard.isTestWrite() ? text + '（将写入测试数据）' : text;
+}
+
 Page({
   data: {
     bindingId: '',
@@ -60,7 +96,7 @@ Page({
         }
         this.setData({ view: view, noteValue: view.partnerNote, loading: false });
         return orderApi.listPartner({ view: 'history', keyword: view.customerNo, limit: 20 }).then((result) => {
-          this.setData({ orders: (result && result.list) || [] });
+          this.setData({ orders: buildHistoryRows(result && result.list) });
         });
       })
       .catch((err) => {
@@ -98,10 +134,11 @@ Page({
     this.setData({ savingNote: true });
     partnerApi
       .saveCustomerNote({ bindingId: this.data.bindingId, partnerNote: this.data.noteValue })
-      .then(() => {
-        const view = Object.assign({}, this.data.view, { partnerNote: this.data.noteValue });
-        this.setData({ view: view, noteEditing: false, savingNote: false });
-        wx.showToast({ title: '已保存，仅自己可见', icon: 'none' });
+      .then((data) => {
+        const saved = data && typeof data.partnerNote === 'string' ? data.partnerNote : this.data.noteValue;
+        const view = Object.assign({}, this.data.view, { partnerNote: saved });
+        this.setData({ view: view, noteValue: saved, noteEditing: false, savingNote: false });
+        wx.showToast({ title: writeHint('已保存，仅自己可见'), icon: 'none' });
       })
       .catch((err) => {
         this.setData({ savingNote: false });
@@ -154,7 +191,7 @@ Page({
         partnerApi
           .unbindCustomer({ bindingId: this.data.bindingId, reason: RELEASE_REASON, note: note })
           .then(() => {
-            wx.showToast({ title: '已解绑，已通知顾客', icon: 'none' });
+            wx.showToast({ title: writeHint('已解绑，已通知顾客'), icon: 'none' });
             setTimeout(() => wx.navigateBack({ delta: 1 }), 600);
           })
           .catch((err) => {

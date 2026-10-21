@@ -1,12 +1,58 @@
 <view class="page-body launch-page">
-  <view wx:if="{{loading}}" class="launch-box">
-    <view class="launch-logo">代</view>
-    <view class="launch-title">校园快递代取</view>
-    <view class="launch-tip">正在进入…</view>
-  </view>
-  <view wx:elif="{{errorText}}" class="launch-box">
-    <view class="launch-title">暂时无法进入</view>
-    <view class="launch-error">{{errorText}}</view>
-    <button class="btn btn-primary btn-block" bindtap="onRetry">重试</button>
-  </view>
+  <!-- 隐私同意闸：首次/版本变更时阻断，同意后写 user.acceptPrivacy 再分流（CONTRACT §11 / UX_CUSTOMER §9.1） -->
+  <block wx:if="{{privacyVisible}}">
+    <view class="launch-box privacy-box">
+      <view class="launch-logo">代</view>
+      <view class="launch-title">隐私保护提示</view>
+      <view class="privacy-lead">{{privacyLead}}</view>
+      <view class="privacy-list">
+        <view wx:for="{{privacyItems}}" wx:key="*this" class="privacy-item">{{item}}</view>
+      </view>
+      <button class="btn btn-primary btn-block" loading="{{privacySubmitting}}" bindtap="onAgreePrivacy">同意并继续</button>
+      <button class="btn btn-ghost btn-block launch-gap" bindtap="onViewPrivacy">查看完整隐私政策</button>
+      <view class="privacy-decline" bindtap="onDeclinePrivacy">不同意</view>
+      <view wx:if="{{privacyError}}" class="privacy-error">{{privacyError}}</view>
+    </view>
+  </block>
+
+  <!-- 不同意：停在启动页说明，不进入业务；可重读全文或重新同意 -->
+  <block wx:elif="{{privacyDeclined}}">
+    <view class="launch-box">
+      <view class="launch-logo">代</view>
+      <view class="launch-title">需要先同意隐私政策</view>
+      <view class="launch-error">同意后才能进入首页使用下单、绑定与消息功能。你可以先查看隐私政策全文，再决定是否同意。</view>
+      <view class="launch-actions">
+        <button class="btn btn-primary btn-block" bindtap="onReopenPrivacy">重新阅读并同意</button>
+        <button class="btn btn-ghost btn-block launch-gap" bindtap="onViewPrivacy">查看完整隐私政策</button>
+      </view>
+    </view>
+  </block>
+
+  <!-- 加载态：品牌区 + 三点骨架（≤800ms 内默认直接分流） -->
+  <block wx:elif="{{loading}}">
+    <view class="launch-box">
+      <view class="launch-logo">代</view>
+      <view class="launch-title">{{brandName}}</view>
+      <view class="launch-tip">{{loadingTip}}</view>
+      <view class="launch-dots">
+        <view class="launch-dot"></view>
+        <view class="launch-dot"></view>
+        <view class="launch-dot"></view>
+      </view>
+    </view>
+  </block>
+
+  <!-- 错误态：错误条 + 重试；连续失败给检查网络提示，第 3 次起显示登录失败码 -->
+  <block wx:else>
+    <view class="launch-box">
+      <view class="launch-logo">代</view>
+      <view class="launch-title">{{errorTitle}}</view>
+      <view class="launch-error">{{errorText}}</view>
+      <view wx:if="{{errorHint}}" class="launch-hint">{{errorHint}}</view>
+      <view class="launch-actions">
+        <button class="btn btn-primary btn-block" bindtap="onRetry">{{retryText}}</button>
+      </view>
+      <view class="launch-tip">若一直失败，可在微信里退出小程序后重新打开。</view>
+    </view>
+  </block>
 </view>

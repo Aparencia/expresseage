@@ -141,6 +141,10 @@ function createFakeDb(options) {
         const v = patch && Object.prototype.hasOwnProperty.call(patch, f) ? patch[f] : getPath(docs.get(candidateId) || {}, f);
         return comparable(v);
       });
+      // 缺失字段不产生唯一索引项：真实云 DB 对这些集合的唯一索引以"写入即带值"为前提
+      // （requestKey/orderNo 等生产恒有值）。若把 undefined 当 null 值参与比较，
+      // 任何"seed 样本不带该字段"的集合首次 update 都会被误判重复（假红）。
+      if (vals.indexOf(undefined) !== -1 || vals.indexOf(null) !== -1) continue;
       for (const [id, other] of docs) {
         if (id === candidateId) continue;
         const otherVals = fields.map((f) => comparable(getPath(other, f)));

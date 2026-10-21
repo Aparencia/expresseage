@@ -1,3 +1,6 @@
+/* pages/launch/index.wxss · 启动页（品牌区 + 隐私同意闸 + 加载骨架 + 错误重试）
+   规则：token 与通用类在 app.wxss；本页只写页面私有类（门禁 #9）。 */
+
 .launch-page {
   min-height: 100vh;
   display: flex;
@@ -10,7 +13,8 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 0 48rpx;
+  padding: 0 16rpx;
+  box-sizing: border-box;
 }
 
 .launch-logo {
@@ -32,17 +36,144 @@
   font-weight: 600;
   color: #1A1A1A;
   margin-bottom: 16rpx;
+  text-align: center;
+  line-height: 1.4;
 }
 
 .launch-tip {
   font-size: 26rpx;
   color: #999999;
+  text-align: center;
+  line-height: 1.6;
 }
 
 .launch-error {
   font-size: 28rpx;
   color: #E54D42;
   text-align: center;
-  margin: 16rpx 0 48rpx;
+  margin: 8rpx 0 24rpx;
   line-height: 1.6;
+}
+
+.launch-hint {
+  font-size: 26rpx;
+  color: #F5A623;
+  text-align: center;
+  margin-bottom: 16rpx;
+  line-height: 1.6;
+}
+
+.launch-actions {
+  width: 100%;
+  margin-top: 24rpx;
+}
+
+.launch-gap {
+  margin-top: 24rpx;
+}
+
+/* 加载三点骨架 */
+.launch-dots {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  margin-top: 24rpx;
+}
+
+.launch-dot {
+  width: 12rpx;
+  height: 12rpx;
+  border-radius: 50%;
+  background: #1F7A5C;
+  margin: 0 8rpx;
+  opacity: 0.25;
+  animation: launch-pulse 1.2s infinite ease-in-out;
+}
+
+.launch-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.launch-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes launch-pulse {
+  0% {
+    opacity: 0.2;
+    transform: scale(0.8);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  100% {
+    opacity: 0.2;
+    transform: scale(0.8);
+  }
+}
+
+/* 隐私同意闸 */
+.privacy-box {
+  align-items: stretch;
+  padding: 0;
+}
+
+.privacy-lead {
+  font-size: 28rpx;
+  color: #666666;
+  text-align: center;
+  line-height: 1.6;
+  margin-bottom: 24rpx;
+}
+
+.privacy-list {
+  width: 100%;
+  background: #FFFFFF;
+  border-radius: 16rpx;
+  padding: 24rpx;
+  box-sizing: border-box;
+  margin-bottom: 32rpx;
+}
+
+.privacy-item {
+  font-size: 26rpx;
+  color: #666666;
+  line-height: 1.7;
+  padding-left: 24rpx;
+  position: relative;
+  margin-bottom: 16rpx;
+}
+
+.privacy-item:last-child {
+  margin-bottom: 0;
+}
+
+.privacy-item::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 16rpx;
+  width: 10rpx;
+  height: 10rpx;
+  border-radius: 50%;
+  background: #1F7A5C;
+}
+
+.privacy-decline {
+  font-size: 28rpx;
+  color: #999999;
+  text-align: center;
+  padding: 32rpx 0 8rpx;
+}
+
+.privacy-error {
+  font-size: 26rpx;
+  color: #E54D42;
+  text-align: center;
+  line-height: 1.6;
+  margin-top: 8rpx;
 }

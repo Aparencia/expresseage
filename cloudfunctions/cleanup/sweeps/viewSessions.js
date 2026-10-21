@@ -51,7 +51,7 @@ async function runViewSessions(ctx) {
     scanned += 1;
     try {
       await ctx.dao.update(C.ADMIN_VIEW_SESSIONS, session._id, {
-        endedAt: new Date(expiresAt),
+        endedAt: session.expiresAt,
         updatedAt: nowDate
       });
       await writeExpiredAudit(ctx, session);

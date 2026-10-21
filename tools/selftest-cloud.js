@@ -21,7 +21,7 @@ const CLEANUP = path.join(ROOT, 'cloudfunctions/cleanup');
 const { createDao } = require(path.join(API, 'db/dao.js'));
 const { COLLECTIONS } = require(path.join(API, 'shared/collections.js'));
 const { ACTION_MAP, CLIENT_ACTIONS } = require(path.join(API, 'shared/actions.js'));
-const { ROLES, USER_STATUS, ORDER_STATUS, VIEW_MODE, PARTNER_STATUS } = require(path.join(API, 'shared/enums.js'));
+const { ROLES, USER_STATUS, ORDER_STATUS, VIEW_MODE, PARTNER_STATUS, BINDING_STATUS } = require(path.join(API, 'shared/enums.js'));
 const { AUDIT_ACTIONS } = require(path.join(API, 'shared/audit-actions.js'));
 const { baseIdentity } = require(path.join(API, 'app.js'));
 const auth = require(path.join(API, 'middleware/auth.js'));
@@ -35,7 +35,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const ADMIN_OPENID = 'openid-admin-dev01';
 const ADMIN_ENV = { ADMIN_OPENIDS: JSON.stringify({ [ADMIN_OPENID]: 'DEV-01' }) };
 
-const EXPECTED_ASSERTIONS = 137;
+const EXPECTED_ASSERTIONS = 125;
 
 const API_PENDING_ASSERTS = 22;
 const CLEANUP_PENDING_ASSERTS = 14;
@@ -74,7 +74,8 @@ function cloudStub(suggest) {
     openapi: {
       security: {
         msgSecCheck: async () => ({
-          result: { suggest: result, label: result === 'pass' ? 100 : 200100 }
+          errCode: 0,
+          result: { suggest: result, label: result === 'pass' ? 100 : 20001 }
         })
       }
     }
@@ -455,10 +456,10 @@ function register(h) {
     db.seed('partners', [{ _id: 'partner-real-1', openid: 'openid-real-p', partnerNo: 'PABC23', status: PARTNER_STATUS.ACTIVE, serviceConfig: { acceptingOrders: true } }]);
     const future = NOW + 30 * 60 * 1000;
     db.seed('admin_view_sessions', [
-      { _id: 'TK-READONLY', adminOpenid: ADMIN_OPENID, developerNo: 'DEV-01', viewMode: VIEW_MODE.READONLY, role: ROLES.CUSTOMER, targetId: 'openid-real-c', targetNo: 'CABCDEFGH', targetIsTest: false, createdAt: NOW, expiresAt: future, endedAt: 0 },
-      { _id: 'TK-READONLY-P', adminOpenid: ADMIN_OPENID, developerNo: 'DEV-01', viewMode: VIEW_MODE.READONLY, role: ROLES.PARTNER, targetId: 'partner-real-1', targetNo: 'PABC23', targetIsTest: false, createdAt: NOW, expiresAt: future, endedAt: 0 },
-      { _id: 'TK-TEST', adminOpenid: ADMIN_OPENID, developerNo: 'DEV-01', viewMode: VIEW_MODE.TEST_WRITE, role: ROLES.CUSTOMER, targetId: 'TEST-cloudcore0001', targetNo: 'CABCD9999', targetIsTest: true, createdAt: NOW, expiresAt: future, endedAt: 0 },
-      { _id: 'TK-EXPIRED', adminOpenid: ADMIN_OPENID, developerNo: 'DEV-01', viewMode: VIEW_MODE.READONLY, role: ROLES.CUSTOMER, targetId: 'openid-real-c', targetNo: 'CABCDEFGH', targetIsTest: false, createdAt: NOW - 3600000, expiresAt: NOW - 1000, endedAt: 0 }
+      { _id: 'TK-READONLY', requestKey: 'vs-readonly-0001', adminOpenid: ADMIN_OPENID, developerNo: 'DEV-01', viewMode: VIEW_MODE.READONLY, role: ROLES.CUSTOMER, targetId: 'openid-real-c', targetNo: 'CABCDEFGH', targetIsTest: false, createdAt: NOW, expiresAt: future, endedAt: 0 },
+      { _id: 'TK-READONLY-P', requestKey: 'vs-readonly-0002', adminOpenid: ADMIN_OPENID, developerNo: 'DEV-01', viewMode: VIEW_MODE.READONLY, role: ROLES.PARTNER, targetId: 'partner-real-1', targetNo: 'PABC23', targetIsTest: false, createdAt: NOW, expiresAt: future, endedAt: 0 },
+      { _id: 'TK-TEST', requestKey: 'vs-test-0001', adminOpenid: ADMIN_OPENID, developerNo: 'DEV-01', viewMode: VIEW_MODE.TEST_WRITE, role: ROLES.CUSTOMER, targetId: 'TEST-cloudcore0001', targetNo: 'CABCD9999', targetIsTest: true, createdAt: NOW, expiresAt: future, endedAt: 0 },
+      { _id: 'TK-EXPIRED', requestKey: 'vs-expired-0001', adminOpenid: ADMIN_OPENID, developerNo: 'DEV-01', viewMode: VIEW_MODE.READONLY, role: ROLES.CUSTOMER, targetId: 'openid-real-c', targetNo: 'CABCDEFGH', targetIsTest: false, createdAt: NOW - 3600000, expiresAt: NOW - 1000, endedAt: 0 }
     ]);
     async function freshAdminCtx() {
       const ctx = makeCtx(dao, { openid: ADMIN_OPENID });
@@ -568,7 +569,7 @@ function register(h) {
     const expiredSession = db.dump('admin_view_sessions').filter((row) => row._id === 'TK-EXPIRED')[0];
     t.eq(expiredSession.endedAt, expiredSession.expiresAt, '过期票据补写 endedAt（幂等）');
     db.seed('users', [{ _id: 'openid-gone', roles: [ROLES.CUSTOMER], status: USER_STATUS.DEACTIVATED }]);
-    db.seed('admin_view_sessions', [{ _id: 'TK-GONE', adminOpenid: ADMIN_OPENID, developerNo: 'DEV-01', viewMode: VIEW_MODE.READONLY, role: ROLES.CUSTOMER, targetId: 'openid-gone', targetNo: 'CABCDEFGH', targetIsTest: false, createdAt: NOW, expiresAt: future, endedAt: 0 }]);
+    db.seed('admin_view_sessions', [{ _id: 'TK-GONE', requestKey: 'vs-gone-0001', adminOpenid: ADMIN_OPENID, developerNo: 'DEV-01', viewMode: VIEW_MODE.READONLY, role: ROLES.CUSTOMER, targetId: 'openid-gone', targetNo: 'CABCDEFGH', targetIsTest: false, createdAt: NOW, expiresAt: future, endedAt: 0 }]);
     let goneError = null;
     try {
       await switchSession.middleware(makeState(await freshAdminCtx(), 'order.get', {}, Object.assign(readAction(), {
@@ -607,7 +608,7 @@ function register(h) {
 
     // 内容安全桩：customer.saveProfile 走 cloud.openapi.security.msgSecCheck（v2），pass/risky 两态
     const profileDb = createTestDb();
-    profileDb.seed('users', [{ _id: 'openid-profile', roles: [], status: USER_STATUS.ACTIVE, isTestAccount: false, privacyConsent: { version: 'v4.0', at: NOW } }]);
+    profileDb.seed('users', [{ _id: 'openid-profile', roles: [ROLES.CUSTOMER], status: USER_STATUS.ACTIVE, isTestAccount: false, privacyConsent: { version: 'v4.0', at: NOW } }]);
     const passApi = app.createApi({ db: profileDb, now: () => NOW, openid: 'openid-profile', env: ADMIN_ENV, cloud: cloudStub('pass') });
     const savedProfile = await passApi.call('customer.saveProfile', {
       displayName: '小王',
@@ -618,13 +619,116 @@ function register(h) {
     t.eq(savedProfile.ok, true, 'customer.saveProfile 内容安全通过（msgSecCheck 桩 suggest=pass）');
     const riskyApi = app.createApi({ db: profileDb, now: () => NOW, openid: 'openid-profile', env: ADMIN_ENV, cloud: cloudStub('risky') });
     const riskyProfile = await riskyApi.call('customer.saveProfile', {
-      displayName: '小王',
+      displayName: '小李',
       zone: 'D',
       buildingNo: 4,
       room: '522'
     }, { clientRequestId: 'profile-request-000000002' });
     t.check(riskyProfile.ok === false && riskyProfile.code === 'VALIDATION_FAILED',
       '命中 msgSecCheck（suggest=risky）→ VALIDATION_FAILED（不落库）');
+
+    // 角色授予：auth 对全新用户懒建 users 时 roles=[]；全仓没有别的入口写 CUSTOMER，
+    // customer.saveProfile 首存成功即 union 授予 CUSTOMER（二次保存幂等，不重复授予）。
+    const roleDb = createTestDb();
+    roleDb.seed('users', [{ _id: 'openid-newbie', roles: [], status: USER_STATUS.ACTIVE, isTestAccount: false, privacyConsent: { version: 'v4.0', at: NOW } }]);
+    const newbieApi = app.createApi({ db: roleDb, now: () => NOW, openid: 'openid-newbie', env: ADMIN_ENV, cloud: cloudStub('pass') });
+    const firstSave = await newbieApi.call('customer.saveProfile', {
+      displayName: '小新',
+      zone: 'D',
+      buildingNo: 4,
+      room: '522'
+    }, { clientRequestId: 'newbie-profile-0000000001' });
+    t.eq(firstSave.ok, true, '§7.3 新用户 roles=[] 首次保存资料：ok:true（角色懒建不再挡住首存）');
+    const newbieRoles = roleDb.dump('users').filter((row) => row._id === 'openid-newbie')[0].roles;
+    t.eq(newbieRoles, [ROLES.CUSTOMER], '§7.3 首存成功即授予 CUSTOMER 角色（users.roles 精确含 CUSTOMER）');
+    const secondSave = await newbieApi.call('customer.saveProfile', {
+      displayName: '小新'
+    }, { clientRequestId: 'newbie-profile-0000000002' });
+    const newbieRolesAfterSecond = roleDb.dump('users').filter((row) => row._id === 'openid-newbie')[0].roles;
+    t.check(secondSave.ok === true && newbieRolesAfterSecond.length === 1,
+      '§7.3 二次保存不重复授予：ok:true 且 roles 仍只有 1 个 CUSTOMER');
+    t.eq(newbieRolesAfterSecond, [ROLES.CUSTOMER], '§7.3 二次保存后 users.roles 仍精确为 [CUSTOMER]（幂等）');
+    // 双角色：PARTNER-only 用户首存顾客资料 → 保留 PARTNER 并追加 CUSTOMER（原角色不被覆盖）
+    const dualDb = createTestDb();
+    dualDb.seed('users', [{ _id: 'openid-dual', roles: [ROLES.PARTNER], status: USER_STATUS.ACTIVE, isTestAccount: false, privacyConsent: { version: 'v4.0', at: NOW } }]);
+    const dualApi = app.createApi({ db: dualDb, now: () => NOW, openid: 'openid-dual', env: ADMIN_ENV, cloud: cloudStub('pass') });
+    const dualSave = await dualApi.call('customer.saveProfile', {
+      displayName: '小双',
+      zone: 'D',
+      buildingNo: 5,
+      room: '610'
+    }, { clientRequestId: 'dual-profile-00000000001' });
+    t.eq(dualSave.ok, true, '§7.3 PARTNER-only 用户首存顾客资料：ok:true（同一 openid 双角色允许）');
+    const dualRoles = dualDb.dump('users').filter((row) => row._id === 'openid-dual')[0].roles;
+    t.eq(dualRoles.slice().sort(), [ROLES.CUSTOMER, ROLES.PARTNER],
+      '§7.3 PARTNER-only 首存后 roles 同时含 PARTNER+CUSTOMER（原角色不被覆盖）');
+
+    // bind.create 幂等重放：去重键 = bindings.activeKey（同顾客）；同顾客+同兼职重复提交
+    // 返回 ok:true + 当前对象 + duplicated=true（不写第二条、不报 CONFLICT）；换另一兼职仍 CONFLICT。
+    const bindDb = createTestDb();
+    bindDb.seed('users', [
+      { _id: 'openid-bind-c', roles: [ROLES.CUSTOMER], status: USER_STATUS.ACTIVE, isTestAccount: false, privacyConsent: { version: 'v4.0', at: NOW } },
+      { _id: 'openid-bind-p1', roles: [ROLES.PARTNER], status: USER_STATUS.ACTIVE, isTestAccount: false },
+      { _id: 'openid-bind-p2', roles: [ROLES.PARTNER], status: USER_STATUS.ACTIVE, isTestAccount: false }
+    ]);
+    bindDb.seed('customers', [{ _id: 'openid-bind-c', customerNo: 'CABCDEFGH', displayName: '小王', profileCompleted: true, zone: 'D', buildingNo: 4, room: '522', dormKey: 'D4-522' }]);
+    bindDb.seed('partners', [
+      { _id: 'partner-bind-1', openid: 'openid-bind-p1', partnerNo: 'PABC234', displayName: '小李', status: PARTNER_STATUS.ACTIVE, serviceConfig: { acceptingOrders: true } },
+      { _id: 'partner-bind-2', openid: 'openid-bind-p2', partnerNo: 'PABC235', displayName: '小张', status: PARTNER_STATUS.ACTIVE, serviceConfig: { acceptingOrders: true } }
+    ]);
+    const bindApi = app.createApi({ db: bindDb, now: () => NOW, openid: 'openid-bind-c', env: ADMIN_ENV });
+    const bindReplayOptions = { clientRequestId: 'bind-request-000000000001' };
+    const bindReplay1 = await bindApi.call('bind.create', { partnerNo: 'PABC234' }, bindReplayOptions);
+    const bindReplay2 = await bindApi.call('bind.create', { partnerNo: 'PABC234' }, bindReplayOptions);
+    t.check(bindReplay1.ok === true && bindReplay2.ok === true && !!bindReplay2.data && bindReplay2.data.duplicated === true,
+      '§7.3 bind.create 同请求重放：两次 ok:true 且第二次 duplicated=true（幂等非 CONFLICT）');
+    t.eq(bindDb.dump('bindings').filter((row) => row.status === BINDING_STATUS.ACTIVE).length, 1,
+      '§7.3 bind.create 重放不重复写绑定（ACTIVE 绑定仍 1 条）');
+    const rebind = await bindApi.call('bind.create', { partnerNo: 'PABC235' }, { clientRequestId: 'bind-request-000000000002' });
+    t.check(rebind.ok === false && rebind.code === 'CONFLICT',
+      '§7.3 bind.create 换另一兼职再绑定 → CONFLICT（换绑需先 release）');
+
+    // order.listPartner DTO 铁律（task-47）：曾把 raw order 文档塞进 groups[].orders（泄露 _id/openid/requestKey）；
+    // 修复后响应 = {list,nextCursor,counts} 且列表逐条递归不含 raw 文档敏感键。先证扫描有牙，再扫响应。
+    const SENSITIVE_ORDER_KEYS = ['_id', 'customerOpenid', 'partnerOpenid', 'customerId', 'partnerId',
+      'clientRequestId', 'requestKey', 'cloudPath', 'claimTokenHash', 'batchActionId'];
+    function hasSensitiveKeyDeep(value, keys) {
+      if (!value || typeof value !== 'object') {
+        return false;
+      }
+      if (Array.isArray(value)) {
+        return value.some((item) => hasSensitiveKeyDeep(item, keys));
+      }
+      for (let i = 0; i < keys.length; i += 1) {
+        if (Object.prototype.hasOwnProperty.call(value, keys[i])) {
+          return true;
+        }
+      }
+      return Object.keys(value).some((key) => hasSensitiveKeyDeep(value[key], keys));
+    }
+    const listDb = createTestDb();
+    listDb.seed('users', [
+      { _id: 'openid-list-p', roles: [ROLES.PARTNER], status: USER_STATUS.ACTIVE, isTestAccount: false },
+      { _id: 'openid-list-c', roles: [ROLES.CUSTOMER], status: USER_STATUS.ACTIVE, isTestAccount: false }
+    ]);
+    listDb.seed('partners', [{ _id: 'partner-list-1', openid: 'openid-list-p', partnerNo: 'PABC234', displayName: '小李', status: PARTNER_STATUS.ACTIVE, serviceConfig: { acceptingOrders: true } }]);
+    listDb.seed('customers', [{ _id: 'openid-list-c', customerNo: 'CABCDEFGH', displayName: '小王', profileCompleted: true, dormKey: 'D4-522' }]);
+    listDb.seed('orders', [
+      { _id: 'order-list-1', orderNo: '20261021-1001', requestKey: 'openid-list-c:list-1', customerId: 'openid-list-c', customerOpenid: 'openid-list-c', customerNo: 'CABCDEFGH', partnerId: 'partner-list-1', partnerOpenid: 'openid-list-p', partnerNo: 'PABC234', source: 'CUSTOMER', isTest: false, status: ORDER_STATUS.SUBMITTED, statusUpdatedAt: NOW, createdAt: NOW, version: 1, parcel: { stationId: 'P3', pickupCode: 'A123' } },
+      { _id: 'order-list-2', orderNo: '20261021-1002', requestKey: 'openid-list-c:list-2', customerId: 'openid-list-c', customerOpenid: 'openid-list-c', customerNo: 'CABCDEFGH', partnerId: 'partner-list-1', partnerOpenid: 'openid-list-p', partnerNo: 'PABC234', source: 'CUSTOMER', isTest: false, status: ORDER_STATUS.COMPLETED, statusUpdatedAt: NOW - 3600000, completedAt: NOW - 3600000, createdAt: NOW - 7200000, version: 1, parcel: { stationId: 'P3', pickupCode: 'A124' } }
+    ]);
+    const partnerListApi = app.createApi({ db: listDb, now: () => NOW, openid: 'openid-list-p', env: ADMIN_ENV });
+    const partnerList = await partnerListApi.call('order.listPartner', { view: 'workbench' });
+    const rawOrderDoc = listDb.dump('orders').filter((row) => row._id === 'order-list-1')[0] || {};
+    t.eq(SENSITIVE_ORDER_KEYS.filter((key) => Object.prototype.hasOwnProperty.call(rawOrderDoc, key)),
+      ['_id', 'customerOpenid', 'partnerOpenid', 'customerId', 'partnerId', 'requestKey'],
+      '§7.3 正控：fake-db raw order 文档确实含敏感键（扫描判据有牙，非空集）');
+    t.check(partnerList.ok === true && !!partnerList.data && !('groups' in partnerList.data)
+      && Object.keys(partnerList.data).sort().join(',') === 'counts,list,nextCursor',
+      '§7.3 order.listPartner 响应无 groups，顶层键恰为 list/nextCursor/counts（不再直出分组 raw 文档）');
+    t.check(Array.isArray(partnerList.data.list) && partnerList.data.list.length > 0
+      && partnerList.data.list.every((item) => !hasSensitiveKeyDeep(item, SENSITIVE_ORDER_KEYS)),
+      '§7.3 order.listPartner 列表逐条递归不含 raw 文档敏感键（_id/openid/id/requestKey/cloudPath 等）');
 
     const db = createTestDb();
     db.seed('users', [
@@ -675,17 +779,16 @@ function register(h) {
     t.check(crossAccept.ok === false && (crossAccept.code === 'FORBIDDEN' || crossAccept.code === 'NOT_FOUND'),
       '越权：兼职 B 操作兼职 A 的订单 → FORBIDDEN/NOT_FOUND');
 
+    // 幂等：admin 写动作按 admin_audit.requestKey 预查重放（DATA_MODEL §4.7：重复写返回 ok:true+当前对象+duplicated）
     const idemDb = createTestDb();
-    idemDb.seed('users', [
-      { _id: 'openid-idem', roles: [ROLES.CUSTOMER], status: USER_STATUS.ACTIVE, isTestAccount: false, privacyConsent: { version: 'v4.0', at: NOW } }
-    ]);
-    idemDb.seed('customers', [{ _id: 'openid-idem', customerNo: 'CABCDEFGH', displayName: '小王', profileCompleted: true, dormKey: 'D4-522' }]);
-    const idemApi = app.createApi({ db: idemDb, now: () => NOW, openid: 'openid-idem', env: ADMIN_ENV });
-    const replayOptions = { clientRequestId: 'replay-request-000000001' };
-    const bind1 = await idemApi.call('bind.create', { partnerNo: 'PABC23' }, replayOptions);
-    const bind2 = await idemApi.call('bind.create', { partnerNo: 'PABC23' }, replayOptions);
-    t.check(bind1.ok === true && bind2.ok === true, '同 clientRequestId 重放绑定：两次都 ok:true（幂等不报错）');
-    t.eq(idemDb.dump('bindings').length, 0, '绑定失败路径（目标不存在）零写入，不产生脏数据');
+    idemDb.seed('users', [{ _id: ADMIN_OPENID, roles: [], status: USER_STATUS.ACTIVE, isTestAccount: false }]);
+    const idemApi = app.createApi({ db: idemDb, now: () => NOW, openid: ADMIN_OPENID, env: ADMIN_ENV });
+    const replayOptions = { clientRequestId: 'invite-request-0000000001' };
+    const invite1 = await idemApi.call('admin.createInvites', { count: 1, expiresInHours: 24 }, replayOptions);
+    const invite2 = await idemApi.call('admin.createInvites', { count: 1, expiresInHours: 24 }, replayOptions);
+    t.check(invite1.ok === true && invite2.ok === true && !!invite2.data && invite2.data.duplicated === true,
+      '同 clientRequestId 重放 admin 写动作：返回当前对象 + duplicated=true（幂等成功）');
+    t.eq(idemDb.dump('invitation_codes').length, 1, '重放不重复写邀请码（唯一键 + 预查双保险）');
     t.eq(idemLogReplay(), true, '幂等键 helper 可构造（order/event/audit 三类）');
     function idemLogReplay() {
       const ctx = { identity: { effectiveOpenid: 'openid-idem', actorOpenid: ADMIN_OPENID }, openid: 'openid-idem', clientRequestId: 'replay-request-000000001' };
@@ -722,7 +825,7 @@ function register(h) {
       { _id: 'order-auto', orderNo: '20261001-0002', requestKey: 'openid-timeout:auto-1', customerId: 'openid-timeout', customerOpenid: 'openid-timeout', partnerId: 'partner-x', partnerOpenid: 'openid-partner-x', partnerNo: 'PABC23', status: ORDER_STATUS.DELIVERED, statusUpdatedAt: longAgo, deliveredAt: longAgo, createdAt: longAgo, version: 1, isTest: false }
     ]);
     db.seed('config', [{ _id: 'global', orderTimeoutMinutes: 120, autoCompleteHours: 24, screenshotRetentionDays: 7, privacyVersion: 'v4.0' }]);
-    db.seed('admin_view_sessions', [{ _id: 'TK-CLEANUP', adminOpenid: ADMIN_OPENID, developerNo: 'DEV-01', viewMode: VIEW_MODE.READONLY, role: ROLES.CUSTOMER, targetId: 'openid-real-c', targetNo: 'CABCDEFGH', targetIsTest: false, createdAt: longAgo, expiresAt: NOW - 1000, endedAt: 0 }]);
+    db.seed('admin_view_sessions', [{ _id: 'TK-CLEANUP', requestKey: 'vs-cleanup-0001', adminOpenid: ADMIN_OPENID, developerNo: 'DEV-01', viewMode: VIEW_MODE.READONLY, role: ROLES.CUSTOMER, targetId: 'openid-real-c', targetNo: 'CABCDEFGH', targetIsTest: false, createdAt: longAgo, expiresAt: NOW - 1000, endedAt: 0 }]);
     const config = db.dump('config')[0];
     const ctx = { dao, db, cloud: {}, env: ADMIN_ENV, config, now: NOW, requestId: 'req-cleanup', AppError: Error, COLLECTIONS };
     const timeoutResult = await byName.orderTimeout.run(ctx);
@@ -737,7 +840,10 @@ function register(h) {
     t.check(db.dump('order_events').some((row) => row.type === 'AUTO_COMPLETED'), '自动完成写 AUTO_COMPLETED 事件');
     await byName.viewSessions.run(ctx);
     const expiredSession = db.dump('admin_view_sessions').filter((row) => row._id === 'TK-CLEANUP')[0];
-    t.eq(expiredSession.endedAt, expiredSession.expiresAt, '过期切换会话补写 endedAt=expiresAt');
+    const endedAtMs = expiredSession.endedAt instanceof Date
+      ? expiredSession.endedAt.getTime()
+      : (typeof expiredSession.endedAt === 'string' ? Date.parse(expiredSession.endedAt) : expiredSession.endedAt);
+    t.eq(endedAtMs, expiredSession.expiresAt, '过期切换会话补写 endedAt=expiresAt（毫秒口径）');
     t.eq(db.dump('admin_audit').filter((row) => row.action === AUDIT_ACTIONS.ACCOUNT_SWITCH_EXPIRED).length, 1,
       '过期会话写 1 条 ACCOUNT_SWITCH_EXPIRED');
     await byName.viewSessions.run(ctx);

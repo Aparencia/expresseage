@@ -24,7 +24,7 @@
       <view class="divider"></view>
       <view class="between row small">
         <text>绑定时间 {{view.boundAtText || '—'}}</text>
-        <text>roomTag {{view.anchorText || '—'}}</text>
+        <text>门牌 {{view.anchorText || '—'}}</text>
       </view>
     </view>
 
@@ -61,7 +61,7 @@
       >
         <view>
           <view class="strong">{{item.orderNo}}</view>
-          <view class="small">{{item.statusText || item.status}} · {{item.deliveredAtText || item.completedAtText || ''}}</view>
+          <view class="small">{{item.statusText}}{{item.codeText ? ' · 码 ' + item.codeText : ''}}{{item.timeText ? ' · ' + item.timeText : ''}}</view>
         </view>
         <view class="muted">›</view>
       </view>

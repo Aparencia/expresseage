@@ -1,4 +1,4 @@
-<!-- pages/partner/workbench/index.wxml · 取件清单（分组/排序由服务端返回，只渲染不重排） -->
+<!-- pages/partner/workbench/index.wxml · 取件清单（服务端给状态桶+站点过滤的 list/counts；行/站点分区与四档动线排序在 parts/group-view） -->
 <view class="page-body workbench-body">
   <switch-bar />
   <view class="head-row">

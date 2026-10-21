@@ -1,98 +1,72 @@
-// utils/recognize/station.js · 站点正式名与别名归一（单源；纯函数，零 wx）
-// 口径（CONTRACT §3/§4.2）：只允许 P1~P8 正式名，不做自建站点、不做模糊并点。
+// utils/recognize/station.js · 站点归一（单源 = shared/stations.js；纯函数，零 wx）
+// 口径（CONTRACT §3/§4.2）：只认 P1~P8 正式名与别名归一，不做自建站点、不做模糊并点；
+// 判不准一律留空让用户手选（宁可不猜，也不要把人指到错的驿站）。
+// 本文件不再持有 STATIONS/ALIASES 副本：表与归一规则只在 shared/stations.js 维护一份。
 'use strict';
 
-const STATIONS = [
-  { id: 'P1', name: '西苑顺丰快递（西苑五食堂）' },
-  { id: 'P2', name: '西苑京东快递（西苑五食堂）' },
-  { id: 'P3', name: '西苑一栋南面快递中心' },
-  { id: 'P4', name: '北部菜鸟驿站（北苑一食堂三楼）' },
-  { id: 'P5', name: '西苑菜鸟驿站（西苑五食堂22栋）' },
-  { id: 'P6', name: '南苑菜鸟驿站' },
-  { id: 'P7', name: '西苑一栋邮政' },
-  { id: 'P8', name: '东苑一栋邮政' }
-];
+const shared = require('../../shared/stations');
 
-// 识别/手输归一用别名（只指向一个点；不参与选择器展示）
-const ALIASES = [
-  { alias: '西苑顺丰', id: 'P1' },
-  { alias: '顺丰五食堂', id: 'P1' },
-  { alias: '西苑京东', id: 'P2' },
-  { alias: '京东五食堂', id: 'P2' },
-  { alias: '西苑一栋南面', id: 'P3' },
-  { alias: '南面快递中心', id: 'P3' },
-  { alias: '湖工大西苑一栋南面菜鸟驿站', id: 'P3' },
-  { alias: '西苑一栋南面菜鸟驿站', id: 'P3' },
-  { alias: '西苑1栋南面菜鸟驿站', id: 'P3' },
-  { alias: '五食堂21栋', id: 'P3' },
-  { alias: '北部菜鸟', id: 'P4' },
-  { alias: '北苑食堂三楼', id: 'P4' },
-  { alias: '北苑一食堂三楼', id: 'P4' },
-  { alias: '西苑菜鸟', id: 'P5' },
-  { alias: '五食堂22栋', id: 'P5' },
-  { alias: '南苑菜鸟', id: 'P6' },
-  { alias: '南苑食堂三楼', id: 'P6' },
-  { alias: '西苑一栋邮政', id: 'P7' },
-  { alias: '西苑邮政', id: 'P7' },
-  { alias: '东苑一栋邮政', id: 'P8' },
-  { alias: '东苑邮政', id: 'P8' }
-];
-
-function canonical(value) {
-  let out = '';
-  const str = String(value === undefined || value === null ? '' : value);
-  for (let i = 0; i < str.length; i += 1) {
-    const code = str.charCodeAt(i);
-    if (code === 0x3000) out += ' ';
-    else if (code >= 0xff01 && code <= 0xff5e) out += String.fromCharCode(code - 0xfee0);
-    else out += str.charAt(i);
-  }
-  return out.replace(/\s+/g, '').toUpperCase().replace(/[：:，,。.、|]/g, '');
-}
+// 只做只读引用（同一数组对象），不复制
+const STATIONS = shared.STATIONS;
+const ALIASES = shared.STATION_ALIASES;
 
 function listStations() {
-  return STATIONS.map(function clone(station) {
-    return { id: station.id, name: station.name };
-  });
+  return shared.listStations();
 }
 
 function stationName(id) {
-  for (let i = 0; i < STATIONS.length; i += 1) {
-    if (STATIONS[i].id === id) return STATIONS[i].name;
-  }
-  return '';
+  return shared.stationNameOf(id);
 }
 
 function stationIdOfName(name) {
-  const target = canonical(name);
-  for (let i = 0; i < STATIONS.length; i += 1) {
-    if (canonical(STATIONS[i].name) === target) return STATIONS[i].id;
-  }
-  return '';
+  const normalized = shared.normalizeStation(name);
+  return normalized.ok ? normalized.id : '';
+}
+
+function canonical(value) {
+  return shared.canonicalStationText(typeof value === 'string' ? value : '');
 }
 
 /**
  * 在一段 OCR 文本里匹配唯一站点。
- * @returns {{id:string,name:string,by:string}|null} 多义（同时命中两个点）返回 null
+ * - 正常文本：直接委托 shared.normalizeStation（表与归一规则单源）。
+ * - OCR 常见差异（半角括号/额外空格）：shared 的「包含正式名」分支按原文比对会漏判，
+ *   这里用 shared 的 canonicalStationText 做包含探测，唯一命中才采纳；多义一律留空。
+ * - 双正式名守卫：shared 的别名分支只比对第一个包含到的正式名，文本同时出现两个站点时
+ *   单靠它会把两义判成一点，端侧必须判歧义返回 null（CONTRACT §3「宁可不猜」）。
+ * @returns {{id:string,name:string,by:string,kind:string}|null} 多义/未命中返回 null
  */
 function matchStation(text) {
-  const target = canonical(text);
-  if (!target) return null;
-  const hits = Object.create(null);
+  const raw = typeof text === 'string' ? text : '';
+  if (raw === '') return null;
+  const probe = canonical(raw);
+  const nameHits = [];
   for (let i = 0; i < STATIONS.length; i += 1) {
-    if (target.indexOf(canonical(STATIONS[i].name)) >= 0) {
-      hits[STATIONS[i].id] = { id: STATIONS[i].id, name: STATIONS[i].name, by: 'name' };
-    }
+    if (probe.indexOf(canonical(STATIONS[i].name)) >= 0) nameHits.push(STATIONS[i].id);
   }
+  if (nameHits.length > 1) return null;
+  const direct = shared.normalizeStation(raw);
+  if (direct.ok) {
+    if (nameHits.length === 1 && nameHits[0] !== direct.id) return null;
+    return {
+      id: direct.id,
+      name: direct.name || stationName(direct.id),
+      by: direct.kind === 'alias' ? 'alias' : 'name',
+      kind: direct.kind
+    };
+  }
+  const ids = nameHits.slice();
   for (let i = 0; i < ALIASES.length; i += 1) {
-    if (target.indexOf(canonical(ALIASES[i].alias)) >= 0) {
-      const id = ALIASES[i].id;
-      if (!hits[id]) hits[id] = { id: id, name: stationName(id), by: 'alias' };
-    }
+    const id = ALIASES[i].id;
+    if (probe.indexOf(canonical(ALIASES[i].alias)) >= 0 && ids.indexOf(id) < 0) ids.push(id);
   }
-  const ids = Object.keys(hits);
   if (ids.length !== 1) return null;
-  return hits[ids[0]];
+  return {
+    id: ids[0],
+    name: stationName(ids[0]),
+    by: nameHits.length === 1 ? 'name' : 'alias',
+    kind: 'contains'
+  };
 }
 
 module.exports = {
@@ -102,5 +76,6 @@ module.exports = {
   listStations,
   stationName,
   stationIdOfName,
-  matchStation
+  matchStation,
+  normalizeStation: shared.normalizeStation
 };

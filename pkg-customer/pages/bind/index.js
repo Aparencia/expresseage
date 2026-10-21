@@ -107,7 +107,9 @@ Page({
     }
     this.setData({ loading: true, error: '' });
     partnerApi.getPublic({ partnerNo: partnerNo }).then((data) => {
-      const partner = (data && data.partnerPublic) || data || {};
+      // partner.getPublic 直接返回 partnerPublic：{partnerNo,displayName,services,zones,acceptingOrders,status}
+      // 绑定前只回昵称，不下发 avatarFileId（CONTRACT v0.9 §5.3）
+      const partner = data || {};
       const config = store.snapshot().config || {};
       const catalog = config.serviceCatalog || [];
       const names = serviceNames(partner.services, catalog);

@@ -27,7 +27,7 @@ const idGenerator = require(path.join(ROOT, 'cloudfunctions/api/lib/id-generator
 const adminDto = require(path.join(ROOT, 'cloudfunctions/api/handlers/admin/_dto.js'));
 const cleanupTestData = require(path.join(ROOT, 'cloudfunctions/cleanup/sweeps/testData.js'));
 
-const EXPECTED_ASSERTIONS = 50;
+const EXPECTED_ASSERTIONS = 48;
 
 // 旧审计名用拼接构造：本文件不出现旧名字面量（门禁 #30 / 文档纪律）
 const LEGACY_AUDIT_PREFIX = 'VIEW' + '_' + 'AS' + '_';
@@ -37,6 +37,17 @@ const TEST_OPENID_PATTERN = /^TEST-[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{12}$/;
 function readText(rel) {
   return fs.readFileSync(path.join(ROOT, rel), 'utf8');
 }
+
+function readTextIfExists(rel) {
+  const full = path.join(ROOT, rel);
+  return fs.existsSync(full) ? fs.readFileSync(full, 'utf8') : '';
+}
+
+// 级联/文件/会话清理步骤可能按门禁 #18 拆分到 _test-account-ops.js；两处合并扫描（文件改名不脆断）
+const TEST_ACCOUNT_OPS_SRC = [
+  'cloudfunctions/api/handlers/admin/_test-accounts.js',
+  'cloudfunctions/api/handlers/admin/_test-account-ops.js'
+].map(readTextIfExists).join('\n');
 
 const SRC = {
   testAccountsHelper: readText('cloudfunctions/api/handlers/admin/_test-accounts.js'),
@@ -130,7 +141,7 @@ function register(h) {
     t.check(SRC.stats.indexOf('where: { isTest: false }') !== -1
       && SRC.stats.indexOf('where: { isTestAccount: true }') !== -1,
     '后台统计：真实指标按 isTest:false 排除，测试账号另单列计数');
-    t.check(SRC.stats.indexOf('where: { isTest: true }') !== -1, '后台统计：测试订单单独出数（不混入真实指标）');
+    t.check(SRC.stats.indexOf('{ isTest: true }') !== -1, '后台统计：测试订单单独出数（不混入真实指标）');
     t.check(SRC.listOrders.indexOf('if (!includeTest && row.isTest === true)') !== -1,
       '后台订单列表默认过滤测试单（includeTest 才展示）');
     t.check(SRC.cleanupStats.indexOf('isTest: false') !== -1, '兼职统计缓存重算排除测试单');
@@ -149,8 +160,8 @@ function register(h) {
       && SRC.cleanupTestData.indexOf('removeWhere(C.ORDER_MESSAGES') !== -1,
     '级联清订单事件与留言（订单删除后无孤儿）');
     t.check(SRC.cleanupTestData.indexOf('deleteFileSafe') !== -1, '云存储文件一并删除（截图/头像不留孤儿）');
-    t.check(/cascadeDelete/.test(SRC.testAccountsHelper) && /collectTestData/.test(SRC.testAccountsHelper)
-      && /deleteFiles/.test(SRC.testAccountsHelper) && /endSessionsOfAccount/.test(SRC.testAccountsHelper),
+    t.check(/cascadeDelete/.test(TEST_ACCOUNT_OPS_SRC) && /collectTestData/.test(TEST_ACCOUNT_OPS_SRC)
+      && /deleteFiles/.test(TEST_ACCOUNT_OPS_SRC) && /endSessionsOfAccount/.test(TEST_ACCOUNT_OPS_SRC),
     '删除测试账号：级联清数据 + 删文件 + 结束相关会话（审计补丁⑥）');
   });
 

@@ -52,8 +52,9 @@
     <block wx:if="{{customerMode === 'BOUND'}}">
       <view wx:if="{{!bindingOptions.length}}" class="small">还没有顾客绑定你，可切到「新顾客（代客单）」建单。</view>
       <picker wx:else range="{{bindingOptions}}" range-key="label" bindchange="onBindingPick">
-        <view class="form-input picker-value">选择已绑定的顾客档案</view>
+        <view class="form-input picker-value">选择一份已绑定档案，用它的信息预填</view>
       </picker>
+      <view class="small guest-note">用已绑定档案信息建单仍是代客单：不写入 bindings 集合、不改变绑定关系；进度需线下告知。</view>
     </block>
 
     <block wx:else>

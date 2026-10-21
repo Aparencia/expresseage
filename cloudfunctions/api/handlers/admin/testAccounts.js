@@ -15,6 +15,7 @@ const {
 } = require('./_common');
 const dto = require('./_dto');
 const helpers = require('./_test-accounts');
+const ops = require('./_test-account-ops');
 
 const CONFIRM_DELETE = '删除';
 const CONFIRM_PURGE = '清空';
@@ -114,7 +115,7 @@ async function deleteTestAccount(ctx, payload) {
   if (replay && !dryRun) {
     return {
       deleted: true,
-      removedCounts: (replay.detail && replay.detail.before) || helpers.zeroCounts(),
+      removedCounts: (replay.detail && replay.detail.before) || ops.zeroCounts(),
       sessionsEnded: (replay.detail && replay.detail.sessionsEnded) || 0,
       duplicated: true
     };
@@ -122,9 +123,9 @@ async function deleteTestAccount(ctx, payload) {
   if (!dryRun && !confirmedBy(input, CONFIRM_DELETE)) {
     throw errors.validation('confirmText', '请二次确认删除（确认文案需为「删除」）');
   }
-  const user = await helpers.resolveTestUser(scope, identifier);
-  await helpers.assertNoRealReference(scope, user);
-  const data = await helpers.countCascade(scope, user);
+  const user = await ops.resolveTestUser(scope, identifier);
+  await ops.assertNoRealReference(scope, user);
+  const data = await ops.countCascade(scope, user);
   if (dryRun) {
     return {
       dryRun: true,
@@ -150,7 +151,7 @@ async function deleteTestAccount(ctx, payload) {
     messages: data.messages,
     avatarFiles: 0
   };
-  const removed = await helpers.cascadeDelete(scope, user, data);
+  const removed = await ops.cascadeDelete(scope, user, data);
   const roles = helpers.rolesOf(user);
   const role = roles.indexOf(enums.ROLES.CUSTOMER) >= 0 ? enums.ROLES.CUSTOMER : enums.ROLES.PARTNER;
   await scope.writeAudit(
@@ -159,7 +160,7 @@ async function deleteTestAccount(ctx, payload) {
     {
       role: role,
       before: before,
-      after: helpers.zeroCounts(),
+      after: ops.zeroCounts(),
       sessionsEnded: removed.sessionsEnded,
       dryRun: false
     },
@@ -190,8 +191,8 @@ async function purgeTestData(ctx, payload) {
   const openids = users.map(function openidOf(user) {
     return user._id;
   });
-  await helpers.assertNoRealReferenceToOpenids(scope, openids);
-  const data = await helpers.collectTestData(scope, openids);
+  await ops.assertNoRealReferenceToOpenids(scope, openids);
+  const data = await ops.collectTestData(scope, openids);
   if (dryRun) {
     return {
       dryRun: true,

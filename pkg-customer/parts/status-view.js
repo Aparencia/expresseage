@@ -1,6 +1,6 @@
 // pkg-customer/parts/status-view.js · 订单状态视图适配（单一职责零件，零 wx）
-// 状态/动作/取消原因的单源 = shared/order-state.js + shared/enums.js（S1 产出）；
-// 本零件只做展示适配，页面层不出现七状态字面量（check #21）。
+// 状态/动作的单源 = 服务端 order DTO 的 status/statusText/actions[] + shared/order-state.js；
+// 本零件只做展示适配（事件类型→人话、动作键→按钮），页面层不出现七状态字面量（check #21）。
 'use strict';
 
 const state = require('../../shared/order-state');
@@ -10,18 +10,52 @@ const STATUS = state.STATUS;
 const STATUS_TEXT = state.STATUS_TEXT;
 const PROGRESS_LABELS = ['下单', '已接单', '已取件', '已送达', '已完成'];
 
+// 事件类型 → 人话；状态类事件键用 orderState.STATUS 计算，避免页面/零件层再写一遍七状态字面量
+const EVENT_TEXT = {
+  ORDER_CREATED: '订单创建',
+  REJECTED: '已拒单',
+  PICKED_REVERTED: '撤销已取件',
+  DELIVERED_REVERTED: '撤销已送达',
+  AUTO_COMPLETED: '系统自动完成',
+  TIMEOUT_CANCELLED: '超时未接单，系统取消',
+  EXCEPTION_REPORTED: '异常上报',
+  EXCEPTION_RESOLVED: '异常已解除',
+  ORDER_CORRECTED: '更正取件信息',
+  DELETED_BY_CUSTOMER: '顾客删除记录',
+  GUEST_ORDER_CLAIMED: '代客单已认领'
+};
+EVENT_TEXT[STATUS.ACCEPTED] = state.statusText(STATUS.ACCEPTED);
+EVENT_TEXT[STATUS.PICKED] = state.statusText(STATUS.PICKED);
+EVENT_TEXT[STATUS.DELIVERED] = state.statusText(STATUS.DELIVERED);
+EVENT_TEXT[STATUS.COMPLETED] = state.statusText(STATUS.COMPLETED);
+EVENT_TEXT[STATUS.CANCELLED] = state.statusText(STATUS.CANCELLED);
+
 function statusText(status) {
   return state.statusText(status) || '';
 }
 
+function textOf(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+// 服务端事件 DTO：{type,at,actorRole,note}（无 toStatus/id）
 function eventText(event) {
-  if (!event) return '';
-  if (event.note) return event.note;
-  if (event.toStatus) {
-    const text = state.statusText(event.toStatus);
-    if (text) return '订单状态：' + text;
+  const item = event || {};
+  const type = textOf(item.type);
+  const base = EVENT_TEXT[type] || type;
+  const note = textOf(item.note);
+  if (!base) return note;
+  if (!note || base === note) return base;
+  return base + '：' + note;
+}
+
+// 服务端下发的动作条：actions[] = [{key,label}]；页面只按 key 决定按钮显隐
+function hasAction(order, key) {
+  const actions = order && Array.isArray(order.actions) ? order.actions : [];
+  for (let i = 0; i < actions.length; i += 1) {
+    if (actions[i] && actions[i].key === key) return true;
   }
-  return '';
+  return false;
 }
 
 function isTerminal(status) {
@@ -46,8 +80,11 @@ function canMessage(order) {
   return !state.isTerminal(status) || status === STATUS.COMPLETED;
 }
 
+// 订单截图：服务端 DTO 只给 {hasImage}（fileId 不落客户端列表 DTO）
 function canViewImage(order) {
-  return !!order && !!order.image && !!order.image.fileId;
+  if (!order) return false;
+  if (order.image && order.image.hasImage === true) return true;
+  return !!(order.image && order.image.fileId);
 }
 
 function cancelReasons() {
@@ -76,7 +113,12 @@ function waitingHint(order, config, format) {
   if (order.status === STATUS.SUBMITTED) {
     const minutes = Number(config.orderTimeoutMinutes) || 0;
     if (minutes <= 0) return '等待接单，超时将自动取消';
-    const base = new Date(String(order.statusUpdatedAt).replace(/-/g, '/')).getTime();
+    // statusUpdatedAt 是真实 DTO 的 ISO 字符串：先按原样解析，再兼容老格式
+    const raw = typeof order.statusUpdatedAt === 'number'
+      ? order.statusUpdatedAt
+      : Date.parse(order.statusUpdatedAt || '');
+    const base = isNaN(raw) ? 0 : raw;
+    if (!base) return '等待接单，超时将自动取消';
     const deadline = new Date(base + minutes * 60000);
     return '等待接单，超时将自动取消（截止 ' + format.formatDateTime(deadline) + '）';
   }
@@ -90,8 +132,10 @@ function waitingHint(order, config, format) {
 module.exports = {
   STATUS,
   STATUS_TEXT,
+  EVENT_TEXT,
   statusText,
   eventText,
+  hasAction,
   isTerminal,
   canCancel,
   canConfirmDelivery,

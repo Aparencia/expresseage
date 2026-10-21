@@ -50,7 +50,8 @@
       </view>
       <view wx:if="{{order.needCode}}" class="flag-tip">这张单还缺取件码，先补码再取件</view>
       <view wx:if="{{order.failureHint}}" class="flag-tip">识别失败已反馈开发者复核，可手填补码</view>
-      <view class="row image-row">
+      <view wx:if="{{order.exceptionText}}" class="flag-tip">当前异常：{{order.exceptionText}}</view>
+      <view wx:if="{{order.hasImage}}" class="row image-row">
         <view class="btn btn-ghost mini-btn" bindtap="onViewImage">查看取件截图</view>
       </view>
     </view>

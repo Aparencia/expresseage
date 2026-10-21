@@ -1,4 +1,4 @@
-// pkg-partner/pages/messages/index.js · 消息中心（订单事件 + 留言 + 公告聚合视图）
+// pkg-partner/pages/messages/index.js · 消息中心（message.list 聚合：状态事件 + 留言 + 公告；已读水位 users.messageReadAt）
 const messageApi = require('../../../api/modules/message');
 const store = require('../../../store/index');
 const messageView = require('./parts/message-view');
@@ -41,42 +41,75 @@ Page({
       .then((data) => {
         const view = messageView.buildMessages(data && data.list);
         const list = isReset ? view : this.data.list.concat(view);
-        const unreadCount = messageView.countUnread(list);
-        const readAt = data && typeof data.messageReadAt === 'number' ? data.messageReadAt : this.data.messageReadAt;
+        // 服务端 unreadMessages 覆盖全部消息（不止本页）；首屏优先用它，追加页沿用本地累计
+        const serverUnread = data && typeof data.unreadMessages === 'number' ? data.unreadMessages : null;
+        const unreadCount = isReset && serverUnread !== null ? serverUnread : messageView.countUnread(list);
         this.setData({
           list: list,
           nextCursor: (data && data.nextCursor) || null,
-          messageReadAt: readAt,
+          messageReadAt: messageView.readAtMs(data && data.messageReadAt) || this.data.messageReadAt,
           unreadCount: unreadCount,
           loading: false,
           loadingMore: false
         });
-        this.syncBadge();
+        this.syncBadge(unreadCount);
       })
       .catch((err) => {
         this.setData({ loading: false, error: (err && err.message) || '消息没加载出来，检查网络后重试' });
       });
   },
 
-  syncBadge() {
+  syncBadge(unreadCount) {
+    const count = typeof unreadCount === 'number' ? unreadCount : this.data.unreadCount;
     const badges = Object.assign({}, store.get('badges') || {});
-    if (badges.messages !== this.data.unreadCount) {
-      badges.messages = this.data.unreadCount;
+    if (badges.messages !== count) {
+      badges.messages = count;
       store.set('badges', badges);
     }
+  },
+
+  applyAllRead() {
+    const list = this.data.list.map((item) => Object.assign({}, item, { unread: false }));
+    this.setData({ list: list, unreadCount: 0 });
+    this.syncBadge(0);
   },
 
   onMarkAllRead() {
     messageApi
       .markRead({ scope: 'ALL' })
       .then((data) => {
-        const readAt = (data && data.messageReadAt) || Date.now();
-        const list = this.data.list.map((item) => Object.assign({}, item, { unread: false }));
-        this.setData({ list: list, unreadCount: 0, messageReadAt: readAt });
-        this.syncBadge();
+        const readAt = messageView.readAtMs(data && data.messageReadAt);
+        if (readAt) {
+          this.setData({ messageReadAt: readAt });
+        }
+        this.applyAllRead();
       })
       .catch((err) => {
-        wx.showToast({ title: (err && err.message) || '标记失败，请稍后重试', icon: 'none' });
+        wx.showToast({ title: (err && err.message) || '标记失败，请重试', icon: 'none' });
+      });
+  },
+
+  markOrderRead(orderNo) {
+    return messageApi
+      .markRead({ scope: 'ORDER', orderNo: orderNo })
+      .then((data) => {
+        const readAt = messageView.readAtMs(data && data.messageReadAt);
+        const list = this.data.list.map((item) => {
+          if (item.orderNo !== orderNo) {
+            return item;
+          }
+          return Object.assign({}, item, { unread: false });
+        });
+        const unreadCount = messageView.countUnread(list);
+        this.setData({
+          list: list,
+          unreadCount: unreadCount,
+          messageReadAt: readAt || this.data.messageReadAt
+        });
+        this.syncBadge(unreadCount);
+      })
+      .catch(() => {
+        // 已读水位失败不阻断查看订单；下次进页面会重新对齐
       });
   },
 
@@ -87,12 +120,14 @@ Page({
       return;
     }
     if (item.orderNo) {
-      wx.navigateTo({ url: '/pkg-partner/pages/order-detail/index?orderNo=' + item.orderNo });
+      if (item.unread) {
+        this.markOrderRead(item.orderNo);
+      }
+      wx.navigateTo({ url: item.route });
       return;
     }
     if (item.unread) {
-      this.setData({ list: this.data.list.map((row) => Object.assign({}, row, { unread: false })) });
-      this.syncBadge();
+      this.onMarkAllRead();
     }
   }
 });

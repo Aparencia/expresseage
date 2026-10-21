@@ -30,7 +30,7 @@
 
   <empty-state
     wx:if="{{!loading && list.length === 0 && !error}}"
-    text="{{activeKey === 'ONGOING' ? '这里还没有进行中的订单。' : (activeKey === 'COMPLETED' ? '还没有已完成的订单。' : '没有取消过的订单。')}}"
+    text="{{activeKey === 'ONGOING' ? '这里还没有进行中的订单。' : (activeKey === 'DONE' ? '还没有已完成的订单。' : '没有取消过的订单。')}}"
     action-text="{{activeKey === 'ONGOING' ? '去下单' : '回首页'}}"
     bind:action="onEmptyAction"
   />

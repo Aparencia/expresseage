@@ -128,24 +128,41 @@ function ocrDeps(img) {
   };
 }
 
+// AI 兜底：按件合并，手填优先；码类字段只补第一件（AI 单次识别只给一条码，不能复制到多件）
+function suggestionFor(index, suggestion) {
+  if (index === 0) return suggestion;
+  return {
+    stationId: suggestion.stationId,
+    stationName: suggestion.stationName,
+    confidence: suggestion.confidence,
+    source: suggestion.source,
+    recognized: suggestion.recognized,
+    needsReview: suggestion.needsReview,
+    failureId: suggestion.failureId
+  };
+}
+
 function applySuggestion(items, suggestion) {
-  if (!suggestion || suggestion.recognized === false) {
-    return { items: items, changed: false };
+  if (!suggestion || typeof suggestion !== 'object') {
+    return { items: items, changed: false, unaligned: '' };
   }
   let changed = false;
-  const next = (items || []).map(function map(item) {
-    const result = recognize.applyAiSuggestion(item, suggestion);
+  let unaligned = '';
+  const next = (items || []).map(function map(item, index) {
+    const result = recognize.applyAiSuggestion(item, suggestionFor(index, suggestion));
     if (result.changed.length > 0) changed = true;
+    if (result.parcel.aiPickupCodeUnaligned) unaligned = result.parcel.aiPickupCodeUnaligned;
     return result.parcel;
   });
-  return { items: next, changed: changed };
+  return { items: next, changed: changed, unaligned: unaligned };
 }
 
 /**
  * 对已上传的截图跑识别。file 来自 <image-picker> 的 change 事件：
  * { localPath, fileId, uploadTicketId, cloudPath, ... }
  * @returns {Promise<{ok:boolean,file:object,image?:object,items?:object[],ocrText?:string,
- *   failureCode?:string,failureCopy?:object,aiTried?:boolean,aiUsed?:boolean,detail?:string}>}
+ *   failureCode?:string,failureCopy?:object,aiTried?:boolean,aiUsed?:boolean,
+ *   failureId?:string,hint?:string,detail?:string}>}
  */
 async function identify(file, onState) {
   const notify = typeof onState === 'function' ? onState : function noop() {};
@@ -169,6 +186,7 @@ async function identify(file, onState) {
     };
   }
   const image = { fileId: (file && file.fileId) || '', width: info.width, height: info.height };
+  if (file && typeof file.size === 'number' && file.size > 0) image.size = file.size;
   notify({ phase: 'ocr' });
   const result = await Promise.race([
     ocr.recognize({ filePath: localPath, maxEdge: VISION_MAX_EDGE }, ocrDeps(info)),
@@ -193,21 +211,32 @@ async function identify(file, onState) {
   let items = parsed.items;
   let aiTried = false;
   let aiUsed = false;
+  let failureId = '';
+  let aiNeedsReview = false;
+  // 「认出但不像」只在与"一个码都没填上"同时成立时提示；已填到码时不要拿别的长数字打扰用户
+  const hasFilledCode = items.some(function filled(item) { return !!(item && item.pickupCode); });
+  let unaligned = (parsed.unalignedCodes || []).length > 0 && !hasFilledCode ? parsed.unalignedCodes[0] : '';
   if (parsed.needsReview || items.length === 0) {
     aiTried = true;
     notify({ phase: 'ai' });
     try {
+      // AI 兜底入参：{ocrTextMasked,hintTrackingTail?,uploadTicketId,role}（只经 api/modules 出口）
       const suggestion = await aiApi.parseParcel({
         ocrTextMasked: recognize.maskForAi(result.joined || ''),
         hintTrackingTail: parsed.trackingTail || '',
         uploadTicketId: (file && file.uploadTicketId) || '',
         role: 'CUSTOMER'
-      });
-      const applied = applySuggestion(items, suggestion || {});
+      }) || {};
+      const applied = applySuggestion(items, suggestion);
       items = applied.items;
       aiUsed = applied.changed;
-      if (items.length === 0 && suggestion && suggestion.recognized) {
+      if (applied.unaligned) unaligned = applied.unaligned;
+      failureId = suggestion.failureId || '';
+      aiNeedsReview = suggestion.needsReview === true;
+      // 识别失败/低置信的降级 DTO 也会带可预填字段（recognized:false 时照样只填空、不覆盖手填）
+      if (items.length === 0 && (suggestion.stationId || suggestion.pickupCode || suggestion.trackingTail)) {
         items = [recognize.applyAiSuggestion(recognize.makeEmptyParcel(), suggestion).parcel];
+        aiUsed = true;
       }
     } catch (err) {
       aiUsed = false;
@@ -219,9 +248,12 @@ async function identify(file, onState) {
     image: image,
     ocrText: result.joined || '',
     items: items,
-    needsReview: parsed.needsReview || items.length === 0,
+    needsReview: parsed.needsReview || aiNeedsReview || items.length === 0,
     aiTried: aiTried,
     aiUsed: aiUsed,
+    failureId: failureId,
+    // 「认出但不像」的码候选：不自动填，只在页面给现有行内文案提示
+    hint: unaligned ? recognize.FORM_ERROR.pickupCode : '',
     failureCode: '',
     failureCopy: null
   };

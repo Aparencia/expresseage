@@ -29,6 +29,8 @@ Page({
     failureCode: '',
     failureText: '',
     failureNext: '',
+    failureId: '',
+    recognizeHint: '',
     items: [],
     stations: [],
     services: [],
@@ -114,15 +116,21 @@ Page({
     }
     const file = files[0];
     if (!file || !file.localPath) return;
+    // image-picker 的 change 文件项 = api/upload.prepareAndUpload 返回
+    // {localPath, uploadTicketId, cloudPath, fileId, size}；image 快照按 order.create 入参形状组装
+    const image = { fileId: file.fileId || '', width: 0, height: 0 };
+    if (typeof file.size === 'number' && file.size > 0) image.size = file.size;
     this.setData({
       file: file,
       filePath: file.localPath,
-      image: { fileId: file.fileId || '', width: file.width || 0, height: file.height || 0 },
+      image: image,
       uploadTicketId: file.uploadTicketId || '',
       ocrState: 'ocr',
       ocrError: '',
       failureText: '',
       failureNext: '',
+      failureId: '',
+      recognizeHint: '',
       items: []
     });
     try {
@@ -161,24 +169,29 @@ Page({
         uploadTicketId: result.file.uploadTicketId || ''
       });
     }
+    const meta = {
+      failureId: (result && result.failureId) || '',
+      recognizeHint: (result && result.hint) || ''
+    };
     if (result && result.ok && (result.items || []).length > 0) {
       const items = result.items.slice(0, PAGE_SIZE_MAX).map(function map(item) {
         return model.makeItem(item, defaults);
       });
-      this.setData({
+      if (!meta.failureId) meta.failureId = (items[0] && items[0].failureId) || '';
+      this.setData(Object.assign({
         items: items,
         ocrState: 'done',
         ocrError: '',
         failureText: '',
         failureNext: '',
         step: 2
-      });
+      }, meta));
       return;
     }
     const failureCode = (result && result.failureCode) || 'NO_TEXT';
     const copy = (result && result.failureCopy) || { text: '没识别出来。', next: '可以手动填写。' };
     const manual = model.makeItem({ trackingTail: (result && result.trackingTail) || '' }, defaults);
-    this.setData({
+    this.setData(Object.assign({
       items: [manual],
       ocrState: 'failed',
       ocrError: '',
@@ -186,7 +199,7 @@ Page({
       failureText: copy.text,
       failureNext: copy.next,
       step: 2
-    });
+    }, meta));
   },
 
   onRetryOcr() {
@@ -199,7 +212,7 @@ Page({
 
   onManualTap() {
     const defaults = { serviceCode: (this.data.services[0] || {}).code || '' };
-    this.setData({ items: [model.makeItem({}, defaults)], step: 2, ocrState: 'failed' });
+    this.setData({ items: [model.makeItem({}, defaults)], step: 2, ocrState: 'failed', recognizeHint: '' });
   },
 
   onAddItem() {
@@ -335,16 +348,20 @@ Page({
       return;
     }
     this.setData({ submitting: true, submitError: '' });
-    const payload = model.buildPayload(this.data.items, this.data.uploadTicketId, this.data.image);
+    const payload = model.buildPayload(this.data.items, this.data.uploadTicketId, this.data.image, {
+      failureId: this.data.failureId
+    });
     const appoint = this.appointPayload();
     const note = this.data.note;
     payload.items.forEach(function fill(item) { item.appoint = appoint; item.note = note; });
     try {
       if (payload.single) {
+        // order.create 入参：{parcel,serviceCode,appoint,note,ticket,image}（另可带 recognition.failureId）
         const singlePayload = Object.assign({}, payload.items[0], {
           ticket: payload.ticket,
           image: payload.image
         });
+        if (payload.recognition) singlePayload.recognition = payload.recognition;
         const data = await orderApi.create(singlePayload);
         const order = (data && data.order) || {};
         wx.showToast({ title: '已提交，等待兼职接单', icon: 'success' });
@@ -353,11 +370,14 @@ Page({
         }, 600);
         return;
       }
-      const data = await orderApi.createBatch({
+      // order.createBatch 入参：{items,ticket,image}（另可带 recognition.failureId）
+      const batchPayload = {
         items: payload.items,
         ticket: payload.ticket,
         image: payload.image
-      });
+      };
+      if (payload.recognition) batchPayload.recognition = payload.recognition;
+      const data = await orderApi.createBatch(batchPayload);
       this.setResult((data && data.orders) || []);
     } catch (err) {
       this.setData({ submitting: false, submitError: (err && err.message) || '提交失败，内容还在，可以重试' });

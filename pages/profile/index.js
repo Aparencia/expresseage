@@ -1,81 +1,86 @@
-// pages/profile/index.js · 我的（顾客/兼职共用，按全局角色渲染；不串数据）
+// pages/profile/index.js · 我的（tab5，顾客/兼职共用；按全局角色渲染，不串数据）
+// 口径：V4_UX_CUSTOMER §3.5/§7/§9.4、V4_UX_PARTNER §3.10/§6；只做取参 → 调 api → setData → 事件转发，
+// 不出现 wx.cloud / 集合名 / action 字符串 / 七状态字面量（ARCHITECTURE §3.5）。
+'use strict';
+
 const store = require('../../store/index');
-const customerModule = require('../../api/modules/customer');
-const partnerModule = require('../../api/modules/partner');
-const bindModule = require('../../api/modules/bind');
-const userModule = require('../../api/modules/user');
-const uploadApi = require('../../api/upload');
 const modeGuard = require('../../api/mode-guard');
-const ids = require('../../utils/ids');
+const customerApi = require('../../api/modules/customer');
+const partnerApi = require('../../api/modules/partner');
+const bindApi = require('../../api/modules/bind');
+const userApi = require('../../api/modules/user');
+const uploadApi = require('../../api/upload');
+const route = require('../../config/route');
+const enums = require('../../shared/enums');
+const vm = require('./parts/view-model');
+const ui = require('./parts/ui');
 
-const ZONES = [
-  { code: 'D', label: 'D 区' },
-  { code: 'X', label: 'X 区' },
-  { code: 'N', label: 'N 区' },
-  { code: 'B', label: 'B 区' },
-  { code: 'C', label: 'C 区' }
-];
-const BUILDING_LABELS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
-const NAME_LIMIT = 20;
-const RELEASE_OPTIONS = [
-  { reason: 'CUSTOMER_INITIATED', label: '不再需要这位兼职' },
-  { reason: 'CUSTOMER_ACCOUNT_CLOSED', label: '准备注销账号' }
-];
-const PARTNER_STATUS_TEXT = {
-  ACTIVE: '接单中',
-  SUSPENDED: '已停用',
-  CLOSED: '已注销'
-};
-
-function readVersion() {
-  try {
-    const info = wx.getAccountInfoSync();
-    const version = info && info.miniProgram && info.miniProgram.version;
-    return version || '开发版';
-  } catch (err) {
-    return '开发版';
-  }
-}
-
-function toast(title) {
-  wx.showToast({ title: title || '操作失败', icon: 'none' });
-}
+const BIND_PAGE = '/pkg-customer/pages/bind/index';
+const CUSTOMER_ORDERS_PAGE = '/pages/customer/orders/index';
+const CUSTOMER_MESSAGES_PAGE = '/pkg-customer/pages/messages/index';
+const PARTNER_MESSAGES_PAGE = '/pkg-partner/pages/messages/index';
+const SERVICE_PAGE = '/pkg-partner/pages/service-settings/index';
+const STATS_PAGE = '/pkg-partner/pages/stats/index';
+const HELP_PAGE = '/pkg-customer/pages/help/index';
+const DELETION_CONFIRM_TEXT = '注销';
+const READONLY_COPY = '开发者只读视角不能操作';
 
 Page({
   data: {
     loading: true,
     role: '',
     isCustomer: true,
+    viewSession: false,
     canEdit: true,
-    editMode: false,
-    saving: false,
-    profile: { displayName: '', avatarFileId: '' },
-    form: null,
-    zoneLabels: ZONES.map((item) => item.label),
-    buildingLabels: BUILDING_LABELS,
-    zoneOptions: ZONES,
-    customerNo: '',
-    partnerNo: '',
-    binding: null,
-    roomTagText: '',
-    customerDormKey: '',
-    dormText: '',
-    partnerStatusText: '',
+    readonly: false,
     suspended: false,
     closed: false,
-    roles: [],
+    editMode: false,
+    saving: false,
+    uploadingAvatar: false,
+    showSwitchRole: false,
+    profile: { displayName: '', avatarFileId: '' },
+    profileCard: null,
+    bindingCard: null,
+    partnerCard: null,
+    customerNo: '',
+    customerNoDisplay: '',
+    customerComplete: false,
+    orderSummaryText: vm.DEFAULT_ORDER_SUMMARY,
+    orderSummaryFromDto: false,
     messagesBadge: 0,
-    orderSummary: '',
-    version: '开发版'
+    version: '开发版',
+    zoneLabels: vm.ZONE_LABELS,
+    buildingLabels: vm.BUILDING_LABELS,
+    nameLimit: vm.NAME_LIMIT,
+    form: null,
+    unbindVisible: false,
+    unbindReasonText: '',
+    unbindNote: '',
+    unbindNoteLimit: vm.RELEASE_NOTE_LIMIT,
+    unbindSubmitting: false
   },
 
-  onLoad() {
+  onLoad(options) {
+    const opts = options || {};
+    this._pendingBind = String(opts.bind || '').trim();
+    this._openEdit = String(opts.edit || '') === '1';
     this.refresh();
     this.unsubscribe = store.subscribe(() => this.refresh());
   },
 
   onShow() {
+    if (!this.guard()) {
+      return;
+    }
     this.refresh();
+    if (this._openEdit) {
+      this._openEdit = false;
+      if (this.data.canEdit) {
+        this.openEditForm();
+      }
+    }
+    this.pullLatest();
   },
 
   onUnload() {
@@ -85,86 +90,76 @@ Page({
     }
   },
 
-  refresh() {
-    const snap = store.snapshot();
-    const view = snap.viewContext;
-    const role = view ? view.role : snap.activeRole;
-    if (!role) {
-      this.setData({ loading: false });
-      return;
-    }
-    const isCustomer = role === 'CUSTOMER';
-    const customer = snap.customer || {};
-    const partner = snap.partner || {};
-    const binding = snap.binding || null;
-    const canEdit = !view || view.viewMode === 'TEST_WRITE';
-    const dormKey = customer.dormKey || '';
-    const roomTagText = binding && binding.roomTag && dormKey ? dormKey + binding.roomTag : '';
-    const customerNo = customer.customerNo || '';
-    const partnerNo = partner.partnerNo || '';
-    const form = this.buildForm(customer, isCustomer);
-    this.setData({
-      loading: false,
-      role,
-      isCustomer,
-      canEdit,
-      profile: {
-        displayName: isCustomer ? customer.displayName || '' : partner.displayName || '',
-        avatarFileId: isCustomer ? customer.avatarFileId || '' : partner.avatarFileId || ''
-      },
-      form: this.data.editMode ? this.data.form : form,
-      customerNo,
-      customerNoDisplay: customerNo ? ids.displayNo('CUSTOMER', customerNo) : '',
-      partnerNo,
-      partnerNoDisplay: partnerNo ? ids.displayNo('PARTNER', partnerNo) : '',
-      binding: binding
-        ? {
-            partnerDisplayName: binding.partnerDisplayName || '',
-            partnerAvatarFileId: binding.partnerAvatarFileId || '',
-            partnerNoDisplay: binding.partnerNo ? ids.displayNo('PARTNER', binding.partnerNo) : binding.targetNo || '',
-            roomTag: binding.roomTag || ''
-          }
-        : null,
-      roomTagText,
-      customerDormKey: dormKey,
-      dormText: isCustomer ? this.dormText(customer) : '',
-      partnerStatusText: isCustomer ? '' : PARTNER_STATUS_TEXT[partner.status] || '待激活',
-      suspended: !isCustomer && partner.status === 'SUSPENDED',
-      closed: !isCustomer && partner.status === 'CLOSED',
-      roles: snap.roles || [],
-      messagesBadge: (snap.badges && snap.badges.messages) || 0,
-      orderSummary: isCustomer && customer.orderSummary ? customer.orderSummary : '',
-      version: readVersion()
+  // 弹层遮罩阻止穿透滚动（wxml: catchtouchmove）
+  noop() {},
+
+  onPullDownRefresh() {
+    this.pullLatest().then(() => {
+      wx.stopPullDownRefresh();
+    }).catch(() => {
+      wx.stopPullDownRefresh();
     });
   },
 
-  buildForm(customer, isCustomer) {
-    const zoneIndex = Math.max(0, ZONES.findIndex((item) => item.code === customer.zone));
-    const buildingIndex = Math.max(0, BUILDING_LABELS.indexOf(String(customer.buildingNo || '1')));
-    return {
-      displayName: customer.displayName || '',
-      avatarFileId: customer.avatarFileId || '',
-      avatarTicket: '',
-      avatarPreview: '',
-      zoneIndex,
-      buildingIndex,
-      room: customer.room || '',
-      phoneTail: customer.phoneTail || '',
-      dormPreview: isCustomer ? this.dormText(customer) : ''
-    };
+  guard() {
+    const snap = store.snapshot();
+    if (!snap.viewContext && !snap.activeRole) {
+      wx.reLaunch({ url: route.ROLE_PAGE });
+      return false;
+    }
+    return true;
   },
 
-  dormText(customer) {
-    const zone = ZONES.find((item) => item.code === customer.zone);
-    if (!zone || !customer.buildingNo || !customer.room) {
-      return '';
+  refresh() {
+    const snap = store.snapshot();
+    const built = vm.buildVm(snap);
+    const readonly = modeGuard.isReadonly();
+    const canEdit = modeGuard.canRenderWriteButton();
+    this.setData(Object.assign({}, built, {
+      loading: false,
+      readonly: readonly,
+      canEdit: canEdit,
+      editMode: this.data.editMode && canEdit,
+      showSwitchRole: built.roles.length > 1 && !built.viewSession && canEdit && !built.closed,
+      version: ui.readVersion()
+    }));
+  },
+
+  // 头像/昵称 onShow 重取（UX_CUSTOMER §3.5 头像缓存口径）；兼职侧无独立读接口，靠 bootstrap 水合。
+  pullLatest() {
+    const snap = store.snapshot();
+    const role = (snap.viewContext && snap.viewContext.role) || snap.activeRole;
+    if (role !== enums.ROLES.CUSTOMER) {
+      return Promise.resolve();
     }
-    return zone.label + customer.buildingNo + '栋' + customer.room + '室';
+    return Promise.all([
+      customerApi.getProfile().catch(function ignore() { return null; }),
+      bindApi.getCurrent().catch(function ignore() { return null; })
+    ]).then((results) => {
+      const patch = {};
+      const profile = results[0];
+      const current = results[1];
+      if (profile) {
+        patch.customer = vm.mergeCustomer(store.get('customer'), {
+          profile: profile,
+          profileCompleted: profile.profileCompleted === true
+        });
+      }
+      if (current) {
+        patch.binding = vm.normalizeBinding(current);
+      }
+      if (Object.keys(patch).length > 0) {
+        store.patch(patch);
+      }
+      this.refresh();
+    }).catch(function ignore() {
+      // 读刷新失败保留旧数据，页面不打断（错误条由 switch-bar/入口页负责）
+    });
   },
 
   onToggleEdit() {
     if (!this.data.canEdit) {
-      toast('开发者只读视角不能操作');
+      ui.toast(READONLY_COPY);
       return;
     }
     if (this.data.editMode) {
@@ -172,267 +167,320 @@ Page({
       this.refresh();
       return;
     }
+    this.openEditForm();
+  },
+
+  openEditForm() {
+    if (!this.data.canEdit) {
+      ui.toast(READONLY_COPY);
+      return;
+    }
     const snap = store.snapshot();
-    const customer = snap.customer || {};
-    this.setData({ editMode: true, form: this.buildForm(customer, this.data.isCustomer) });
+    const source = this.data.isCustomer ? (snap.customer || {}) : (snap.partner || {});
+    this.setData({ editMode: true, form: vm.buildForm(source, this.data.isCustomer) });
   },
 
   onNicknameInput(event) {
-    let value = (event.detail && event.detail.value) || '';
-    if (value.length > NAME_LIMIT) {
-      value = value.slice(0, NAME_LIMIT);
-      toast('昵称最多 20 个字，已截断');
+    const clamped = vm.clampNickname(event.detail && event.detail.value);
+    if (clamped.truncated) {
+      ui.toast('昵称最多 20 个字，已截断');
     }
-    this.setData({ 'form.displayName': value });
+    this.setData({ 'form.displayName': clamped.value });
   },
 
-  onRoomInput(event) {
-    const value = ((event.detail && event.detail.value) || '').replace(/\D/g, '');
-    const form = Object.assign({}, this.data.form, { room: value });
-    form.dormPreview = this.previewDorm(form);
-    this.setData({ form });
-  },
-
-  onPhoneTailInput(event) {
-    const value = ((event.detail && event.detail.value) || '').replace(/\D/g, '').slice(0, 4);
-    this.setData({ 'form.phoneTail': value });
-  },
-
-  onZoneChange(event) {
-    const form = Object.assign({}, this.data.form, { zoneIndex: Number(event.detail.value) });
-    if (form.room) {
-      form.dormPreview = this.previewDorm(form);
+  onChooseAvatar(event) {
+    if (!this.data.canEdit) {
+      ui.toast(READONLY_COPY);
+      return;
     }
-    this.setData({ form });
-  },
-
-  onBuildingChange(event) {
-    const form = Object.assign({}, this.data.form, { buildingIndex: Number(event.detail.value) });
-    if (form.room) {
-      form.dormPreview = this.previewDorm(form);
+    if (this.data.uploadingAvatar) {
+      return;
     }
-    this.setData({ form });
-  },
-
-  previewDorm(form) {
-    const zone = ZONES[form.zoneIndex] || ZONES[0];
-    const buildingNo = BUILDING_LABELS[form.buildingIndex] || '1';
-    const room = form.room || '';
-    if (!room) {
-      return '';
-    }
-    return zone.label + buildingNo + '栋' + room + '室';
-  },
-
-  onUseDefaultAvatar() {
-    this.setData({ 'form.avatarTicket': '', 'form.avatarFileId': '', 'form.avatarPreview': '' });
-  },
-
-  async onChooseAvatar(event) {
     const avatarUrl = event.detail && event.detail.avatarUrl;
     if (!avatarUrl) {
       return;
     }
-    this.setData({ 'form.avatarPreview': avatarUrl });
-    try {
-      const uploaded = await uploadApi.prepareAndUpload({ purpose: 'AVATAR', filePath: avatarUrl });
+    this.setData({ 'form.avatarPreview': avatarUrl, uploadingAvatar: true });
+    uploadApi.prepareAndUpload({ purpose: enums.UPLOAD_PURPOSE.AVATAR, filePath: avatarUrl }).then((uploaded) => {
       this.setData({
+        uploadingAvatar: false,
         'form.avatarTicket': uploaded.uploadTicketId,
-        'form.avatarFileId': uploaded.fileId
+        'form.avatarFileId': uploaded.fileId,
+        'form.avatarAction': 'replace'
       });
-    } catch (err) {
-      toast(err.message || '头像上传失败，可稍后重试或先用默认头像');
-      this.setData({ 'form.avatarPreview': '' });
-    }
+    }).catch((err) => {
+      this.setData({ uploadingAvatar: false, 'form.avatarPreview': '' });
+      ui.toast((err && err.message) || '头像上传失败，可稍后重试或先用默认头像');
+    });
   },
 
-  async onSave() {
+  onUseDefaultAvatar() {
     if (!this.data.canEdit) {
-      toast('开发者只读视角不能操作');
+      ui.toast(READONLY_COPY);
       return;
     }
-    const form = this.data.form || {};
-    const displayName = (form.displayName || '').trim();
-    if (!displayName) {
-      toast('昵称不能为空');
+    this.setData({
+      'form.avatarPreview': '',
+      'form.avatarTicket': '',
+      'form.avatarFileId': '',
+      'form.avatarAction': 'default'
+    });
+    ui.toast('已选择默认头像，保存后生效');
+  },
+
+  onZoneChange(event) {
+    this.applyDormPatch({ zoneIndex: Number(event.detail.value) });
+  },
+
+  onBuildingChange(event) {
+    this.applyDormPatch({ buildingIndex: Number(event.detail.value) });
+  },
+
+  onRoomInput(event) {
+    this.applyDormPatch({ room: vm.digitsOnly(event.detail && event.detail.value) });
+  },
+
+  onPhoneTailInput(event) {
+    const form = Object.assign({}, this.data.form, {
+      phoneTail: vm.digitsOnly(event.detail && event.detail.value, vm.PHONE_TAIL_LIMIT)
+    });
+    this.setData({ form: form });
+  },
+
+  applyDormPatch(partial) {
+    const form = Object.assign({}, this.data.form, partial);
+    form.dormPreview = vm.previewDorm(form);
+    this.setData({ form: form });
+  },
+
+  onSave() {
+    if (!this.data.canEdit) {
+      ui.toast(READONLY_COPY);
       return;
     }
-    const payload = { displayName, avatarTicket: form.avatarTicket || '' };
-    if (!form.avatarTicket && !form.avatarPreview) {
-      payload.avatarFileId = '';
+    if (this.data.saving) {
+      return;
     }
-    if (this.data.isCustomer) {
-      const zone = ZONES[form.zoneIndex] || ZONES[0];
-      const buildingNo = BUILDING_LABELS[form.buildingIndex] || '';
-      const room = (form.room || '').replace(/^0+/, '');
-      if (!room || room.length < 3) {
-        toast('宿舍号要填 3 位以上数字（如 522）');
-        return;
-      }
-      if (form.phoneTail && form.phoneTail.length !== 4) {
-        toast('手机尾号写后 4 位数字，不知道就留空');
-        return;
-      }
-      payload.zone = zone.code;
-      payload.buildingNo = Number(buildingNo);
-      payload.room = room;
-      payload.phoneTail = form.phoneTail || '';
+    const checked = vm.buildSavePayload({ isCustomer: this.data.isCustomer, form: this.data.form });
+    if (!checked.ok) {
+      ui.toast(checked.message);
+      return;
     }
     this.setData({ saving: true });
-    try {
-      if (this.data.isCustomer) {
-        const saved = await customerModule.saveProfile(payload);
-        store.patch({ customer: Object.assign({}, store.get('customer'), payload, saved || {}, { profileComplete: true }) });
-      } else {
-        const saved = await partnerModule.saveProfile(payload);
-        store.patch({ partner: Object.assign({}, store.get('partner'), payload, saved || {}, { profileComplete: true }) });
-      }
-      this.setData({ editMode: false, saving: false });
+    this.persistProfile(checked.payload).then(() => {
+      this.setData({ saving: false, editMode: false });
       this.refresh();
-      toast('资料已保存');
-    } catch (err) {
+      ui.toast('资料已保存');
+      this.continuePendingBind();
+    }).catch((err) => {
       this.setData({ saving: false });
-      toast((err.message || '资料保存失败') + '，请重试');
+      ui.toast((err && err.message) || '资料保存失败，请重试');
+    });
+  },
+
+  persistProfile(payload) {
+    if (this.data.isCustomer) {
+      return customerApi.saveProfile(payload).then((saved) => {
+        const patch = { customer: vm.mergeCustomer(store.get('customer'), saved) };
+        if (saved && saved.binding) {
+          patch.binding = Object.assign({}, store.get('binding') || {}, saved.binding);
+        }
+        store.patch(patch);
+      });
     }
+    return partnerApi.saveProfile(payload).then((saved) => {
+      store.patch({ partner: vm.mergePartner(store.get('partner'), saved) });
+    });
+  },
+
+  // 资料未完成时被绑定卡片/深链引导到本页，保存成功后自动续跳 bind（pendingBind 仅内存）
+  continuePendingBind() {
+    const pending = this._pendingBind;
+    if (!pending || !this.data.isCustomer) {
+      return;
+    }
+    this._pendingBind = '';
+    wx.navigateTo({ url: BIND_PAGE + '?bind=' + encodeURIComponent(pending) });
   },
 
   onCopyCustomerNo() {
-    if (!this.data.customerNo) {
-      return;
-    }
-    wx.setClipboardData({
-      data: this.data.customerNoDisplay || this.data.customerNo,
-      success() {
-        toast('已复制顾客编号');
-      }
-    });
+    ui.copyText(this.data.customerNoDisplay || this.data.customerNo, '已复制顾客编号');
   },
 
   onCopyPartnerNo() {
-    if (!this.data.partnerNo) {
-      return;
-    }
-    wx.setClipboardData({
-      data: this.data.partnerNoDisplay || this.data.partnerNo,
-      success() {
-        toast('兼职编号已复制');
-      }
-    });
+    const card = this.data.partnerCard || {};
+    ui.copyText(card.partnerNo, '兼职编号已复制');
   },
 
   onGoBind() {
-    wx.navigateTo({ url: '/pkg-customer/pages/bind/index' });
+    if (!this.data.canEdit) {
+      ui.toast(READONLY_COPY);
+      return;
+    }
+    wx.navigateTo({ url: BIND_PAGE });
   },
 
   onRebind() {
-    wx.navigateTo({ url: '/pkg-customer/pages/bind/index?mode=rebind' });
+    if (!this.data.canEdit) {
+      ui.toast(READONLY_COPY);
+      return;
+    }
+    wx.navigateTo({ url: BIND_PAGE + '?mode=rebind' });
   },
 
   onUnbind() {
     if (!this.data.canEdit) {
-      toast('开发者只读视角不能操作');
+      ui.toast(READONLY_COPY);
       return;
     }
-    const that = this;
-    wx.showActionSheet({
-      itemList: RELEASE_OPTIONS.map((item) => item.label),
-      success(res) {
-        const picked = RELEASE_OPTIONS[res.tapIndex];
-        if (!picked) {
-          return;
-        }
-        wx.showModal({
-          title: '解绑确认',
-          content: '解绑后这位兼职看不到你的新订单，历史订单仍保留。确定解绑？',
-          success(modal) {
-            if (modal.confirm) {
-              that.releaseBinding(picked);
-            }
-          }
-        });
-      }
+    const reason = vm.releaseReason();
+    this.setData({
+      unbindVisible: true,
+      unbindReasonText: reason.text,
+      unbindNote: '',
+      unbindSubmitting: false
     });
   },
 
-  async releaseBinding(picked) {
-    try {
-      await bindModule.release({ reason: picked.reason, note: picked.label });
-      store.patch({ binding: null });
-      this.refresh();
-      toast('已解绑，历史订单仍保留');
-    } catch (err) {
-      toast(err.message || '解绑失败，请重试');
+  onUnbindNoteInput(event) {
+    const note = String((event.detail && event.detail.value) || '').slice(0, vm.RELEASE_NOTE_LIMIT);
+    this.setData({ unbindNote: note });
+  },
+
+  onUnbindCancel() {
+    if (this.data.unbindSubmitting) {
+      return;
     }
+    this.setData({ unbindVisible: false });
+  },
+
+  onUnbindConfirm() {
+    if (this.data.unbindSubmitting) {
+      return;
+    }
+    const reason = vm.releaseReason();
+    this.setData({ unbindSubmitting: true });
+    bindApi.release({ reason: reason.code, note: this.data.unbindNote }).then(() => {
+      store.patch({ binding: null });
+      this.setData({ unbindVisible: false, unbindSubmitting: false });
+      this.refresh();
+      ui.toast('已解绑，历史订单仍保留');
+    }).catch((err) => {
+      this.setData({ unbindVisible: false, unbindSubmitting: false });
+      ui.toast((err && err.message) || '解绑失败，请重试');
+    });
   },
 
   onMessages() {
-    const path = this.data.isCustomer
-      ? '/pkg-customer/pages/messages/index'
-      : '/pkg-partner/pages/messages/index';
-    wx.navigateTo({ url: path });
+    wx.navigateTo({ url: this.data.isCustomer ? CUSTOMER_MESSAGES_PAGE : PARTNER_MESSAGES_PAGE });
   },
 
   onService() {
-    wx.navigateTo({ url: '/pkg-partner/pages/service-settings/index' });
+    if (!this.data.canEdit) {
+      ui.toast(READONLY_COPY);
+      return;
+    }
+    wx.navigateTo({ url: SERVICE_PAGE });
   },
 
   onStats() {
-    wx.navigateTo({ url: '/pkg-partner/pages/stats/index' });
+    wx.navigateTo({ url: STATS_PAGE });
   },
 
-  onHelp() {
-    wx.navigateTo({ url: '/pkg-customer/pages/help/index' });
+  onOrders() {
+    wx.switchTab({ url: CUSTOMER_ORDERS_PAGE });
+  },
+
+  // 隐私政策/用户协议/帮助/联系开发者统一走帮助页的 doc 参数（?doc=privacy|terms|about）
+  onDocTap(event) {
+    const dataset = (event.currentTarget && event.currentTarget.dataset) || {};
+    const doc = dataset.doc || '';
+    wx.navigateTo({ url: doc ? HELP_PAGE + '?doc=' + doc : HELP_PAGE });
   },
 
   onSwitchRole() {
+    if (!this.data.canEdit || this.data.viewSession) {
+      return;
+    }
     wx.showModal({
       title: '切换身份',
       content: '切换后回到身份选择页，未提交的操作会丢失。',
       success(res) {
         if (res.confirm) {
-          wx.reLaunch({ url: '/pages/role/index' });
+          wx.reLaunch({ url: route.ROLE_PAGE });
         }
       }
     });
   },
 
+  // 注销：两步确认（不可撤销说明 + 输入「注销」），服务端再校验进行中订单
   onDeleteAccount() {
     if (!this.data.canEdit) {
-      toast('开发者只读视角不能操作');
+      ui.toast(READONLY_COPY);
       return;
     }
-    const that = this;
     wx.showModal({
       title: '注销账号',
-      content: '注销后资料会被匿名化，账号不可恢复。确定继续？',
-      confirmText: '确定注销',
+      content: '注销不可撤销：订单与资料会被匿名化或删除，绑定会解除。进行中的订单会阻止注销。',
+      confirmText: '继续',
       confirmColor: '#E54D42',
-      success(modal) {
-        if (!modal.confirm) {
-          return;
+      success: (res) => {
+        if (res.confirm) {
+          this.confirmDeletionText();
         }
-        that.doDeleteAccount();
       }
     });
   },
 
-  async doDeleteAccount() {
-    try {
-      await userModule.deleteAccount('USER_INITIATED');
+  confirmDeletionText() {
+    wx.showModal({
+      title: '确认注销',
+      editable: true,
+      placeholderText: '输入「注销」两个字',
+      confirmText: '确定注销',
+      confirmColor: '#E54D42',
+      success: (res) => {
+        if (!res.confirm) {
+          return;
+        }
+        if (String(res.content || '').trim() !== DELETION_CONFIRM_TEXT) {
+          ui.toast('请输入「注销」两个字确认');
+          return;
+        }
+        this.doDeleteAccount();
+      }
+    });
+  },
+
+  doDeleteAccount() {
+    userApi.deleteAccount({ confirmText: DELETION_CONFIRM_TEXT }).then(() => {
+      if (this.unsubscribe) {
+        this.unsubscribe();
+        this.unsubscribe = null;
+      }
       store.reset();
-      wx.reLaunch({ url: '/pages/role/index' });
-    } catch (err) {
-      toast(err.message || '注销失败，请先处理进行中的订单');
-    }
+      wx.showModal({
+        title: '已注销',
+        content: '订单与资料已匿名化或删除，30 天内完成彻底清理；重新登录将创建新的顾客资料与编号。',
+        showCancel: false,
+        confirmText: '知道了',
+        success() {
+          wx.reLaunch({ url: route.ROLE_PAGE });
+        }
+      });
+    }).catch((err) => {
+      ui.toast((err && err.message) || '注销失败，请稍后重试');
+    });
   },
 
   onShareAppMessage() {
-    if (this.data.isCustomer) {
-      return { title: '校园快递代取', path: '/pages/role/index' };
+    const card = this.data.partnerCard || {};
+    if (!this.data.isCustomer && !this.data.viewSession && card.partnerNo) {
+      return {
+        title: '我在做校园代取，凭兼职编号找我下单',
+        path: '/pages/role/index?bind=' + encodeURIComponent(card.partnerNo)
+      };
     }
-    return {
-      title: '我在做校园代取，凭兼职编号找我下单',
-      path: '/pages/role/index?bind=' + this.data.partnerNo
-    };
+    return { title: '校园快递代取', path: '/pages/role/index' };
   }
 });

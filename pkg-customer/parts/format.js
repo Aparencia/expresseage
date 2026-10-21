@@ -9,8 +9,10 @@ function toDate(value) {
   if (!value) return null;
   if (value instanceof Date) return value;
   if (typeof value === 'number') return new Date(value);
-  const text = String(value).replace(/-/g, '/');
-  const date = new Date(text);
+  // 真实云 DTO 的时间是 ISO 字符串（'2026-10-21T12:34:56.000Z'）：先按原样解析，再兼容老格式
+  const text = String(value).trim();
+  let date = new Date(text);
+  if (isNaN(date.getTime())) date = new Date(text.replace(/-/g, '/'));
   return isNaN(date.getTime()) ? null : date;
 }
 
@@ -52,10 +54,18 @@ function countdown(deadline, now) {
   return { text: text, urgent: diff < 10 * 60 * 1000, expired: false };
 }
 
+// 公告文案：configPublic.announcement 可能是字符串或 {title,text}（DATA_MODEL §2.10）
+function announcementText(value) {
+  if (typeof value === 'string') return value.trim();
+  if (value && typeof value === 'object' && typeof value.text === 'string') return value.text.trim();
+  return '';
+}
+
 module.exports = {
   pad,
   toDate,
   formatDateTime,
   formatTimeAgo,
-  countdown
+  countdown,
+  announcementText
 };

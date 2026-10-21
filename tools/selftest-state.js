@@ -25,7 +25,7 @@ const defaults = require(path.join(ROOT, 'config/defaults.js'));
 const statusView = require(path.join(ROOT, 'pkg-customer/parts/status-view.js'));
 const createModel = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/model.js'));
 
-const EXPECTED_ASSERTIONS = 340; // 改为实际断言数时同步核对 `node tools/selftest-state.js` 读数
+const EXPECTED_ASSERTIONS = 341; // 改为实际断言数时同步核对 `node tools/selftest-state.js` 读数
 
 const STATUS = state.STATUS;
 const ALL_ROLES = ['CUSTOMER', 'PARTNER', 'SYSTEM', 'ADMIN'];
@@ -539,7 +539,9 @@ function sectionStatusViewPart(h) {
   h.section('§7 页面零件 status-view（动作可达性 / 进度 / 文案）', (t) => {
     t.eq(statusView.statusText(STATUS.PICKED), '已取件·配送中', '§7 零件状态文案同源');
     t.eq(statusView.eventText({ note: '已放门口' }), '已放门口', '§7 事件有备注优先展示备注');
-    t.eq(statusView.eventText({ toStatus: STATUS.ACCEPTED }), '订单状态：已接单', '§7 事件按目标状态展示');
+    t.eq(statusView.eventText({ type: STATUS.ACCEPTED }), '已接单', '§7 事件（真实 DTO type）按类型展示');
+    t.eq(statusView.eventText({ type: 'EXCEPTION_REPORTED', note: '包裹破损' }), '异常上报：包裹破损',
+      '§7 事件类型后拼备注（真实 DTO type+note）');
     t.eq(statusView.eventText(null), '', '§7 空事件不展示');
     t.check(statusView.canCancel({ status: STATUS.SUBMITTED }), '§7 待接单可取消');
     t.check(!statusView.canCancel({ status: STATUS.PICKED }), '§7 已取件不可取消');
@@ -553,8 +555,8 @@ function sectionStatusViewPart(h) {
     t.check(statusView.canMessage({ status: STATUS.PICKED }), '§7 进行中可留言');
     t.check(!statusView.canMessage({ status: STATUS.CANCELLED }), '§7 已取消不可留言');
     t.check(statusView.canMessage({ status: STATUS.COMPLETED }), '§7 已完成可回看留言');
-    t.check(statusView.canViewImage({ image: { fileId: 'cloud://x' } }), '§7 有图可看');
-    t.check(!statusView.canViewImage({ image: {} }), '§7 无 fileId 不可看');
+    t.check(statusView.canViewImage({ image: { hasImage: true } }), '§7 有图可看（真实 DTO image.hasImage）');
+    t.check(!statusView.canViewImage({ image: {} }), '§7 无 hasImage/fileId 不可看');
     const reasons = statusView.cancelReasons();
     t.eq(reasons.length, 5, '§7 顾客取消原因 5 项');
     t.eq(reasons[0], { code: 'CHANGED_MIND', label: '不需要了' }, '§7 取消原因首项文案');

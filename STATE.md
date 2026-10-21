@@ -1,59 +1,62 @@
 # STATE.md · v4 项目当前状态（唯一状态源）
 
 > 口径版本：与 `docs/V4_CONTRACT.md` v0.9 同步。
-> 维护人：lead（其他 agent 只回报状态变化，不直接改本文件；批 1 收口前由 Lead 统一更新）。
+> 维护人：lead（其他 agent 只回报状态变化，不直接改本文件；每批收口时由 Lead 统一更新）。
 > 更新时机：每批开工/收口、用户裁决变化、风险新增或关闭、HEAD 变化需回读。
 > 本文只记**状态、待办与下一步**，不重复设计口径（口径看 CONTRACT，工程规则看 ENGINEERING，接口看 ARCHITECTURE）。
 
-**快照时间：2026-10-21（批 1 进行中）**
+**快照时间：2026-10-21（批 1 收口）**
 
 ## 1. 一句话状态
 
-**批 0 设计定稿完成；批 1 工程骨架与云端基础设施进行中（多 agent 并行，尚未收口）；批 2 未开工。**
-用户侧开工门未闭环：D1/D2/D3/D13 待用户确认，D8 五苑正式展示名待用户给出；云环境尚未创建、云函数尚未部署、门禁尚未由 Lead 统一跑。
+**批 0 设计定稿完成；批 1 工程骨架与云端基础设施完成并收口（`check.ps1` 4 步全 PASS、退出码 0）；批 2 未开工。**
+用户侧开工门仍未闭环：D1/D2/D3/D13 待用户确认、D8 五苑正式展示名待用户给出；云环境尚未创建、云函数尚未在真实云环境部署、真机项未点检。
 
 ## 2. 批次台账
 
 | 批 | 名称 | 状态 | 说明/证据 |
 | :-- | :-- | :-- | :-- |
 | 批 0 | 设计定稿与开工门 | **设计定稿完成（2026-10-21）** | CONTRACT v0.9、DATA_MODEL、三份 UX、ENGINEERING、DECISIONS、QA_CHECKLIST、ARCHITECTURE、`docs/privacy/` 两件均落盘；D18~D21 四次修订已回写；**用户侧开工门（D1/D2/D3/D13）未闭环** |
-| 批 1 | 工程骨架与云端基础设施 | **进行中（2026-10-21 开工）** | 开工提交 `d5ad214`（app.json 页面地图冻结 / ARCHITECTURE 接口冻结 / 根配置改造）；S0~S10 并行写，见 §3；云端资源、部署与门禁待收口 |
-| 批 2~批 9 | 见 `docs/V4_ENGINEERING.md` §11 | 未开工 | 范围、依赖与风险以 ENGINEERING §11 为准；批 2 依赖批 1 收口 + E12 真机能力确认 |
+| 批 1 | 工程骨架与云端基础设施 | **完成并收口（2026-10-21）** | 真实证据见 §6：`check.ps1` 退出码 0；`check.js` 31/31、`check-docs` 10/10、零金额 0、`selftest.js` 9 套 1,011 断言全 PASS；sync 16 源×2 套 hash 一致；提交与 gate 见 §7 收口记录 |
+| 批 2 | 账号入口 + 切换会话/测试账号/头像采集 | **未开工** | 代码骨架已在批 1 前置落地（identity/切换会话/测试账号/头像/account-switch 页均实现），待用户闭环开工门后做真机联调与细化 |
+| 批 3~批 9 | 见 `docs/V4_ENGINEERING.md` §11 | 未开工 | 范围、依赖与风险以 ENGINEERING §11 为准 |
 
-## 3. 批 1 并行进度快照（2026-10-21）
+## 3. 批 1 并行交付快照（全部收口）
 
-> 写作用域以 `docs/ARCHITECTURE.md` §2 为准；收口顺序与每批纪律看 ENGINEERING §10.3/§11。状态随收口更新，冲突以 Lead 裁定为准。
+> 写作用域以 `docs/ARCHITECTURE.md` §2 为准；实现细节见 CHANGELOG 批 1 条目与各 owner 回执。
 
 | 工作流 | 交付摘要 | 状态 |
 | :-- | :-- | :-- |
-| S0 骨架与集成 | 根配置/app.json/app.js/app.wxss、config、api/client、api/upload、api/privacy、api/modules、store、pages/launch、pages/profile | 进行中 |
-| S1 口径纯件 | `shared/**`（集合/错误码/action/审计/状态机/校验/config 默认）、`utils/ids.js`、`utils/room-tag.js` | 进行中 |
-| S1b 云端身份域 | `cloudfunctions/api/handlers/{user,customer,partner,bind,upload,config}` | 进行中 |
-| S2 工具链与门禁 | `tools/**`（check/check-docs/zero-money/selftest/fake-db/sync/seed）、`check.ps1`/`gate.ps1`/`doctor.ps1` | 进行中 |
-| S3 顾客端页面 | `pages/role|home|orders|customers`、`pkg-customer/**`、`utils/recognize/**`、`utils/ocr/**` | 进行中 |
-| S4 兼职端页面 | `pages/partner/**`、`pkg-partner/**`、`utils/customer-view.js`、`utils/order-edit.js` | 进行中 |
-| S5 开发者后台页 | `pkg-admin/**` 11 页（含 `account-switch`、`recognition-review`） | 进行中 |
-| **S6 文档与隐私件** | `AGENTS.md`/`STATE.md`/`CHANGELOG.md`/`docs/RUNBOOK.md`/`docs/V4_FIXTURES.md`/`docs/TECH_DEBT.md`；`utils/storage.js`/`privacy-policy.js`/`avatar.js` | **已交付（2026-10-21），待 Lead 收口验证** |
-| S7 云核心 | `cloudfunctions/api` 入口/路由/中间件/db/lib/health；`cloudfunctions/cleanup` 入口 | 进行中 |
-| S8 云订单与兜底 | 订单动作 handler、`lib/ai/**`、cleanup sweeps | 进行中 |
-| S9 云后台 | `handlers/admin/**`（邀请码/脱敏查看/配置/统计/切换会话/测试账号/复核） | 进行中 |
-| S10 组件与资产 | `components/**`、`custom-tab-bar/**`、`assets/**` | 进行中 |
+| S0 骨架与集成 | 根配置/app.json/app.js/app.wxss、config、api（client/upload/privacy/mode-guard/10 域模块）、store、launch/profile 页由 S16 接管细化 | 已交付 |
+| S1 口径纯件 | `shared/**` 13 件（集合/错误码/action/审计/状态机/校验/配置默认/站点/苑/角色/格式/订单视图）、`utils/ids.js`、`utils/room-tag.js` | 已交付 |
+| S1b 云端身份域 | `handlers/{user,customer,partner,bind,upload,config}`（19 动作，含首存授予 CUSTOMER、bind 重放幂等） | 已交付 |
+| S2 工具链与门禁 | `tools/**` 17 件 + `check.ps1`/`gate.ps1`/`doctor.ps1`（UTF-8 BOM） | 已交付 |
+| S3 顾客端页面 | 主包 role/home/orders + `pkg-customer` 5 页 + `utils/recognize/**`、`utils/ocr/**`；页面已按真实 handler DTO 对齐 | 已交付 |
+| S4 兼职端页面 | 主包 workbench/customers + `pkg-partner` 7 页；工作台四档排序在客户端零件层、消费真实 DTO | 已交付 |
+| S5 开发者后台页 | `pkg-admin` 11 页（含 account-switch、recognition-review） | 已交付 |
+| S6 文档与纯件 | `AGENTS.md`/`STATE.md`/`CHANGELOG.md`/`docs/{RUNBOOK,V4_FIXTURES,TECH_DEBT}.md`、`utils/{storage,privacy-policy,avatar}.js` | 已交付 |
+| S7 云核心 | `cloudfunctions/api` 入口/路由/中间件/db/lib/health、`cleanup` 入口与独立 dao、两个 package.json | 已交付 |
+| S8 云订单与兜底 | 19 订单动作 + message + ai + `lib/ai/**` + `cleanup/sweeps` 13 个幂等 sweep | 已交付 |
+| S9 云后台 | `handlers/admin/**` 23 动作（邀请码/脱敏查看/配置/统计/切换会话/测试账号/复核） | 已交付 |
+| S10 组件与资产 | `components/**` 15 套 + `custom-tab-bar/` + tabbar 10 张 PNG | 已交付 |
+| S12~S16 测试与细化 | 9 套 selftest（1,011 断言）、launch/profile 隐私闸与资料编辑细化、双端页面按真实 DTO 对齐、order.listPartner 隐私修复 | 已交付 |
 
 ## 4. 用户待办（阻塞项）
 
 | # | 事项 | 阻塞什么 | 来源 | 状态 |
 | :-- | :-- | :-- | :-- | :-- |
-| 1 | **D1** 开通云开发 + 创建 dev/prod 两个环境（envId 交 Lead 填 `config/env.js`） | 云资源、部署、批 1 收口 | ENGINEERING §6.1 #2、§10.2 | 未完成 |
-| 2 | **D2** 确认 appid `wxf98c87a293092ef5` 主体可用 | 批 1 开工门 | ENGINEERING §6.1 #1 | 未完成 |
-| 3 | **D3** 兼职准入用邀请码（推荐方案待回复） | 批 2 激活流程、邀请码设计锁定 | CONTRACT §13 | 未确认 |
+| 1 | **D1** 开通云开发 + 创建 dev/prod 两个环境（envId 交 Lead 填 `config/env.js`） | 云资源、部署、批 2 联调 | ENGINEERING §6.1 #2、§10.2 | 未完成 |
+| 2 | **D2** 确认 appid `wxf98c87a293092ef5` 主体可用 | 开工门/真机 | ENGINEERING §6.1 #1 | 未完成 |
+| 3 | **D3** 兼职准入用邀请码（推荐方案） | 批 2 激活流程锁定 | CONTRACT §13 | 未确认 |
 | 4 | **D13** 主体/类目确认（快递/跑腿类目资质） | 批 9 提审 | ENGINEERING §6.1 #3 | 未完成 |
-| 5 | **D8** 五苑正式展示名与 C 的含义 | 配置 `zoneLabels` 与全部展示文案（不阻塞编码） | CONTRACT §13 D8 | 待用户给名称 |
+| 5 | **D8** 五苑正式展示名与 C 的含义 | `config.zoneLabels` 与展示文案（不阻塞编码） | CONTRACT §13 D8 | 待用户给名称 |
 | 6 | 配置 `ADMIN_OPENIDS`（JSON 映射，含 `DEV-01`） | `admin.*`、切换会话/测试账号冒烟 | ENGINEERING §6.1 #4 | 未完成 |
 | 7 | 云存储权限设置（私有、上传可用） | 截图/头像上传链路 | ENGINEERING §6.1 #5、§3.5 | 未完成 |
-| 8 | 14 集合 + 安全规则 + 全部索引（控制台建） | 批 1 云资源验收 | ENGINEERING §4.6、§10.2 | 未完成 |
+| 8 | 14 集合 + 安全规则 + 全部索引（控制台建，`seed-dev.js` 可给清单） | 批 2 云资源验收 | ENGINEERING §4.6、§10.2 | 未完成 |
 | 9 | `DEEPSEEK_API_KEY` 与 E11（DeepSeek 账号/条款/配额确认） | AI 兜底上线；未确认前保持关闭 | ENGINEERING §6.1 #9、§13 E11 | 未确认 |
-| 10 | **E12** 头像/昵称隐私接口与基础库能力真机实测 | 批 2 头像/昵称采集验收 | ENGINEERING §6.1 #10、§13 E12 | 未做 |
-| 11 | 《用户隐私保护指引》微信后台逐项声明（含头像/昵称/第三方 AI） | 批 9 提审 | ENGINEERING §6.1 #6、§10.4 | 未做 |
+| 10 | 定时触发器（10 分钟 cleanup）与云函数超时/内存按 RUNBOOK 配置 | cleanup 生效 | ENGINEERING §4.7、RUNBOOK | 未完成 |
+| 11 | **E12** 头像/昵称隐私接口与基础库能力真机实测 | 批 2 头像/昵称采集验收 | ENGINEERING §6.1 #10、§13 E12 | 未做 |
+| 12 | 《用户隐私保护指引》微信后台逐项声明（含头像/昵称/第三方 AI） | 批 9 提审 | ENGINEERING §6.1 #6、§10.4 | 未做 |
 
 ## 5. 待真机 / 待实测项（agent 不能代验）
 
@@ -68,33 +71,51 @@
 | R13 | 云开发配额/成本按真实单量估算 | 批 9 | ENGINEERING §12 | 未估算 |
 | R12 | `docs/QA_CHECKLIST.md` 全部"人（真机）"条目 | 每批 | ENGINEERING §12、QA_CHECKLIST | 待用户点检 |
 
-## 6. 当前风险与红灯（如实记录）
+## 6. 批 1 收口证据（真实输出）
 
-1. **批 1 期间门禁红灯属正常**：多 agent 并行写入、文件未收口时 `check.js`/`check-docs.js`/`selftest*` 可能失败；**不收口不宣布完成**，以 Lead 收口时的真实输出为准（ENGINEERING §8.1）。
-2. **云端一切未执行**：云环境、集合、索引、安全规则、环境变量、触发器、存储权限均未在真实控制台创建；任何"跑通/联调成功"的声明必须等 D1/D2 完成后按 `docs/RUNBOOK.md` 取证。
-3. **AI 兜底处于关闭状态**：`config.aiFallback.enabled` 初始为 `false`，`DEEPSEEK_API_KEY` 未配置属预期降级；E11 未确认前不得开启正式外呼。
-4. **隐私文本仍是草案**：`docs/privacy/` 两件为 v0.4 草案，批 9 提审前必须与真实采集一致并逐项声明。
-5. **D8 未给正式苑名期间**：五苑展示名用配置默认值；改名只动 `config.zoneLabels`，不改代码（CONTRACT D8）。
-6. **S6 交付的隐私/存储/头像纯件尚无生产调用方**：页面接入计划在批 2，欠账已登记 `docs/TECH_DEBT.md`。
+| 命令 | 结果 |
+| :-- | :-- |
+| `powershell -File check.ps1` | **4 步全 PASS，退出码 0** |
+| `node tools/check.js` | 通过 **31 项**；失败 0 项 |
+| `node tools/check-docs.js --batch 1` | 通过 **10 项**；失败 0 项 |
+| `node tools/zero-money-scan.js` | **0 命中**（白名单 136 项精确项） |
+| `node tools/selftest.js` | 运行 **9 套**；失败 0 套；SKIP 0；**1,011 断言全 PASS** |
+| `node tools/sync-cloud-shared.js` | 16 源 × 2 套逐字节 hash 一致 |
+| `node tools/doctor.ps1` | 通过 15 / 告警 1（envId 占位待回填）/ 失败 0 |
+| `gate.ps1` | 见 §7 收口记录（提交后回读） |
 
-## 7. 最近更新
+- 代码规模：471 文件 / 46,784 行；页面 30 个；云函数 163 文件；工具 17 件；文档 14 件。
+- 已关闭工程裁决：TD-017（四档排序归客户端）、TD-018（公开配置含 `viewTicketTtlMinutes`）、TD-007/008/009（upload/privacy 接纯件）；新增跟踪 TD-019~TD-024（详见 `docs/TECH_DEBT.md`）。
+
+## 7. 当前风险与红灯（如实记录）
+
+1. **云端一切未执行**：云环境、集合、索引、安全规则、环境变量、触发器、存储权限均未在真实控制台创建；批 1 的"绿"全部来自 fake-DB/纯件/静态门禁，**不等于云端已跑通**。任何"部署成功/联调成功"必须以 RUNBOOK 证据为准。
+2. **云函数未在真实云环境部署**：`api`/`cleanup` 首次部署、`health.check`/`admin.bootstrap` 真机调用属批 2 开工前置（D1/D2 后）。
+3. **AI 兜底处于关闭状态**：`config.aiFallback.enabled` 初始 false，`DEEPSEEK_API_KEY` 未配置属预期降级。
+4. **隐私文本仍是草案**：`docs/privacy/` 两件为草案，批 9 提审前必须与真实采集一致并逐项声明。
+5. **D8 未给正式苑名期间**：五苑展示名用配置默认值；改名只动 `config.zoneLabels`，不改代码。
+6. **真机项全部未验证**：E5/E12/R2/R3 与 QA_CHECKLIST 人点检均由用户执行，agent 不代勾。
+7. **已知口径差异/欠账**：`docs/TECH_DEBT.md` TD-019~TD-025（未建单失败记录无原图、aiFallback 默认模型、serviceConfig P1 字段、系统通知已读、票据类型闸、shared/stations 别名覆盖等）——均为明账，不阻塞批 1 收口。
+
+## 8. 最近更新
 
 | 日期 | 事件 |
 | :-- | :-- |
-| 2026-10-21 | 批 0 设计定稿（CONTRACT v0.9 及全部设计文档；D18~D21 四次修订回写；隐私两件升 v0.4 草案） |
+| 2026-10-21 | 批 0 设计定稿（CONTRACT v0.9 及全部设计文档；D18~D21 四次修订回写；隐私两件升草案） |
 | 2026-10-21 | 批 1 开工提交 `d5ad214`：app.json 页面地图冻结、ARCHITECTURE 接口冻结、根配置改造 |
-| 2026-10-21 | 批 1 并行写：S1/S1b/S2/S3/S4/S5/S7/S8/S9/S10 进行中；S6 文档六件与三个纯件交付 |
+| 2026-10-21 | 批 1 并行开发（S0~S16）：云端/页面/组件/工具链/测试全部落盘；期间关闭多项门禁裁决与 bug（fake-db 三处、listPartner raw 文档泄露、saveProfile 角色死锁、bind 幂等、四档排序归属等） |
+| 2026-10-21 | **批 1 收口**：`check.ps1` 4 步全 PASS（退出码 0）、9 套 selftest 1,011 断言全 PASS；提交与 gate 回读见 §7 收口记录 |
 
-## 8. 下一步（按序）
+## 9. 下一步（按序）
 
-1. **Lead 收口批 1**：逐项跑 `node tools/check.js`、`node tools/check-docs.js --batch 1`、全部 `tools/selftest-*.js`、`node tools/zero-money-scan.js --scope all`；修红灯；提交后回读 HEAD、跑 `gate.ps1`；更新本文件与 CHANGELOG 的"未发布"节。
-2. **用户闭环开工门**：D1/D2/D3/D13 + D8；创建云环境与 14 集合/索引/安全规则，配置 `ADMIN_OPENIDS`、存储权限（以及可选的 `DEEPSEEK_API_KEY`）；证据按 `docs/RUNBOOK.md` 采集。
-3. **首次部署冒烟**：`node tools/sync-cloud-shared.js` → 部署 `api`/`cleanup` → `health.check`/`admin.bootstrap` → 配单条 10 分钟定时触发器 → 冒烟清单（RUNBOOK "首次部署"节）。
-4. **批 2 开工门**：E12 真机能力确认 + 隐私文本同步 + 测试账号单机验收方案（单微信号）。
+1. **用户闭环开工门**：D1/D2/D3/D13 + D8；创建云开发环境与 14 集合/索引/安全规则，配置 `ADMIN_OPENIDS`、存储权限、定时触发器（可选 `DEEPSEEK_API_KEY`）；证据按 `docs/RUNBOOK.md` 采集。
+2. **首次部署冒烟**：`node tools/sync-cloud-shared.js` → 部署 `api`/`cleanup` → `health.check`/`admin.bootstrap` → 单条 10 分钟定时触发器 → RUNBOOK「首次部署」清单。
+3. **批 2 开工门**：E12 真机能力确认 + 隐私文本同步 + 测试账号单机验收（真实只读/测试可写切换、头像昵称采集、绑定单向）。
+4. **批 2 联调**：真机双角色/单机测试账号验收、邀请码负向、后台 account-switch/复核链路；随后按 ENGINEERING §11 进批 3~9。
 
-## 9. 维护规则
+## 10. 维护规则
 
 1. 本文件是**唯一状态源**；其他文档不写"当前进度"叙述，只写设计与验收。
 2. 只有 Lead（或 Lead 明确指派者）更新本文件；其他 agent 发现状态变化时回报 Lead。
 3. 与 `CHANGELOG.md` 同日条目保持一致；风险/欠账与 `docs/TECH_DEBT.md` 编号互链。
-4. 数字不写死：进度以任务板与门禁真实输出为准，本文不抄测试条数。
+4. 数字不写死：进度以任务板与门禁真实输出为准，本文不抄测试条数（收口证据表除外，须与真实输出同源）。

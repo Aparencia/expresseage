@@ -46,6 +46,7 @@ function buildEventDocument(options) {
 // spec = { action, guard?, build?, after?, extraResult? }
 // guard/build 入参 = { ctx, order, payload, now, nowDate, actorRole, scope, checked }；
 // after 在事务内执行（额外写审计等），入参额外含 trx/clientRequestId/fromStatus/toStatus。
+// 幂等重放优先于状态机校验：同 clientRequestId 重放返回当前对象 + duplicated（不写事件、不报 INVALID_TRANSITION）。
 async function runOrderAction(ctx, payload, spec) {
   assertWritable(ctx);
   const scope = scopeOf(ctx);
@@ -72,13 +73,6 @@ async function runOrderAction(ctx, payload, spec) {
   if (actorRole === enums.ROLES.PARTNER) {
     await loadWritablePartner(ctx);
   }
-  const expectedVersion = typeof ctx.expectedVersion === 'number' ? ctx.expectedVersion : null;
-  if (expectedVersion !== null && expectedVersion !== order.version) {
-    throw errors.conflict('订单已被更新，请刷新后重试');
-  }
-  if (!orderState.canAct(spec.action, order.status, actorRole, order)) {
-    throw errors.invalidTransition('当前订单状态不允许该操作');
-  }
   const clientRequestId = ctx.clientRequestId || '';
   if (!clientRequestId) {
     throw errors.validation('clientRequestId', '缺少请求标识，请重试');
@@ -89,6 +83,13 @@ async function runOrderAction(ctx, payload, spec) {
   });
   if (existingEvent) {
     return { order: await buildCurrentOrderView(ctx, order), duplicated: true };
+  }
+  const expectedVersion = typeof ctx.expectedVersion === 'number' ? ctx.expectedVersion : null;
+  if (expectedVersion !== null && expectedVersion !== order.version) {
+    throw errors.conflict('订单已被更新，请刷新后重试');
+  }
+  if (!orderState.canAct(spec.action, order.status, actorRole, order)) {
+    throw errors.invalidTransition('当前订单状态不允许该操作');
   }
   const checked = typeof spec.guard === 'function'
     ? await spec.guard({ ctx, order, payload, now, actorRole, scope })

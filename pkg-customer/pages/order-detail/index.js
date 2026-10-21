@@ -83,10 +83,12 @@ Page({
       this.setData({
         loading: false,
         order: order,
-        statusText: view.statusText(order.status),
-        events: events.map(function map(item) {
+        // 状态文字以服务端 DTO 为准（statusText），本地 shared/order-state 只做兜底
+        statusText: order.statusText || view.statusText(order.status),
+        events: events.map(function map(item, index) {
           return {
-            id: item.id || item.eventId || (item.type + '_' + item.at),
+            // 事件 DTO：{type,at,actorRole,note}（无 id/toStatus）
+            id: (item.type || 'EVENT') + '@' + (item.at || index),
             type: item.type,
             text: view.eventText(item),
             time: format.formatDateTime(item.at),
@@ -95,10 +97,12 @@ Page({
         }),
         messages: messages,
         actions: {
-          cancel: view.canCancel(order),
+          // 取消/留言：以服务端 actions[] 为唯一判据（含 undo 窗口等服务端规则）
+          cancel: view.hasAction(order, 'cancel'),
+          message: view.hasAction(order, 'message'),
+          // 确认收货/删除记录：服务端动作条未列，走 shared/order-state 的顾客侧规则
           confirm: view.canConfirmDelivery(order),
           deleteRecord: view.canDeleteRecord(order),
-          message: view.canMessage(order),
           image: view.canViewImage(order)
         },
         progress: view.progressSteps(order),
@@ -112,17 +116,30 @@ Page({
   async loadMessages() {
     try {
       const data = await messageApi.list({ orderNo: this.data.orderNo, limit: 20 });
-      return ((data && data.list) || []).map(function map(item) {
+      const list = ((data && data.list) || []).map(function map(item, index) {
+        const at = item.at || item.createdAt || '';
         return {
-          id: item.id || item.messageId || (item.createdAt + '_' + (item.text || '').slice(0, 6)),
+          // 留言 DTO：{type,title,text,orderNo,at,read,fromRole}
+          id: item.id || at + '@' + index,
           text: item.text || '',
           mine: item.fromRole === 'CUSTOMER',
-          time: format.formatDateTime(item.createdAt)
+          time: format.formatDateTime(at)
         };
       });
+      if (list.length > 0 && !this.data.readonly) this.markOrderRead();
+      return list;
     } catch (err) {
       return this.data.messages;
     }
+  },
+
+  // 订单内已读水位：message.markRead({scope:'ORDER',orderNo})，每页只报一次，失败不影响浏览
+  markOrderRead() {
+    if (this._readMarked) return;
+    this._readMarked = true;
+    messageApi.markRead({ scope: 'ORDER', orderNo: this.data.orderNo }).catch(function ignore() {
+      // 水位上报失败不影响浏览，下次进入页面会再次上报
+    });
   },
 
   onPullDownRefresh() {
