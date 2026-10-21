@@ -82,7 +82,7 @@
 | `node tools/selftest.js` | 运行 **9 套**；失败 0 套；SKIP 0；**1,014 断言全 PASS**（core 58 / state 341 / recognize 187 / cloud 125 / ai 86 / bind 48 / profile 47 / switch 74 / testaccount 48） |
 | `node tools/sync-cloud-shared.js` | 16 源 × 2 套逐字节 hash 一致 |
 | `node tools/doctor.ps1` | 通过 15 / 告警 1（envId 占位待回填）/ 失败 0 |
-| `gate.ps1 -Anchor 71341c9`（提交 `d125b42` 后回读） | 红色 **0** 项；黄色 **0** 项（退出码 0） |
+| `gate.ps1 -Anchor 71341c9 -ScopeFiles "api/,cloudfunctions/,docs/,pages/,pkg-customer/,pkg-partner/,tools/,utils/,README.md,STATE.md,CHANGELOG.md" -Estimate 2400`（复跑回读；只传 `-Anchor` 会因缺 `-ScopeFiles`/`-Estimate` 报 2 条黄色，黄色不是绿） | 红色 **0** 项；黄色 **0** 项（退出码 0）；变更集 61 件、范围 11 前缀全匹配、新增 3033 行 ≤ 2400×1.5=3600 |
 | 收口提交 | `d125b42`（批 1 收口；gate 回读 HEAD 一致） |
 
 - 代码规模：471 文件 / 46,784 行；页面 30 个；云函数 163 文件；工具 17 件；文档 14 件。
@@ -107,6 +107,7 @@
 | 2026-10-21 | 批 1 并行开发（S0~S16）：云端/页面/组件/工具链/测试全部落盘；期间关闭多项门禁裁决与 bug（fake-db 三处、listPartner raw 文档泄露、saveProfile 角色死锁、bind 幂等、四档排序归属等） |
 | 2026-10-21 | **批 1 收口提交 `d125b42`**：`check.ps1` 4 步全 PASS（退出码 0）、9 套 selftest 1,014 断言全 PASS、`gate.ps1` 红色 0 / 黄色 0（退出码 0）、`doctor.ps1` 15 通过 1 告警 0 失败；批 2 未开工 |
 | 2026-10-21 | **计数勘误（仅文档）**：收口条目首版误记 selftest 合计 1,011（cloud 122）；按 `node tools/selftest.js` 实跑与 `d125b42` 内 `tools/selftest-cloud.js`（`EXPECTED_ASSERTIONS=125`）修正为 **1,014**（cloud 125），STATE/README/CHANGELOG 三处同步；代码与门禁结论不变 |
+| 2026-10-21 | **计数勘误提交 `86d9ac6`**（docs-only，3 文件 +8/-6）：`check.ps1` 复跑 4 步全 PASS（退出码 0）、selftest 9 套 1,014 断言全 PASS；`gate.ps1 -Anchor 9c97e6d -ScopeFiles "STATE.md,README.md,CHANGELOG.md" -Estimate 10` 红色 0 / 黄色 0（退出码 0） |
 
 ## 9. 下一步（按序）
 
