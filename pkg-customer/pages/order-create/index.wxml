@@ -23,7 +23,24 @@
       <image-picker purpose="TICKET" max-count="1" bind:change="onPickFile" bind:error="onPickError" />
       <view class="muted upload-state" wx:if="{{ocrState === 'upload'}}">正在上传…</view>
       <view class="muted upload-state" wx:if="{{ocrState === 'ocr'}}">正在识别截图里的取件码…（通常 3~10 秒）</view>
-      <view class="muted upload-state" wx:if="{{ocrState === 'ai'}}">正在智能识别，可继续手动填写…</view>
+      <view class="muted upload-state" wx:if="{{ocrState === 'ai'}}">正在智能识别…（最多 8 秒）</view>
+      <!-- §4.3.1 ③：兜底中可「取消」/「先手动填写」（不阻塞手填；之后迟到的建议不再覆盖） -->
+      <view class="actions-row" wx:if="{{ocrState === 'ai'}}">
+        <button class="btn btn-ghost btn-inline" bindtap="onCancelAi">取消</button>
+        <button class="btn btn-primary btn-inline" bindtap="onManualTap">先手动填写</button>
+      </view>
+      <view class="actions-row" wx:if="{{ocrState === 'ocr'}}">
+        <button class="btn btn-ghost btn-inline" bindtap="onManualTap">先手动填写</button>
+      </view>
+      <view class="actions-row" wx:if="{{ocrText}}">
+        <button class="btn btn-ghost btn-inline" bindtap="onToggleOcrText">{{ocrTextOpen ? '收起识别原文' : '查看识别原文（仅本页显示，不会保存）'}}</button>
+      </view>
+      <view class="muted small ocr-text" wx:if="{{ocrText && ocrTextOpen}}">{{ocrText}}</view>
+    </view>
+
+    <!-- 点击查看截图（§4.8；本地预览，不新增上传、不出现 wx.cloud.*） -->
+    <view class="card" wx:if="{{filePath}}">
+      <view class="small link-text" bindtap="onPreviewImage">点击查看截图</view>
     </view>
 
     <view class="card fail-card" wx:if="{{ocrState === 'failed' && failureText}}">
@@ -38,8 +55,12 @@
   </block>
 
   <block wx:if="{{step === 2}}">
-    <view class="card" wx:if="{{recognizeHint}}">
-      <view class="small error-text">{{recognizeHint}}</view>
+    <view class="card" wx:if="{{recognizeHint || aiHint}}">
+      <view class="small error-text" wx:if="{{recognizeHint}}">{{recognizeHint}}</view>
+      <view class="small" wx:if="{{aiHint}}">{{aiHint}}</view>
+    </view>
+    <view class="card" wx:if="{{filePath}}">
+      <view class="small link-text" bindtap="onPreviewImage">点击查看截图</view>
     </view>
     <view class="card" wx:for="{{items}}" wx:key="key">
       <view class="row between item-head">
@@ -79,6 +100,8 @@
       <view class="small error-text" wx:if="{{item.formErrors.lockerNo}}">{{item.formErrors.lockerNo}}</view>
       <view class="small error-text" wx:if="{{item.formErrors.trackingTail}}">{{item.formErrors.trackingTail}}</view>
       <view class="small needs-code" wx:if="{{item.codeStatus === 'NEED_CODE'}}">需查明（兼职接单后帮你查码）</view>
+      <!-- 逐件 AI 兜底降级说明：某件失败只降级该件，其余件不受影响 -->
+      <view class="small muted" wx:if="{{item.aiHint}}">{{item.aiHint}}</view>
     </view>
 
     <view class="card">
@@ -92,33 +115,35 @@
   </block>
 
   <block wx:if="{{step === 3}}">
-    <view class="card" wx:for="{{items}}" wx:key="key" wx:if="{{item.checked}}">
-      <view class="strong">第 {{index + 1}} 件 · {{item.stationName || '未选站点'}}</view>
-      <picker range="{{services}}" range-key="name" data-index="{{index}}" value="{{item.serviceIndex || 0}}" bindchange="onServiceChange">
-        <view class="form-row">
-          <view class="form-label">服务类型</view>
-          <view class="form-input">{{services[item.serviceIndex || 0].name || '请选择服务类型'}}</view>
-        </view>
-      </picker>
-    </view>
+    <block wx:for="{{items}}" wx:key="key">
+      <view class="card" wx:if="{{item.checked}}">
+        <view class="strong">第 {{index + 1}} 件 · {{item.stationName || '未选站点'}}</view>
+        <picker range="{{services}}" range-key="name" data-index="{{index}}" value="{{item.serviceIndex || 0}}" bindchange="onServiceChange">
+          <view class="form-row">
+            <view class="form-label">服务类型</view>
+            <view class="form-input">{{services[item.serviceIndex || 0].name || '请选择服务类型'}}</view>
+          </view>
+        </picker>
+        <!-- 只显示名称与说明（D6/§3.7：零金额语义） -->
+        <view class="small muted service-desc" wx:if="{{services[item.serviceIndex || 0].desc}}">{{services[item.serviceIndex || 0].desc}}</view>
 
-    <view class="card">
-      <view class="section-title">预约时间</view>
-      <radio-group bindchange="onAppointType">
-        <label class="radio-row"><radio value="ASAP" checked="{{appointType === 'ASAP'}}" />尽快</label>
-        <label class="radio-row"><radio value="SLOT" checked="{{appointType === 'SLOT'}}" />预约时段</label>
-      </radio-group>
-      <picker wx:if="{{appointType === 'SLOT'}}" range="{{slots}}" range-key="label" bindchange="onSlotChange">
+        <view class="section-title">预约与备注（第 {{index + 1}} 件）</view>
+        <radio-group data-index="{{index}}" bindchange="onItemAppointType">
+          <label class="radio-row"><radio value="ASAP" checked="{{item.appointType === 'ASAP'}}" />尽快</label>
+          <label class="radio-row"><radio value="SLOT" checked="{{item.appointType === 'SLOT'}}" />预约时段</label>
+        </radio-group>
+        <picker wx:if="{{item.appointType === 'SLOT'}}" range="{{slots}}" range-key="label" data-index="{{index}}" bindchange="onItemSlotChange">
+          <view class="form-row">
+            <view class="form-label">时段</view>
+            <view class="form-input">{{slots[item.slotIndex].label || '请选择预约时段'}}</view>
+          </view>
+        </picker>
         <view class="form-row">
-          <view class="form-label">时段</view>
-          <view class="form-input">{{slots[slotIndex].label || '请选择预约时段'}}</view>
+          <view class="form-label">备注</view>
+          <input class="form-input" value="{{item.note}}" placeholder="给兼职的话（≤200 字）" maxlength="200" data-index="{{index}}" bindinput="onItemNoteInput" />
         </view>
-      </picker>
-      <view class="form-row">
-        <view class="form-label">备注</view>
-        <input class="form-input" value="{{note}}" placeholder="给兼职的话（≤200 字）" maxlength="200" bindinput="onNoteInput" />
       </view>
-    </view>
+    </block>
 
     <view class="actions-row page-actions">
       <button class="btn btn-ghost btn-inline" bindtap="goPrev">上一步</button>
@@ -143,9 +168,9 @@
         <view class="section-title">确认订单（共 {{items.length}} 件）</view>
         <view wx:for="{{items}}" wx:key="key" class="summary-row" wx:if="{{item.checked}}">
           <view class="muted">{{item.stationName}} · {{item.pickupCode || '待查码'}} · {{services[item.serviceIndex || 0].name}}</view>
+          <view class="muted small">预约：{{item.appointType === 'SLOT' ? (slots[item.slotIndex].label || '预约时段') : '尽快'}}{{item.note ? '；备注：' + item.note : ''}}</view>
         </view>
-        <view class="muted">预约：{{appointType === 'ASAP' ? '尽快' : slots[slotIndex].label}}</view>
-        <view class="muted" wx:if="{{note}}">备注：{{note}}</view>
+        <view class="small link-text" wx:if="{{filePath}}" bindtap="onPreviewImage">点击查看截图</view>
         <view class="muted zero-money-note">本程序不涉及任何费用收付</view>
       </view>
 

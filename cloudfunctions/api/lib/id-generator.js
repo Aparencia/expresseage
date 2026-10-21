@@ -79,7 +79,8 @@ async function nextOrderNos(trx, nowMs, count) {
   let seq;
   if (!row) {
     seq = 1;
-    await trx.add(COLLECTIONS.COUNTERS, { key, seq, updatedAt: nowMs });
+    // 首次取号一次预留 total 个（createBatch 同事务连取 N 个）：计数器落 total，否则同日下一单从 2 开始撞已用 orderNo。
+    await trx.add(COLLECTIONS.COUNTERS, { key, seq: total, updatedAt: nowMs });
   } else {
     const current = typeof row.seq === 'number' ? row.seq : 0;
     if (current + total > MAX_ORDER_SEQ) {

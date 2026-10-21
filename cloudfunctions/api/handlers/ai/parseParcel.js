@@ -53,7 +53,7 @@ module.exports = async function aiParseParcel(ctx, payload) {
   const config = ctx.config || {};
   const aiConfig = normalizeAiConfig(config);
   const ticket = await common.loadUploadTicket(ctx, input.uploadTicketId);
-  const ticketStatus = common.ticketStatusOf(ticket, scope);
+  const ticketStatus = common.ticketStatusOf(ticket, scope, now);
   const maskedPayload = buildAiPayload({
     ocrTextMasked: input.ocrTextMasked,
     hintTrackingTail: input.hintTrackingTail,
@@ -74,24 +74,12 @@ module.exports = async function aiParseParcel(ctx, payload) {
     recognized: !!(ruleResult.stationId && ruleResult.pickupCode)
   };
 
-  // 幂等：同一 clientRequestId 重放返回同一 failureId（不重复入队、不重复外呼）
+  // 幂等：同一 clientRequestId 重放返回同一 failureId（不重复入队、不重复外呼、不重复计数）
   const replay = await ctx.dao.findOne(common.COLLECTIONS.RECOGNITION_FAILURES, {
     where: { requestKey: [scope.openid, 'ai.parseParcel', ctx.clientRequestId || ''].join(':') }
   });
   if (replay) {
-    const queue = await common.recordFailure(ctx, {
-      failureCode: replay.failureCode,
-      ruleResult: replay.ruleResult || ruleResult,
-      aiTried: replay.aiTried === true,
-      aiModel: replay.aiModel || '',
-      aiResult: replay.aiResult || null,
-      aiErrorCode: replay.aiErrorCode || '',
-      uploadTicketId: input.uploadTicketId,
-      ocrTextMasked: maskedPayload.ocrTextMasked
-    });
-    return { recognized: false, stationId: '', stationName: '', pickupCode: '', trackingTail: '',
-      lockerNo: '', confidence: 'LOW', source: 'NONE', needsReview: true,
-      failureId: queue.failureNo || replay.failureNo, duplicated: true };
+    return common.aiParse.buildDegradedDto({ failureNo: replay.failureNo }, aiFieldsEmpty, { source: 'NONE' });
   }
 
   // ① OCR 无文本：不外呼，直接入队 NO_TEXT

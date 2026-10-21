@@ -13,6 +13,21 @@ const dto = require('./_dto');
 
 const MAX_BATCH = orderState.MAX_CREATE_BATCH;
 
+// 入参白名单（DATA_MODEL §12 #12）：不认识的顶层/条目字段一律 VALIDATION_FAILED 并回 data.field，
+// 不做"静默忽略"——否则未知键会被悄悄丢弃，掩盖客户端契约漂移（零金额口径：交易类字段同样不得入库）。
+const CREATE_FIELDS = ['parcel', 'serviceCode', 'appoint', 'note', 'ticket', 'image', 'recognition', 'guest', 'batchActionId'];
+const BATCH_ITEM_FIELDS = ['parcel', 'serviceCode', 'appoint', 'note', 'guest', 'recognition'];
+const CREATE_BATCH_FIELDS = ['items', 'ticket', 'image', 'recognition', 'batchActionId'];
+
+function assertKnownFields(input, allowed) {
+  const value = parcelUtil.isPlainObject(input) ? input : {};
+  const unknown = Object.keys(value).filter((key) => allowed.indexOf(key) < 0);
+  if (unknown.length > 0) {
+    throw errors.validation(unknown[0], '请求包含不认识的字段，请刷新页面后重试');
+  }
+  return value;
+}
+
 // 订单号取号必须在同一事务内（counters 原子自增 + orders.orderNo 唯一索引兜底）
 function nextOrderNosOf() {
   return idGenerator.nextOrderNos;
@@ -84,9 +99,10 @@ async function prepareContext(ctx) {
 }
 
 // 单条下单字段（batch 的 items[i] 与 create 的顶层同构）
-function buildItemFields(context, item) {
+// fallbackSource = AI 兜底被采纳的来源（recognition.source；仅 parcel 未显式给 recognitionSource 时生效）
+function buildItemFields(context, item, fallbackSource) {
   const input = parcelUtil.isPlainObject(item) ? item : {};
-  const parcel = parcelUtil.normalizeParcel(input.parcel);
+  const parcel = parcelUtil.normalizeParcel(input.parcel, fallbackSource);
   const service = parcelUtil.pickService(context.config, context.partner, input.serviceCode);
   const appoint = parcelUtil.normalizeAppoint(input.appoint, context.now);
   const note = parcelUtil.normalizeOrderNote(input.note);
@@ -132,21 +148,43 @@ async function prepareImage(ctx, payload, context) {
   return { image: imageInput, ticket };
 }
 
-function failureNoOf(payload) {
-  const recognition = parcelUtil.isPlainObject(payload.recognition) ? payload.recognition : {};
+function recognitionOf(input) {
+  return parcelUtil.isPlainObject(input && input.recognition) ? input.recognition : {};
+}
+
+function failureNoOf(input) {
+  const recognition = recognitionOf(input);
   if (typeof recognition.failureId === 'string' && recognition.failureId) {
     return recognition.failureId;
   }
-  const image = parcelUtil.isPlainObject(payload.image) ? payload.image : {};
+  const image = parcelUtil.isPlainObject(input && input.image) ? input.image : {};
   if (typeof image.failureId === 'string' && image.failureId) {
     return image.failureId;
   }
   return '';
 }
 
+// 逐单失败记录号：items[i].recognition.failureId 优先；顶层 recognition.failureId 只作为 item0 的回退
+//（CONTRACT §4.3 / DATA_MODEL §4.9：同图多单按单调用 ai.parseParcel，各单 failureId 独立）。
+function itemFailureNo(item, payload, index) {
+  const own = failureNoOf(item || {});
+  if (own) {
+    return own;
+  }
+  return index === 0 ? failureNoOf(payload || {}) : '';
+}
+
+// 逐单识别来源回退：item 级 recognition.source 优先，顶层只回退给 item0（非法/缺失返回 ''，不猜）。
+function itemRecognitionSource(item, payload, index) {
+  const own = parcelUtil.normalizeRecognitionSource(recognitionOf(item || {}).source);
+  if (own) {
+    return own;
+  }
+  return index === 0 ? parcelUtil.normalizeRecognitionSource(recognitionOf(payload || {}).source) : '';
+}
+
 // 识别失败关联：只接受本人上传的失败记录；失效/非本人不阻断下单，只丢关联
-async function resolveFailureRecord(ctx, payload, context) {
-  const failureNo = failureNoOf(payload);
+async function resolveFailureByNo(ctx, failureNo, context) {
   if (!failureNo || !enums.FAILURE_NO_PATTERN.test(failureNo)) {
     return null;
   }
@@ -155,6 +193,10 @@ async function resolveFailureRecord(ctx, payload, context) {
     return null;
   }
   return record;
+}
+
+async function resolveFailureRecord(ctx, payload, context) {
+  return resolveFailureByNo(ctx, failureNoOf(payload), context);
 }
 
 function buildImageSnapshot(imageInput, ticket, failureRecord, nowDate) {
@@ -259,23 +301,11 @@ async function backfillFailureRecords(ctx, associations) {
   }
 }
 
-// 除首单外不重复关联同一条失败记录（failureId 按单独立，见 DATA_MODEL §4.9）
-function imageForItem(image, index) {
-  if (!image) {
-    return null;
-  }
-  if (index === 0) {
-    return image;
-  }
-  const copy = Object.assign({}, image);
-  delete copy.failureId;
-  return copy;
-}
-
 async function createOne(ctx, payload) {
+  assertKnownFields(payload, CREATE_FIELDS);
   const context = await prepareContext(ctx);
   const clientRequestId = ctx.clientRequestId || '';
-  const fields = buildItemFields(context, payload);
+  const fields = buildItemFields(context, payload, itemRecognitionSource(null, payload, 0));
   const imageCtx = await prepareImage(ctx, payload, context);
   const failureRecord = await resolveFailureRecord(ctx, payload, context);
   const requestKey = buildRequestKey(context, clientRequestId);
@@ -325,15 +355,24 @@ async function createOne(ctx, payload) {
 }
 
 async function createBatch(ctx, payload) {
+  assertKnownFields(payload, CREATE_BATCH_FIELDS);
   const context = await prepareContext(ctx);
   const clientRequestId = ctx.clientRequestId || '';
   const items = Array.isArray(payload.items) ? payload.items : [];
   if (items.length < 1 || items.length > MAX_BATCH) {
     throw errors.validation('items', '一图多码最多拆 ' + MAX_BATCH + ' 单');
   }
-  const fieldsList = items.map((item) => buildItemFields(context, item));
+  items.forEach((item) => {
+    assertKnownFields(item, BATCH_ITEM_FIELDS);
+  });
+  const fieldsList = items.map((item, index) => buildItemFields(context, item, itemRecognitionSource(item, payload, index)));
   const imageCtx = await prepareImage(ctx, payload, context);
-  const failureRecord = await resolveFailureRecord(ctx, payload, context);
+  // 逐单失败记录（items[i].recognition.failureId；顶层 recognition.failureId 只回退 item0）：
+  // 非法形态/非本人一律静默丢关联（不阻断建单），每单 image.failureId 只写本单自己的记录 _id。
+  const failureRecords = [];
+  for (let i = 0; i < items.length; i += 1) {
+    failureRecords.push(await resolveFailureByNo(ctx, itemFailureNo(items[i], payload, i), context));
+  }
   const requestKeys = fieldsList.map((unused, index) => buildRequestKey(context, clientRequestId, index));
   const existingList = [];
   for (let i = 0; i < requestKeys.length; i += 1) {
@@ -349,7 +388,7 @@ async function createBatch(ctx, payload) {
     throw errors.conflict('该批次已提交过，请刷新订单列表后重试');
   }
   const nowDate = common.toDate(context.now);
-  const image = buildImageSnapshot(imageCtx.image, imageCtx.ticket, failureRecord, nowDate);
+  const images = failureRecords.map((record) => buildImageSnapshot(imageCtx.image, imageCtx.ticket, record, nowDate));
   const nextOrderNos = nextOrderNosOf();
   let created = [];
   try {
@@ -362,7 +401,7 @@ async function createBatch(ctx, payload) {
           requestKey: requestKeys[i],
           context,
           fields: fieldsList[i],
-          image: imageForItem(image, i),
+          image: images[i],
           clientRequestId,
           nowDate
         });
@@ -388,7 +427,8 @@ async function createBatch(ctx, payload) {
     }
     throw error;
   }
-  const associations = [{ record: failureRecord, order: created[0] }];
+  // 事务后逐单回填：每条记录只回填它自己那张单的 orderId/fileId（已回填的不覆盖，重放/复用不串）
+  const associations = created.map((order, index) => ({ record: failureRecords[index], order }));
   await backfillFailureRecords(ctx, associations);
   const orderDtos = [];
   for (let i = 0; i < created.length; i += 1) {

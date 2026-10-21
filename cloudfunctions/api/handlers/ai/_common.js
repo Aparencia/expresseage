@@ -96,7 +96,9 @@ async function loadUploadTicket(ctx, ticketId) {
   return ticket || null;
 }
 
-function ticketStatusOf(ticket, scope) {
+// 上传票据校验（不拒绝、只标记 ticketInvalid 供后台排查；DATA_MODEL §2.12/§7.9）。
+// 五大失效口径：不存在 / 非本人 / purpose 不符 / 已过期 / 已消费——任一命中即 ticketInvalid=true，仍入队。
+function ticketStatusOf(ticket, scope, nowMs) {
   if (!ticket) {
     return { valid: false, reason: 'MISSING' };
   }
@@ -105,6 +107,17 @@ function ticketStatusOf(ticket, scope) {
   }
   if (ticket.purpose !== enums.UPLOAD_PURPOSE.TICKET) {
     return { valid: false, reason: 'PURPOSE' };
+  }
+  if (ticket.usedAt) {
+    return { valid: false, reason: 'USED' };
+  }
+  // 到期判定用「票据自带 expiresAt」严格比较（缺失/非法一律按过期，不用 Date.now 兜底）
+  const rawExpires = ticket.expiresAt;
+  const expiresAt = rawExpires instanceof Date
+    ? rawExpires.getTime()
+    : (typeof rawExpires === 'number' ? rawExpires : 0);
+  if (!expiresAt || expiresAt <= nowMs) {
+    return { valid: false, reason: 'EXPIRED' };
   }
   return { valid: true, reason: '' };
 }

@@ -126,3 +126,21 @@
 .zero-money-note {
   margin-top: 16rpx;
 }
+
+.ocr-text {
+  margin-top: 16rpx;
+  word-break: break-all;
+  max-height: 320rpx;
+  overflow-y: auto;
+}
+
+.link-text {
+  color: var(--v4-brand);
+  min-height: 64rpx;
+  display: flex;
+  align-items: center;
+}
+
+.service-desc {
+  margin-top: 8rpx;
+}

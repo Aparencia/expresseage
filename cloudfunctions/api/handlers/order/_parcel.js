@@ -22,7 +22,9 @@ function validationOrThrow(result, field) {
 }
 
 // 取件信息：站点只认 P1~P8（可先空，兼职务必 order.correct 补）、码/柜号/尾号过形态闸
-function normalizeParcel(input) {
+// fallbackSource：AI 兜底被采纳时由 recognition.source 传入（DATA_MODEL §4.9：DEEPSEEK 采纳→写 DEEPSEEK）；
+// 显式 parcel.recognitionSource 优先（手改→MANUAL 由调用方传显式值）。
+function normalizeParcel(input, fallbackSource) {
   const parcel = isPlainObject(input) ? input : null;
   if (!parcel) {
     throw errors.validation('parcel', '请填写取件信息');
@@ -56,6 +58,8 @@ function normalizeParcel(input) {
       throw errors.validation('recognitionSource', '识别来源不合法');
     }
     recognitionSource = parcel.recognitionSource;
+  } else if (typeof fallbackSource === 'string' && RECOGNITION_SOURCES.indexOf(fallbackSource) >= 0) {
+    recognitionSource = fallbackSource;
   }
   let confidence = '';
   if (typeof parcel.confidence === 'string' && parcel.confidence !== '') {
@@ -207,9 +211,18 @@ function guestPhoneTail(guest) {
   return guest && typeof guest.phoneTail === 'string' ? guest.phoneTail : '';
 }
 
+// recognition.source（AI 兜底被采纳时 DEEPSEEK）：只接受 RECOGNITION_SOURCES 值；非法/缺失回 ''（不猜）
+function normalizeRecognitionSource(value) {
+  if (typeof value !== 'string' || RECOGNITION_SOURCES.indexOf(value) < 0) {
+    return '';
+  }
+  return value;
+}
+
 module.exports = {
   isPlainObject,
   normalizeParcel,
+  normalizeRecognitionSource,
   normalizeAppoint,
   pickService,
   assertServiceRange,

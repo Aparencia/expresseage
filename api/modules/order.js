@@ -1,16 +1,18 @@
 // api/modules/order.js · order 域（19 动作；批量由客户端循环 + 同一 batchActionId）
+// 幂等：create/createBatch 接受 opts.clientRequestId（页面重试复用同一键，防重复建单；UX §4.8）。
 const client = require('../client');
 
-function call(action, payload) {
-  return client.call(action, payload || {});
+function call(action, payload, opts) {
+  return client.call(action, payload || {}, opts || {});
 }
 
 module.exports = {
-  create(payload) {
-    return call('order.create', payload);
+  // 建单幂等：opts.clientRequestId 由页面在进入 Step4 生成，失败重试沿用（内容变更后重生成）
+  create(payload, opts) {
+    return call('order.create', payload, opts);
   },
-  createBatch(payload) {
-    return call('order.createBatch', payload);
+  createBatch(payload, opts) {
+    return call('order.createBatch', payload, opts);
   },
   get(payload) {
     return client.call('order.get', payload || {}, { retry: true });

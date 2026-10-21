@@ -52,10 +52,12 @@ function recognitionSourceLabel(source) {
 
 /**
  * 降级 DTO（识别失败/低置信）：客户端只认这份，走手填且不阻断下单。
+ * 键集合与 DTO_KEYS 完全一致（额外键一律剥离）；幂等标记 duplicated 只作内部语义，不进 DTO。
  * queue 必须来自已成功入队/幂等命中的失败记录（failureNo 非空）。
- * @param {{failureNo: string, duplicated?: boolean}} queue
+ * @param {{failureNo: string}} queue
  * @param {object} fields 可回填的识别字段（可为空串）
  * @param {{source?: string}} extras
+ * @returns {object} 恰为 DTO_KEYS 的降级响应
  */
 function buildDegradedDto(queue, fields, extras) {
   const extra = extras || {};
@@ -70,8 +72,7 @@ function buildDegradedDto(queue, fields, extras) {
     confidence: typeof value.confidence === 'string' && value.confidence ? value.confidence : FALLBACK_CONFIDENCE,
     source: typeof extra.source === 'string' ? extra.source : 'NONE',
     needsReview: true,
-    failureId: queue && typeof queue.failureNo === 'string' ? queue.failureNo : '',
-    duplicated: !!(queue && queue.duplicated === true)
+    failureId: queue && typeof queue.failureNo === 'string' ? queue.failureNo : ''
   };
 }
 

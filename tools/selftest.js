@@ -194,7 +194,8 @@ if (require.main === module) {
   // 每套 suite 自己打印汇总行（断言 N/N；失败 M 项 + 结果：PASS|FAIL），最后再打印全局汇总。
   const fs = require('fs');
   const SUITES = ['selftest-core', 'selftest-state', 'selftest-recognize', 'selftest-cloud', 'selftest-ai',
-    'selftest-bind', 'selftest-bind-cloud', 'selftest-profile', 'selftest-switch', 'selftest-testaccount'];
+    'selftest-bind', 'selftest-bind-cloud', 'selftest-order', 'selftest-order-flow', 'selftest-profile',
+    'selftest-switch', 'selftest-testaccount'];
   const agg = { count: 0, passed: 0, failures: 0 };
   installCrashGuard(() => ({ count: agg.count, passed: agg.passed, failures: agg.failures }), 'selftest');
   (async () => {

@@ -12,7 +12,7 @@ const ocrFlow = require('./parts/ocr-flow');
 
 const DETAIL_PAGE = '/pkg-customer/pages/order-detail/index';
 const HOME_PAGE = '/pages/customer/home/index';
-const PAGE_SIZE_MAX = 5;
+const PAGE_SIZE_MAX = model.MAX_BATCH;
 
 Page({
   data: {
@@ -31,17 +31,23 @@ Page({
     failureNext: '',
     failureId: '',
     recognizeHint: '',
+    // 识别原文只留本页内存（不落库/不进本地存储）；「查看识别原文」折叠展示（UX §4.3）
+    ocrText: '',
+    ocrTextOpen: false,
+    // AI 兜底态：成功提示 / 逐件降级说明（文案单源在 parts/ocr-flow）
+    aiHint: '',
     items: [],
     stations: [],
     services: [],
     slots: [],
-    appointType: 'ASAP',
-    slotIndex: -1,
-    note: '',
     submitting: false,
     submitError: '',
     resultOrders: [],
-    resultBatch: false
+    resultBatch: false,
+    // 提交幂等键（clientRequestId）：进入 Step4 生成、失败重试复用、内容变更重生成、成功清空（UX §4.8）
+    submission: null,
+    // 用户已取消识别改手填：迟到的识别结果不得覆盖手填内容（§4.3.1）
+    manualPicked: false
   },
 
   onLoad() {
@@ -131,12 +137,19 @@ Page({
       failureNext: '',
       failureId: '',
       recognizeHint: '',
-      items: []
+      aiHint: '',
+      ocrText: '',
+      ocrTextOpen: false,
+      items: [],
+      submission: model.clearSubmission(),
+      manualPicked: false
     });
     try {
       const result = await ocrFlow.identify(file, (state) => this.onOcrPhase(state));
+      if (this.data.manualPicked) return;
       this.applyIdentify(result);
     } catch (err) {
+      if (this.data.manualPicked) return;
       this.setData({ ocrState: 'failed', ocrError: (err && err.message) || '识别失败，可手动填写' });
     }
   },
@@ -150,7 +163,13 @@ Page({
       failureNext: '可以重试，或手动填写后提交。',
       uploadTicketId: '',
       image: null,
-      file: null
+      file: null,
+      filePath: '',
+      ocrText: '',
+      ocrTextOpen: false,
+      aiHint: '',
+      submission: model.clearSubmission(),
+      manualPicked: false
     });
   },
 
@@ -171,7 +190,12 @@ Page({
     }
     const meta = {
       failureId: (result && result.failureId) || '',
-      recognizeHint: (result && result.hint) || ''
+      recognizeHint: (result && result.hint) || '',
+      aiHint: result && result.aiUsed === true ? ocrFlow.AI_SUGGESTION_HINT : '',
+      ocrText: (result && result.ocrText) || '',
+      ocrTextOpen: false,
+      submission: model.clearSubmission(),
+      manualPicked: false
     };
     if (result && result.ok && (result.items || []).length > 0) {
       const items = result.items.slice(0, PAGE_SIZE_MAX).map(function map(item) {
@@ -199,7 +223,10 @@ Page({
       failureText: copy.text,
       failureNext: copy.next,
       step: 2
-    }, meta));
+    }, meta, {
+      // 降级到第 2 步后仍要说真话：失败卡在第 1 步，第 2 步顶部给同一句人话
+      aiHint: copy.text
+    }));
   },
 
   onRetryOcr() {
@@ -210,18 +237,58 @@ Page({
     this.onPickFile({ detail: { files: [this.data.file] } });
   },
 
+  // 新增件的默认值：服务/预约/备注继承第一件；没有第一件时用服务目录第一项
+  itemDefaults() {
+    const inherited = model.inheritedDefaults(this.data.items);
+    if (!inherited.serviceCode) inherited.serviceCode = (this.data.services[0] || {}).code || '';
+    return inherited;
+  },
+
+  // §4.3.1 ③：识别/兜底进行中即可「先手动填写」——不阻塞手填，迟到的识别结果不再覆盖
   onManualTap() {
-    const defaults = { serviceCode: (this.data.services[0] || {}).code || '' };
-    this.setData({ items: [model.makeItem({}, defaults)], step: 2, ocrState: 'failed', recognizeHint: '' });
+    const defaults = this.itemDefaults();
+    this.setData({
+      manualPicked: true,
+      submission: model.clearSubmission(),
+      items: [model.makeItem({}, defaults)],
+      step: 2,
+      ocrState: 'failed',
+      recognizeHint: '',
+      aiHint: ''
+    });
+  },
+
+  // §4.3.1 ③「取消」：放弃本次智能识别（迟到的建议丢弃），文案按取消态静默降级
+  onCancelAi() {
+    const copy = ocrFlow.aiFallbackCopy('USER_CANCEL');
+    this.setData({
+      manualPicked: true,
+      ocrState: 'failed',
+      failureText: copy.text,
+      failureNext: copy.next,
+      aiHint: ''
+    });
+  },
+
+  onPreviewImage() {
+    if (!this.data.filePath) {
+      wx.showToast({ title: '还没有截图', icon: 'none' });
+      return;
+    }
+    wx.previewImage({ urls: [this.data.filePath], current: this.data.filePath });
+  },
+
+  onToggleOcrText() {
+    this.setData({ ocrTextOpen: !this.data.ocrTextOpen });
   },
 
   onAddItem() {
     if (this.data.readonly) return;
-    const defaults = { serviceCode: (this.data.services[0] || {}).code || '' };
     if (this.data.items.length >= PAGE_SIZE_MAX) {
-      wx.showToast({ title: '一图最多拆 5 件', icon: 'none' });
+      wx.showToast({ title: '一图最多拆 ' + PAGE_SIZE_MAX + ' 件', icon: 'none' });
       return;
     }
+    const defaults = this.itemDefaults();
     this.setData({ items: this.data.items.concat([model.makeItem({}, defaults)]) });
   },
 
@@ -264,72 +331,79 @@ Page({
     this.updateItem(index, { serviceCode: service.code || '', serviceIndex: serviceIndex });
   },
 
+  // 手改识别字段 → 来源降为 MANUAL（优先级 MANUAL > AI 来源 > RULE），由纯件统一口径
   updateItem(index, patch) {
     if (!(index >= 0)) return;
     const items = this.data.items.slice();
-    items[index] = model.revalidateItem(Object.assign({}, items[index], patch));
+    items[index] = model.revalidateItem(model.withManualEdit(items[index], patch));
     this.setData({ items: items });
   },
 
-  onAppointType(e) {
-    this.setData({ appointType: e.detail.value });
+  // 每件独立预约/备注（UX §3.7/§4.4：默认继承第一件，之后可逐件改）
+  onItemAppointType(e) {
+    this.updateItem(Number(e.currentTarget.dataset.index), { appointType: e.detail.value });
   },
 
-  onSlotChange(e) {
-    this.setData({ slotIndex: Number(e.detail.value) });
+  onItemSlotChange(e) {
+    const index = Number(e.currentTarget.dataset.index);
+    const slotIndex = Number(e.detail.value);
+    const slot = this.data.slots[slotIndex] || {};
+    this.updateItem(index, {
+      appointType: 'SLOT',
+      slotIndex: slotIndex,
+      startAt: slot.startAt || '',
+      endAt: slot.endAt || ''
+    });
   },
 
-  onNoteInput(e) {
-    this.setData({ note: String((e.detail && e.detail.value) || '') });
+  onItemNoteInput(e) {
+    this.updateItem(Number(e.currentTarget.dataset.index), {
+      note: String((e.detail && e.detail.value) || '')
+    });
   },
 
   goStep2Next() {
-    const checked = this.data.items.filter(function on(item) { return item.checked; });
-    if (checked.length === 0) {
-      wx.showToast({ title: '至少选择一件再继续', icon: 'none' });
+    // 与提交前同一套形态闸（只要有一件不合格就不进下一步）
+    const check = model.canSubmit(this.data.items);
+    if (!check.ok) {
+      wx.showToast({ title: check.reason, icon: 'none' });
       return;
-    }
-    for (let i = 0; i < checked.length; i += 1) {
-      const item = model.revalidateItem(Object.assign({}, checked[i]));
-      if (!item.stationId) {
-        wx.showToast({ title: '请补全站点后再继续', icon: 'none' });
-        return;
-      }
-      if (item.codeStatus === 'NONE') {
-        wx.showToast({ title: '请补全取件码或运单后 5 位', icon: 'none' });
-        return;
-      }
-      if (Object.keys(item.formErrors).length > 0) {
-        wx.showToast({ title: item.formErrors[Object.keys(item.formErrors)[0]], icon: 'none' });
-        return;
-      }
     }
     this.setData({ step: 3 });
   },
 
+  // 逐件校验预约与备注（每件独立），再进入 Step4
   goStep3Next() {
-    if (this.data.appointType === 'SLOT') {
-      const slot = this.data.slots[this.data.slotIndex];
-      if (!slot || slot.expired) {
-        wx.showToast({ title: '请选择有效预约时段', icon: 'none' });
+    const checked = this.data.items.filter(function on(item) { return item.checked; });
+    for (let i = 0; i < checked.length; i += 1) {
+      const item = checked[i];
+      if (item.appointType === 'SLOT') {
+        const slot = this.data.slots[item.slotIndex];
+        if (!slot || slot.expired) {
+          wx.showToast({ title: '请为每件选择有效预约时段', icon: 'none' });
+          return;
+        }
+      }
+      if (String(item.note || '').length > 200) {
+        wx.showToast({ title: '备注最多 200 字', icon: 'none' });
         return;
       }
     }
-    if (this.data.note.length > 200) {
-      wx.showToast({ title: '备注最多 200 字', icon: 'none' });
-      return;
-    }
-    this.setData({ step: 4 });
+    this.enterStep4();
+  },
+
+  // 进入 Step4 即生成提交幂等键；内容没变（如上一步再回来）沿用同一 id（UX §4.8）
+  enterStep4() {
+    const submission = model.ensureSubmission(this.data.submission, this.submitFingerprint());
+    this.setData({ step: 4, submission: submission, submitError: '' });
+  },
+
+  submitFingerprint() {
+    return model.submissionFingerprint(this.data.items);
   },
 
   goPrev() {
     this.setData({ step: Math.max(1, this.data.step - 1) });
-  },
-
-  appointPayload() {
-    if (this.data.appointType !== 'SLOT') return { type: 'ASAP' };
-    const slot = this.data.slots[this.data.slotIndex] || {};
-    return { type: 'SLOT', startAt: slot.startAt, endAt: slot.endAt };
   },
 
   async onSubmit() {
@@ -348,36 +422,37 @@ Page({
       return;
     }
     this.setData({ submitting: true, submitError: '' });
+    // 失败重试复用同一 clientRequestId（不换键 ⇒ 服务端幂等，不重复建单）；内容变过则重生成
+    const submission = model.ensureSubmission(this.data.submission, this.submitFingerprint());
+    this.setData({ submission: submission });
     const payload = model.buildPayload(this.data.items, this.data.uploadTicketId, this.data.image, {
       failureId: this.data.failureId
     });
-    const appoint = this.appointPayload();
-    const note = this.data.note;
-    payload.items.forEach(function fill(item) { item.appoint = appoint; item.note = note; });
+    const submitOptions = { clientRequestId: submission.id };
     try {
       if (payload.single) {
-        // order.create 入参：{parcel,serviceCode,appoint,note,ticket,image}（另可带 recognition.failureId）
+        // order.create 入参：{parcel,serviceCode,appoint,note,ticket,image,recognition}（严格白名单，无视图态字段）
         const singlePayload = Object.assign({}, payload.items[0], {
           ticket: payload.ticket,
           image: payload.image
         });
         if (payload.recognition) singlePayload.recognition = payload.recognition;
-        const data = await orderApi.create(singlePayload);
+        const data = await orderApi.create(singlePayload, submitOptions);
         const order = (data && data.order) || {};
+        this.setData({ submission: model.clearSubmission() });
         wx.showToast({ title: '已提交，等待兼职接单', icon: 'success' });
         setTimeout(function go() {
           wx.redirectTo({ url: DETAIL_PAGE + '?orderNo=' + encodeURIComponent(order.orderNo || '') });
         }, 600);
         return;
       }
-      // order.createBatch 入参：{items,ticket,image}（另可带 recognition.failureId）
+      // order.createBatch 入参：{items,ticket,image}；每项自带 recognition.failureId（同图多单逐单关联）
       const batchPayload = {
         items: payload.items,
         ticket: payload.ticket,
         image: payload.image
       };
-      if (payload.recognition) batchPayload.recognition = payload.recognition;
-      const data = await orderApi.createBatch(batchPayload);
+      const data = await orderApi.createBatch(batchPayload, submitOptions);
       this.setResult((data && data.orders) || []);
     } catch (err) {
       this.setData({ submitting: false, submitError: (err && err.message) || '提交失败，内容还在，可以重试' });
@@ -387,6 +462,7 @@ Page({
   setResult(orders) {
     this.setData({
       submitting: false,
+      submission: model.clearSubmission(),
       resultOrders: orders.map(function map(item) {
         return { orderNo: item.orderNo || (item.order && item.order.orderNo) || '' };
       }),

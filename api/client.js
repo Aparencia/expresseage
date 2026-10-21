@@ -1,5 +1,7 @@
 // api/client.js · 唯一 wx.cloud.callFunction 出口（v4 客户端请求层）
 // 职责：组装包络 / 注入切换会话票据 / 超时 / 读动作重试 / 13 码→人话 / 校时
+// 幂等：call(action,data,{clientRequestId}) 可显式指定幂等键（页面「重试复用同一 id」），
+//       未传或非法时静默回退自生成（不把格式错误抛给页面；服务端仍做 16~32 位校验）。
 const store = require('../store/index');
 const ACTIONS = require('../shared/actions');
 const ERROR_COPY = require('../shared/error-copy');
@@ -10,6 +12,8 @@ const TIMEOUT_MS = 10000;
 const RETRY_DELAYS = [300, 900];
 const REQUEST_ID_LENGTH = 24;
 const REQUEST_ID_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789abcdefghijkmnpqrstuvwxyz';
+// 服务端 shared/validate.validateClientRequestId 同口径：16~32 位 [A-Za-z0-9_-]
+const CLIENT_REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{16,32}$/;
 const RETRYABLE_CODES = ['DEPENDENCY_FAILED', 'INTERNAL_ERROR'];
 
 class CallError extends Error {
@@ -38,6 +42,16 @@ function createRequestId() {
     out += REQUEST_ID_CHARS.charAt(Math.floor(Math.random() * REQUEST_ID_CHARS.length));
   }
   return out;
+}
+
+/** 显式幂等键是否可用（页面传入的旧 id / 内容变更前生成的 id 都可能被判非法 → 回退自生成） */
+function isValidClientRequestId(value) {
+  return typeof value === 'string' && CLIENT_REQUEST_ID_PATTERN.test(value);
+}
+
+/** 内部解析：合法沿用、否则自生成（不抛错，页面无需 try/catch 幂等键） */
+function resolveClientRequestId(explicit) {
+  return isValidClientRequestId(explicit) ? explicit : createRequestId();
 }
 
 function isWriteAction(action) {
@@ -83,8 +97,8 @@ function defaultTransport(payload) {
   });
 }
 
-function buildPayload(action, data) {
-  const payload = { action, data: data || {}, clientRequestId: createRequestId() };
+function buildPayload(action, data, explicitRequestId) {
+  const payload = { action, data: data || {}, clientRequestId: resolveClientRequestId(explicitRequestId) };
   const view = store.getViewContext();
   if (view && view.viewTicket) {
     payload.viewTicket = view.viewTicket;
@@ -121,7 +135,7 @@ function sleep(ms) {
 async function call(action, data, opts) {
   const options = opts || {};
   modeGuard.assertWritable(action);
-  const payload = buildPayload(action, data);
+  const payload = buildPayload(action, data, options.clientRequestId);
   const attempts = options.retry === true || (options.retry !== false && isRetryAction(action)) ? 3 : 1;
   let lastError = null;
   for (let i = 0; i < attempts; i += 1) {
@@ -147,5 +161,7 @@ module.exports = {
   restoreTransport,
   isWriteAction,
   createRequestId,
+  isValidClientRequestId,
+  CLIENT_REQUEST_ID_PATTERN,
   RETRYABLE_CODES
 };

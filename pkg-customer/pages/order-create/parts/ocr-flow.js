@@ -5,9 +5,23 @@
 const aiApi = require('../../../../api/modules/ai');
 const ocr = require('../../../../utils/ocr/index');
 const recognize = require('../../../../utils/recognize/index');
+const model = require('./model');
 
 const OCR_TIMEOUT_MS = 40000;
 const VISION_MAX_EDGE = 1440;
+
+// §4.3.1 AI 兜底三态文案（关闭/超时/低置信；超限与关闭同句、不提示配额；用户取消 = 静默降级）
+const AI_FALLBACK_COPY = {
+  CLOSED: { text: '没识别出来，已反馈开发者复核，可手动填写。', next: '也可以换一张更清晰的图。' },
+  TIMEOUT: { text: '智能识别超时，已反馈开发者复核，可手动填写或换一张图。', next: '手动填写不影响下单。' },
+  LOW: { text: '识别结果不太确定，没自动填。', next: '已反馈开发者复核，可手动填写。' },
+  USER_CANCEL: { text: '已取消智能识别，可以手动填写。', next: '也可以换一张更清晰的图。' }
+};
+
+/** 三态文案选择（纯函数；state 非法按关闭处理，不装懂） */
+function aiFallbackCopy(state) {
+  return AI_FALLBACK_COPY[state] || AI_FALLBACK_COPY.CLOSED;
+}
 
 function hasVision() {
   return typeof wx !== 'undefined' && typeof wx.createVKSession === 'function';
@@ -128,41 +142,15 @@ function ocrDeps(img) {
   };
 }
 
-// AI 兜底：按件合并，手填优先；码类字段只补第一件（AI 单次识别只给一条码，不能复制到多件）
-function suggestionFor(index, suggestion) {
-  if (index === 0) return suggestion;
-  return {
-    stationId: suggestion.stationId,
-    stationName: suggestion.stationName,
-    confidence: suggestion.confidence,
-    source: suggestion.source,
-    recognized: suggestion.recognized,
-    needsReview: suggestion.needsReview,
-    failureId: suggestion.failureId
-  };
-}
-
-function applySuggestion(items, suggestion) {
-  if (!suggestion || typeof suggestion !== 'object') {
-    return { items: items, changed: false, unaligned: '' };
-  }
-  let changed = false;
-  let unaligned = '';
-  const next = (items || []).map(function map(item, index) {
-    const result = recognize.applyAiSuggestion(item, suggestionFor(index, suggestion));
-    if (result.changed.length > 0) changed = true;
-    if (result.parcel.aiPickupCodeUnaligned) unaligned = result.parcel.aiPickupCodeUnaligned;
-    return result.parcel;
-  });
-  return { items: next, changed: changed, unaligned: unaligned };
-}
+// AI 兜底成功态提示（§4.3.1 ④：只填空字段、手填优先，仍需人核对）
+const AI_SUGGESTION_HINT = '智能识别建议，请核对';
 
 /**
  * 对已上传的截图跑识别。file 来自 <image-picker> 的 change 事件：
  * { localPath, fileId, uploadTicketId, cloudPath, ... }
  * @returns {Promise<{ok:boolean,file:object,image?:object,items?:object[],ocrText?:string,
- *   failureCode?:string,failureCopy?:object,aiTried?:boolean,aiUsed?:boolean,
- *   failureId?:string,hint?:string,detail?:string}>}
+ *   failureCode?:string,failureCopy?:object,aiTried?:boolean,aiUsed?:boolean,aiFailed?:number,
+ *   aiFallbackState?:string,failureId?:string,trackingTail?:string,hint?:string,detail?:string}>}
  */
 async function identify(file, onState) {
   const notify = typeof onState === 'function' ? onState : function noop() {};
@@ -211,36 +199,60 @@ async function identify(file, onState) {
   let items = parsed.items;
   let aiTried = false;
   let aiUsed = false;
-  let failureId = '';
-  let aiNeedsReview = false;
+  let aiFailed = 0;
+  let aiFallbackState = '';
+  let unaligned = '';
   // 「认出但不像」只在与"一个码都没填上"同时成立时提示；已填到码时不要拿别的长数字打扰用户
   const hasFilledCode = items.some(function filled(item) { return !!(item && item.pickupCode); });
-  let unaligned = (parsed.unalignedCodes || []).length > 0 && !hasFilledCode ? parsed.unalignedCodes[0] : '';
-  if (parsed.needsReview || items.length === 0) {
+  let unalignedCode = (parsed.unalignedCodes || []).length > 0 && !hasFilledCode ? parsed.unalignedCodes[0] : '';
+  const needFallback = items.length === 0 || items.some(function need(item) {
+    return model.needsAiFallback(item);
+  });
+  if (needFallback) {
     aiTried = true;
     notify({ phase: 'ai' });
-    try {
-      // AI 兜底入参：{ocrTextMasked,hintTrackingTail?,uploadTicketId,role}（只经 api/modules 出口）
-      const suggestion = await aiApi.parseParcel({
-        ocrTextMasked: recognize.maskForAi(result.joined || ''),
-        hintTrackingTail: parsed.trackingTail || '',
-        uploadTicketId: (file && file.uploadTicketId) || '',
-        role: 'CUSTOMER'
-      }) || {};
-      const applied = applySuggestion(items, suggestion);
-      items = applied.items;
-      aiUsed = applied.changed;
-      if (applied.unaligned) unaligned = applied.unaligned;
-      failureId = suggestion.failureId || '';
-      aiNeedsReview = suggestion.needsReview === true;
-      // 识别失败/低置信的降级 DTO 也会带可预填字段（recognized:false 时照样只填空、不覆盖手填）
-      if (items.length === 0 && (suggestion.stationId || suggestion.pickupCode || suggestion.trackingTail)) {
-        items = [recognize.applyAiSuggestion(recognize.makeEmptyParcel(), suggestion).parcel];
-        aiUsed = true;
-      }
-    } catch (err) {
-      aiUsed = false;
-    }
+    // 同图多单按单调用（DATA_MODEL §4.9）：每件缺站点/缺码各调一次、各自独立 failureId；
+    // 规则已填好的件不外呼；某件失败只降级该件（applyAiFallbacks 为纯件，外呼经 api/modules 注入）
+    const seeds = items.length > 0 ? items : [recognize.makeEmptyParcel()];
+    const fallback = await model.applyAiFallbacks(seeds, {
+      ocrTextMasked: recognize.maskForAi(result.joined || ''),
+      hintTrackingTail: parsed.trackingTail || '',
+      uploadTicketId: (file && file.uploadTicketId) || '',
+      role: 'CUSTOMER'
+    }, aiApi.parseParcel);
+    items = fallback.items;
+    aiUsed = fallback.changed > 0;
+    aiFailed = fallback.failed;
+    aiFallbackState = (items[0] && items[0].aiState) || '';
+    items.forEach(function label(item) {
+      if (item.aiPickupCodeUnaligned) unalignedCode = item.aiPickupCodeUnaligned;
+      if (item.aiState && item.aiState !== 'OK') item.aiHint = aiFallbackCopy(item.aiState).text;
+    });
+  }
+  if (unalignedCode) unaligned = recognize.FORM_ERROR.pickupCode;
+  // 一件可提交字段都没拿到（空壳也按失败处理）：走失败卡 + 单源文案，页面据此给「手动填写」支路
+  const shell = items.length === 1 ? items[0] : null;
+  const shellEmpty = items.length === 0
+    || (!!shell && !shell.stationId && !shell.pickupCode && !shell.trackingTail && !shell.lockerNo);
+  const failureId = (items.filter(function has(item) { return !!item.failureId; })[0] || {}).failureId || '';
+  if (shellEmpty) {
+    const copy = aiTried ? aiFallbackCopy(aiFallbackState) : ocr.failureCopy('NO_TEXT');
+    return {
+      ok: true,
+      file: file,
+      image: image,
+      ocrText: result.joined || '',
+      items: [],
+      needsReview: true,
+      aiTried: aiTried,
+      aiUsed: false,
+      aiFallbackState: aiFallbackState,
+      failureId: failureId,
+      trackingTail: (shell && shell.trackingTail) || parsed.trackingTail || '',
+      hint: unaligned,
+      failureCode: 'NO_TEXT',
+      failureCopy: copy
+    };
   }
   return {
     ok: true,
@@ -248,12 +260,15 @@ async function identify(file, onState) {
     image: image,
     ocrText: result.joined || '',
     items: items,
-    needsReview: parsed.needsReview || aiNeedsReview || items.length === 0,
+    needsReview: parsed.needsReview || aiFailed > 0,
     aiTried: aiTried,
     aiUsed: aiUsed,
+    aiFailed: aiFailed,
+    aiFallbackState: aiFallbackState,
     failureId: failureId,
+    trackingTail: parsed.trackingTail || '',
     // 「认出但不像」的码候选：不自动填，只在页面给现有行内文案提示
-    hint: unaligned ? recognize.FORM_ERROR.pickupCode : '',
+    hint: unaligned,
     failureCode: '',
     failureCopy: null
   };
@@ -262,6 +277,9 @@ async function identify(file, onState) {
 module.exports = {
   OCR_TIMEOUT_MS,
   VISION_MAX_EDGE,
+  AI_FALLBACK_COPY,
+  AI_SUGGESTION_HINT,
+  aiFallbackCopy,
   hasVision,
   identify,
   imageInfo
