@@ -56,10 +56,11 @@ v4 把 v3 的「兼职单人台账」升级为 **顾客下单 + 兼职接单履�
 - 新增**微信头像/昵称**（v0.9，仅绑定双方可见、后台不展示、注销删除）与**测试账号可写切换**（v0.9，后台合成账号、与真实数据严格隔离、不计统计）。
 - ⚠️ **隐私承诺变更**：v3 是"数据只存本机、不上传"；v4 面向客户必须存云端账号，并新增开发者后台治理访问（默认脱敏）、只读视角（审计）、**头像/昵称采集与展示**、**第三方 AI 文本处理与识别失败原图复核**。上线前必须先定稿隐私指引与用户协议（先改文本再改代码）。
 
-## 工程现状（批 1 收口，2026-10-21）
+## 工程现状（批 1 收口 + 批 2 离线收口，2026-10-22）
 
 - **代码**：471 个文件 / 46,784 行；小程序端 30 页（主包 7 + `pkg-customer` 5 + `pkg-partner` 7 + `pkg-admin` 11）四件套齐全；`components/` 15 套 + `custom-tab-bar/`（根目录）+ tabbar 资产；`api/`（client 唯一出口 + 10 个域模块 + upload/privacy/mode-guard）、`store/`、`shared/` 13 件口径纯件 + `utils/` 纯件。
 - **云端**：`cloudfunctions/api`（index/router/app + 7 中间件 + db/dao + lib + 11 域 handlers 66 个 client 动作 + admin.bootstrap/health.check 内部动作）与 `cloudfunctions/cleanup`（13 个幂等 sweep + 独立 dao），依赖只 `wx-server-sdk`；14 集合/13 错误码/审计枚举三端一致。
-- **门禁**（真实输出）：`check.ps1` 4 步全 PASS（退出码 0）——`check.js` 31/31、`check-docs.js --batch 1` 10/10、零金额扫描 0 命中、`selftest.js` 9 套 1,014 条断言全 PASS（core 58 / state 341 / recognize 187 / cloud 125 / ai 86 / bind 48 / profile 47 / switch 74 / testaccount 48）。
+- **门禁**（真实输出）：`check.ps1` 4 步全 PASS（退出码 0）——`check.js` 31/31、`check-docs.js --batch 1` 10/10、零金额扫描 0 命中、`selftest.js` 9 套 1,279 条断言全 PASS（core 58 / state 341 / recognize 187 / cloud 168 / ai 86 / bind 48 / profile 98 / switch 140 / testaccount 153）；另有 `tools/mutation.ps1` 变异电池（#29/#30/#31 安全判据已取首红证据，#31 与 #30 有牙、M21 复验修复后的 #29 有牙）。
+- **批 2 离线收口**（提交 `619f39a`/`d79963d`）：账号入口（launch 隐私闸/角色分流/`lastRole` 建议/头像昵称采集/邀请码激活/开发者分流）、切换会话与测试账号（真实只读 + 测试可写 + 四动作 + dryRun 级联 + 审计）、头像上传服务端 size/类型闸（`api/upload` 顺序修正）、`lib/time.isPast` Date 归一；期间修复 2 个真虫（过期邀请码可激活、退出会话必失败）与兼职 READONLY targetId 口径等 10 项缺口。真机项（E12/切换条/测试账号单机双端）待用户点检。
 - **已闭环工程裁决**：`docs/TECH_DEBT.md` TD-017（四档排序归客户端）、TD-018（公开配置含 `viewTicketTtlMinutes`）、TD-007/008/009（upload/privacy 接纯件）等；未闭 TD 为 E5/E12 真机项、D8 苑名、P1 预留与已知口径差异。
 - **尚未执行（只能用户做）**：`git` 已初始化并提交；云开发环境创建、`config/env.js` 回填 envId、14 集合/索引/安全规则、`ADMIN_OPENIDS`/`DEEPSEEK_API_KEY` 环境变量、定时触发器、存储权限、真机点检、隐私后台声明与提审——按 `docs/RUNBOOK.md` 执行并留证据；未部署前云函数未在真实云环境跑过（fake-DB 单测已覆盖核心路径）。
