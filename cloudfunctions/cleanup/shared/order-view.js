@@ -1,7 +1,7 @@
 // shared/order-view.js · 订单视图模型（状态中文 / 四档动线排序 / 状态桶 / counts 六项键名）
 // 契约：docs/V4_CONTRACT.md v0.9 §5「列表动线排序（四档）」；docs/V4_DATA_MODEL.md §5.2/§7.5/§8.5
 //       （工作台 counts 六项：submitted/accepted/picked/delivered/exception/todayCompleted）。
-// 口径：排序唯一源在服务端；本文件是同一份纯逻辑的共用件（云端 listPartner 与客户端零件可共用），
+// 口径：排序规则唯一源在本文件；服务端只做状态桶 + 站点过滤，客户端零件层调用 sortByPickupRoute，
 //       页面不重排、只渲染。四档：①需查明 ②快递柜 ③分段码 ④其他；同档按码中数字升序 → orderNo 兜底。
 'use strict';
 

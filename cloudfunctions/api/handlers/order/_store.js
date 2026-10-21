@@ -36,6 +36,18 @@ function scopeOf(ctx) {
   };
 }
 
+// 测试数据隔离：真实会话（含 READONLY）只看 isTest=false；TEST_WRITE 会话只看 isTest=true
+function isTestSession(ctx) {
+  return identityOf(ctx).viewMode === enums.VIEW_MODE.TEST_WRITE;
+}
+
+function assertTestOrderVisible(ctx, order) {
+  const expectTest = isTestSession(ctx);
+  if ((order.isTest === true) !== expectTest) {
+    throw errors.notFound('订单不存在或不可查看');
+  }
+}
+
 function assertWritable(ctx) {
   if (scopeOf(ctx).readOnly) {
     throw errors.forbidden('开发者只读视角不能操作');
@@ -217,7 +229,6 @@ function normalizeOrderNoInput(value) {
   return orderNo;
 }
 
-// 订单可见归属：顾客=本人单（guest 单 customerId 为空，顾客不可见）；兼职=自己的单；admin=白名单后台
 function orderSideOf(ctx, order) {
   if (!order) {
     return '';
@@ -309,6 +320,8 @@ module.exports = {
   time,
   identityOf,
   scopeOf,
+  isTestSession,
+  assertTestOrderVisible,
   assertWritable,
   customerScope,
   loadScopePartner,

@@ -97,6 +97,24 @@ function uniqueIndexesForApi() {
   };
 }
 
+const ALL_COLLECTION_NAMES = Object.keys(COLLECTIONS).map((key) => COLLECTIONS[key]);
+
+// tools/fake-db.js 只在 seed 过的集合上持久化写入（未 seed 集合的写入落入临时 Map）；
+// 测试库统一预建 14 个集合，避免"写入静默丢失"导致的假红。
+function createTestDb() {
+  const db = createTestDb();
+  ALL_COLLECTION_NAMES.forEach((name) => db.seed(name, []));
+  return db;
+}
+
+// 异步分节串行执行：harness 的 sectionTitle 是全局的，并发跑会让失败标签串到别的节。
+let serialQueue = Promise.resolve();
+function serial(fn) {
+  const run = serialQueue.then(fn);
+  serialQueue = run.catch(() => {});
+  return run;
+}
+
 function makeCtx(dao, options) {
   const opts = options || {};
   const openid = opts.openid || '';
@@ -139,9 +157,11 @@ function writeAction(action) {
 }
 
 function register(h) {
+  const asyncSection = (title, fn) => h.section(title, (t) => serial(() => fn(t)));
+
   // ---------------------------------------------------------------- §7.3 dao 返回形状与事务
-  h.section('§7.3 dao 返回形状 / 事务 / 唯一冲突', async (t) => {
-    const db = createFakeDb({ uniqueIndexes: uniqueIndexesForApi() });
+  asyncSection('§7.3 dao 返回形状 / 事务 / 唯一冲突', async (t) => {
+    const db = createTestDb();
     const dao = createDao(db);
     const added = await dao.add(COLLECTIONS.USERS, { _id: 'u-1', roles: [], status: USER_STATUS.ACTIVE });
     t.eq(added._id, 'u-1', 'add 返回 {_id}');
@@ -195,8 +215,8 @@ function register(h) {
   });
 
   // ---------------------------------------------------------------- §7.3 auth 中间件
-  h.section('§7.3 auth：懒建用户 / 开发者白名单 / 停用 / 维护与隐私闸', async (t) => {
-    const db = createFakeDb({ uniqueIndexes: uniqueIndexesForApi() });
+  asyncSection('§7.3 auth：懒建用户 / 开发者白名单 / 停用 / 维护与隐私闸', async (t) => {
+    const db = createTestDb();
     const dao = createDao(db);
     const normalCtx = makeCtx(dao, { openid: 'openid-normal' });
     await auth.middleware(makeState(normalCtx, 'user.bootstrap', {}, { spec: { visibility: 'client', write: false } }));
@@ -266,8 +286,8 @@ function register(h) {
   });
 
   // ---------------------------------------------------------------- §7.3 validate 中间件
-  h.section('§7.3 validate：clientRequestId / expectedVersion / 危险键剥离', async (t) => {
-    const db = createFakeDb({ uniqueIndexes: uniqueIndexesForApi() });
+  asyncSection('§7.3 validate：clientRequestId / expectedVersion / 危险键剥离', async (t) => {
+    const db = createTestDb();
     const dao = createDao(db);
     let error = null;
     try {
@@ -320,14 +340,14 @@ function register(h) {
     t.check(error && error.code === 'VALIDATION_FAILED', '反例：payload 非对象 → VALIDATION_FAILED');
     const dirty = JSON.parse('{"__proto__":{"polluted":true},"safe":1}');
     const cleanState = await validateMw.middleware(makeState(makeCtx(dao, { openid: 'u-validate' }), 'order.get', dirty, readAction()));
-    t.check(!('__proto__' in cleanState.payload) && cleanState.payload.safe === 1, '危险键 __proto__ 被剥离且保留合法字段');
+    t.check(!Object.prototype.hasOwnProperty.call(cleanState.payload, '__proto__') && cleanState.payload.safe === 1, '危险键 __proto__ 被剥离且保留合法字段');
     t.check({}.polluted === undefined, '原型链未被污染');
     t.notEmpty(Object.keys(cleanState.payload), 'validate 样本非空');
   });
 
   // ---------------------------------------------------------------- §7.3 ratelimit 中间件
-  h.section('§7.3 ratelimit：配额打满 / 跨日重置 / 会话独立 / 计数回退', async (t) => {
-    const db = createFakeDb({ uniqueIndexes: uniqueIndexesForApi() });
+  asyncSection('§7.3 ratelimit：配额打满 / 跨日重置 / 会话独立 / 计数回退', async (t) => {
+    const db = createTestDb();
     const dao = createDao(db);
     const ctx = makeCtx(dao, { openid: 'openid-rate' });
     let rateError = null;
@@ -397,14 +417,14 @@ function register(h) {
   });
 
   // ---------------------------------------------------------------- §7.3 编号生成与公开配置
-  h.section('§7.3 编号生成与公开配置（shared/defaults 委托）', async (t) => {
+  asyncSection('§7.3 编号生成与公开配置（shared/defaults 委托）', async (t) => {
     const configLib = require(path.join(API, 'db/config.js'));
     const idGenerator = require(path.join(API, 'lib/id-generator.js'));
     t.check(configLib.PUBLIC_CONFIG_KEYS.indexOf('viewTicketTtlMinutes') >= 0,
       '公开配置子集含 viewTicketTtlMinutes（切换会话倒计时用）');
     const pub = configLib.publicConfig(configLib.cloneDefault());
     t.eq(pub.viewTicketTtlMinutes, 30, 'config.getPublic 公开子集 viewTicketTtlMinutes=30');
-    const db = createFakeDb({ uniqueIndexes: uniqueIndexesForApi() });
+    const db = createTestDb();
     const dao = createDao(db);
     const no1 = await idGenerator.generateOrderNo(dao, NOW);
     const no2 = await idGenerator.generateOrderNo(dao, NOW);
@@ -419,8 +439,8 @@ function register(h) {
   });
 
   // ---------------------------------------------------------------- §7.3 switch-session 中间件
-  h.section('§7.3 switch-session：READONLY 拒写 / TEST_WRITE 白名单 / 票据过期审计', async (t) => {
-    const db = createFakeDb({ uniqueIndexes: uniqueIndexesForApi() });
+  asyncSection('§7.3 switch-session：READONLY 拒写 / TEST_WRITE 白名单 / 票据过期审计', async (t) => {
+    const db = createTestDb();
     const dao = createDao(db);
     db.seed('users', [
       { _id: ADMIN_OPENID, roles: [], status: USER_STATUS.ACTIVE, isTestAccount: false },
@@ -560,14 +580,14 @@ function register(h) {
   });
 
   // ---------------------------------------------------------------- §7.3 API 端到端（需 11 域齐）
-  h.section('§7.3 API 端到端（health/admin.bootstrap/状态矩阵/幂等/越权）', async (t) => {
+  asyncSection('§7.3 API 端到端（health/admin.bootstrap/状态矩阵/幂等/越权）', async (t) => {
     const apiState = probeApiReady();
     if (!apiState.ready) {
       pendingAsserts(t, API_PENDING_ASSERTS, '待 11 域 handlers 齐后重跑（' + String(apiState.error).slice(0, 60) + '）');
       return;
     }
     const app = require(path.join(API, 'app.js'));
-    const healthDb = createFakeDb({ uniqueIndexes: uniqueIndexesForApi() });
+    const healthDb = createTestDb();
     const deployApi = app.createApi({ db: healthDb, now: () => NOW, openid: '', env: ADMIN_ENV });
     const health = await deployApi.call('health.check', {});
     t.eq(health.ok, true, '部署上下文 health.check ok:true（internal 最小链路）');
@@ -583,7 +603,7 @@ function register(h) {
     t.eq((await deployApi.call('health.check', {})).data.checks.configSeeded, true, 'bootstrap 后 health.check configSeeded=true');
 
     // 内容安全桩：customer.saveProfile 走 cloud.openapi.security.msgSecCheck（v2），pass/risky 两态
-    const profileDb = createFakeDb({ uniqueIndexes: uniqueIndexesForApi() });
+    const profileDb = createTestDb();
     profileDb.seed('users', [{ _id: 'openid-profile', roles: [], status: USER_STATUS.ACTIVE, isTestAccount: false, privacyConsent: { version: 'v4.0', at: NOW } }]);
     const passApi = app.createApi({ db: profileDb, now: () => NOW, openid: 'openid-profile', env: ADMIN_ENV, cloud: cloudStub('pass') });
     const savedProfile = await passApi.call('customer.saveProfile', {
@@ -603,7 +623,7 @@ function register(h) {
     t.check(riskyProfile.ok === false && riskyProfile.code === 'VALIDATION_FAILED',
       '命中 msgSecCheck（suggest=risky）→ VALIDATION_FAILED（不落库）');
 
-    const db = createFakeDb({ uniqueIndexes: uniqueIndexesForApi() });
+    const db = createTestDb();
     db.seed('users', [
       { _id: 'openid-cust-order', roles: [ROLES.CUSTOMER], status: USER_STATUS.ACTIVE, isTestAccount: false, privacyConsent: { version: 'v4.0', at: NOW } },
       { _id: 'openid-partner-order', roles: [ROLES.PARTNER], status: USER_STATUS.ACTIVE, isTestAccount: false },
@@ -652,7 +672,7 @@ function register(h) {
     t.check(crossAccept.ok === false && (crossAccept.code === 'FORBIDDEN' || crossAccept.code === 'NOT_FOUND'),
       '越权：兼职 B 操作兼职 A 的订单 → FORBIDDEN/NOT_FOUND');
 
-    const idemDb = createFakeDb({ uniqueIndexes: uniqueIndexesForApi() });
+    const idemDb = createTestDb();
     idemDb.seed('users', [
       { _id: 'openid-idem', roles: [ROLES.CUSTOMER], status: USER_STATUS.ACTIVE, isTestAccount: false, privacyConsent: { version: 'v4.0', at: NOW } }
     ]);
@@ -677,7 +697,7 @@ function register(h) {
   });
 
   // ---------------------------------------------------------------- §7.3 cleanup 时间旅行（sweeps 落盘后）
-  h.section('§7.3 cleanup 单触发器时间旅行（到期幂等 / 过期会话审计至多一条）', async (t) => {
+  asyncSection('§7.3 cleanup 单触发器时间旅行（到期幂等 / 过期会话审计至多一条）', async (t) => {
     const sweepState = probeSweeps();
     if (!sweepState.ready) {
       pendingAsserts(t, CLEANUP_PENDING_ASSERTS, '待 cleanup sweeps 落盘后重跑（' + String(sweepState.error).slice(0, 60) + '）');
@@ -690,7 +710,7 @@ function register(h) {
     t.check(!!byName.orderTimeout, 'sweeps 含 orderTimeout');
     t.check(!!byName.autoComplete, 'sweeps 含 autoComplete');
     t.check(!!byName.viewSessions, 'sweeps 含 viewSessions');
-    const db = createFakeDb({ uniqueIndexes: uniqueIndexesForApi() });
+    const db = createTestDb();
     const dao = createDao(db);
     const longAgo = NOW - 200 * 60 * 60 * 1000;
     db.seed('users', [{ _id: 'openid-timeout', roles: [ROLES.CUSTOMER], status: USER_STATUS.ACTIVE, isTestAccount: false }]);
