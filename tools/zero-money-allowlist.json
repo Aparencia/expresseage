@@ -311,6 +311,11 @@
   },
   {
     "file": "docs/V4_DATA_MODEL.md",
+    "string": "| `config.getPublic` | `{}` → `{zoneLabels,serviceCatalog(无金额),announcement,maintenance,privacyVersion,orderTimeoutMinutes,autoCompleteHours,screenshotRetentionDays,avatarMaxBytes,viewTicketTtlMinutes,subscribeEnabled}` | 任意登录用户 | 读 | — |",
+    "reason": "口径声明：无金额语义的公开字段/说明行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
     "string": "| `config` | `_id='global'` | 全局配置（无金额项；`aiFallback` MVP 只读；**v0.9 增头像/测试账号配置**） | `admin.updateConfig`（`aiFallback` 除外：部署配置脚本/控制台） | ❌ | 长期 |",
     "reason": "口径声明：无金额语义的说明行"
   },
@@ -393,6 +398,11 @@
     "file": "docs/V4_DATA_MODEL.md",
     "string": "读屏蔽：客户端不直读；`config.getPublic` 返回 `{zoneLabels,serviceCatalog,announcement,maintenance,privacyVersion,orderTimeoutMinutes,autoCompleteHours,screenshotRetentionDays,avatarMaxBytes,subscribeEnabled}`（`serviceCatalog` 无金额；**不含 `viewTicketTtlMinutes`/`recognitionFailureRetentionDays`/`aiFallback`/`testAccountMaxPerRole`/`testDataRetentionDays`/`subscribeTemplates`**）；`user.bootstrap` 内联同一 `configPublic`；admin 读配置由 `admin.stats` 复合返回（§7.6，`aiFallback` 只读展示）。`recognitionFailureRetentionDays`/`avatarMaxBytes`/`testAccountMaxPerRole`/`testDataRetentionDays`/`viewTicketTtlMinutes` 由 `admin.updateConfig` 白名单维护（逐项范围校验，改动落 `admin_audit{CONFIG_UPDATE}`）；**`aiFallback` 的写入不在 `admin.updateConfig` 白名单内**（MVP 只读；改值走部署配置脚本/控制台并同步隐私文本）。",
     "reason": "口径声明：不涉及金额/无金额语义的声明行"
+  },
+  {
+    "file": "docs/V4_DATA_MODEL.md",
+    "string": "读屏蔽：客户端不直读；`config.getPublic` 返回 `{zoneLabels,serviceCatalog,announcement,maintenance,privacyVersion,orderTimeoutMinutes,autoCompleteHours,screenshotRetentionDays,avatarMaxBytes,viewTicketTtlMinutes,subscribeEnabled}`（`serviceCatalog` 无金额；**不含 `recognitionFailureRetentionDays`/`aiFallback`/`testAccountMaxPerRole`/`testDataRetentionDays`/`subscribeTemplates`**）；`user.bootstrap` 内联同一 `configPublic`；admin 读配置由 `admin.stats` 复合返回（§7.6，`aiFallback` 只读展示）。`recognitionFailureRetentionDays`/`avatarMaxBytes`/`testAccountMaxPerRole`/`testDataRetentionDays`/`viewTicketTtlMinutes` 由 `admin.updateConfig` 白名单维护（逐项范围校验，改动落 `admin_audit{CONFIG_UPDATE}`）；**`aiFallback` 的写入不在 `admin.updateConfig` 白名单内**（MVP 只读；改值走部署配置脚本/控制台并同步隐私文本）。",
+    "reason": "口径声明：无金额语义的公开字段/说明行"
   },
   {
     "file": "docs/V4_DATA_MODEL.md",

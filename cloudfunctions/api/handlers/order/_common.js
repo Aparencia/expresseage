@@ -1,312 +1,30 @@
-// handlers/order/_common.js · 订单域共用件：身份作用域 / 时间 / 配置 / 载入 / 归属校验 /
-// 上传票据 / 事件写入 / 通用状态动作引擎。不感知「视角分支」——只认中间件解析后的 ctx.identity。
+// handlers/order/_common.js · 订单域共用件（二）：事件构造 / 通用状态动作引擎 / 常用校验包装
+// 身份与数据访问在 _store.js；本文件不感知「视角分支」，切换会话由中间件统一解析为业务身份。
 'use strict';
 
-const { COLLECTIONS, CONFIG_DOC_ID } = require('../../shared/collections');
-const enums = require('../../shared/enums');
 const orderState = require('../../shared/order-state');
-const validate = require('../../shared/validate');
-const time = require('../../lib/time');
-const { readConfig } = require('../../db/config');
 const { errors } = require('../../lib/errors');
+const store = require('./_store');
 
-const DEFAULT_PAGE_SIZE = 20;
-const MAX_PAGE_SIZE = 100;
-const MAX_LIST_SCAN = 500;
-const EVENT_LIST_LIMIT = 100;
-const IMAGE_MAX_BYTES = 500 * 1024;
-const MS_PER_DAY = time.DAY_MS;
-
-// ── 身份作用域 ────────────────────────────────────────────────────────────────
-function identityOf(ctx) {
-  return (ctx && ctx.identity) || {};
-}
-
-// 业务身份键：真实会话=本人 openid；切换会话=中间件解析出的目标身份（中间件保证两种模式都解析为目标）。
-function scopeOf(ctx) {
-  const identity = identityOf(ctx);
-  const testWrite = identity.viewMode === enums.VIEW_MODE.TEST_WRITE;
-  return {
-    role: identity.role || '',
-    openid: identity.effectiveOpenid || (ctx && ctx.openid) || '',
-    actorOpenid: identity.actorOpenid || (ctx && ctx.openid) || '',
-    developerNo: identity.developerNo || '',
-    impersonatedBy: testWrite ? identity.developerNo || '' : '',
-    viewMode: identity.viewMode || '',
-    targetId: identity.targetId || '',
-    readOnly: identity.viewMode === enums.VIEW_MODE.READONLY,
-    testWrite
-  };
-}
-
-function assertWritable(ctx) {
-  if (scopeOf(ctx).readOnly) {
-    throw errors.forbidden('开发者只读视角不能操作');
-  }
-}
-
-// 顾客业务身份键（query scope）：order.customerId / bindings.customerId / customers._id
-function customerScope(ctx) {
-  const scope = scopeOf(ctx);
-  if (scope.role !== enums.ROLES.CUSTOMER) {
-    throw errors.forbidden('仅顾客身份可执行该操作');
-  }
-  return scope.openid;
-}
-
-// 兼职业务身份键（query scope）：partners.openid；找不到时回退 targetId（切换会话兜底）
-async function loadScopePartner(ctx) {
-  const scope = scopeOf(ctx);
-  if (scope.role !== enums.ROLES.PARTNER) {
-    throw errors.forbidden('仅兼职身份可执行该操作');
-  }
-  let partner = await getPartnerByOpenid(ctx, scope.openid);
-  if (!partner && scope.targetId) {
-    partner = await getPartnerById(ctx, scope.targetId);
-  }
-  return partner;
-}
-
-// 兼职写动作前提：ACTIVE（SUSPENDED/CLOSED 同码 PARTNER_CLOSED，message 区分）
-async function loadWritablePartner(ctx) {
-  const partner = await loadScopePartner(ctx);
-  if (!partner) {
-    throw errors.forbidden('未激活兼职身份');
-  }
-  if (partner.deletedAt || partner.status === enums.PARTNER_STATUS.CLOSED) {
-    throw errors.partnerClosed('兼职已注销，无法操作');
-  }
-  if (partner.status === enums.PARTNER_STATUS.SUSPENDED) {
-    throw errors.partnerClosed('兼职已停用，无法操作');
-  }
-  return partner;
-}
+const {
+  enums,
+  validate,
+  time,
+  scopeOf,
+  assertWritable,
+  nowMsOf,
+  toDate,
+  normalizeOrderNoInput,
+  getOrderByNo,
+  getOrderById,
+  orderSideOf,
+  loadWritablePartner
+} = store;
 
 function isAdmin(ctx) {
   return scopeOf(ctx).role === enums.CANCELLED_BY.ADMIN;
 }
 
-// ── 时间 / 配置 / 分页 ────────────────────────────────────────────────────────
-function nowMsOf(ctx) {
-  const value = ctx ? ctx.now : null;
-  if (typeof value === 'function') {
-    return value();
-  }
-  if (value instanceof Date) {
-    return value.getTime();
-  }
-  if (typeof value === 'number' && isFinite(value)) {
-    return value;
-  }
-  return Date.now();
-}
-
-function toDate(ms) {
-  return new Date(time.toMs(ms));
-}
-
-async function loadConfig(ctx) {
-  if (ctx && ctx.config && typeof ctx.config === 'object' && Object.keys(ctx.config).length > 0) {
-    return ctx.config;
-  }
-  const result = await readConfig(ctx.dao);
-  return result.config;
-}
-
-function isPlainObject(value) {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
-}
-
-function readTrimmedText(value, maxLength) {
-  if (typeof value !== 'string') {
-    return '';
-  }
-  const text = value.trim();
-  if (!maxLength || text.length <= maxLength) {
-    return text;
-  }
-  return '';
-}
-
-// 游标：{ sortValue: epochMs, orderNo }；客户端原样回传
-function parsePaging(payload) {
-  const input = isPlainObject(payload) ? payload : {};
-  const rawLimit = Number(input.limit);
-  const limit = Number.isFinite(rawLimit) && rawLimit > 0
-    ? Math.min(Math.floor(rawLimit), MAX_PAGE_SIZE)
-    : DEFAULT_PAGE_SIZE;
-  let cursor = null;
-  if (isPlainObject(input.cursor)) {
-    const sortValue = Number(input.cursor.sortValue);
-    const orderNo = typeof input.cursor.orderNo === 'string' ? input.cursor.orderNo : '';
-    if (Number.isFinite(sortValue) && sortValue > 0) {
-      cursor = { sortValue, orderNo };
-    }
-  }
-  return { limit, cursor };
-}
-
-function makeCursor(order, sortField) {
-  if (!order) {
-    return null;
-  }
-  const sortValue = time.toMs(order[sortField]);
-  if (!sortValue) {
-    return null;
-  }
-  return { sortValue, orderNo: order.orderNo || '' };
-}
-
-function isAfterCursor(sortValue, orderNo, cursor) {
-  if (!cursor) {
-    return true;
-  }
-  if (sortValue !== cursor.sortValue) {
-    return sortValue < cursor.sortValue;
-  }
-  return String(orderNo || '') < String(cursor.orderNo || '');
-}
-
-// ── 载入 ─────────────────────────────────────────────────────────────────────
-async function getUser(ctx, openid) {
-  if (!openid) {
-    return null;
-  }
-  return ctx.dao.get(COLLECTIONS.users, openid);
-}
-
-async function getCustomerByOpenid(ctx, openid) {
-  if (!openid) {
-    return null;
-  }
-  return ctx.dao.get(COLLECTIONS.customers, openid);
-}
-
-async function getPartnerByOpenid(ctx, openid) {
-  if (!openid) {
-    return null;
-  }
-  return ctx.dao.findOne(COLLECTIONS.partners, { where: { openid } });
-}
-
-async function getPartnerById(ctx, partnerId) {
-  if (partnerId === undefined || partnerId === null || partnerId === '') {
-    return null;
-  }
-  return ctx.dao.get(COLLECTIONS.partners, partnerId);
-}
-
-async function getActiveBinding(ctx, customerId) {
-  if (!customerId) {
-    return null;
-  }
-  return ctx.dao.findOne(COLLECTIONS.bindings, {
-    where: { customerId, status: enums.BINDING_STATUS.ACTIVE }
-  });
-}
-
-async function getOrderByNo(ctx, orderNo) {
-  if (!orderNo) {
-    return null;
-  }
-  return ctx.dao.findOne(COLLECTIONS.orders, { where: { orderNo } });
-}
-
-async function getOrderById(ctx, orderId) {
-  if (!orderId) {
-    return null;
-  }
-  return ctx.dao.get(COLLECTIONS.orders, orderId);
-}
-
-function normalizeOrderNoInput(value) {
-  const orderNo = readTrimmedText(value, 32).toUpperCase();
-  if (!orderNo || !enums.ORDER_NO_PATTERN.test(orderNo)) {
-    throw errors.validation('orderNo', '订单号格式不正确，请核对后重试');
-  }
-  return orderNo;
-}
-
-// 订单可见归属：顾客=本人单（guest 单 customerId 为空，顾客不可见）；兼职=自己的单；admin=白名单后台
-function orderSideOf(ctx, order) {
-  if (!order) {
-    return '';
-  }
-  const scope = scopeOf(ctx);
-  if (scope.role === enums.CANCELLED_BY.ADMIN) {
-    return 'ADMIN';
-  }
-  if (scope.role === enums.ROLES.PARTNER && order.partnerOpenid && order.partnerOpenid === scope.openid) {
-    return 'PARTNER';
-  }
-  if (scope.role === enums.ROLES.CUSTOMER && order.customerId && order.customerId === scope.openid) {
-    return 'CUSTOMER';
-  }
-  return '';
-}
-
-function assertOrderVisible(ctx, order) {
-  if (!order) {
-    throw errors.notFound('订单不存在或不可查看');
-  }
-  const side = orderSideOf(ctx, order);
-  if (!side) {
-    throw errors.forbidden('无权查看该订单');
-  }
-  return side;
-}
-
-// ── 上传票据 / 图片 ──────────────────────────────────────────────────────────
-async function loadUploadTicket(ctx, ticketId, nowMs) {
-  const ticket = await ctx.dao.findOne(COLLECTIONS.upload_tickets, { where: { ticket: ticketId } });
-  if (!ticket || ticket.openid !== scopeOf(ctx).openid) {
-    throw errors.notFound('上传凭证不存在或已失效');
-  }
-  if (ticket.usedAt || time.toMs(ticket.expiresAt) <= nowMs) {
-    throw errors.invalidState('上传凭证已失效，请重新上传');
-  }
-  if (ticket.purpose !== enums.UPLOAD_PURPOSE.TICKET) {
-    throw errors.validation('ticket', '上传凭证用途不符，请重新上传截图');
-  }
-  return ticket;
-}
-
-function assertImageFile(image, ticket) {
-  const fileId = typeof image.fileId === 'string' ? image.fileId : '';
-  if (!fileId || fileId.indexOf('cloud://') !== 0) {
-    throw errors.validation('image', '截图未上传成功，请重新上传');
-  }
-  const cloudPath = typeof ticket.cloudPath === 'string' ? ticket.cloudPath : '';
-  if (!cloudPath || fileId.indexOf(cloudPath) < 0) {
-    throw errors.validation('image', '截图与上传凭证不匹配，请重新上传');
-  }
-  if (image.size !== undefined) {
-    const size = Number(image.size);
-    if (!Number.isFinite(size) || size <= 0 || size > IMAGE_MAX_BYTES) {
-      throw errors.validation('image', '截图大小超出限制，请压缩后重新上传');
-    }
-  }
-  if (image.contentType !== undefined) {
-    if (enums.IMAGE_MIME_TYPES.indexOf(image.contentType) < 0) {
-      throw errors.validation('image', '截图格式只支持 jpg 或 png');
-    }
-  }
-}
-
-function buildImageSnapshot(image, ticket, nowDate) {
-  const snapshot = {
-    fileId: image.fileId,
-    width: Number.isFinite(Number(image.width)) ? Number(image.width) : 0,
-    height: Number.isFinite(Number(image.height)) ? Number(image.height) : 0,
-    uploadedAt: nowDate
-  };
-  if (ticket && ticket.cloudPath) {
-    snapshot.cloudPath = ticket.cloudPath;
-  }
-  return snapshot;
-}
-
-// ── 事件 ─────────────────────────────────────────────────────────────────────
 function buildEventDocument(options) {
   const opts = options || {};
   return {
@@ -325,8 +43,9 @@ function buildEventDocument(options) {
   };
 }
 
-// ── 通用状态动作引擎 ─────────────────────────────────────────────────────────
-// spec = { action, guard?, build?, after?, onReplay? }
+// spec = { action, guard?, build?, after?, extraResult? }
+// guard/build 入参 = { ctx, order, payload, now, nowDate, actorRole, scope, checked }；
+// after 在事务内执行（额外写审计等），入参额外含 trx/clientRequestId/fromStatus/toStatus。
 async function runOrderAction(ctx, payload, spec) {
   assertWritable(ctx);
   const scope = scopeOf(ctx);
@@ -363,8 +82,10 @@ async function runOrderAction(ctx, payload, spec) {
   if (!clientRequestId) {
     throw errors.validation('clientRequestId', '缺少请求标识，请重试');
   }
-  const eventKey = order._id + ':' + spec.action + ':' + clientRequestId;
-  const existingEvent = await ctx.dao.findOne(COLLECTIONS.order_events, { where: { requestKey: eventKey } });
+  const eventKey = [String(order._id), spec.action, clientRequestId].join(':');
+  const existingEvent = await ctx.dao.findOne(store.COLLECTIONS.ORDER_EVENTS, {
+    where: { requestKey: eventKey }
+  });
   if (existingEvent) {
     return { order: await buildCurrentOrderView(ctx, order), duplicated: true };
   }
@@ -399,8 +120,8 @@ async function runOrderAction(ctx, payload, spec) {
         statusUpdatedAt: nowDate,
         updatedAt: nowDate
       });
-      await trx.update(COLLECTIONS.orders, order._id, patch);
-      await trx.add(COLLECTIONS.order_events, eventDoc);
+      await trx.update(store.COLLECTIONS.ORDERS, order._id, patch);
+      await trx.add(store.COLLECTIONS.ORDER_EVENTS, eventDoc);
       if (typeof spec.after === 'function') {
         await spec.after({
           trx,
@@ -412,7 +133,8 @@ async function runOrderAction(ctx, payload, spec) {
           built,
           clientRequestId,
           fromStatus,
-          toStatus
+          toStatus,
+          ctx
         });
       }
     });
@@ -436,7 +158,6 @@ async function buildCurrentOrderView(ctx, order) {
   return dto.buildOrderDto(ctx, order);
 }
 
-// ── 常用校验包装 ─────────────────────────────────────────────────────────────
 function passOrThrow(result) {
   if (!result || !result.ok) {
     throw errors.validation((result && result.field) || 'payload', '参数不合法，请核对后重试');
@@ -450,53 +171,20 @@ function assertNotTerminal(order) {
   }
 }
 
-function isSameTestSide(a, b) {
-  return (a === true) === (b === true);
+function isSameTestSide(left, right) {
+  return (left === true) === (right === true);
 }
 
-module.exports = {
-  DEFAULT_PAGE_SIZE,
-  MAX_PAGE_SIZE,
-  MAX_LIST_SCAN,
-  EVENT_LIST_LIMIT,
-  MS_PER_DAY,
-  CONFIG_DOC_ID,
+module.exports = Object.assign({}, store, {
   enums,
   orderState,
-  validate,
   time,
   errors,
-  identityOf,
-  scopeOf,
-  assertWritable,
-  customerScope,
-  loadScopePartner,
-  loadWritablePartner,
   isAdmin,
-  nowMsOf,
-  toDate,
-  loadConfig,
-  isPlainObject,
-  readTrimmedText,
-  parsePaging,
-  makeCursor,
-  isAfterCursor,
-  getUser,
-  getCustomerByOpenid,
-  getPartnerByOpenid,
-  getPartnerById,
-  getActiveBinding,
-  getOrderByNo,
-  getOrderById,
-  normalizeOrderNoInput,
-  orderSideOf,
-  assertOrderVisible,
-  loadUploadTicket,
-  assertImageFile,
-  buildImageSnapshot,
   buildEventDocument,
   runOrderAction,
+  buildCurrentOrderView,
   passOrThrow,
   assertNotTerminal,
   isSameTestSide
-};
+});

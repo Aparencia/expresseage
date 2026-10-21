@@ -190,11 +190,49 @@ function installCrashGuard(getStats, name) {
 module.exports = { createHarness, installCrashGuard, isPlainEqual, ROOT };
 
 if (require.main === module) {
-  const h = createHarness({ name: 'selftest' });
-  installCrashGuard(() => ({ count: h.count, passed: h.passed, failures: h.failures.length }), 'selftest');
-  const core = require('./selftest-core');
-  h.setExpected(core.EXPECTED_ASSERTIONS);
-  core.register(h);
-  const ret = h.finish();
-  if (ret && typeof ret.then === 'function') ret.then(() => {});
+  // 聚合入口：依次运行全部"已存在"的分域 suite（按 register 形态集成；未落盘/非 register 形态打印 SKIP 不算失败）。
+  // 每套 suite 自己打印汇总行（断言 N/N；失败 M 项 + 结果：PASS|FAIL），最后再打印全局汇总。
+  const fs = require('fs');
+  const SUITES = ['selftest-core', 'selftest-state', 'selftest-recognize', 'selftest-cloud', 'selftest-ai',
+    'selftest-bind', 'selftest-profile', 'selftest-switch', 'selftest-testaccount'];
+  const agg = { count: 0, passed: 0, failures: 0 };
+  installCrashGuard(() => ({ count: agg.count, passed: agg.passed, failures: agg.failures }), 'selftest');
+  (async () => {
+    let failedSuites = 0;
+    let ranSuites = 0;
+    const skipped = [];
+    for (const name of SUITES) {
+      const file = path.join(__dirname, name + '.js');
+      if (!fs.existsSync(file)) { skipped.push(name); continue; }
+      let mod;
+      try {
+        mod = require(file);
+      } catch (e) {
+        console.log('[FAIL] ' + name + ' · require 异常 | ' + e.message);
+        failedSuites += 1;
+        ranSuites += 1;
+        continue;
+      }
+      if (typeof mod.register !== 'function' || typeof mod.EXPECTED_ASSERTIONS !== 'number') {
+        console.log('[SKIP] ' + name + '：非 register 聚合形态（可独立运行 node tools/' + name + '.js）');
+        skipped.push(name);
+        continue;
+      }
+      const h = createHarness({ name });
+      h.setExpected(mod.EXPECTED_ASSERTIONS);
+      mod.register(h);
+      const ret = h.finish();
+      const code = ret && typeof ret.then === 'function' ? await ret : ret;
+      agg.count += h.count;
+      agg.passed += h.passed;
+      agg.failures += h.failures.length;
+      ranSuites += 1;
+      if (code !== 0) failedSuites += 1;
+    }
+    console.log('------------------------------------------------------------');
+    console.log('selftest：运行 ' + ranSuites + ' 套；失败 ' + failedSuites + ' 套；SKIP ' + skipped.length
+      + ' 套（' + (skipped.join('、') || '无') + '）');
+    console.log('结果：' + (failedSuites === 0 ? 'PASS' : 'FAIL'));
+    process.exitCode = failedSuites === 0 ? 0 : 1;
+  })();
 }

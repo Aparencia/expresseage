@@ -1,4 +1,5 @@
-// pages/partner/workbench/index.js · 取件清单（分组/排序由服务端返回，本页只渲染；批量=客户端循环+同一 batchActionId）
+// pages/partner/workbench/index.js · 取件清单（服务端给状态桶+站点过滤后的 list/counts；四档动线排序在 parts/group-view.js）
+// 批量=客户端循环+同一 batchActionId；本页只做加载/筛选/交互，不复制排序与状态判定。
 const orderApi = require('../../../api/modules/order');
 const store = require('../../../store/index');
 const client = require('../../../api/client');

@@ -1,4 +1,8 @@
-// pages/partner/workbench/parts/group-view.js · 工作台渲染视图（服务端已分组/排序，这里只做字段适配，不重排）
+// pages/partner/workbench/parts/group-view.js · 工作台渲染视图（服务端只做状态桶+站点过滤，本零件做四档动线排序）
+// 口径：CONTRACT §5.2「服务端返回按状态桶+站点过滤的分页数据，客户端零件层只做四档动线排序」。
+//       排序唯一实现在 shared/order-view.js（comparePickupRoute/sortByPickupRoute），本文件不复制比较逻辑。
+const orderView = require('../../../../shared/order-view');
+
 function textOf(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
@@ -66,6 +70,11 @@ function fillBucket(rows) {
   });
 }
 
+// 四档动线排序：吃服务端过滤后的 list，不改变分组与过滤结果（同档按码中数字升序→orderNo）
+function toRows(orders) {
+  return orderView.sortByPickupRoute(Array.isArray(orders) ? orders : []).map(toRow);
+}
+
 function toGroups(data) {
   const source = data || {};
   if (Array.isArray(source.groups)) {
@@ -73,7 +82,7 @@ function toGroups(data) {
       stationId: textOf(group.stationId),
       stationName: textOf(group.stationName) || '站点未知',
       count: Array.isArray(group.orders) ? group.orders.length : 0,
-      rows: fillBucket((Array.isArray(group.orders) ? group.orders : []).map(toRow))
+      rows: fillBucket(toRows(group.orders))
     }));
   }
   const list = Array.isArray(source.list) ? source.list : [];
@@ -85,7 +94,7 @@ function toGroups(data) {
       stationId: textOf(group.stationId),
       stationName: textOf(group.stationName) || '站点未知',
       count: Array.isArray(group.orders) ? group.orders.length : 0,
-      rows: fillBucket((Array.isArray(group.orders) ? group.orders : []).map(toRow))
+      rows: fillBucket(toRows(group.orders))
     }));
   }
   return [
@@ -93,7 +102,7 @@ function toGroups(data) {
       stationId: '',
       stationName: '全部待处理',
       count: list.length,
-      rows: fillBucket(list.map(toRow))
+      rows: fillBucket(toRows(list))
     }
   ];
 }
@@ -125,6 +134,7 @@ function selectedRows(groups, selectedMap) {
 
 module.exports = {
   toRow,
+  toRows,
   toGroups,
   filterRows,
   countSelected,

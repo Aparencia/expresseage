@@ -17,7 +17,11 @@ function decideLaunchRoute(snapshot) {
   if (state.isDeveloper) {
     return { url: ADMIN_OVERVIEW, reason: 'DEVELOPER' };
   }
-  if (!state.hasRole) {
+  const roles = Array.isArray(state.roles) ? state.roles : [];
+  const hasRole = typeof state.hasRole === 'boolean'
+    ? state.hasRole
+    : roles.length > 0 || !!state.activeRole;
+  if (!hasRole) {
     return { url: ROLE_PAGE, reason: 'NO_ROLE' };
   }
   const isPartner = state.activeRole === 'PARTNER';

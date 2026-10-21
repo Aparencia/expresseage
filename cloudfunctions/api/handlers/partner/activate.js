@@ -1,11 +1,12 @@
 // handlers/partner/activate.js · partner.activate（邀请码激活；唯一兼职准入路径）
 // 口径：CONTRACT v0.9 §1/§2 D3/§10；DATA_MODEL §2.3/§2.8/§4.3/§7.4。
 // 错误映射：不存在/已作废→NOT_FOUND；已过期→INVITE_EXPIRED；已使用→INVITE_USED；格式错→VALIDATION_FAILED。
-// 纪律：激活成功才生成 partnerNo（唯一索引兜底），邀请码 UNUSED→USED 与用户 roles 增补在同一事务内。
+// 昵称落库前过 security.msgSecCheck v2（同 saveProfile 注入点）；激活成功才生成 partnerNo（唯一索引兜底）。
 'use strict';
 
 const { COLLECTIONS } = require('../../shared/collections');
 const enums = require('../../shared/enums');
+const zones = require('../../shared/zones');
 const validate = require('../../shared/validate');
 const time = require('../../lib/time');
 const { insertUnique, generatePartnerNo } = require('../../lib/id-generator');
@@ -17,7 +18,7 @@ const configCommon = require('../config/_common');
 function emptyServiceConfig() {
   return {
     services: enums.SERVICES.map((item) => ({ code: item.code, enabled: true })),
-    zones: enums.ZONES ? enums.ZONES.slice() : ['D', 'X', 'N', 'B', 'C'],
+    zones: zones.ZONES.slice(),
     acceptingOrders: true
   };
 }

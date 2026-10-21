@@ -261,6 +261,7 @@ function failureBrief(record, uploader) {
     uploaderDisplayName: maskedName(person.displayName),
     orderNo: person.orderNo || '',
     status: doc.status || '',
+    hasImage: typeof doc.fileId === 'string' && doc.fileId !== '',
     aiTried: doc.aiTried === true,
     aiErrorCode: doc.aiErrorCode || '',
     createdAt: dateValue(doc.createdAt),

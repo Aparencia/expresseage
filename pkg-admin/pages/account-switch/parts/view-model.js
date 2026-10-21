@@ -1,6 +1,6 @@
 // pkg-admin/pages/account-switch/parts/view-model.js · 账号切换页视图模型（纯件，零 wx）
-const C = require('../../../../common/constants');
-const F = require('../../../../common/format');
+const C = require('../../../common/constants');
+const F = require('../../../common/format');
 
 function buildTabs(activeTab) {
   return C.ACCOUNT_TABS.map(function (tab) {

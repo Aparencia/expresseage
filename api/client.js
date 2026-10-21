@@ -93,8 +93,8 @@ function buildPayload(action, data) {
 }
 
 function copyOf(code) {
-  const copy = ERROR_COPY && ERROR_COPY.CODE_COPY ? ERROR_COPY.CODE_COPY[code] : '';
-  return copy || '操作失败，请稍后重试';
+  const map = (ERROR_COPY && ERROR_COPY.CODE_COPY) || {};
+  return map[code] || (ERROR_COPY && ERROR_COPY.UNKNOWN_CODE_COPY) || '操作失败，请刷新页面后重试；若持续失败请把当前页面截图反馈给开发者';
 }
 
 function normalizeResult(result) {

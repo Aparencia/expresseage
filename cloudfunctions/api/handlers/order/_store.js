@@ -303,6 +303,7 @@ module.exports = {
   EVENT_LIST_LIMIT,
   MS_PER_DAY,
   CONFIG_DOC_ID,
+  COLLECTIONS,
   enums,
   validate,
   time,
