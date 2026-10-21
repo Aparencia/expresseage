@@ -6,7 +6,7 @@
 'use strict';
 
 const ZONES = ['D', 'X', 'N', 'B', 'C']; // 顺序即权重，也是录入面板显示顺序
-const ZONE_LABELS = { D: 'D 区', X: 'X 区', N: 'N 区', B: 'B 区', C: 'C 区' };
+const ZONE_LABELS = { D: '东苑', X: '西苑', N: '南苑', B: '北苑', C: '翠苑' }; // D8 裁决（2026-10-22）：东/西/南/北/翠苑；展示名仍可由 config.zoneLabels 覆盖
 const BUILDING_MIN = 1;
 const BUILDING_MAX = 10;
 const DORM_MIN = 100;

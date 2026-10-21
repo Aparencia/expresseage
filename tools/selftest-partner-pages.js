@@ -262,8 +262,8 @@ function register(h) {
     t.eq([snapshot.view.customerNo, snapshot.view.phoneTailText], ['C7K2M9QX4', '尾号6678'],
       'B2 顾客编号原样返回（展示格式由 id-text 组件统一），尾号四位单独展示');
     t.eq(snapshot.view.boundAtText, '2026-10-18 14:20', 'B3 绑定时间到分钟（§3.6 字段）');
-    t.eq([snapshot.view.zoneText, snapshot.view.buildingText, snapshot.view.roomText], ['D 区', 'D4', '522'],
-      'B4 苑/楼栋/宿舍由 dormKey 解析（展示口径 §3）');
+    t.eq([snapshot.view.zoneText, snapshot.view.buildingText, snapshot.view.roomText], ['东苑', 'D4', '522'],
+      'B4 苑/楼栋/宿舍由 dormKey 解析（展示口径 §3；D8 裁决默认东苑）');
     t.eq(detailView.buildDormParts('BAD-KEY'), { zoneText: '', buildingText: '', roomText: '' },
       'B5 dormKey 非法时逐级回落为空（不猜宿舍）');
     t.eq(snapshot.view.partnerNote, '常放门口鞋柜', 'B6 兼职私有备注取 DTO（顾客不可见）');

@@ -1,10 +1,10 @@
 # V4_ENGINEERING · v4 工程结构 / 环境 / 测试 / 门禁 / 部署设计
 
-> 版本：v0.9 草案（2026-10-21，按 CONTRACT **v0.9** 四次修订回写：①**绑定方向固化**——只能顾客发起绑定，兼职无任何绑定入口，代客单不产生绑定，真实账号×测试账号互绑/互下单一律拒绝；②**开发者账号切换**——真实账号只读（`READONLY`）、**测试账号可写**（`TEST_WRITE`：后台创建合成测试账号（`openid='TEST-<random>'`，非真实微信），隔离/标记/排除统计/30 天清理），并写明"小程序不能切换微信登录账号"的平台限制；③**头像与昵称**——顾客/兼职均采集微信头像（`chooseAvatar`）与昵称（`nickname` 输入），仅绑定双方可见、默认头像兜底、后台/卡片/通知不展示；④**roomTag 恒大写**（`A…Z/AA…`，展示 `D4-522A`）；⑤新增门禁 #28~#31、风险 R23/R24）｜维护：lead｜状态：**待用户裁决 D1~D22（D5/D6 已定；D16/D17 三次修订；D18~D21 四次修订；D22 批 4 登记；平台实测 E5/E12、用户确认 E11）**
+> 版本：v0.9 草案（2026-10-21，按 CONTRACT **v0.9** 四次修订回写：①**绑定方向固化**——只能顾客发起绑定，兼职无任何绑定入口，代客单不产生绑定，真实账号×测试账号互绑/互下单一律拒绝；②**开发者账号切换**——真实账号只读（`READONLY`）、**测试账号可写**（`TEST_WRITE`：后台创建合成测试账号（`openid='TEST-<random>'`，非真实微信），隔离/标记/排除统计/30 天清理），并写明"小程序不能切换微信登录账号"的平台限制；③**头像与昵称**——顾客/兼职均采集微信头像（`chooseAvatar`）与昵称（`nickname` 输入），仅绑定双方可见、默认头像兜底、后台/卡片/通知不展示；④**roomTag 恒大写**（`A…Z/AA…`，展示 `D4-522A`）；⑤新增门禁 #28~#31、风险 R23/R24）｜维护：lead｜状态：**D1~D22 已于 2026-10-22 全部裁决/确认**（D2 沿用 v3 appid `wxcb7e5b41b89bc806`；D8=东/西/南/北/翠苑；D13=个人主体+工具类目；D22=A；平台实测 E5/E12 与用户确认 E11 仍待做）
 > 上游（冲突以它们为准）：`docs/V4_CONTRACT.md` **v0.9**（唯一口径）、`V4_REBUILD_SPEC.md` §9.1/§10、`docs/V4_DATA_MODEL.md`（字段/索引/API 契约细节；**v0.9 字段增量以 CONTRACT §4.2 补充字段为准**，DATA_MODEL 回写后同版）、`docs/V4_DECISIONS.md`、`docs/V4_UX_CUSTOMER.md` / `V4_UX_PARTNER.md` / `V4_UX_DEVELOPER.md`。
 > 引用规则：口径用 CONTRACT `§/D#`；字段/索引/action 入参出参以 DATA_MODEL 为契约载体（残差由 `tools/check-docs.js` 双向兜底）；工程缺口标 `[E#]`（§13）；引用 v3 用"文件 + 函数名"（不写行号）；数字给取数命令。
 > 版本标注约定（v0.9 统一）：正文"（v0.5/v0.6/v0.7 定稿）"= 该口径在 CONTRACT v0.5/v0.6/v0.7 冻结、v0.9 未改；"（v0.8）"= 三次修订新增；"（v0.9）"= 四次修订新增/变更；本文自身版本 = v0.9。**UX 页面上的版本号一律运行时取**（App 版本取 `wx.getAccountInfoSync().miniProgram.version`，隐私版本取 `config.getPublic.privacyVersion`），文档与代码不写死。
-> 基线（2026-10-21 实测）：v4 模板 appid `wxf98c87a293092ef5`，**无 git / tools / 门禁**；v3 只读参照 `D:\Code\expresseage_college_v3\`（实测 `node tools/check.js` 82 检查项、`node tools/selftest.js` 383 条断言；v4 写"以实跑读数为准"）。
+> 基线（2026-10-21 实测）：v4 模板 appid `wxf98c87a293092ef5`，**无 git / tools / 门禁**；v3 只读参照 `D:\Code\expresseage_college_v3\`（实测 `node tools/check.js` 82 检查项、`node tools/selftest.js` 383 条断言；v4 写"以实跑读数为准"）。**2026-10-22 用户裁决 D2：项目 appid 沿用 v3 `wxcb7e5b41b89bc806`**（`project.config.json` 已改；同一 storage 命名空间，v4 只读写自己的键）。
 > 本文只写设计与验收，不写实现代码；实现从批 1 开始（§11）。
 
 ---
@@ -12,7 +12,7 @@
 
 - 本文回答"**怎么搭、怎么测、怎么卡、怎么发**"：工程结构、配置、云资源、客户端架构、开发调试、测试、门禁、文档维护、部署、批次技术拆分、风险、待裁。
 - 不回答：产品规则（CONTRACT）、逐字段/索引/action 入参（DATA_MODEL）、逐页交互（三份 UX）、裁决理由（DECISIONS）。
-- 三种口径状态：①已定稿（CONTRACT v0.9 / DATA_MODEL（v0.9 字段增量待其回写，最新字段口径以 CONTRACT 为准）/ UX 三份）；②工程提案（本文 `[E#]`，仅余 E5/E12 平台实测、E11 待用户确认）；③待用户裁决（D1~D22，不重开；D5/D6 已定；D16/D17 为三次修订；D18~D21 为四次修订；D22 为批 4 登记）。
+- 三种口径状态：①已定稿（CONTRACT v0.9 / DATA_MODEL（v0.9 字段增量待其回写，最新字段口径以 CONTRACT 为准）/ UX 三份）；②工程提案（本文 `[E#]`，仅余 E5/E12 平台实测、E11 待用户确认）；③已裁决（D1~D22 于 2026-10-22 全部闭环，见 CONTRACT §13 与 `docs/V4_DECISIONS.md` §0.1；D5/D6/D20/D21 早前已定）。
 - **零金额铁律（v0.7）**：本程序不涉及任何费用收付；全部工程产物（源码/页面文案/DTO/`config`/审计/测试/文档）不得出现费用语义。全文只在"口径声明、门禁定义、已废弃说明"处出现相关词，且这些行统一登记进零金额白名单（§8.2 #22）；实现侧一律以门禁扫描结果为准。
 - 数据敏感级别统一写 **L1/L2/L3**（L3=取件码/手机尾号/门牌/截图等），**不写 "D3"**（避免与裁决编号 D1~D22 混淆）；L3 明文字段禁入本地存储/日志/通知/分享卡片；**开发者后台默认脱敏（不展示头像、昵称脱敏），完整 L3 只经 READONLY 只读视角（带审计）**。
 - **编号规格单源**：`utils/ids.js`（格式/校验/展示/错前缀提示，纯件零 `wx`）同步为云函数 `shared/ids.js`；随机生成只在云端（§5.3）。
@@ -136,7 +136,7 @@ expressage_college_v4/
 ### 3.1 `project.config.json`（批 1 改造模板）
 | 字段 | v4 值 / 规则 | 理由 |
 | :-- | :-- | :-- |
-| `appid` | `wxf98c87a293092ef5`（D2） | 与 v1/v2/v3 不同 ⇒ 新 storage 命名空间 + 独立云环境 + 独立审核 |
+| `appid` | `wxcb7e5b41b89bc806`（D2 用户裁决：沿用 v3 appid） | 同一 storage 命名空间（v4 只读写自己的 `ex_college_v4.store`，不碰 v1/v2/v3 键）；云环境仍独立 dev/prod；发布 v4 替代 v3 |
 | `compileType`/`projectname` | `miniprogram` / `expressage_college_v4` | — |
 | `cloudfunctionRoot` | `cloudfunctions/` | 云开发必需；模板无此字段，批 1 新增 |
 | `miniprogramRoot` | `./` | 不另建 `miniprogram/` 子目录 |
@@ -175,7 +175,7 @@ expressage_college_v4/
 ### 3.6 全局配置 `config`（唯一运行时口径源，无费用项）
 | 键 | 用途 | 默认/范围 | 谁能改 |
 | :-- | :-- | :-- | :-- |
-| `zoneLabels` | 五苑展示名（D8） | `D/X/N/B/C → "D 区"…`（配置化，正式苑名待用户给） | admin.updateConfig |
+| `zoneLabels` | 五苑展示名（D8） | `D/X/N/B/C → 东苑/西苑/南苑/北苑/翠苑`（D8 已裁决；仍可由后台配置覆盖） | admin.updateConfig |
 | `serviceCatalog` | 服务类型目录 `[{code,name,desc}]`（**只有类型名与说明**） | CONTRACT §6 五类 | admin.updateConfig |
 | `announcement` / `maintenance` | 公告 / 维护模式开关+文案 | `''` / `{enabled:false,text:''}` | admin.updateConfig |
 | `orderTimeoutMinutes` | 未接单超时 | 120 | admin.updateConfig |
@@ -597,9 +597,9 @@ expressage_college_v4/
 ### 6.1 用户前置操作（**只能用户做**，批 0/批 1 开工门）
 | # | 事项 | 为什么只能用户 | 何时 | 证据 |
 | :-- | :-- | :-- | :-- | :-- |
-| 1 | 确认 appid `wxf98c87a293092ef5` 主体可用（D2） | 账号持有者 | 批 0 | 公众平台截图 |
+| 1 | 确认 appid `wxcb7e5b41b89bc806` 主体可用（D2 已裁决沿用 v3 appid） | 账号持有者 | 批 0 | 公众平台截图 |
 | 2 | 开通云开发 + 创建 dev/prod 环境（D1） | 管理员权限/计费确认 | 批 0 | 控制台环境页截图 + envId |
-| 3 | 确认主体/类目（D13，快递/跑腿类目资质） | 主体资质 | 批 0（阻塞批 9 提审） | 类目页截图 |
+| 3 | 确认主体/类目（D13 已裁决：个人主体 + 工具类目；提审前在后台确认类目可选并完成备案） | 主体资质 | 批 0（阻塞批 9 提审） | 类目页截图 |
 | 4 | 配置 `ADMIN_OPENIDS`（JSON 映射含 `DEV-01`） | 控制台权限 | 批 1 | 环境变量截图 + admin 冒烟 |
 | 5 | 云存储权限设置（§3.5） | 控制台权限 | 批 1 | 权限截图 |
 | 6 | 微信后台《用户隐私保护指引》逐项声明（相册/摄像头/文件选择/**头像（chooseAvatar）/昵称（nickname 输入）**/**第三方 AI 服务（DeepSeek）**；头像可拒绝→默认头像，不阻断） | 必须主体账号操作 | 批 2（头像/昵称）/批 8（隐私文本定稿）/批 9 提审 | 声明页截图 + `docs/privacy/发布前填写清单` 勾选 |
@@ -863,7 +863,7 @@ expressage_college_v4/
 3. 更新 `CHANGELOG.md`「未发布/工程细节」+ 文档回写 → 提交 → `gate.ps1` 绿 → 贴输出。
 4. 体验版只在批 5/6/8/9 发（用户操作）；每批验收项写 `docs/QA_CHECKLIST.md`；**agent 不代勾"账号切换/测试账号/头像/脱敏/邀请码"等人执行项**。
 ### 10.4 发布、灰度与回滚
-- 发布前置：D13 类目确认；隐私指引后台逐项声明完成（**含头像/昵称采集、第三方 AI 服务 DeepSeek 一栏：只发去敏文本、原图不出本程序云存储、失败原图进复核并 30 天删除**）；`docs/privacy/发布前填写清单` 全勾；审核材料齐（**按 `docs/V4_REVIEW_MATERIALS.md` §1 P0 清单准备**：测试邀请码批次 + 测试账号演示说明 + 审核说明：如何以顾客/兼职身份体验、如何进入开发者后台做只读切换与识别失败复核、测试账号如何创建/清理，含测试编号/邀请码示例；§3 审核说明模板、§4 驳回应对、§5 证据留存表）。
+- 发布前置：D13 类目可选性与备案确认（个人主体 + 工具类目，见 DECISIONS D13 留痕）；隐私指引后台逐项声明完成（**含头像/昵称采集、第三方 AI 服务 DeepSeek 一栏：只发去敏文本、原图不出本程序云存储、失败原图进复核并 30 天删除**）；`docs/privacy/发布前填写清单` 全勾；审核材料齐（**按 `docs/V4_REVIEW_MATERIALS.md` §1 P0 清单准备**：测试邀请码批次 + 测试账号演示说明 + 审核说明：如何以顾客/兼职身份体验、如何进入开发者后台做只读切换与识别失败复核、测试账号如何创建/清理，含测试编号/邀请码示例；§3 审核说明模板、§4 驳回应对、§5 证据留存表）。
 - 客户端兼容窗口：审核/发布不同步 ⇒ **API 只增不删、字段只加不改语义**；破坏性变更用新 action 名 + 旧 action 保留至少一个发布周期；服务端读客户端版本决定兼容分支。
 - **开发者白名单运维**：`ADMIN_OPENIDS` 变更属控制台操作（用户执行）；变更后冒烟 `admin.bootstrap`；**不把白名单写进任何仓库文件**；多开发者各自微信登录、会话/审计隔离；**开发者账号不作为业务测试账号**——真实操作走测试账号（单机）或额外微信号（真实双机，可选）。
 - 回滚：①云函数在控制台"版本与配置"回滚到上一版本（或重传上一提交）；②数据库变更前先导出备份（控制台导出 JSON），cleanup 只做可重跑操作；③客户端问题重新提交上一版本（审核延迟属已知成本）；④回滚后跑冒烟 + 记录 CHANGELOG；⑤**AI 事故先降级不先回滚**：关 `config.aiFallback.enabled`（或清 `DEEPSEEK_API_KEY`）⇒ 静默降级 + 失败仍入队，再决定是否回滚云函数版本；⑥**测试数据事故先清不先删库**：`purgeTestData`（`dryRun`→`confirm`）清测试业务数据、保留账号与真实数据，事后核对审计前后条数。
@@ -874,7 +874,7 @@ expressage_college_v4/
 
 | 批 | 依赖 | 技术交付（工程侧） | 验证与证据 | 主要风险 |
 | :-- | :-- | :-- | :-- | :-- |
-| **批 0** 设计定稿与开工门 | — | 本文/各设计文档定稿（含 `V4_UX_DEVELOPER.md`）；**D1~D21 裁决留痕（D5/D6 已定、D16/D17 三次修订、D18~D21 四次修订）**；v3 复制清单确认；`docs/privacy` 草案（**含头像/昵称采集、第三方 AI 披露、账号切换说明**）；云环境可用性确认；人工零金额扫描留输出 | `node tools/check-docs.js --batch 0`；环境截图；裁决台账勾选；零金额人工 0 命中输出 | 用户未裁 D1/D2/D13/D16/D17/D18~D21 则无法进批 1；D8 苑名待用户给正式名称 |
+| **批 0** 设计定稿与开工门 | — | 本文/各设计文档定稿（含 `V4_UX_DEVELOPER.md`）；**D1~D22 裁决留痕（2026-10-22 全部闭环）**；v3 复制清单确认；`docs/privacy` 草案（**含头像/昵称采集、第三方 AI 披露、账号切换说明**）；云环境可用性确认；人工零金额扫描留输出 | `node tools/check-docs.js --batch 0`；环境截图；裁决台账勾选；零金额人工 0 命中输出 | 开工门已闭环（D1/D2/D3/D13）；D8 苑名=东/西/南/北/翠苑；无待裁项阻塞开工 |
 | **批 1** 工程骨架与云端基础设施 | 批 0 | `git init`+身份；check/gate/doctor/check.js/check-docs/**zero-money-scan**；selftest harness + fake DB + selftest-cloud/selftest-ai 骨架 + **selftest-{bind,profile,switch,testaccount} 骨架**（EXPECTED_ASSERTIONS 闸先立）；`shared/` 注册表与校验件（**含 `actions.js` 的 `write` 标记**）；`utils/ids.js`/`utils/room-tag.js` 规格件 + `lib/id-generator`/`tag-allocator` 骨架；`lib/ai/` 适配层骨架；`api`/`cleanup` 骨架 + `health.check`/`admin.bootstrap`；**14 集合**+索引+安全规则；`config/env.js`/种子（含 `aiFallback`、`viewTicketTtlMinutes`、`avatarMaxBytes`、`testAccountMaxPerRole`、`testDataRetentionDays`）；`DEEPSEEK_API_KEY` 环境变量记录；sync 脚本；RUNBOOK | `check.ps1` 0（含零金额 0 命中 + AI 门禁 #24~#27；**#28~#31 判据骨架已登记，对象批次必须真红**）；`check-docs` 0；云函数调通 `health.check`；集合/索引导出证据 | 云环境未开/索引唯一冲突；限流键族；DeepSeek 账号未就绪（可留空降级） |
 | **批 2** 账号入口 + 切换会话/测试账号/头像采集（v0.9 前移） | 批 1 | `user.bootstrap`（`isDeveloper` + `viewContext{viewMode,role,target}`）/users；`api/client` 包络 + `api/mode-guard`；`store`；`launch`/`role`/`profile` 骨架；`custom-tab-bar`；顾客资料 →**`customerNo` 首次生成** + **头像/昵称采集（chooseAvatar / nickname 输入 / msgSecCheck / AVATAR ticket）**；隐私同意；**邀请码激活 + `partnerNo` 生成**；**开发者分流**；**`switch-session` 中间件 + `admin_view_sessions` + 黄条/蓝条/TEST 角标 + 测试账号四动作 + `account-switch` 页** | 纯件/云单测（编号生成/激活映射/票据解析/头像 payload/昵称截断）；真机双角色切换；邀请码负向；**测试账号单机双端验收（绑定→下单→确认）**；真实账号传 `TEST_WRITE` → `FORBIDDEN`；开发者 entry 真机 | tabBar 平台约束；隐私声明前置；白名单误配；头像/昵称接口能力 [E12] |
 | **批 3** 绑定与服务配置（绑定方向固化，v0.9） | 批 2 | `bind.create`（**仅顾客 + 完整 `partnerNo` + 错前缀提示 + 自绑/真实×测试拒绝**）/`release`/`getCurrent` + `activeKey` + **roomTag 绑定成功时事务分配（大写 `A…Z/AA…`）**；`bind` 页/绑定卡片（只带 `partnerNo`，无头像昵称）；`partner.getPublic`（含头像/昵称、测试账号 `NOT_FOUND`）；`partner.saveServiceConfig`（接单开关）；改宿舍 = RELEASED + 新建 binding；**解绑后 DTO 不再返回对方头像/昵称** | 云单测：绑定角色守卫（PARTNER → `FORBIDDEN`）、**#28 静态检查**、roomTag 并发/大写/不复用/换绑/解绑/改宿舍、解绑失联；`acceptingOrders=false` 下单 `PARTNER_CLOSED`；编号归一/错前缀用例；真机绑定与换绑 | 事务冲突；进行中订单时解绑/换绑拦截 |
@@ -915,9 +915,9 @@ expressage_college_v4/
 | R24（v0.9） | **头像外泄与缓存**：`avatarFileId` 进后台/日志/卡片、头像路径含 openid 可枚举、旧头像未删、临时 URL 缓存导致换头像后仍显示旧图、解绑后仍展示对方头像昵称 | 隐私事故/体验不一致 | 路径 `avatars/{role}/{random}.jpg`（无 openid）+ ticket 归属校验；DTO 分级（仅本人/绑定对方）+ 后台 DTO 零 `avatarFileId` + 昵称脱敏；替换/注销/删测试账号删文件 + cleanup 兜底；临时 URL 不缓存、store 失联即清绑定摘要；检查 #29 + M21 | 2/8/9 |
 
 ---
-## 13. 待裁决项（本文 v0.9：E1~E4/E6~E10 已关闭；平台实测 E5/E12 待实测；E11 待用户确认；D18~D21 为四次修订新增）
+## 13. 待裁决项（本文 v0.9：D1~D22 已于 2026-10-22 全部闭环；工程侧仅余平台实测 E5/E12 与 E11 用户确认）
 
-**继承 CONTRACT §13（D1~D22，D22 批 4 登记，其余不重开）**：D1 云开发、D2 appid、D3 邀请码、D4 一顾客一兼职、D5 服务只分类型（**已定：无定价**）、D6 **零金钱交易（已定）**、D7 roomTag（**v0.9 恒大写**）、D8 苑名待用户给正式名称、D9 截图、D10 通知、D11 不迁移、D12 代客单（**不产生绑定**）、D13 主体/类目、**D14 开发者只读视角**、**D15 双角色编号样式（C+8 / P+6 / DEV-01）**、**D16 OCR 失败用 DeepSeek 兜底**、**D17 识别失败原图在开发者复核页可见**、**D18 账号切换（真实账号只读 + 测试账号可写）**、**D19 头像/昵称采集与可见范围**、**D20 绑定方向（只能顾客发起）**、**D21 roomTag 恒大写**。
+**继承 CONTRACT §13（D1~D22，2026-10-22 全部闭环；D22 用户裁决=A）**：D1 云开发、D2 appid（**沿用 v3 `wxcb7e5b41b89bc806`**）、D3 邀请码、D4 一顾客一兼职、D5 服务只分类型（**已定：无定价**）、D6 **零金钱交易（已定）**、D7 roomTag（**v0.9 恒大写**）、**D8 苑名=东苑/西苑/南苑/北苑/翠苑**、D9 截图、D10 通知、D11 不迁移、D12 代客单（**不产生绑定**）、**D13 主体/类目=个人主体+工具类目**、**D14 开发者只读视角**、**D15 双角色编号样式（C+8 / P+6 / DEV-01）**、**D16 OCR 失败用 DeepSeek 兜底**、**D17 识别失败原图在开发者复核页可见**、**D18 账号切换（真实账号只读 + 测试账号可写）**、**D19 头像/昵称采集与可见范围**、**D20 绑定方向（只能顾客发起）**、**D21 roomTag 恒大写**、**D22 上传失败必须先有截图（OCR/阅读失败可手填）**。
 
 **已关闭（CONTRACT v0.5/v0.6/v0.7 裁决、v0.8 复核；由 `tools/check-docs.js` 持续验证）**
 | # | 原缺口 | 落点 / 关闭依据 |

@@ -1,5 +1,5 @@
 # V4_DATA_MODEL · v4 数据模型与安全隔离细节设计
-> 版本：v0.9-draft（2026-10-21）｜依据：`docs/V4_CONTRACT.md` **v0.9**（唯一口径）+ v3 只读调研报告｜状态：待 lead 审阅；用户裁决项见 §13.3（D1~D22）
+> 版本：v0.9-draft（2026-10-21）｜依据：`docs/V4_CONTRACT.md` **v0.9**（唯一口径）+ v3 只读调研报告｜状态：**D1~D22 已于 2026-10-22 全部裁决**（见 CONTRACT §13 与 `docs/V4_DECISIONS.md` §0.1）
 > v0.9 变更（用户四次修订五条 + 审计补丁）：⑥**绑定方向固化**——`bind.create` 仅 CUSTOMER 可调、**自绑拒绝**、代客单不写 `bindings`（§0.5/§2.4/§4.8C/§7.4/§12#33）；⑦**账号切换**——真实账号只读（`READONLY`）+ **测试账号可写**（`TEST_WRITE`；`users.isTestAccount`、**合成 openid `TEST-<random>`（`users._id`/`customers._id`/`partners.openid` 同值，非空串、不来自微信）**、仅测试账号互通、不计统计），后台「切换账号」+ 测试账号管理四动作（§0.5/§2.1/§2.13/§4.10/§7.6/§7.7）；⑧**roomTag 恒大写**——`A…Z/AA…`、展示 `D4-522A`、按大写字母序排序（§2.4/§4.1/§4.6/§9）；⑨**头像与微信昵称**——顾客/兼职均采集（`displayName` 必填 + `avatarFileId`，`upload.prepare({purpose:'AVATAR'})`、**路径 `avatars/{role}/{random}.jpg`（不含 openid）**、≤200KB、替换删旧/注销删文件），仅当前 ACTIVE 绑定双方可见、**绑定前 `partner.getPublic` 只回昵称不回头像**、后台不展示头像、卡片/通知不含（§0.5/§2.2/§2.3/§2.12/§7.3/§7.4/§10）；⑩**测试数据隔离**——`orders.isTest`（服务端按参与账号派生、禁客户端传）/`impersonatedBy`、`order_events.impersonatedBy`、统计/红点/邀请码/报表排除测试数据、30 天清理与 `purgeTestData` 安全闸（§0.5/§2.5/§2.6/§7.8/§10）。
 > v0.9 身份传播铁律：`actorOpenid`（真实开发者：白名单/会话/审计）与 `effectiveOpenid`（测试账号：业务身份/业务限流/`upload_tickets.openid`/`message.fromId`/`event.actorId`）**分离**；写动作交叉校验 `targetIsTest && viewTicket.targetId===effectiveOpenid`；删除测试账号须使其相关会话 `endedAt`（§0.5/§4.10/§6.1/§6.2）。
 > v0.9 另按 CONTRACT §14 第 9 条清扫旧口径（小写 roomTag、不收集头像、第二微信号验收、单账号等表述一律不保留），并吸收 CONTRACT §15 O1~O18 优化项（§13.1c 逐项落点）。
@@ -224,7 +224,7 @@ v0.7 关闭全部非 D 级缺口：零金额（§0.3）、双角色唯一编号�
 
 | 字段 | 类型 | 必填 | 值域/约束 | 写入方 | 读权限 | 隐私 |
 | :-- | :-- | :-- | :-- | :-- | :-- | :-- |
-| `zoneLabels` | object | 是 | `{D:'D 区',X:'X 区',N:'N 区',B:'B 区',C:'C 区'}`；正式苑名待用户给（D8 只改配置） | `admin.updateConfig` | 登录用户（公开子集） | L1 |
+| `zoneLabels` | object | 是 | `{D:'东苑',X:'西苑',N:'南苑',B:'北苑',C:'翠苑'}`（D8 已裁决；`shared/zones.js` 单源，仍可由后台配置覆盖） | `admin.updateConfig` | 登录用户（公开子集） | L1 |
 | `serviceCatalog` | object[] | 是 | **只有** `{code,name,desc}`；5 默认服务模板；**无价格/金额字段** | `admin.updateConfig` | 顾客/兼职（公开子集） | L1 |
 | `announcement`/`maintenance` | object | 是 | `{enabled,title,text,updatedAt}`/`{enabled,text}`；维护中除 admin 外写接口 `INVALID_STATE` | `admin.updateConfig` | 登录用户 | L1 |
 | `orderTimeoutMinutes`/`autoCompleteHours`/`screenshotRetentionDays` | number | 是 | 默认 120/24/7，整数正数 | `admin.updateConfig` | 登录用户（公开子集）/内部 | L1 |
@@ -963,20 +963,21 @@ cleanup(serverNow):
 **`†` 扩展字段报备（CONTRACT 未列，需 lead 确认）**：`users.updatedAt/purgeAt`（变更审计/注销清理）、`customers.deletedAt/anonymizedAt/purgeAt`（注销链路）、`partners.createdAt/updatedAt/suspendedAt/suspendedReason/closedReason`（生命周期/停用原因）、`bindings.tagKey/allocSeq/releasedBy`（roomTag 并发唯一/序号/释放者）、`orders.createdAt/updatedAt`（排序兜底/排障）、`orders.claimTokenHash/claimExpiresAt/claimedAt`（[P1] 认领预留）、`admin_audit.requestKey`（管理写幂等）、`admin_view_sessions.requestKey`（视角开启幂等）、`upload_tickets.draftId`（草稿校验，可只随票据存）、`config.subscribeTemplates`（[P1] 订阅消息模板 ID/开关）。**v0.8 新增报备**：`recognition_failures.retentionDays`（记录级固化保留天数，CONTRACT §4 行未列）、`recognition_failures.requestKey`（入队幂等键 `{uploaderOpenid}:{clientRequestId}`，唯一索引；CONTRACT §4 行未列）、`ruleResult`/`aiResult` 的字段形状与 `aiErrorCode` 六值枚举（CONTRACT 只列字段名）、`failureNo` 生成规则 `F-YYYYMMDD-XXXXXX`（CONTRACT 只列唯一）、`resolution.by='SYSTEM'`（到期清理）、`uploadTicketId` 归属校验失败仍入队（`ruleResult.ticketInvalid`）、识别失败记录在上传者注销后的匿名化口径（`uploaderOpenid=''`，§10.3）、`image.failureId` 由复核/下单写入的时序、`notifyUploader` 的站内消息落点（消息中心聚合视图，不新增集合）。**v0.9 新增报备**：`upload_tickets.purpose`（CONTRACT §4 集合行未列，§4.1/§5.3 已定义 `purpose` 入参）、测试账号 `_id` 格式 `TEST-<random>` 与三处同值口径（CONTRACT 只约定 `TEST-…` 前缀）、`admin_view_sessions.targetAvatarFileId` 仅切换会话内展示、`config.avatarMaxBytes` 经 `config.getPublic` 下发（CONTRACT 允许“等公开配置”）、`admin.stats` 增 `test` 计数字段、`users.testLastUsedAt` 写点（会话开启/测试写动作）、测试账号业务数据“账号保留、数据清空”的级联范围；如需改口径请 lead 裁决后回填 CONTRACT。
 
 **旧口径关闭**：O-01~O-27 均已关闭（v0.4 独立 `upload_tickets`/删 `tagSeq`/三键族；v0.5 动作表全量、`deleteRecord`/`markRead`/`saveCustomerNote`/`cancel`/`getPublic`；v0.6 换宿舍重绑、DTO 分级、激活码错误映射、解绑 reason、客户列表排序、工作台 6 counts、截图路径、订阅模板入 config 等）。**v0.7 起明确作废**：v0.6“线下收款记账”口径（`payStatus`/`markPaid`/`PAYMENT_*`/统计收入，已删）、`activation_codes`/“激活码”术语（改 `invitation_codes`/“邀请码”）、旧 `partnerCode`（改 `partnerNo`）、`CODE_EXPIRED`/`CODE_USED`（改 `INVITE_*`）；v0.7 不重开任何 O 项。**v0.8 追加口径**（不删除历史结论）：OCR 兜底只做预填建议、失败静默降级入队、不新增错误码；识别失败原图是后台默认脱敏的**唯一例外**（临时 URL+审计+不批量）；`aiFallback` 值只有次数/毫秒/布尔/枚举，零金额口径继续有效。**v0.9 追加作废**：旧小写 roomTag/`D4-522a`、`VIEW_AS_*` 审计名、“不收集头像”“第二个微信号验收/MVP 单账号”“所有视角一律只读”等表述；`partner.getPublic` 绑定前回头像、头像路径含 openid、测试账号 `openid=''` 全部作废；`TEST_WRITE` 仅测试账号（真实账号不可写）；测试数据与真实数据同集合但严格隔离（**不建 `test_accounts`**）；绑定只能顾客发起（兼职可写视角不存在）。
-### 13.3 需要用户裁决的事项（仅 D 级）
+### 13.3 用户裁决事项（仅 D 级；2026-10-22 已全部闭环）
 
-| # | 事项 | 本文默认 | 需用户确认 |
+| # | 事项 | 本文默认 | 裁决结果（2026-10-22） |
 | :-- | :-- | :-- | :-- |
-| D1+D2 | 后端=微信云开发 + 新 appid `wxf98c87a293092ef5`（数据层与隔离的前提） | 已按云开发/新 appid 设计；不读写 v1/v2/v3 本机键 | 架构前提是否维持 |
-| D8 | 五个苑的正式中文名与 C 的含义 | `config.zoneLabels` 默认 `D 区`…`C 区`，只改配置即可 | 需用户给出苑名 |
-| D13 | 主体与类目（个人主体能否上架快递/跑腿类目） | 阻塞提审，用户处理 | 需用户确认主体/类目 |
-| D14+D15 | 真实账号只读（`READONLY`；可写切换只给测试账号，见 D18）；编号样式 `C-XXXX-XXXX`/`P-XXX-XXX`/`DEV-01`/测试账号 `TEST-<random>` | 已按用户二次+四次修订设计（真实账号只读+审计+服务端拒写；编号随机不可改） | 最终确认 |
-| D16 | OCR 失败兜底用 **DeepSeek**：服务端调用、只发去敏文本（不发原图/openid）、8s 超时、5 次/人/日+全局配额、失败静默降级并入复核队列 | 已按云函数外呼+降级+入队设计；Key 只在环境变量、换服务只改适配层；`aiFallback.enabled` 可整体关停 | 方案是否确认（关停后回退为纯手填） |
-| D17 | 识别失败**原图**在开发者复核页可见：仅白名单、临时 URL 5 分钟、每次审计、不批量/不下载、默认 30 天（7~30 可配）；补录只回填识别字段、不改订单状态 | 已按此设计；原图是本程序后台默认脱敏的**唯一例外**，写入 §11 隐私承诺与工程门禁 | 保留期与"是否允许看原图"需用户确认 |
-| D18 | 账号切换模式：真实账号只读 + 测试账号可写（后台合成 `isTestAccount` 账号，单机验收两端；测试数据隔离/标记/排除统计/30 天清理） | 已按 v0.9 设计（`READONLY`/`TEST_WRITE`；合成 openid `TEST-<random>`；不建 `test_accounts`） | 方案是否确认 |
-| D19 | 头像/昵称采集：`chooseAvatar` + `nickname` 输入（昵称必填可改/手填、头像可拒绝→默认头像）；仅绑定双方可见；后台不展示头像、卡片/通知不含 | 已按 v0.9 设计（`displayName`/`avatarFileId`；`msgSecCheck` v2；解绑即失联 O2） | 方案是否确认 |
-| D20 | 绑定方向：只能顾客发起绑定，兼职不能绑定顾客 | 已按 v0.9 设计（`bind.create` 仅 CUSTOMER、自绑拒绝、代客单不产生绑定、兼职仅解绑） | 已定（用户四次修订） |
-| D21 | roomTag 恒大写 `A…Z/AA…`、展示 `D4-522A` | 已按 v0.9 设计（大写字母序=绑定先后；旧小写作废） | 已定（用户四次修订） |
+| D1+D2 | 后端=微信云开发 + appid（数据层与隔离的前提） | 已按云开发设计；**appid 沿用 v3 `wxcb7e5b41b89bc806`**（同一 storage 命名空间，v4 只读写自己的 `ex_college_v4.store`，不碰 v1/v2/v3 键） | D1 A；D2 沿用 v3 appid（非推荐 A，见 DECISIONS D2 留痕） |
+| D8 | 五个苑的正式中文名与 C 的含义 | `config.zoneLabels` 默认 **东苑/西苑/南苑/北苑/翠苑**（`shared/zones.js` 单源，可配置覆盖） | 已裁决 |
+| D13 | 主体与类目 | 个人主体 + 工具类目；提审前在后台确认类目可选并完成备案 | 已裁决（提审风险见 DECISIONS D13 留痕） |
+| D14+D15 | 真实账号只读（`READONLY`；可写切换只给测试账号，见 D18）；编号样式 `C-XXXX-XXXX`/`P-XXX-XXX`/`DEV-01`/测试账号 `TEST-<random>` | 已按用户二次+四次修订设计（真实账号只读+审计+服务端拒写；编号随机不可改） | 按推荐确认 |
+| D16 | OCR 失败兜底用 **DeepSeek**：服务端调用、只发去敏文本（不发原图/openid）、8s 超时、5 次/人/日+全局配额、失败静默降级并入复核队列 | 已按云函数外呼+降级+入队设计；Key 只在环境变量、换服务只改适配层；`aiFallback.enabled` 可整体关停 | 按推荐确认（关停后回退纯手填） |
+| D17 | 识别失败**原图**在开发者复核页可见：仅白名单、临时 URL 5 分钟、每次审计、不批量/不下载、默认 30 天（7~30 可配）；补录只回填识别字段、不改订单状态 | 已按此设计；原图是本程序后台默认脱敏的**唯一例外**，写入 §11 隐私承诺与工程门禁 | 按推荐确认 |
+| D18 | 账号切换模式：真实账号只读 + 测试账号可写（后台合成 `isTestAccount` 账号，单机验收两端；测试数据隔离/标记/排除统计/30 天清理） | 已按 v0.9 设计（`READONLY`/`TEST_WRITE`；合成 openid `TEST-<random>`；不建 `test_accounts`） | 按推荐确认 |
+| D19 | 头像/昵称采集：`chooseAvatar` + `nickname` 输入（昵称必填可改/手填、头像可拒绝→默认头像）；仅绑定双方可见；后台不展示头像、卡片/通知不含 | 已按 v0.9 设计（`displayName`/`avatarFileId`；`msgSecCheck` v2；解绑即失联 O2） | 按推荐确认 |
+| D20 | 绑定方向：只能顾客发起绑定，兼职不能绑定顾客 | 已按 v0.9 设计（`bind.create` 仅 CUSTOMER、自绑拒绝、代客单不产生绑定、兼职仅解绑） | 早前已定 |
+| D21 | roomTag 恒大写 `A…Z/AA…`、展示 `D4-522A` | 已按 v0.9 设计（大写字母序=绑定先后；旧小写作废） | 早前已定 |
+| D22 | 截图上传失败后是否允许无截图手填提交 | 保持必须先有截图（页面现状）；OCR/阅读失败仍可手填 `NEED_CODE` | 裁决 A（不允许无截图手填） |
 ## 14. 验收清单（文档级 DoD）
 - [ ] **14 集合**逐字段表齐全（含 v0.8 `recognition_failures`；**v0.9 不新增集合/不建 `test_accounts`**），字段名与 CONTRACT v0.9 §3/§4/§4.2/§4.3 及 v0.9 增补行逐字一致；`†` 扩展字段已在 §13.2 报备。
 - [ ] 动作名与 CONTRACT §5.3 逐字一致（含 `admin.createInvites/revokeInvite/listInvites`、`admin.viewAsStart/viewAsEnd`、**v0.8 `ai.parseParcel` + 四复核动作**、**v0.9 `admin.createTestAccount/listTestAccounts/deleteTestAccount/purgeTestData`**）；**无** `order.markPaid/unmarkPaid`、`admin.generateCodes/revokeCode` 等旧动作。
@@ -992,6 +993,6 @@ cleanup(serverNow):
 - [ ] 每个集合有读屏蔽口径；每个写动作有权限、幂等键、限流、错误码；重复请求返回 `duplicated:true`；错误码仅 13 个（AI 失败不占错误码）。
 - [ ] 索引覆盖 §5.2 每个查询路径（含编号搜索/邀请码/切换会话/**识别失败队列与到期清理**/**测试账号与测试数据清理**），分页禁止 skip；负向测试 **40 条**（§12：v0.7 26 + v0.8 6 + v0.9 8）覆盖越权/票据/前缀/编号/零金额/脱敏/复核/AI 外发与降级/绑定方向/真实×测试/头像昵称/测试隔离。
 - [ ] 留存/cleanup/注销/匿名化字段级可执行（§10，含邀请码/切换会话（`READONLY`/`TEST_WRITE`）/编号快照/**识别失败记录与原图引用到期、上传者注销匿名化**/**头像文件与测试数据 30 天清理、`purgeTestData`/`deleteTestAccount` 级联**）；v3→v4 映射与 D11 一致（§11，含 OCR 来源映射与头像/昵称/测试账号空库起）。
-- [ ] 与 CONTRACT v0.9 无冲突（冲突已按 v0.9 回填并在 §13.1c 逐项登记；审计补丁：合成 openid `TEST-<random>`、头像路径不含 openid、绑定前只回昵称、`actorOpenid/effectiveOpenid`、`ACCOUNT_SWITCH_*` 统管两种模式已吸收）；用户裁决项仅 §13.3（**D1~D22**）；无实现代码、无「略/TODO」占位。
+- [ ] 与 CONTRACT v0.9 无冲突（冲突已按 v0.9 回填并在 §13.1c 逐项登记；审计补丁：合成 openid `TEST-<random>`、头像路径不含 openid、绑定前只回昵称、`actorOpenid/effectiveOpenid`、`ACCOUNT_SWITCH_*` 统管两种模式已吸收）；用户裁决项 §13.3（**D1~D22，2026-10-22 已全部裁决**）；无实现代码、无「略/TODO」占位。
 
 *本文与 `docs/V4_CONTRACT.md` 冲突时以 CONTRACT 为准；CONTRACT 更新后本文需同步并记录版本变更。*

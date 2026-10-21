@@ -1,7 +1,8 @@
 // utils/storage.js · v4 唯一本地存储写口（键 ex_college_v4.store）
 // 只存三样：最近角色 lastRole、引导已读标记 guides、草稿指针 draftPointer。
 // 边界（ENGINEERING §5.6）：不存身份标识 / 宿舍门牌 / 取件凭据等敏感值；不存切换会话的
-// 票据与视角上下文；不读写 v1/v2/v3 的任何 storage 键（D2：新 appid 独立命名空间）。
+// 票据与视角上下文；不读写 v1/v2/v3 的任何 storage 键（D2 裁决 2026-10-22：沿用 v3 appid
+// `wxcb7e5b41b89bc806` ⇒ 同一 storage 命名空间；v4 只用本键 `ex_college_v4.store`，不碰 v3 的 `ex_college_v3.store`）。
 // 门禁 ENGINEERING §8.2 #15：平台存储 API 只允许出现在本文件，页面/组件一律经本模块。
 'use strict';
 
