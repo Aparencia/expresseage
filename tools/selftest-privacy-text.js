@@ -278,14 +278,19 @@ function register(h) {
   });
 
   // ------------------------------------------------------------ G. 文档单源
-  h.section('G 文档单源与发布前填写项', (t) => {
+  h.section('G 文档单源与发布前填写项（含补充文档派生物）', (t) => {
     const privacyDir = path.join(ROOT, 'docs/privacy');
     const guides = fs.readdirSync(privacyDir).filter((name) => name.indexOf('隐私保护指引') !== -1);
     t.eq(guides.length, 1, 'docs/privacy 只有一份隐私保护指引（文本单源，不复制全文到 docs）');
     t.check(privacyTextDocCache.indexOf('config.privacyVersion') !== -1,
       '定稿文档写明与 config.privacyVersion 的版本对应关系');
-    t.check(privacyTextDocCache.indexOf('__________') !== -1,
-      '定稿文档保留用户填写占位符（对外名称/联系方式/变更通知不代填）');
+    const supplementFile = 'docs/privacy/补充文档.txt';
+    const supplement = exists(supplementFile) ? readSource(supplementFile) : '';
+    t.check(privacyTextDocCache.indexOf('__________') !== -1
+      && privacyTextDocCache.indexOf('剪贴板') !== -1
+      && TEXT.indexOf('剪贴板') !== -1
+      && supplement.indexOf(TEXT) !== -1,
+    '定稿文档保留用户填写占位符；剪贴板使用披露两端同源；补充文档为端内全文派生物（随文本重新生成，不单独维护）');
   });
 }
 
