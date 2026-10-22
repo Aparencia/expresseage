@@ -186,6 +186,7 @@
 | 批7 真机 | QA `F16`（客户档案/备注：只看到绑定顾客、`partnerNote` 仅兼职可见、解绑后不再显示头像昵称）、`F18`（代客下单：已绑定顾客单顾客可见进度、guest 单顾客看不到、绑定后只看新单）、`F20`（统计页只有单量、无费用字段、测试数据不计入）、`F22`（客户档案头像+昵称+编号、guest 默认头像+"代客单"标签）；另点检：客户列表服务端搜索/分页、顾客详情「查看更早」、解绑原因必填与二次确认、统计「今日完成」跨 tab 跳工作台（reLaunch 带参）、头像/昵称 onShow 重取 | 批 7 | QA_CHECKLIST 附录 B | 待用户点检 |
 | 批8 真机 | QA §G（开发者后台与治理，G1~G17：后台默认脱敏、邀请码批次/作废/过期、停用/恢复、异常介入取消、config 白名单与二次确认、审计区块）、§V（只读视角 V1~V20：黄条+拒写+审计+Hidden 分享）、§T（账号切换与测试账号 T1~T17：两模式/三 tab/黄蓝条/TEST 角标/退出/过期/覆盖/dryRun/purge/新建→验收→删除）、§R（识别兜底与复核 R5~R15：原图 5 分钟 URL/逐次审计/补录回填/忽略备注/到期清理）、§P（隐私 P8/P10/P19~P22：隐私全文/弹窗/版本重同意/后台声明）、§S 隔离负向 S11~S12/S15~S26；另点检：维护模式（读可用写拒绝+端侧公告）、消息中心红点/公告/已读、我的 tab 红点、后台抬头 developerNo | 批 8 | QA_CHECKLIST 附录 B | 待用户点检 |
 | 批9 真机与发布 | QA 附录 B 批 9 行（全表）+ **H12~H17**：H12 灰度观测六类指标读数、H13 回滚演练（R1/R3/R4/R5/R6+§10.6 记录表）、H14 审核材料齐、H15 注销与数据删除链路（E15/P6/P18：顾客两阶段+兼职 CLOSED 匿名化/删头像/编号作废/usedBy 置空）、H16 测试账号清理链路（T9~T11）、H17 隐私填写回执；另点检双端全场景/越权/隐私/性能/弱网、后台与切换会话全链路、识别兜底与复核面检、灰度放量读数与回滚演练证据 | 批 9 | QA_CHECKLIST 附录 B、RUNBOOK §10 | 待用户执行 |
+| 批10 真机 | QA `D13`（多图合成一单）、`D14`（合并窗口六边界）、`D15`（无截图手填）、`D16`（配送地址不写回）、`L1`（取件清单只本人/本机勾选）、`G18`（后台多包裹/无截图/地址脱敏）、`C14`（换绑一次确认+单步恢复）、`E13`/`F30`（红点=留言+状态事件、订单角标不清零）、`R16`（AI 低置信建议条）；**A 批**：`A1`（资料未完善自动展开）、`A23`（三步引导首现/跳过/重看）、`B6`/`C4`（bind 自动查询 0 点击、落地 `getPublic` ≤1、防抖手感）、`C15`（服务范围 CTA 置灰+提交前本地拦）、`D1`/`D12`（相册不弹保存授权、拒绝后替代路径）、`D6`（其他代办备注行内+服务端）、`D9`（失败卡两路/重新识别/单图替换）、`P24`（相册授权与后台声明）、`P25`（头像 5 分钟边界自愈）；性能体感（冷启动/多件单 setData/滚动） | 批 10 | QA_CHECKLIST 附录 B | 待用户点检 |
 
 ## 6. 批 1 收口证据（真实输出）
 
@@ -392,6 +393,21 @@
 | B 批提交 | **`62da7f3`**（28 文件 +1248/−192；提交后 gate 红 0/黄 0、体量 1,248 ≤ 1,800；工作树干净） |
 | 真机项（不代勾） | QA `C14`（换绑一次确认+单步恢复）、`E13`/`F30`（红点语义）、`R16`（低置信建议条采纳） |
 
+## 6l. 批 10 A 批收口证据（真实输出）
+
+| 命令 | 结果 |
+| :-- | :-- |
+| `powershell -File check.ps1` | **4 步全 PASS，退出码 0**（Lead 收口复跑，含提交后复跑） |
+| `node tools/check.js` | 通过 **32 项**；失败 0 项（含 #18/#21/#24/#32） |
+| `node tools/check-docs.js --batch 1` | 通过 **10 项**；失败 0 项（#05 D1~D29 可解析、#06 无占位、#07 零金额文档扫描） |
+| `node tools/zero-money-scan.js` | **0 命中**（白名单 136 项） |
+| `node tools/selftest.js` | 运行 **31 套**；失败 0 套；SKIP 0；**4,799 断言全 PASS**（A 批 +139：order-flow 168→195、bind 119→161、profile 102→130、order-customer 202→228、order 127→137、message-pages 144→149、state 339→340） |
+| `node tools/check-functions.js` | 扫描 **315** 文件/3,632 函数；>50 行 36 个（基线 43）；**违规 0** |
+| `node tools/sync-cloud-shared.js --check` | 写 0/删 0/已一致 **32 件**；hash 对帐 OK |
+| `powershell -File gate.ps1 -Anchor bda0623 -ScopeFiles "CHANGELOG.md,STATE.md,api/,cloudfunctions/api/handlers/order/,components/image-picker/,config/route.js,custom-tab-bar/,docs/,pages/customer/home/,pages/customer/orders/,pages/profile/,pages/role/,pkg-customer/pages/bind/,pkg-customer/pages/order-create/,store/,tools/,utils/preview-cache.js" -Estimate 1400` | 红色 **0** 项；黄色 **0** 项（退出码 0）；变更 **45 件**、范围 17 前缀全匹配、体量 **2,050 行 ≤ 2,100**、提交信息格式合规（HEAD=`bf74a1c`） |
+| A 批提交 | **`bf74a1c`**（45 文件 +2050/−271；提交后 gate 红 0/黄 0、体量 2,050 ≤ 2,100；工作树干净） |
+| 真机项（不代勾） | QA `A1`（资料自动展开）、`A23`（三步引导）、`B6`/`C4`（bind 自动查询 0 点击/落地 getPublic ≤1）、`C15`（服务范围前移）、`D1`/`D12`（相册不弹保存授权/拒绝替代路径）、`D6`（其他代办备注）、`D9`（失败卡两路/单图替换）、`E13`（订单角标不清零）、`P24`（相册授权/后台声明）、`P25`（头像 5 分钟边界自愈） |
+
 ## 7. 当前风险与红灯（如实记录）
 
 1. **云端仅环境就绪**：唯一云环境已创建、envId 已回填（2026-10-22），但**集合、索引、安全规则、环境变量、触发器、存储权限、云函数部署均未在真实控制台执行**；批 1~批 9 的"绿"全部来自 fake-DB/纯件/静态门禁，**不等于云端已跑通**。任何"部署成功/联调成功"必须以 RUNBOOK §13 证据为准。
@@ -405,7 +421,7 @@
 9. **安全判据自检**：批 3 已取 #28 变异首红并加固；`check.js` #29 admin 静态扫描不覆盖 `{ avatarFileId }` 简写（TD-032，`_dto.js` 整文件禁词 + selftest-testaccount 行为递归键集已覆盖输出面）。
 10. **新增 TD-033**：`lib/tx.js` 的「事务冲突」判定依赖错误自述（`-50200x`/conflict 文案），真实云 DB 冲突码未在真实环境核对过；部署后按 RUNBOOK 冒烟时核对一次日志。
 11. **批 4 遗留明账**：逐件 AI 调用会更快撞「5 次/人/日」配额（TD-034，已按 CONTRACT 逐单口径实现）；AI 配额计数时点为外呼前「失败也占次数」（TD-038，待产品确认）；handler 级 AI 测试用 `globalThis.fetch` 替换而非显式注入口（TD-035）；严格白名单新增字段需同步维护（TD-037）。
-12. **D22 已裁决 A（2026-10-22）**：截图上传失败后**不允许**无截图手填提交（必须先有截图，上传失败只能重试/换图）；OCR/阅读失败仍可手填 `NEED_CODE`；UX §4.5 已限定，TD-039 关闭。
+12. **D22 已改判 B（D24，2026-10-22 用户指令；本条为历史留痕）**：原「D22=A：截图上传失败后不允许无截图手填」**已作废**——现行口径为截图自愿（每单 0~5 张）、可「不传截图，手动填写」提交（`images=[]`⇒`manualEntry=true`，不进入识别链路/AI/复核队列）；OCR/阅读失败照旧可手填 `NEED_CODE`。A 批 P1-4 的失败卡据此同时给「重新选择截图」与「不传截图，手动填写」两条出路，旧「必须先有截图」文案 0 命中（QA D9/D15 复核）。
 13. **批 5 遗留明账**：`order.listCustomer.counts` 单次 find 上限 500 截断（TD-040，极端历史量 tab 计数偏小）；详情写动作 `clientRequestId` 每次自生成（TD-041，靠状态机/乐观锁兜底）；补码文案 `CODE_FILLED_NOTE` 云端/端侧各一份字面量（TD-042，两端套件双向锁一致）。均不阻塞离线收口。
 14. **批 6 遗留明账**：`todayCompleted` 仍 100 截断（TD-043，需冻结件 `db/dao.js` 查询运算符，Lead 未授权前不硬改）；keyword 非订单号部分匹配受 300 条窗口限制（TD-044，口径已声明降级）；`lib/time.toMs` 空值兜底 `Date.now()` 根因在他域（TD-045，DTO 层已防御）；admin 异常介入取消链不可达（TD-046，批 8 裁决）；`listPartner` 无 `since` 增量入参（TD-047，端侧已做行级合并）；已完结终态总数/绑定空态数据源缺口（TD-048，工作台以近似文案表达）。均不阻塞离线收口。
 15. **批 6 判据有牙**：三套新判据均带变异电池首红（A 组 5/5、B 组 6/6、C 组由首轮 132/153 与 20 红→复绿）；`selftest-order-detail-partner` 的 DELIVERED `correct` 以「服务端误下发→页面不渲染」反例锁双保险，不依赖服务端现状。
@@ -477,7 +493,7 @@
 | 2026-10-23 | **批 10 收口提交 `305071c`**（199 文件 +11822/−3325）：提交后复跑 `check.ps1` 4 步 0、`gate.ps1 -Anchor 3cf805f` 红 0/黄 0（体量 11,822 ≤ 18,000）；工作树干净 |
 | 2026-10-23 | **批 10 B 批收口**：D28 换绑一体化（`utils/rebind.js` + bind 页一次确认 `release`→`create`、单步恢复只补 create）、D29 未读红点（`unread`=留言+状态事件、水位事务 CAS、`ALL` 置读、`watermarkMsOf` 修复、兼职端同口径）、D29 AI 低置信（仅 LOW+DEEPSEEK 不写入 + 采纳建议条）；`check.ps1` 4 步 0、selftest **31 套 4,660**（+94）、check **32/32**、docs **10/10**、零金额 0、check-functions 0 违规、sync 32 件一致；TD-067 登记 |
 | 2026-10-23 | **批 10 A 批收口（P1 十项，用户「A 按推荐采纳」）**：P1-1 资料自动展开（`config/route.js` `?edit=1` + profile 每实例一次）、P1-2 bind 自动查询 + 预览缓存（`auto-query.js`/`preview-cache.js`，正常落地 `getPublic` ≤1）、P1-4 单图替换/失败卡两路/原地重识别、P1-5 `ordersOngoing` 角标（不清零/不轮询）、P1-6 服务范围前移预检、P1-7 三步引导、P1-8 相册零 scope（TD-060 关闭代码侧）、P1-9 其他代办强备注（客户端+服务端）、P1-10 头像票据自愈；`check.ps1` 4 步 0、selftest **31 套 4,799**（+139）、check **32/32**、docs **10/10**、零金额 0、check-functions 0 违规、sync 32 件一致；TD-068/069/070 登记；QA 271→275 |
-| 2026-10-23 | **批 10 A 批提交**（见 §7 收口记录）：工作树提交后跑 `gate.ps1 -Anchor bda0623`；本行为收口证据回填提交 |
+| 2026-10-23 | **批 10 A 批提交 `bf74a1c`**（45 文件 +2050/−271）：提交后复跑 `check.ps1` 4 步 0、`gate.ps1 -Anchor bda0623 -ScopeFiles "CHANGELOG.md,STATE.md,api/,cloudfunctions/api/handlers/order/,components/image-picker/,config/route.js,custom-tab-bar/,docs/,pages/customer/home/,pages/customer/orders/,pages/profile/,pages/role/,pkg-customer/pages/bind/,pkg-customer/pages/order-create/,store/,tools/,utils/preview-cache.js" -Estimate 1400` 红 0/黄 0（45 件、体量 2,050 ≤ 2,100、范围 17 前缀全匹配）；工作树干净（本行为收口证据回填提交） |
 
 ## 9. 下一步（按序）
 
