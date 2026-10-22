@@ -78,6 +78,7 @@ D1 A；D2 wxcb7e5b41b89bc806；D3 A；D13 主体=个人，类目 工具；D8 五
 - **必须承认的代价**：开发/联调与线上**共用一个库**，任何"造数据"都直接落在正式库；上线后没有可随意试错的 staging。缓解：能本地的先本地（fake-DB 单测/纯件判据），必须上真机的只用测试账号，写操作/结构变更前先备份，事故按 RUNBOOK §10.4 R6「先清不先删库」处置。
 - **被否**：付费/升级开通第二环境（用户当前不可用；将来可用则按下条拆分）；自建后端否于 D1 原点。
 - **落地清单**：`config/env.js`（单 `ENV_ID`，三档同值）、`doctor.ps1` 与 `tools/seed-dev.js` 占位断言改 `__ENV_ID__`；CONTRACT §2 D1、ENGINEERING §3.3/§4.6/§6.1/§6.2/§10.1~§10.3、RUNBOOK §1/§2/§3.1/§3.8/§4/§10.2/§12/§13、QA Q1/H8/附录 A、REVIEW_MATERIALS H8、V3_PARITY §5.2、INTERIM §2.2/§7、README、STATE、CHANGELOG、REBUILD_SPEC 同步。
+- **执行留痕（2026-10-22，环境侧已落地）**：用户已开通云开发并创建**唯一云环境**，envId 交 Lead 回填 `config/env.js`（三档同值；**值只在 `config/env.js`，文档不记**），`doctor.ps1` 占位告警转 PASS。D1 自此由「裁决」转入「执行」：集合/索引/安全规则、云函数部署、`ADMIN_OPENIDS` 与 `DEEPSEEK_API_KEY` 环境变量（Key 只入控制台）、10 分钟触发器、存储权限仍待执行（RUNBOOK §3、§13 逐行记录）。
 
 ---
 

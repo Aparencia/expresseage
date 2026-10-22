@@ -5,13 +5,13 @@
 > 更新时机：每批开工/收口、用户裁决变化、风险新增或关闭、HEAD 变化需回读。
 > 本文只记**状态、待办与下一步**，不重复设计口径（口径看 CONTRACT，工程规则看 ENGINEERING，接口看 ARCHITECTURE）。
 
-**快照时间：2026-10-22（批 9 工程侧收口 + 用户裁决回写 + D1 单环境修订）**
-> 临时总体说明（全局汇总，非状态源）：[`docs/V4_INTERIM_OVERVIEW.md`](docs/V4_INTERIM_OVERVIEW.md)（2026-10-22 生成/更新 v0.3，依据 HEAD `3667f82`；状态仍以本文件为准、口径以 CONTRACT 为准）。
+**快照时间：2026-10-22（批 9 工程侧收口 + 用户裁决回写 + D1 单环境修订 + 云环境就绪回填）**
+> 临时总体说明（全局汇总，非状态源）：[`docs/V4_INTERIM_OVERVIEW.md`](docs/V4_INTERIM_OVERVIEW.md)（2026-10-22 生成/更新 v0.4，依据 HEAD `91d158b` + 云环境回填；状态仍以本文件为准、口径以 CONTRACT 为准）。
 
 ## 1. 一句话状态
 
 **批 0 设计定稿完成；批 1 工程骨架与云端基础设施完成并收口（`check.ps1` 4 步全 PASS、退出码 0）；批 2 账号入口/切换会话/测试账号/头像采集的离线部分完成并收口；批 3 绑定与服务配置的离线部分完成并收口；批 4 顾客下单链路的离线部分完成并收口；批 5 顾客订单闭环的离线部分完成并收口（**14 套 2,078 断言全 PASS**、`check.ps1` 退出码 0、check.js 31/31、check-docs 10/10、零金额 0 命中；新增 `selftest-order-lifecycle`（98）与 `selftest-order-customer`（190）；修 12 项真实 UX/契约缺陷：服务端 actions 矩阵缺 confirm/deleteRecord/reorder、终态可留言、listCustomer 无 counts、image 无 cleaned、补码事件不可区分、列表行四字段全空、详情轮询死 setInterval 无退避/无最近更新、页面本地猜按钮、写动作丢 expectedVersion、无再次下单、消息红点不归零、截图/异常/取消分支与回退提示缺失）；批 6 兼职工作台的离线部分完成并收口（**17 套 2,555 断言全 PASS**、`check.ps1` 退出码 0；新增 `selftest-order-partner`（127）、`selftest-order-workbench`（197）、`selftest-order-detail-partner`（153）；修 9 项真实缺陷：workbench 行 DTO 无 actions、batchActionId 静默丢弃、todayCompleted 100 截断探针、keyword 越窗漏单、CLOSED/SUSPENDED 可读工作台、DELIVERED 下发非法 correct、unmark 事件 undoneAction 写错、undo 残留 deliveryNote、DTO 空时间戳变假时间，另修 reject.OTHER 无备注静默通过）；批 7 兼职客户与运营的离线部分完成并收口（**21 套 3,132 断言全 PASS**、`check.ps1` 退出码 0；新增 `selftest-partner-customers`（129）、`selftest-partner-orders`（89）、`selftest-partner-pages`（156）、`selftest-partner-stats`（203）；修 10+ 项真实缺陷：解绑进行中单按兼职全量误拦、绑定列表按字符串序排列（D10 排 D4 前）、listBindings keyword/cursor/limit 全缺、activeOrderCount 混入 isTest、顾客详情用 keyword 冒充按顾客过滤、代客单只能 guest（绑定顾客单顾客不可见）、stats 客户端 4×100 累加近似（超 400 单偏小）、完成率分母 0 显示 0%、空数据画假柱、解绑/备注归属错误码 NOT_FOUND→FORBIDDEN，另修二选一入参静默缺省与重放侧别错判）。批 2/批 3/批 4/批 5/批 6/批 7/批 8 真机项与云环境验收待用户；**批 8 开发者后台 + 切换会话 + 通知 + 隐私文本的离线部分完成并收口**（`check.ps1` 4 步全 PASS、退出码 0；**27 套 4,062 断言全 PASS**；新增 6 套判据 `selftest-{admin,messages,cleanup,admin-pages,message-pages,privacy-text}`；修 30+ 项真实缺陷：TD-046 异常介入取消不可达（隐私闸/身份域两层根因）、维护闸误拦读、`admin.updateConfig` 白名单范围偏差、cleanup 全域运行必崩 + `image.cleanedAt` 未写 + 识别失败原图残留、后台 11 页无权限五态缺失/错误文案说假话/无效启用开关、消息中心公告双份难关/红点欠计/维护遮罩、端内隐私全文滞后；隐私文本升**定稿候选 v1.0**）。**批 9 联调、合规与发布的工程侧（离线部分）完成并收口**（`check.ps1` 4 步全 PASS、退出码 0；**28 套 4,151 断言全 PASS**；新增 `selftest-deletion` 89 断言端到端覆盖注销/数据删除链路，先判据后修 **14 条真实缺陷**：顾客注销阶段一漏清历史 `bindings.partnerNote`、识别失败原图引用未回收，兼职 CLOSED 未匿名化 `displayName/avatarFileId`/未删头像文件/未清 `invitation_codes.usedBy`/识别失败归属未清，治理链非事务与 `users.purgeAt` 空置等登记 TD-053~057；新建 **审核材料与提审体验路径手册** `docs/V4_REVIEW_MATERIALS.md`、**v3→v4 功能对照验收表** `docs/V4_V3_PARITY.md`；RUNBOOK §10 升级为**灰度发布与回滚演练**（分批/门禁回执/观测判停/R1~R7 演练/记录表），QA 批 9 专项 **H12~H17** 与 E15/P6/P18 注销链路强化，附录 E 计数 255；CONTRACT §11.4/DATA_MODEL §10 注销时点与 CLOSED 口径澄清）。**
-**用户侧开工门已全部闭环（2026-10-22 用户回复，原文留痕见 `docs/V4_DECISIONS.md` §0.1）**：D1 A；**D2 沿用 v3 appid `wxcb7e5b41b89bc806`**（非推荐 A，代价见 DECISIONS D2 留痕）；D3 A；**D13 个人主体 + 工具类目**（提审风险见 D13 留痕）；**D8 东苑/西苑/南苑/北苑/翠苑**（默认值已进 `shared/zones.js`）；**D22 A**（保持必须先有截图）；其余 D4/D7/D9/D10/D11/D12/D14/D15/D16/D17/D18/D19 按推荐确认；D5/D6/D20/D21 早前已定。**D1 同日修订（2026-10-22）**：用户告知「云开发只能开通一个环境」⇒ **单环境方案**——develop/trial/release 三档同 envId（`config/env.js` 单 `ENV_ID`），开发/体验/正式共用一个库；隔离靠测试账号/`isTest` 标记 + 上线前「单环境清零」（RUNBOOK §10.2.1），风险见 §7 #24。云环境尚未创建、云函数尚未在真实云环境部署、真机项未点检。**批 9 用户侧未开始**：双端真机全场景/越权/隐私/性能/弱网、后台与切换会话回归面检、识别兜底与复核面检、隐私后台逐项声明与 13 项填写、`privacyVersion` 定稿写入、审核材料准备与提审、灰度观测与回滚演练（RUNBOOK §10.6 记录表）、v3 对照验收表用户勾选。
+**用户侧开工门已全部闭环（2026-10-22 用户回复，原文留痕见 `docs/V4_DECISIONS.md` §0.1）**：D1 A；**D2 沿用 v3 appid `wxcb7e5b41b89bc806`**（非推荐 A，代价见 DECISIONS D2 留痕）；D3 A；**D13 个人主体 + 工具类目**（提审风险见 D13 留痕）；**D8 东苑/西苑/南苑/北苑/翠苑**（默认值已进 `shared/zones.js`）；**D22 A**（保持必须先有截图）；其余 D4/D7/D9/D10/D11/D12/D14/D15/D16/D17/D18/D19 按推荐确认；D5/D6/D20/D21 早前已定。**D1 同日修订（2026-10-22）**：用户告知「云开发只能开通一个环境」⇒ **单环境方案**——develop/trial/release 三档同 envId（`config/env.js` 单 `ENV_ID`），开发/体验/正式共用一个库；隔离靠测试账号/`isTest` 标记 + 上线前「单环境清零」（RUNBOOK §10.2.1），风险见 §7 #24。**云环境已创建、envId 已回填 `config/env.js`（2026-10-22；值只在代码里，文档不落）；用户已提供 `DEEPSEEK_API_KEY`（只入 `api` 云函数环境变量，仓库零落值）**；14 集合/索引/安全规则、`api`/`cleanup` 部署、`ADMIN_OPENIDS`、触发器、存储权限均未执行；真机项未点检。**批 9 用户侧未开始**：双端真机全场景/越权/隐私/性能/弱网、后台与切换会话回归面检、识别兜底与复核面检、隐私后台逐项声明与 13 项填写、`privacyVersion` 定稿写入、审核材料准备与提审、灰度观测与回滚演练（RUNBOOK §10.6 记录表）、v3 对照验收表用户勾选。
 
 ## 2. 批次台账
 
@@ -128,7 +128,7 @@
 
 | # | 事项 | 阻塞什么 | 来源 | 状态 |
 | :-- | :-- | :-- | :-- | :-- |
-| 1 | **D1** 开通云开发 + 创建**唯一云环境**（D1 修订：账号只能开 1 个；三档同 envId，envId 交 Lead 填 `config/env.js`） | 云资源、部署、批 2 联调 | ENGINEERING §6.1 #2、§10.2 | 已裁决 A（2026-10-22）+ 单环境修订；待你创建环境 |
+| 1 | **D1** 开通云开发 + 创建**唯一云环境**（D1 修订：账号只能开 1 个；三档同 envId，envId 交 Lead 填 `config/env.js`） | 云资源、部署、批 2 联调 | ENGINEERING §6.1 #2、§10.2 | 已裁决 A + 单环境修订；**环境已创建、envId 已回填 `config/env.js`（2026-10-22）**；待建集合/索引/规则与部署 |
 | 2 | **D2** appid 沿用 `wxcb7e5b41b89bc806`（2026-10-22 已裁决；`project.config.json` 已改）；确认该 appid 主体可用 | 开工门/真机 | ENGINEERING §6.1 #1 | 已裁决；待确认主体 |
 | 3 | **D3** 兼职准入用邀请码（2026-10-22 已裁决 A） | 批 2 激活流程锁定 | CONTRACT §13 | 已闭环 |
 | 4 | **D13** 主体/类目：个人主体 + 工具类目（2026-10-22 已裁决；提审前在微信后台确认类目可选 + 完成备案） | 批 9 提审 | ENGINEERING §6.1 #3 | 已裁决；类目可选性待确认 |
@@ -136,7 +136,7 @@
 | 6 | 配置 `ADMIN_OPENIDS`（JSON 映射，含 `DEV-01`） | `admin.*`、切换会话/测试账号冒烟 | ENGINEERING §6.1 #4 | 未完成 |
 | 7 | 云存储权限设置（私有、上传可用） | 截图/头像上传链路 | ENGINEERING §6.1 #5、§3.5 | 未完成 |
 | 8 | 14 集合 + 安全规则 + 全部索引（控制台建，`seed-dev.js` 可给清单） | 批 2 云资源验收 | ENGINEERING §4.6、§10.2 | 未完成 |
-| 9 | `DEEPSEEK_API_KEY` 与 E11（DeepSeek 账号/条款/配额确认） | AI 兜底上线；未确认前保持关闭 | ENGINEERING §6.1 #9、§13 E11 | 未确认 |
+| 9 | `DEEPSEEK_API_KEY` 与 E11（DeepSeek 账号/条款/配额确认） | AI 兜底上线；未确认前保持关闭 | ENGINEERING §6.1 #9、§13 E11 | **Key 已由用户提供（2026-10-22；只入控制台环境变量，仓库零落值）**；E11 条款/配额确认未完成，`aiFallback.enabled` 保持 false |
 | 10 | 定时触发器（10 分钟 cleanup）与云函数超时/内存按 RUNBOOK 配置 | cleanup 生效 | ENGINEERING §4.7、RUNBOOK | 未完成 |
 | 11 | **E12** 头像/昵称隐私接口与基础库能力真机实测 | 批 2 头像/昵称采集验收 | ENGINEERING §6.1 #10、§13 E12 | 未做 |
 | 12 | 《用户隐私保护指引》微信后台逐项声明（含头像/昵称/第三方 AI） | 批 9 提审 | ENGINEERING §6.1 #6、§10.4 | 未做 |
@@ -345,8 +345,8 @@
 
 ## 7. 当前风险与红灯（如实记录）
 
-1. **云端一切未执行**：云环境、集合、索引、安全规则、环境变量、触发器、存储权限均未在真实控制台创建；批 1/批 2/批 3/批 4 的"绿"全部来自 fake-DB/纯件/静态门禁，**不等于云端已跑通**。任何"部署成功/联调成功"必须以 RUNBOOK 证据为准。
-2. **云函数未在真实云环境部署**：`api`/`cleanup` 首次部署、`health.check`/`admin.bootstrap` 真机调用属开工前置（D1/D2 后）。
+1. **云端仅环境就绪**：唯一云环境已创建、envId 已回填（2026-10-22），但**集合、索引、安全规则、环境变量、触发器、存储权限、云函数部署均未在真实控制台执行**；批 1~批 9 的"绿"全部来自 fake-DB/纯件/静态门禁，**不等于云端已跑通**。任何"部署成功/联调成功"必须以 RUNBOOK §13 证据为准。
+2. **云函数未在真实云环境部署**：`api`/`cleanup` 首次部署与 `health.check`/`admin.bootstrap` 冒烟是**当前第一阻塞项**（envId 已就绪，可立即执行；控制台无 OPENID 调 internal 动作走 `DEPLOY` 通道）。
 3. **AI 兜底处于关闭状态**：`config.aiFallback.enabled` 初始 false，`DEEPSEEK_API_KEY` 未配置属预期降级。
 4. **隐私文本为定稿候选**：`docs/privacy/隐私保护指引` 已升**定稿候选 v1.0**（端内全文单源 + 判据锁一致性），仍有 13 项用户填写/确认（§4 #14）与 `privacyVersion` 定稿写入（§4 #15）；批 9 提审前必须完成并逐项微信后台声明。
 5. **D8 已裁决（2026-10-22）**：五苑展示名 = 东苑 / 西苑 / 南苑 / 北苑 / 翠苑；默认值已进 `shared/zones.js`（两个云函数副本已同步），后台仍可经 `config.zoneLabels` 覆盖。
@@ -415,7 +415,7 @@
 
 ## 9. 下一步（按序）
 
-1. **创建云环境与部署（D1/D2/D3/D13/D8/D22 已裁决，只剩执行；D1 已修订为单环境）**：开通云开发并创建**唯一云环境**（账号只能开 1 个），把 envId 交 Lead 回填 `config/env.js` 三档；建 14 集合/索引/安全规则、配 `ADMIN_OPENIDS`、存储权限、10 分钟触发器（可选 `DEEPSEEK_API_KEY`）；证据按 `docs/RUNBOOK.md` 采集。发布前按 RUNBOOK §10.2.1 做「单环境清零」。
+1. **云环境部署（D1/D2/D3/D13/D8/D22 已裁决；环境已建，只剩控制台资源与部署）**：建 14 集合/索引/安全规则 → `node tools/sync-cloud-shared.js` + 部署 `api`/`cleanup` → 配 `ADMIN_OPENIDS`（JSON 映射）与 `DEEPSEEK_API_KEY`（用户已提供，只入控制台）→ 10 分钟触发器 + 存储权限 → 控制台调 `health.check`/`admin.bootstrap` 冒烟（无 OPENID 走 `DEPLOY` 通道）；证据按 `docs/RUNBOOK.md` §3 采集并逐行更新 §13。发布前按 RUNBOOK §10.2.1 做「单环境清零」。
 2. **首次部署冒烟**：`node tools/sync-cloud-shared.js` → 部署 `api`/`cleanup` → `health.check`/`admin.bootstrap` → 单条 10 分钟定时触发器 → RUNBOOK「首次部署」清单。
 3. **批 2 真机点检**（只能用户）：E12 头像/昵称能力、隐私弹窗、切换条黄/蓝与退出、测试账号单机双端（绑定→下单→确认）、邀请码负向、开发者 entry；按 `docs/QA_CHECKLIST.md` 批 2 分区（A1~A10、A13~A14、B1~B5、Q5、Q7、P9、P13~P14）取证。
 4. **批 3 真机点检**：绑定/换绑/解绑、roomTag 大写与并发（B6~B9、C1~C13）。

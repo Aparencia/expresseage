@@ -31,6 +31,7 @@
 
 ### 工程细节
 
+- **2026-10-22 · 云环境就绪（用户执行，Lead 回写）**：用户已在微信开发者工具创建**唯一云环境**并把 envId 告知 Lead，`config/env.js` 由 `__ENV_ID__` 占位回填为真实 envId（develop/trial/release 三档同值；值只在 `config/env.js`，文档与仓库其他位置不落）；`doctor.ps1` 由「通过 15 / 告警 1（envId 占位）」转为**通过 16 / 告警 0 / 失败 0**，`check.js` #19 的「envId 仍为占位」提示消失。用户同时提供 `DEEPSEEK_API_KEY`：按纪律**只写入 `api` 云函数环境变量，仓库零落值、不截图明文**（AGENTS.md §4.8、ENGINEERING §6.1）。下一步=RUNBOOK §3.5 起建 14 集合/索引/安全规则 → 部署 `api`/`cleanup` → `health.check`/`admin.bootstrap` 冒烟。
 - **2026-10-22 · D1 单环境修订（用户追加约束）**：用户告知「云开发我只能开通一个环境」→ 选项 A（微信云开发）不变，执行方式改为**单环境**：`config/env.js` 由 dev/prod 两个占位改为单 `ENV_ID`（develop/trial/release 三档同值，保留 envVersion→envId 映射形状，将来可开第二环境时只改该文件）；`doctor.ps1`/`tools/seed-dev.js` 占位断言同步为 `__ENV_ID__`；新增运行纪律——测试账号/`isTest` 标记隔离、上线前「单环境清零」（RUNBOOK §10.2.1：导出备份→`purgeTestData`→删/留测试账号→核对集合与云存储→留审核邀请码）、发布侧用体验版 + 平台分阶段发布做灰度。回写 CONTRACT/DECISIONS(D1 修订留痕)/ENGINEERING/RUNBOOK/QA/REVIEW_MATERIALS/V3_PARITY/INTERIM(v0.3)/README/STATE/REBUILD_SPEC/TECH_DEBT(新增 TD-058)；`check.ps1` 4 步全 PASS。
 - **2026-10-21 · 批 0 设计定稿**：`docs/V4_CONTRACT.md` v0.9 及 `V4_DATA_MODEL.md`、三份 `V4_UX_*.md`、`V4_ENGINEERING.md`、`V4_DECISIONS.md`（D1~D21）、`QA_CHECKLIST.md`、`ARCHITECTURE.md`、`docs/privacy/` 两件定稿/更新；四次修订 D18~D21（账号切换、头像昵称、绑定方向、roomTag 大写）已回写全部引用。
 - **2026-10-21 · 批 1 骨架开工**（提交 `d5ad214`）：app.json 页面地图冻结（主包 7 + 分包 23 页）、`docs/ARCHITECTURE.md` 代码接口与写作用域冻结、根配置改造（`app.js`/`app.wxss`/`project.config.json`/`.env.example`/`.gitattributes` 等）。
