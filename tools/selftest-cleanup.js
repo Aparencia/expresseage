@@ -54,7 +54,7 @@ function createCleanupDb(options) {
     return cmd;
   };
   const command = { gte: (value) => rangeCmd('gte', value), lt: (value) => rangeCmd('lt', value) };
-  ['eq', 'neq', 'gt', 'lte', 'in', 'nin', 'exists', 'inc', 'remove'].forEach((name) => {
+  ['eq', 'neq', 'gt', 'lte', 'in', 'nin', 'exists', 'inc', 'set', 'remove'].forEach((name) => {
     command[name] = fake.cmd[name];
   });
   command._ = command;

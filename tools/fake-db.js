@@ -3,11 +3,14 @@
  * tools/fake-db.js — 云函数 handler 单测用内存 fake DB（不 require wx-server-sdk，不进小程序包）。
  *
  * 覆盖（ENGINEERING §7.3）：
- *   collection/where/orderBy/limit/skip/get/add/update/remove/count、db.command._.inc、
+ *   collection/where/orderBy/limit/skip/get/add/update/remove/count、db.command.{inc,set,remove}、
  *   事务提交/回滚（runTransaction）、唯一索引冲突模拟（默认 _id，可配复合唯一索引）。
  *
  * 设计口径：
  *   - 与 wx-server-sdk 的调用形状保持一致（db.collection(name).where(...).get()），handler 不需要分支 mock。
+ *   - **更新语义与真实云 DB 对齐**：普通对象值会被拍平成点路径 $set（部分合并），点路径不能穿过
+ *     null/标量父级——与线上 -502001（Cannot create field ... in element {privacyConsent: null}）同形，
+ *     旧实现"整对象替换"曾掩盖该真实故障；整值替换必须用 db.command.set（api/cleanup 的 dao.update 统一包）。
  *   - 读写都走深拷贝，测试拿到的对象改不动库；每条写入计入 stats，便于断言"失败路径零写入"。
  *   - 冲突抛出带 code='UNIQUE_CONFLICT' / errCode=-502001 / collection / fields 的错误，handler 可按业务转 CONFLICT。
  *
@@ -29,17 +32,6 @@ function getPath(obj, dotted) {
   return cur;
 }
 
-function setPath(obj, dotted, value) {
-  const parts = String(dotted).split('.');
-  let cur = obj;
-  for (let i = 0; i < parts.length - 1; i++) {
-    const p = parts[i];
-    if (cur[p] === null || typeof cur[p] !== 'object') cur[p] = {};
-    cur = cur[p];
-  }
-  cur[parts[parts.length - 1]] = value;
-}
-
 function comparable(v) {
   return v instanceof Date ? v.getTime() : v;
 }
@@ -47,7 +39,8 @@ function comparable(v) {
 // ---------------------------------------------------------------- command
 const CMD = Symbol('fakeDbCommand');
 function command(type, value) {
-  return { [CMD]: true, type, value };
+  // 与真实 SDK 指令形状对齐：{ operator, operands }（db/dao.js 据此判断"已是指令、不再包整值替换"）
+  return { [CMD]: true, type, value, operator: type, operands: value === undefined ? [] : [value] };
 }
 const cmd = {
   eq: (v) => command('eq', v),
@@ -60,6 +53,7 @@ const cmd = {
   nin: (v) => command('nin', v),
   exists: (v) => command('exists', v),
   inc: (v) => command('inc', v),
+  set: (v) => command('set', v),
   remove: () => command('remove', null),
 };
 cmd._ = cmd;
@@ -155,19 +149,77 @@ function createFakeDb(options) {
     }
   }
 
+  function isPlainObjectValue(value) {
+    return !!value && typeof value === 'object' && !Array.isArray(value)
+      && Object.prototype.toString.call(value) === '[object Object]';
+  }
+
+  // 真实云 DB 语义：点路径 $set 不能穿过 null/标量父级。
+  // 线上事故：users.privacyConsent=null 时 SDK 把 {version, at} 拍成 privacyConsent.at → -502001
+  // "Cannot create field 'at' in element {privacyConsent: null}"，整次写入失败。
+  function setByPath(doc, dotted, value) {
+    const parts = String(dotted).split('.');
+    let cur = doc;
+    for (let i = 0; i < parts.length - 1; i += 1) {
+      const key = parts[i];
+      const next = cur[key];
+      if (next === undefined) {
+        cur[key] = {};
+        cur = cur[key];
+        continue;
+      }
+      if (next === null || typeof next !== 'object' || Array.isArray(next)) {
+        const err = new Error('collection.update:fail -502001 database request fail. [FailedOperation] '
+          + "Cannot create field '" + parts[i + 1] + "' in element {" + key + ': ' + JSON.stringify(next) + '}');
+        err.errMsg = err.message;
+        err.code = 'DATABASE_REQUEST_FAILED';
+        err.errCode = -502001;
+        throw err;
+      }
+      cur = next;
+    }
+    cur[parts[parts.length - 1]] = clone(value);
+  }
+
+  // 普通对象值 → 与 wx-server-sdk 一致拍平成点路径 $set（部分合并）；标量/Date/数组按点路径整值写入
+  function applyPlainValue(doc, key, value) {
+    if (isPlainObjectValue(value)) {
+      Object.keys(value).forEach((child) => applyPlainValue(doc, key + '.' + child, value[child]));
+      return;
+    }
+    setByPath(doc, key, value);
+  }
+
   function applyUpdate(doc, data) {
     Object.keys(data || {}).forEach((key) => {
       const value = data[key];
-      if (value && value[CMD] && value.type === 'inc') {
-        const cur = getPath(doc, key);
-        setPath(doc, key, (typeof cur === 'number' ? cur : 0) + Number(value.value));
-      } else if (value && value[CMD] && value.type === 'remove') {
-        const parts = String(key).split('.');
-        const parent = parts.length > 1 ? getPath(doc, parts.slice(0, -1).join('.')) : doc;
-        if (parent && typeof parent === 'object') delete parent[parts[parts.length - 1]];
-      } else {
-        setPath(doc, key, clone(value));
+      if (value === undefined) {
+        return; // SDK flatten 会直接丢弃 undefined 字段
       }
+      if (value && value[CMD]) {
+        switch (value.type) {
+          case 'inc': {
+            const cur = getPath(doc, key);
+            setByPath(doc, key, (typeof cur === 'number' ? cur : 0) + Number(value.value));
+            return;
+          }
+          case 'set': {
+            setByPath(doc, key, value.value); // 整值替换：不拍平（dao.update 对对象字段统一走这里）
+            return;
+          }
+          case 'remove': {
+            const parts = String(key).split('.');
+            const parent = parts.length > 1 ? getPath(doc, parts.slice(0, -1).join('.')) : doc;
+            if (parent && typeof parent === 'object') {
+              delete parent[parts[parts.length - 1]];
+            }
+            return;
+          }
+          default:
+            throw new Error('不支持的更新指令：' + value.type);
+        }
+      }
+      applyPlainValue(doc, key, value);
     });
   }
 

@@ -12,7 +12,7 @@
  */
 const path = require('path');
 const { createHarness, installCrashGuard } = require('./selftest');
-const { createFakeDb } = require('./fake-db');
+const { cloudStub, createTestDb, createUpdateProbeDb } = require('./selftest-cloud-fixtures');
 
 const ROOT = path.resolve(__dirname, '..');
 const API = path.join(ROOT, 'cloudfunctions/api');
@@ -35,7 +35,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const ADMIN_OPENID = 'openid-admin-dev01';
 const ADMIN_ENV = { ADMIN_OPENIDS: JSON.stringify({ [ADMIN_OPENID]: 'DEV-01' }) };
 
-const EXPECTED_ASSERTIONS = 169;
+const EXPECTED_ASSERTIONS = 174;
 
 const API_PENDING_ASSERTS = 22;
 const CLEANUP_PENDING_ASSERTS = 14;
@@ -64,48 +64,6 @@ function pendingAsserts(t, count, reason) {
   for (let i = 0; i < count; i += 1) {
     t.check(false, reason);
   }
-}
-
-// 内容安全桩（v2）：customer.saveProfile / partner.* 会调 cloud.openapi.security.msgSecCheck；
-// 单测零真实微信外呼，按 suggest 返回 pass/risky 两种结果。
-function cloudStub(suggest) {
-  const result = suggest || 'pass';
-  return {
-    openapi: {
-      security: {
-        msgSecCheck: async () => ({
-          errCode: 0,
-          result: { suggest: result, label: result === 'pass' ? 100 : 20001 }
-        })
-      }
-    }
-  };
-}
-
-function uniqueIndexesForApi() {
-  return {
-    users: [['_id']],
-    customers: [['customerNo'], ['_id']],
-    partners: [['openid'], ['partnerNo']],
-    bindings: [['activeKey']],
-    orders: [['orderNo'], ['requestKey']],
-    order_events: [['requestKey']],
-    counters: [['key']],
-    admin_audit: [['requestKey']],
-    admin_view_sessions: [['requestKey']],
-    upload_tickets: [['ticket']],
-    recognition_failures: [['failureNo'], ['requestKey']]
-  };
-}
-
-const ALL_COLLECTION_NAMES = Object.keys(COLLECTIONS).map((key) => COLLECTIONS[key]);
-
-// tools/fake-db.js 只在 seed 过的集合上持久化写入（未 seed 集合的写入落入临时 Map）；
-// 测试库统一预建 14 个集合，避免"写入静默丢失"导致的假红。
-function createTestDb() {
-  const db = createFakeDb({ uniqueIndexes: uniqueIndexesForApi() });
-  ALL_COLLECTION_NAMES.forEach((name) => db.seed(name, []));
-  return db;
 }
 
 // 异步分节串行执行：harness 的 sectionTitle 是全局的，并发跑会让失败标签串到别的节。
@@ -178,6 +136,42 @@ function register(h) {
     const counter = await dao.findOne(COLLECTIONS.COUNTERS, { where: { key: 'orderNo:test' } });
     await dao.update(COLLECTIONS.COUNTERS, counter._id, { seq: dao.inc(2), updatedAt: NOW });
     t.eq((await dao.get(COLLECTIONS.COUNTERS, counter._id)).seq, 3, 'update + inc 原子自增');
+    // 写入语义：对象字段 = 整值替换（dao 包 command.set），标量与既有指令透传。
+    // 真实 wx-server-sdk 会把嵌套对象拍平成点路径 $set；父字段为 null 时报 -502001（2026-10-22 隐私同意事故）。
+    const probe = createUpdateProbeDb();
+    const probeDao = createDao(probe.db);
+    await probeDao.update(COLLECTIONS.USERS, 'u-1', {
+      privacyConsent: { version: 'v4.0', at: new Date(NOW) },
+      updatedAt: new Date(NOW)
+    });
+    const probeData = probe.updates[0].data;
+    t.check(probeData.privacyConsent && probeData.privacyConsent.type === 'set'
+      && probeData.privacyConsent.value.version === 'v4.0',
+    '§7.3 update 对象字段包成整值替换指令 set（不交给 SDK 拍平点路径：父级 null 时线上会 -502001）');
+    t.check(probeData.updatedAt instanceof Date && probeData.updatedAt.type === undefined,
+      '§7.3 update 标量/Date 不做整值替换包装（透传，时间字段保持 Date）');
+    await probeDao.update(COLLECTIONS.COUNTERS, 'c-1', { seq: probeDao.inc(2) });
+    t.eq(probe.updates[1].data.seq.type, 'inc', '§7.3 update 既有更新指令原样透传（inc 不被二次包装）');
+    const rawDb = createTestDb();
+    rawDb.seed('users', [{ _id: 'u-null-parent', privacyConsent: null }]);
+    let nullParentError = null;
+    try {
+      await rawDb.collection('users').where({ _id: 'u-null-parent' }).update({
+        data: { privacyConsent: { version: 'v4.0', at: new Date(NOW) } }
+      });
+    } catch (error) {
+      nullParentError = error;
+    }
+    t.check(!!nullParentError && nullParentError.errCode === -502001
+      && /Cannot create field/.test(String(nullParentError.message || '')),
+    '§7.3 fake DB 复刻真实语义：嵌套对象 update 遇 null 父级 → -502001 Cannot create field（防再次假绿）');
+    const fixedDb = createTestDb();
+    fixedDb.seed('users', [{ _id: 'u-null-parent', privacyConsent: null }]);
+    await createDao(fixedDb).update(COLLECTIONS.USERS, 'u-null-parent', {
+      privacyConsent: { version: 'v4.0', at: new Date(NOW) }
+    });
+    t.eq(fixedDb.dump('users')[0].privacyConsent.version, 'v4.0',
+      '§7.3 dao.update 在 null 父级上整值替换成功（本条即云端「同意隐私政策」故障回归）');
     t.eq((await dao.updateWhere(COLLECTIONS.USERS, { _id: 'u-1' }, { status: USER_STATUS.ACTIVE })).updated, 1,
       'updateWhere 返回 {updated}');
     await dao.add(COLLECTIONS.USERS, { _id: 'u-remove' });

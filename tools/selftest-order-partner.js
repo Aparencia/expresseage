@@ -787,6 +787,9 @@ async function sectionG(h) {
     t.eq([reportedPick.data.order.exception.fromStatus, resolved.data.order.status, rowOf(db, '20261022-0606').exception,
       resolveEvent.payload && resolveEvent.payload.restoredTo],
     [PICKED, PICKED, null, PICKED], 'G6 resolve 回到 exception.fromStatus（PICKED）+ 清异常 + 事件 payload.restoredTo');
+    const reReported = await pApi.call('order.reportException', { orderNo: '20261022-0606', code: 'CABINET_ERROR', text: '再次故障' }, { clientRequestId: nextCrid('report-again') });
+    t.check(reReported.ok === true && rowOf(db, '20261022-0606').exception.code === 'CABINET_ERROR',
+      'G6b 异常恢复（exception=null）后可再次上报：exception 走整值替换，不触发真实云 DB -502001');
     await expectCode(t, pApi.call('order.resolveException', { orderNo: '20261022-0610' },
       { clientRequestId: nextCrid('resolve-non') }), 'INVALID_TRANSITION',
     'G7 非 EXCEPTION 状态 resolve → INVALID_TRANSITION');

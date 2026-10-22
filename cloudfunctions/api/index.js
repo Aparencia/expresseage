@@ -7,8 +7,8 @@ exports.main = async (event, context) => {
   try {
     return await bootstrap.invoke(event, context, cloud);
   } catch (error) {
-    // 装配期异常（如 SDK 未就绪）也必须返回 flat 包络，禁止把堆栈抛给客户端。
-    console.error('[api] 入口装配失败');
+    // 装配期异常（如 SDK 未就绪）也必须返回 flat 包络，禁止把堆栈抛给客户端；细节只留云函数日志。
+    console.error('[api] 入口装配失败', (error && (error.stack || error.message)) || String(error));
     return {
       ok: false,
       code: 'INTERNAL_ERROR',

@@ -1,7 +1,43 @@
 // db/dao.js · 数据访问层（全仓唯一出现 db.collection 的位置；集合名一律来自 shared/collections）
 // 返回形状冻结（ARCHITECTURE §4.2 / Lead 接口冻结）：get/findOne→doc|null、find→[]、count→number、
 // add→{_id}、update*/remove*→{updated}/{removed}、transaction(fn)→fn 返回值（同接口 trxDao）。
+// 写入语义（ARCHITECTURE §4.2）：update/updateWhere 的每个字段值都是**整值替换**——普通对象值在
+// normalizeUpdateData 里包成 command.set，不交给 wx-server-sdk 拍平成点路径 $set。原因（真实事故）：
+// 嵌套对象被拍平后，父字段当前为 null 时 MongoDB 报 -502001（Cannot create field 'at' in element
+// {privacyConsent: null}），且"部分合并"会残留旧子字段（如匿名化口径）。标量/Date/数组/既有指令原样透传。
 const { assertCollection } = require('./collections');
+
+function isPlainObject(value) {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+    && Object.prototype.toString.call(value) === '[object Object]';
+}
+
+// 更新指令（inc/set/remove/push...）原样透传；真实 SDK 指令对象形如 { operator, operands, ... }
+function isUpdateCommand(value) {
+  return isPlainObject(value) && typeof value.operator === 'string' && Array.isArray(value.operands);
+}
+
+// 整值替换：对象字段不再交给 SDK 拍平（拍平后无法穿过 null 父级，且会残留旧子字段）
+function normalizeUpdateData(db, data) {
+  const source = data || {};
+  const out = {};
+  Object.keys(source).forEach((key) => {
+    const value = source[key];
+    if (value === undefined) {
+      return;
+    }
+    if (isPlainObject(value) && !isUpdateCommand(value)) {
+      const command = db.command;
+      if (!command || typeof command.set !== 'function') {
+        throw new Error('当前数据库 SDK 不支持整值替换指令（command.set）');
+      }
+      out[key] = command.set(value);
+      return;
+    }
+    out[key] = value;
+  });
+  return out;
+}
 
 function isDuplicateError(error) {
   if (!error) {
@@ -77,7 +113,9 @@ function createBody(db, collectionOf) {
   };
 
   body.updateWhere = async (collection, where, data) => {
-    const result = await collectionOf(assertCollection(collection)).where(where || {}).update({ data: data || {} });
+    const result = await collectionOf(assertCollection(collection))
+      .where(where || {})
+      .update({ data: normalizeUpdateData(db, data) });
     const updated = result && result.stats && typeof result.stats.updated === 'number' ? result.stats.updated : 0;
     return { updated };
   };

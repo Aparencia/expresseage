@@ -77,6 +77,22 @@ function makeRequestId(deps) {
   return respond.newRequestId();
 }
 
+// 云函数日志专用异常序列化：只用于 console.error 排障，不进入响应包络（不暴露给客户端）。
+function serializeErrorForLog(error, requestId, action) {
+  const source = error || {};
+  const out = {
+    requestId: requestId || '',
+    action: action || '',
+    name: source.name || '',
+    code: source.code || source.errCode || '',
+    message: source.message || source.errMsg || ''
+  };
+  if (typeof source.stack === 'string' && source.stack) {
+    out.stack = source.stack.split('\n').slice(0, 4).join(' | ');
+  }
+  return JSON.stringify(out);
+}
+
 async function invokeCore(event, deps) {
   const startedWall = Date.now();
   const nowMs = resolveNow(deps);
@@ -155,7 +171,9 @@ async function invokeCore(event, deps) {
   } catch (error) {
     const appError = error instanceof errors.AppError ? error : errors.from(error);
     if (!(error instanceof errors.AppError)) {
-      console.error('[api] 未处理异常', requestId, actionForLog);
+      // 诊断：异常细节只进云函数日志（含 requestId 供对账）；响应仍走 13 码收敛，
+      // 绝不把英文码/堆栈/内部细节返回给客户端（CONTRACT §5.3、UX 文案纪律）。
+      console.error('[api] 未处理异常', serializeErrorForLog(error, requestId, actionForLog));
     }
     console.log('[api]', actionForLog, requestId, appError.code, time.elapsedMs(startedWall, Date.now()), 'ms');
     return respond.failure(appError, meta);

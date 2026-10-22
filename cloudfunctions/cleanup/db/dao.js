@@ -1,7 +1,39 @@
 // cloudfunctions/cleanup/db/dao.js · cleanup 部署单元的数据访问层
 // 云函数目录独立部署，cleanup 无法 require api/db/dao.js；本文件是第二处（经 Lead 授权）
 // 允许出现 db.collection 的位置，接口与 api/db/dao.js 逐项一致，集合名仍来自 shared/collections。
+// 写入语义与 api/db/dao.js 同步：update/updateWhere 的字段值是整值替换（普通对象值包成 command.set，
+// 不交给 SDK 拍平点路径；拍平后父字段为 null 时会 -502001，且会残留旧子字段）。两文件改动必须成对。
 const { assertCollection } = require('./collections');
+
+function isPlainObject(value) {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+    && Object.prototype.toString.call(value) === '[object Object]';
+}
+
+function isUpdateCommand(value) {
+  return isPlainObject(value) && typeof value.operator === 'string' && Array.isArray(value.operands);
+}
+
+function normalizeUpdateData(db, data) {
+  const source = data || {};
+  const out = {};
+  Object.keys(source).forEach((key) => {
+    const value = source[key];
+    if (value === undefined) {
+      return;
+    }
+    if (isPlainObject(value) && !isUpdateCommand(value)) {
+      const command = db.command;
+      if (!command || typeof command.set !== 'function') {
+        throw new Error('当前数据库 SDK 不支持整值替换指令（command.set）');
+      }
+      out[key] = command.set(value);
+      return;
+    }
+    out[key] = value;
+  });
+  return out;
+}
 
 function isDuplicateError(error) {
   if (!error) {
@@ -77,7 +109,9 @@ function createBody(db, collectionOf) {
   };
 
   body.updateWhere = async (collection, where, data) => {
-    const result = await collectionOf(assertCollection(collection)).where(where || {}).update({ data: data || {} });
+    const result = await collectionOf(assertCollection(collection))
+      .where(where || {})
+      .update({ data: normalizeUpdateData(db, data) });
     const updated = result && result.stats && typeof result.stats.updated === 'number' ? result.stats.updated : 0;
     return { updated };
   };

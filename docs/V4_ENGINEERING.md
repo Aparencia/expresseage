@@ -644,7 +644,8 @@ expressage_college_v4/
 - 取数：`node tools/selftest.js | Select-Object -Last 2`、`node tools/selftest-ai.js | Select-Object -Last 2`、`node tools/selftest-cloud.js | Select-Object -Last 2`、`node tools/selftest-bind.js | Select-Object -Last 2`、`node tools/selftest-order.js | Select-Object -Last 2`、`node tools/selftest-order-lifecycle.js | Select-Object -Last 2`、`node tools/selftest-order-customer.js | Select-Object -Last 2`、`node tools/selftest-order-partner.js | Select-Object -Last 2`、`node tools/selftest-order-workbench.js | Select-Object -Last 2`、`node tools/selftest-order-detail-partner.js | Select-Object -Last 2`、`node tools/selftest-partner-customers.js | Select-Object -Last 2`、`node tools/selftest-partner-orders.js | Select-Object -Last 2`、`node tools/selftest-partner-pages.js | Select-Object -Last 2`、`node tools/selftest-partner-stats.js | Select-Object -Last 2`、`node tools/selftest-switch.js | Select-Object -Last 2`、`node tools/selftest-admin.js | Select-Object -Last 2`、`node tools/selftest-messages.js | Select-Object -Last 2`、`node tools/selftest-cleanup.js | Select-Object -Last 2`、`node tools/selftest-admin-pages.js | Select-Object -Last 2`、`node tools/selftest-message-pages.js | Select-Object -Last 2`、`node tools/selftest-privacy-text.js | Select-Object -Last 2`；条数不写死进文档。
 - 测试文件预算：单文件 ≤1000 行、单函数 ≤50 行（AGENTS 口径）；新增导出必须有生产调用或登记 TECH_DEBT。
 ### 7.3 云函数 handler 单测（fake DB）
-- DI：`createApi({ db, now, openid, env, cloud, requestId })` → `call(action, payload)`；`db` 为内存 fake（`collection/where/orderBy/limit/skip/get/add/update/remove/count`、`_.inc`、事务提交/回滚、唯一索引冲突模拟）。
+- DI：`createApi({ db, now, openid, env, cloud, requestId })` → `call(action, payload)`；`db` 为内存 fake（`collection/where/orderBy/limit/skip/get/add/update/remove/count`、`db.command.{inc,set,remove}`、事务提交/回滚、唯一索引冲突模拟）。
+- **更新语义须与真实云 DB 同形**（2026-10-22 隐私同意事故教训）：普通对象值按 `wx-server-sdk` 语义拍平成点路径 `$set`（部分合并），点路径穿过 `null`/标量父级时抛 `-502001 Cannot create field ...`；整值替换只认 `db.command.set`（`dao.update/updateWhere` 统一包装，见 ARCHITECTURE §4.2）。测试禁止直连 fake collection 写嵌套对象来绕过该语义。
 - 必测清单（对齐 CONTRACT v0.9 + DATA_MODEL §8/§10）：
   1. **状态转移矩阵**：七状态 × 全部写动作（accept/reject/markPicked/unmarkPicked/markDelivered/unmarkDelivered/reportException/resolveException/cancel/confirmDelivery/correct/undo/deleteRecord），合法成功、非法 `INVALID_TRANSITION`（表驱动）；**不存在费用类动作/事件**。
   2. **requestKey 幂等**：同键重放返回同一订单、不重复写事件；跨 actor 同键 → `CONFLICT`/`FORBIDDEN`，不泄露他人订单。
@@ -675,6 +676,7 @@ expressage_college_v4/
   27. **v0.9 头像/昵称**：AVATAR ticket 路径 `avatars/{role}/{random}.jpg`（零 openid）、大小/类型/路径不符全拒；保存失败不落 `avatarFileId`；替换删旧文件、注销/删测试账号删文件；`displayName` 超 20 字截断、`msgSecCheck` 命中 → `VALIDATION_FAILED` 不落库；后台 DTO 无 `avatarFileId`、昵称脱敏；解绑后不返回对方头像/昵称。
   28. **v0.9 roomTag 大写**：`toTag` 边界（1/26/27/52/53）与 `tagRank` 单调；分配 `A/B/C` 大写、换宿舍重分配、旧 tag 不复用；列表按 `dormKey + tagRank` 排序；落库 `^[A-Z]+$`。
 - fake DB 只放 `tools/`（不进小程序包），不 require wx-server-sdk。
+- fake DB 的"宽松替换语义"曾掩盖真实故障：2026-10-22 云端首跑「同意隐私政策」100% `-502001`（`privacyConsent: null` 上写嵌套对象），本地 4,1xx 断言全绿。修法 = ①dao 层统一整值替换（`command.set`）②fake DB 复刻拍平/空父级报错语义 ③判据双向锁（dao 写入探针 + 真实语义反例 + `selftest-order-partner` G6b「exception 恢复后再上报」），见 `docs/lessons/` 同名卡；后续任何"fake DB 与真实 SDK 行为差异"都必须以真实云日志为准登记并补判据。
 ### 7.4 越权/负向测试矩阵（与 CONTRACT §4/§10 对齐）
 | 场景 | 期望 | 断言位置 |
 | :-- | :-- | :-- |

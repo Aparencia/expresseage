@@ -144,6 +144,14 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// 排障用：失败详情只进开发者工具 console（含 requestId 供与云函数日志对账），不改页面文案。
+function logCallFailure(action, err) {
+  if (typeof console === 'undefined' || typeof console.error !== 'function') {
+    return;
+  }
+  console.error('[api] 调用失败', action, (err && err.code) || '', (err && err.requestId) || '', (err && err.message) || '');
+}
+
 async function call(action, data, opts) {
   const options = opts || {};
   modeGuard.assertWritable(action);
@@ -158,11 +166,13 @@ async function call(action, data, opts) {
       lastError = err;
       const retryable = err instanceof CallError && RETRYABLE_CODES.indexOf(err.code) >= 0;
       if (!retryable || i === attempts - 1) {
+        logCallFailure(action, err);
         throw err;
       }
       await sleep(RETRY_DELAYS[Math.min(i, RETRY_DELAYS.length - 1)]);
     }
   }
+  logCallFailure(action, lastError);
   throw lastError || new CallError('INTERNAL_ERROR', '操作失败，请稍后重试');
 }
 
