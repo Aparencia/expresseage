@@ -35,7 +35,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const ADMIN_OPENID = 'openid-admin-dev01';
 const ADMIN_ENV = { ADMIN_OPENIDS: JSON.stringify({ [ADMIN_OPENID]: 'DEV-01' }) };
 
-const EXPECTED_ASSERTIONS = 168;
+const EXPECTED_ASSERTIONS = 169;
 
 const API_PENDING_ASSERTS = 22;
 const CLEANUP_PENDING_ASSERTS = 14;
@@ -601,8 +601,8 @@ function register(h) {
     t.eq(health.data.checks.configSeeded, false, 'health.check：空库 configSeeded=false');
     const bootstrap1 = await deployApi.call('admin.bootstrap', {});
     t.eq(bootstrap1.ok, true, '部署上下文 admin.bootstrap ok:true');
-    t.check(Array.isArray(bootstrap1.data.collections) && bootstrap1.data.collections.length === 14,
-      'admin.bootstrap 返回 14 集合清单');
+    t.check(Array.isArray(bootstrap1.data.collections) && bootstrap1.data.collections.length === 14, 'admin.bootstrap 返回 14 集合清单');
+    t.eq(bootstrap1.data.indexes.map((i) => i.collection + '.' + i.name).sort().join(' '), 'admin_audit.uk_request_key admin_view_sessions.uk_request_key bindings.uk_active_key bindings.uk_tag_key counters.uk_key customers.uk_customer_no invitation_codes.uk_code order_events.uk_request_key orders.uk_order_no orders.uk_request_key partners.uk_openid partners.uk_partner_no recognition_failures.uk_failure_no recognition_failures.uk_request_key upload_tickets.uk_ticket', '部署清单唯一索引 = DATA_MODEL §5.1 全 15 项（含 bindings.uk_tag_key）');
     const bootstrap2 = await deployApi.call('admin.bootstrap', {});
     t.eq(bootstrap2.data, bootstrap1.data, 'admin.bootstrap 重复调用幂等（结果一致）');
     t.eq((await deployApi.call('health.check', {})).data.checks.configSeeded, true, 'bootstrap 后 health.check configSeeded=true');

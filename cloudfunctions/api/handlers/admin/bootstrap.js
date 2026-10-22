@@ -15,6 +15,7 @@ const INDEX_SPECS = Object.freeze([
   { collection: COLLECTIONS.PARTNERS, name: 'uk_openid', unique: true, fields: ['openid'] },
   { collection: COLLECTIONS.PARTNERS, name: 'uk_partner_no', unique: true, fields: ['partnerNo'] },
   { collection: COLLECTIONS.BINDINGS, name: 'uk_active_key', unique: true, fields: ['activeKey'] },
+  { collection: COLLECTIONS.BINDINGS, name: 'uk_tag_key', unique: true, fields: ['tagKey'] },
   { collection: COLLECTIONS.ORDERS, name: 'uk_order_no', unique: true, fields: ['orderNo'] },
   { collection: COLLECTIONS.ORDERS, name: 'uk_request_key', unique: true, fields: ['requestKey'] },
   { collection: COLLECTIONS.ORDER_EVENTS, name: 'uk_request_key', unique: true, fields: ['requestKey'] },
