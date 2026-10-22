@@ -14,6 +14,7 @@
  *    分享卡片只带兼职编号（不 mock 全局 wx）。
  * G. 静态纪律：页面零 wx.cloud/状态字面量/random/本地存储、pkg-partner 零绑定入口文案、
  *    零金额词、行数闸、四件套齐全、语法可编译。
+ * H. 激活页邀请码输入回显：逐字符不清空 / 大写去分隔符全角归一 / 4 位分组 / 12 位截断 / 提交闸。
  *
  * 纪律：纯件 + api 层 fake transport（禁 mock 全局 wx、不连网络）；先合法基线再反例；
  *      EXPECTED_ASSERTIONS 与实际断言数精确相等（少算/多算都判红）。
@@ -41,10 +42,11 @@ const unbindFlow = require(path.join(ROOT, 'pkg-partner/pages/customer-detail/pa
 const formModel = require(path.join(ROOT, 'pkg-partner/pages/create-on-behalf/parts/form-model.js'));
 const resultModel = require(path.join(ROOT, 'pkg-partner/pages/create-on-behalf/parts/result-model.js'));
 const shareCard = require(path.join(ROOT, 'pages/profile/parts/share-card.js'));
+const codeInput = require(path.join(ROOT, 'pkg-partner/pages/activate/parts/code-input-model.js'));
 
 // 注意：F 段（异步 fake transport）必须注册在最后——harness 的异步断言在 await 之后才计入，
 // 若后面再注册同步段，console 的节标题会被后注册的段名覆盖。
-const EXPECTED_ASSERTIONS = 156; // 实际断言总数（少算/多算都判红）
+const EXPECTED_ASSERTIONS = 165; // 实际断言总数（少算/多算都判红）
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
@@ -604,6 +606,29 @@ function register(h) {
       if (!checked.ok) syntaxBad.push(rel + ':' + checked.error);
     });
     t.eq(syntaxBad, [], 'G17 页面/纯件脚本均可编译（#02 node 语法）');
+  });
+
+  // ------------------------------------------------------------------ H 激活页邀请码输入回显
+  h.section('H. 激活页邀请码输入：逐字符回显不清空/归一/分组/提交闸（UX_PARTNER §3.1/§3.2）', (t) => {
+    t.eq(codeInput.stateOfInput('A'), { codeRaw: 'A', codeDisplay: 'A' },
+      'H1 输入 1 个字符就保留回显（回归：不得因未满 12 位清空输入框）');
+    t.eq(codeInput.stateOfInput(''), { codeRaw: '', codeDisplay: '' }, 'H2 空输入回显空串且不报错');
+    t.eq(codeInput.stateOfInput('abcd-2345-efgh'), { codeRaw: 'ABCD2345EFGH', codeDisplay: 'ABCD-2345-EFGH' },
+      'H3 小写+连字符输入即归一为大写 12 位并 4 位分组回显');
+    t.eq(codeInput.stateOfInput(' ＡＢＣＤ－２３４５－ＥＦＧＨ ').codeDisplay, 'ABCD-2345-EFGH',
+      'H4 全角字母/数字/连字符与空格一并归一（粘贴微信里的全角码也能用）');
+    t.eq(codeInput.stateOfInput('ABCD2345EFGHXYZ'), { codeRaw: 'ABCD2345EFGH', codeDisplay: 'ABCD-2345-EFGH' },
+      'H5 超过 12 位截断（回显不会超过输入框 14 字符上限）');
+    t.eq(codeInput.stateOfInput('ABCDE').codeDisplay, 'ABCD-E', 'H6 半截输入按 4 位分组（ABCDE → ABCD-E）');
+    t.eq(['A', 'AB', 'ABC', 'ABCD', 'ABCDE'].map((v) => codeInput.stateOfInput(v).codeRaw), ['A', 'AB', 'ABC', 'ABCD', 'ABCDE'],
+      'H7 逐字符输入任意前缀都原样保留（不清空/不回退）');
+    t.eq([codeInput.isValid('ABCD2345EFG'), codeInput.isValid('ABCD2345EFGH'), codeInput.isValid('ABCD2345EFGI')],
+      [false, true, false], 'H8 提交闸：未满 12 位/含字母表外字符（I）不通过，满 12 位合法码通过');
+    const activateSrc = textOfRel('pkg-partner/pages/activate/index.js');
+    t.check(activateSrc.indexOf("'./parts/code-input-model'") >= 0
+      && activateSrc.indexOf('codeInput.stateOfInput') >= 0
+      && activateSrc.indexOf('validateInvitationCode') < 0,
+    'H9 激活页回显接线到纯件：不再用整串校验读 canonical（真实缺陷回归闸）');
   });
   // ------------------------------------------------------------------ F READONLY/TEST_WRITE + transport
   h.section('F. READONLY/TEST_WRITE 与 fake transport：包络/零请求/票据/分享（§6.3、§6.4）', async (t) => {

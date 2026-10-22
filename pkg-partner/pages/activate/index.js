@@ -12,19 +12,10 @@ const ids = require('../../../utils/ids');
 const enums = require('../../../shared/enums');
 const validate = require('../../../shared/validate');
 const route = require('../../../config/route');
+const codeInput = require('./parts/code-input-model');
 
-const CODE_GROUP = 4;
-const CODE_LENGTH = 12;
 const SERVICE_SETTINGS_PAGE = '/pkg-partner/pages/service-settings/index';
 const SUCCESS_JUMP_MS = 1500;
-
-function groupCode(code) {
-  const parts = [];
-  for (let index = 0; index < code.length; index += CODE_GROUP) {
-    parts.push(code.slice(index, index + CODE_GROUP));
-  }
-  return parts.join('-');
-}
 
 Page({
   data: {
@@ -69,7 +60,7 @@ Page({
   },
 
   updateSubmit() {
-    const codeOk = validate.validateInvitationCode(this.data.codeRaw).ok;
+    const codeOk = codeInput.isValid(this.data.codeRaw);
     const nameOk = validate.validateDisplayName(this.data.displayName).ok;
     const enabled = !this.data.submitting && this.data.agreed && codeOk && nameOk;
     if (enabled !== this.data.canSubmit) {
@@ -77,11 +68,10 @@ Page({
     }
   },
 
-  // 邀请码：输入即归一（大写、去空格/连字符/全角），回显按 4 位分组
+  // 邀请码：输入即归一（大写、去空格/连字符/全角）并 4 位分组回显；半截输入保留，不因未输完清空
   onCodeInput(event) {
-    const result = validate.validateInvitationCode((event.detail && event.detail.value) || '');
-    const canonical = (result.canonical || '').slice(0, CODE_LENGTH);
-    this.setData({ codeRaw: canonical, codeDisplay: groupCode(canonical), errorText: '' });
+    const next = codeInput.stateOfInput((event.detail && event.detail.value) || '');
+    this.setData({ codeRaw: next.codeRaw, codeDisplay: next.codeDisplay, errorText: '' });
     this.updateSubmit();
   },
 
@@ -139,8 +129,7 @@ Page({
     if (!this.data.canSubmit || this.data.submitting) {
       return;
     }
-    const codeResult = validate.validateInvitationCode(this.data.codeRaw);
-    if (!codeResult.ok) {
+    if (!codeInput.isValid(this.data.codeRaw)) {
       this.setData({ errorText: '邀请码是 12 位字母数字，形如 XXXX-XXXX-XXXX。' });
       return;
     }
@@ -151,7 +140,7 @@ Page({
     }
     this.setData({ submitting: true, errorText: '' });
     partnerApi.activate({
-      invitationCode: codeResult.canonical,
+      invitationCode: this.data.codeRaw,
       displayName: nameResult.value,
       // 头像两条入参：票据=上传凭证 ID、fileId=云存储文件 ID（服务端用票据校验归属/路径）
       avatarTicket: this.data.avatarTicket || undefined,
