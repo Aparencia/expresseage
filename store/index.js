@@ -133,7 +133,14 @@ function hydrateFromBootstrap(data) {
     state.badges = Object.assign({ workbenchPending: 0, messages: 0 }, clone(data.badges) || {});
   }
   if (data.viewContext !== undefined) {
-    state.viewContext = clone(data.viewContext) || null;
+    // 服务端 viewContext 永不回票据（ARCHITECTURE §3.4：viewTicket 只存内存）。
+    // 水合时保留本地票据、其余字段以服务端为准；否则在会话内任何一次 bootstrap 都会把票据清掉，
+    // 后续请求失去切换身份（批 10：进入/退出会话水合后必须仍带 viewTicket）。
+    const incoming = clone(data.viewContext) || null;
+    const currentTicket = state.viewContext && state.viewContext.viewTicket;
+    state.viewContext = incoming
+      ? Object.assign({}, incoming, currentTicket ? { viewTicket: currentTicket } : {})
+      : null;
   }
   if (typeof data.serverTime === 'number' && data.serverTime > 0) {
     state.serverTimeSkew = Date.now() - data.serverTime;

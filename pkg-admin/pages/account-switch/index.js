@@ -1,6 +1,6 @@
 // pkg-admin/pages/account-switch/index.js · 账号切换（真实账号只读 / 测试账号可写 + 测试账号管理）
 const admin = require('../../../api/modules/admin');
-const store = require('../../../store/index');
+const session = require('../../../utils/session');
 const enums = require('../../../shared/enums');
 const C = require('../../common/constants');
 const F = require('../../common/format');
@@ -229,8 +229,10 @@ Page({
       role: options.role,
       targetNo: options.targetNo,
       mode: options.mode
+    }).then(function enterView(viewContext) {
+      // viewContext 先入内存、再 bootstrap 水合目标身份：只写 viewContext 会让页面拿开发者空身份渲染
+      return session.enterViewContext(viewContext);
     }).then((viewContext) => {
-      store.setViewContext(viewContext);
       this.setData({ submitting: false });
       feedback.toast(options.testMode
         ? '已进入测试视图（' + this.data.ttlMinutes + ' 分钟）'

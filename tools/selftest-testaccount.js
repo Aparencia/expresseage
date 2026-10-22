@@ -33,10 +33,12 @@ const idGenerator = require(path.join(ROOT, 'cloudfunctions/api/lib/id-generator
 const adminDto = require(path.join(ROOT, 'cloudfunctions/api/handlers/admin/_dto.js'));
 const cleanupTestData = require(path.join(ROOT, 'cloudfunctions/cleanup/sweeps/testData.js'));
 const fake = require(path.join(ROOT, 'tools/fake-db.js'));
+const fixtures = require(path.join(ROOT, 'tools/selftest-cloud-fixtures.js'));
+const app = require(path.join(ROOT, 'cloudfunctions/api/app.js'));
 const daoModule = require(path.join(ROOT, 'cloudfunctions/api/db/dao.js'));
 const testAccountActions = require(path.join(ROOT, 'cloudfunctions/api/handlers/admin/testAccounts.js')).actions;
 
-const EXPECTED_ASSERTIONS = 153;
+const EXPECTED_ASSERTIONS = 171;
 
 // 旧审计名用拼接构造：本文件不出现旧名字面量（门禁 #30 / 文档纪律）
 const LEGACY_AUDIT_PREFIX = 'VIEW' + '_' + 'AS' + '_';
@@ -620,6 +622,84 @@ function register(h) {
       testCtx(db, { clientRequestId: testRequestKey(20) }), { confirmText: '清空' }
     );
     t.eq(replay.duplicated, true, '同一 clientRequestId 重放 purge：duplicated=true');
+  });
+
+  // ---------------------------------------------------------------- §1.3 固定测试账号对直接绑定（单机验收端到端）
+  h.section('§1.3 固定测试账号对：创建→切换会话→直接绑定（开发者单机验收链路）', async (t) => {
+    const db = fixtures.createTestDb();
+    seedAdminUser(db);
+    const api = app.createApi({
+      db: db,
+      openid: TEST_ADMIN,
+      env: { ADMIN_OPENIDS: JSON.stringify({ [TEST_ADMIN]: 'DEV-01' }) },
+      cloud: { openapi: { security: { msgSecCheck: async () => ({ result: { suggest: 'pass' } }) } } },
+      now: TEST_NOW
+    });
+    const customerRes = await api.call('admin.createTestAccount',
+      { role: enums.ROLES.CUSTOMER, displayName: '测试顾客' }, { clientRequestId: testRequestKey(31) });
+    const partnerRes = await api.call('admin.createTestAccount',
+      { role: enums.ROLES.PARTNER, displayName: '测试兼职' }, { clientRequestId: testRequestKey(32) });
+    t.check(customerRes.ok && customerRes.data.customerNo.indexOf('C') === 0 && customerRes.data.customerNo.length === 9,
+      '创建固定测试顾客号：返回 C 开头 8 位编号（单机验收左端）');
+    t.check(partnerRes.ok && partnerRes.data.partnerNo.indexOf('P') === 0 && partnerRes.data.partnerNo.length === 7,
+      '创建固定测试兼职号：返回 P 开头 6 位编号（单机验收右端）');
+    const customerNo = customerRes.data.customerNo;
+    const partnerNo = partnerRes.data.partnerNo;
+
+    const enterCustomer = await api.call('admin.viewAsStart',
+      { role: enums.ROLES.CUSTOMER, targetNo: customerNo, mode: enums.VIEW_MODE.TEST_WRITE },
+      { clientRequestId: testRequestKey(33) });
+    t.check(enterCustomer.ok && enterCustomer.data.viewMode === enums.VIEW_MODE.TEST_WRITE
+      && enterCustomer.data.targetIsTest === true, '进入测试顾客会话：TEST_WRITE + targetIsTest=true（蓝条数据源）');
+    const customerTicket = enterCustomer.data.viewTicket;
+
+    const customerBoot = await api.call('user.bootstrap', {}, { viewTicket: customerTicket });
+    const customerBlock = (customerBoot.data && customerBoot.data.customer) || {};
+    t.eq(customerBoot.data && customerBoot.data.roles, ['CUSTOMER'],
+      '测试顾客会话 bootstrap：roles=[CUSTOMER]（水合后不再显示开发者空身份）');
+    t.eq(customerBoot.data && customerBoot.data.isDeveloper, false, '测试顾客会话 bootstrap：isDeveloper=false（不进后台分流）');
+    t.eq(customerBlock.profileComplete, true, '测试顾客会话 bootstrap：资料完整（首页不再提示先完善）');
+    t.eq(customerBoot.data && customerBoot.data.viewContext && customerBoot.data.viewContext.viewMode,
+      enums.VIEW_MODE.TEST_WRITE, '测试顾客会话 bootstrap：viewContext 恢复自服务端');
+
+    const preview = await api.call('partner.getPublic', { partnerNo: partnerNo }, { viewTicket: customerTicket });
+    t.check(preview.ok && preview.data.displayName === '测试兼职' && preview.data.avatarFileId === undefined,
+      '绑定前预览测试兼职：可见昵称/编号，不回头像（CONTRACT §4.2⑧）');
+
+    const bindRes = await api.call('bind.create', { partnerNo: partnerNo },
+      { viewTicket: customerTicket, clientRequestId: testRequestKey(34) });
+    t.check(bindRes.ok && bindRes.data.binding && /^[A-Z]+$/.test(bindRes.data.binding.roomTag),
+      '测试顾客直接绑定测试兼职：成功且分配大写 roomTag（无需激活/无需邀请码）');
+    t.eq(bindRes.data.partnerPublic && bindRes.data.partnerPublic.partnerNo, partnerNo, '绑定返回对方公开资料：编号一致');
+    const customerOpenid = ((db.dump('users') || []).filter((row) => row.isTestAccount === true
+      && row.roles.indexOf(enums.ROLES.CUSTOMER) >= 0)[0] || {})._id;
+    const partnerDoc = (db.dump('partners') || []).filter((row) => row.partnerNo === partnerNo)[0] || {};
+    const bindingRows = (db.dump('bindings') || []).filter((row) => row.customerId === customerOpenid
+      && row.status === enums.BINDING_STATUS.ACTIVE);
+    t.eq(bindingRows.length, 1, '落库 1 条 ACTIVE 绑定：固定测试顾客↔固定测试兼职');
+    t.eq(bindingRows[0] && bindingRows[0].partnerId, partnerDoc._id, '绑定 partnerId 指向测试兼职行（关系单源）');
+
+    const afterBindBoot = await api.call('user.bootstrap', {}, { viewTicket: customerTicket });
+    t.eq(afterBindBoot.data && afterBindBoot.data.binding && afterBindBoot.data.binding.partnerNo, partnerNo,
+      '绑定后 bootstrap：binding 回显测试兼职编号（首页「我的兼职」可渲染）');
+
+    const enterPartner = await api.call('admin.viewAsStart',
+      { role: enums.ROLES.PARTNER, targetNo: partnerNo, mode: enums.VIEW_MODE.TEST_WRITE },
+      { clientRequestId: testRequestKey(35) });
+    t.check(enterPartner.ok, '进入测试兼职会话：TEST_WRITE 签发成功');
+    const partnerTicket = enterPartner.data.viewTicket;
+    const partnerBoot = await api.call('user.bootstrap', {}, { viewTicket: partnerTicket });
+    const partnerBlock = (partnerBoot.data && partnerBoot.data.partner) || {};
+    t.eq(partnerBlock.status, enums.PARTNER_STATUS.ACTIVE, '测试兼职会话 bootstrap：status=ACTIVE（「我的」不显示待激活）');
+    t.eq(partnerBlock.partnerNo, partnerNo, '测试兼职会话 bootstrap：兼职编号回显');
+    const partnerBindings = await api.call('partner.listBindings', {}, { viewTicket: partnerTicket });
+    t.eq((partnerBindings.data.list || []).filter((row) => row.customerNo === customerNo).length, 1,
+      '测试兼职客户列表：可见固定测试顾客（绑定双向可见）');
+
+    const partnerActivate = await api.call('partner.activate',
+      { invitationCode: '23456789ABCD', displayName: '不应激活' },
+      { viewTicket: partnerTicket, clientRequestId: testRequestKey(36) });
+    t.eq(partnerActivate.code, 'FORBIDDEN', '测试账号不走激活：会话内 partner.activate 一律 FORBIDDEN（口径而非缺陷）');
   });
 }
 

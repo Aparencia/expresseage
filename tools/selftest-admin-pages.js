@@ -722,8 +722,9 @@ function register(h) {
       return /onShareAppMessage|onShareTimeline|open-type="share"/.test(item.text);
     }).map(function relOf(item) { return item.rel; }), [], '后台页零分享/转发入口（治理数据不外传）');
     const accountPage = textOf('pkg-admin/pages/account-switch/index.js');
-    t.check(accountPage.indexOf('store.setViewContext') >= 0 && accountPage.indexOf('localStorage') < 0
-      && accountPage.indexOf('setStorage') < 0, '切换开启只经 store 写内存 viewContext（票据不落盘）');
+    t.check(accountPage.indexOf('session.enterViewContext') >= 0 && accountPage.indexOf('store.setViewContext') < 0
+      && accountPage.indexOf('localStorage') < 0 && accountPage.indexOf('setStorage') < 0,
+    '切换开启经 session.enterViewContext（viewContext 入内存 + bootstrap 水合目标身份；票据不落盘）');
     const viewTicketLiteral = /(?<![A-Za-z0-9_])viewTicket(?![A-Za-z0-9])/;
     t.eq(ADMIN_PAGES.filter(function hasTicket(name) {
       return viewTicketLiteral.test(textOf('pkg-admin/pages/' + name + '/index.js'));

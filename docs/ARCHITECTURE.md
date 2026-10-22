@@ -106,6 +106,7 @@ const off = store.subscribe((snapshot) => { this.setData({ vm: snapshot }); });
 
 - 方法：`snapshot()`、`get(key)`、`set(key,value)`、`patch(obj)`、`subscribe(fn)`（返回取消函数）、`hydrateFromBootstrap(data)`、`setViewContext(ctx)`、`clearViewContext()`、`getViewContext()`、`isDeveloper()`。
 - `viewContext` **只存内存**，绝不写本地存储、绝不做 URL 参数。
+- `hydrateFromBootstrap` 的 `viewContext` 分支**保留本地 `viewTicket`**、其余字段以服务端为准（服务端 `user.bootstrap` 永不回票据）：进入/退出切换会话后由 `utils/session.js` 统一重新拉 `user.bootstrap` 水合目标身份（顾客资料/兼职激活态/绑定），水合不得让票据丢失。
 
 ### 3.5 页面与组件约定
 

@@ -377,6 +377,7 @@ expressage_college_v4/
 3. `crypto` 生成 **32 位不可猜 `viewTicket`**，`admin_view_sessions` 落 `_id=ticket`（`adminOpenid/developerNo/viewMode/role/targetId/targetNo/targetDisplayName/targetAvatarFileId?/targetIsTest/createdAt/expiresAt/endedAt`），TTL = `config.viewTicketTtlMinutes`（默认 30，范围 5~60）；**同一开发者只保留一张有效票据**（新开时旧票 `endedAt=now` 并记 `ACCOUNT_SWITCH_END`）；返回票据 + `expiresAt` + 目标摘要（含 `viewMode/targetIsTest`）。
 4. 审计 `ACCOUNT_SWITCH_START`（detail `{viewMode,role,targetNo,targetIsTest,developerNo}`）；开启限流 20 次/日/开发者（`counters.rl:accountSwitch:{adminOpenid}:{day}`）。
 5. 客户端只存内存（§5.5），不写本地存储、不做 URL 参数；冷启动即失效。
+6. **客户端进入/退出会话必须按身份水合（批 10）**：`admin.viewAsStart` 只签发票据，不代表页面数据已就绪；客户端统一经 `utils/session.js` —— 进入：先写内存 `viewContext` → `user.bootstrap`（请求带票据、服务端按目标身份返 DTO）→ `hydrateFromBootstrap` → `reLaunch`；退出：`viewAsEnd` → 清 `viewContext` → 再 `user.bootstrap` 复位开发者身份 → 回「账号切换」。服务端 `viewContext` 永不回 `viewTicket`，`hydrateFromBootstrap` 必须**保留本地票据**；否则测试顾客显示「资料未完善」、测试兼职显示「待激活」，切换后页面对目标身份不可用。
 
 **4.8.2 每请求校验与身份传播（中间件 §4.3 #3）**
 - 校验：票据存在、未过期、`endedAt` 空、发起人仍白名单且 `adminOpenid` 匹配；目标 `status=ACTIVE` 且（TEST_WRITE）`isTestAccount=true`；**交叉校验 `targetId/targetIsTest/impersonatedBy` 与票据一致**（票据不可挪用到其他账号或模式）。

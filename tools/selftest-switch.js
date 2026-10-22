@@ -15,6 +15,7 @@
  *          黄条/蓝条颜色与 TEST 角标数据源、账号切换页两 tab/代理切换文案/管理入口
  *   §7.2   api/client：viewTicket 注入、VIEW_TICKET_EXPIRED 清会话、读重试/写不重试、二道闸已接线（本地即拒不触达 transport）
  *   §3.6   config/route 启动分流：有会话→目标角色首页（优先于开发者后台）；无会话→activeRole/角色页
+ *   §1.3   进入/退出会话身份水合：先 viewContext 后 bootstrap、退出先清后水合、失败不阻断（批 10）
  *   §4.3   审计动作集合：ACCOUNT_SWITCH_* 在册、旧 VIEW_AS_* 零残留（读侧换算、写侧零旧名）
  *
  * 纪律：样本非空、先合法基线再反例；不 mock 全局 wx（api/client 用 setTransport 注入替身）；
@@ -33,6 +34,7 @@ const store = require(path.join(ROOT, 'store/index.js'));
 const modeGuard = require(path.join(ROOT, 'api/mode-guard.js'));
 const client = require(path.join(ROOT, 'api/client.js'));
 const route = require(path.join(ROOT, 'config/route.js'));
+const session = require(path.join(ROOT, 'utils/session.js'));
 const adminDto = require(path.join(ROOT, 'cloudfunctions/api/handlers/admin/_dto.js'));
 const fake = require(path.join(ROOT, 'tools/fake-db.js'));
 const daoModule = require(path.join(ROOT, 'cloudfunctions/api/db/dao.js'));
@@ -42,7 +44,7 @@ const viewAsStart = require(path.join(ROOT, 'cloudfunctions/api/handlers/admin/v
 const viewAsEnd = require(path.join(ROOT, 'cloudfunctions/api/handlers/admin/viewAsEnd.js'));
 const switchSession = require(path.join(ROOT, 'cloudfunctions/api/middleware/switch-session.js'));
 
-const EXPECTED_ASSERTIONS = 140;
+const EXPECTED_ASSERTIONS = 163;
 
 const VIEW_TICKET = 'T'.repeat(enums.TOKEN_LENGTH);
 // 旧审计名用拼接构造：本文件不出现旧名字面量（门禁 #30 / 文档纪律）
@@ -642,6 +644,128 @@ function register(h) {
     ]);
     const foreign = await switchResult(() => viewAsEnd(switchCtx(db), { viewTicket: otherExitTicket }));
     t.eq(foreign.code, 'FORBIDDEN', '非本人票据结束 → FORBIDDEN（不泄露存在性）');
+  });
+
+  // ---------------------------------------------------------------- §1.3 进入/退出会话身份水合（批 10 修复）
+  h.section('§1.3 进入/退出会话后按目标身份水合 store（不再显示未激活/资料未完善）', async (t) => {
+    const viewContext = sampleViewContext({
+      viewMode: enums.VIEW_MODE.TEST_WRITE, role: 'CUSTOMER', targetNo: 'C-7K2M-9QX4', targetIsTest: true
+    });
+    const targetBootstrap = {
+      roles: ['CUSTOMER'], activeRole: 'CUSTOMER', isDeveloper: false,
+      customer: { profileComplete: true, customerNo: 'C-7K2M-9QX4', displayName: '测试顾客' },
+      partner: null, binding: null
+    };
+    const developerBootstrap = {
+      roles: [], activeRole: null, isDeveloper: true, customer: null, partner: null, binding: null, viewContext: null
+    };
+    function makeFakeStore() {
+      const fakeStore = { ctx: null, hydrated: null, calls: [] };
+      fakeStore.setViewContext = function (value) { fakeStore.ctx = value; fakeStore.calls.push('setViewContext'); };
+      fakeStore.getViewContext = function () { return fakeStore.ctx; };
+      fakeStore.clearViewContext = function () { fakeStore.ctx = null; fakeStore.calls.push('clearViewContext'); };
+      fakeStore.hydrateFromBootstrap = function (data) {
+        fakeStore.hydrated = data;
+        fakeStore.calls.push('hydrateFromBootstrap');
+      };
+      return fakeStore;
+    }
+    // 真实 store 的水合契约（同步段，避免与其它异步分节交错）：服务端 viewContext 永不回票据，
+    // 水合只能刷新字段，不得把本地票据清掉——否则会话内一次 bootstrap 后所有请求失去切换身份。
+    store.reset();
+    store.setViewContext(viewContext);
+    store.hydrateFromBootstrap({
+      roles: ['CUSTOMER'], activeRole: 'CUSTOMER', isDeveloper: false,
+      viewContext: {
+        viewMode: enums.VIEW_MODE.TEST_WRITE, role: 'CUSTOMER', targetNo: 'C-7K2M-9QX4',
+        targetIsTest: true, expiresAt: SWITCH_FUTURE
+      }
+    });
+    t.eq((store.getViewContext() || {}).viewTicket, VIEW_TICKET,
+      'store 水合保留本地票据（否则会话内 bootstrap 后请求不带 viewTicket，切换身份丢失）');
+    t.eq((store.getViewContext() || {}).viewMode, enums.VIEW_MODE.TEST_WRITE,
+      'store 水合以服务端 viewContext 字段为准（模式/编号/到期可刷新）');
+    store.clearViewContext();
+    const enterStore = makeFakeStore();
+    let seenTicket = null;
+    let bootCalls = 0;
+    const entered = await session.enterViewContext(viewContext, {
+      store: enterStore,
+      bootstrap: async () => {
+        bootCalls += 1;
+        seenTicket = (enterStore.ctx || {}).viewTicket || null;
+        return targetBootstrap;
+      }
+    });
+    t.eq(entered, viewContext, '进入会话：返回 viewContext 供页面 reLaunch 使用');
+    t.eq(enterStore.calls, ['setViewContext', 'hydrateFromBootstrap'],
+      '进入顺序：先 viewContext 入内存、再 bootstrap 水合（颠倒会拿开发者空身份渲染目标页）');
+    t.eq(bootCalls, 1, '进入会话：恰好拉一次 user.bootstrap 水合（不是只写 viewContext）');
+    t.eq(seenTicket, VIEW_TICKET, '水合请求时票据已在包络（服务端按目标身份返 DTO）');
+    t.eq(enterStore.hydrated, targetBootstrap, '水合数据=user.bootstrap 目标身份 DTO（顾客完整资料/兼职激活态可得）');
+
+    const failStore = makeFakeStore();
+    const failedEnter = await session.enterViewContext(viewContext, {
+      store: failStore,
+      bootstrap: async () => { throw new Error('network down'); }
+    });
+    t.eq(failedEnter, viewContext, 'bootstrap 失败仍完成进入（会话已签发，页面读接口兜底）');
+    t.eq(failStore.hydrated, null, 'bootstrap 失败不写入假水合数据（页面仍按读接口兜底）');
+    t.eq(failStore.ctx && failStore.ctx.viewTicket, VIEW_TICKET, 'bootstrap 失败保留已写入的 viewContext');
+
+    const exitStore = makeFakeStore();
+    await session.enterViewContext(viewContext, { store: exitStore, bootstrap: async () => targetBootstrap });
+    let endCalls = 0;
+    let clearedAtBootstrap = 'unset';
+    let relaunchArg = null;
+    await session.exitViewContext({
+      store: exitStore,
+      admin: { viewAsEnd: async () => { endCalls += 1; return { endedAt: SWITCH_NOW }; } },
+      bootstrap: async () => {
+        clearedAtBootstrap = exitStore.getViewContext();
+        return developerBootstrap;
+      },
+      relaunch: function capture(arg) { relaunchArg = arg; }
+    });
+    t.eq(endCalls, 1, '退出会话：先调 admin.viewAsEnd（服务端置 endedAt + END 审计）');
+    t.eq(exitStore.calls, ['setViewContext', 'hydrateFromBootstrap', 'clearViewContext', 'hydrateFromBootstrap'],
+      '退出顺序：viewAsEnd → 清 viewContext → 再 bootstrap（否则拿目标身份水合）');
+    t.eq(clearedAtBootstrap, null, '退出水合顺序：bootstrap 前已清 viewContext（拿回开发者身份而非目标身份）');
+    t.eq(exitStore.hydrated, developerBootstrap, '退出水合数据=开发者身份 DTO（roles/isDeveloper 复位）');
+    t.eq(relaunchArg, { url: session.ACCOUNT_SWITCH_PAGE }, '退出后回「账号切换」页');
+
+    const throwStore = makeFakeStore();
+    await session.enterViewContext(viewContext, { store: throwStore, bootstrap: async () => targetBootstrap });
+    let relaunchAfterFail = null;
+    await session.exitViewContext({
+      store: throwStore,
+      admin: { viewAsEnd: async () => { throw new Error('already ended'); } },
+      bootstrap: async () => developerBootstrap,
+      relaunch: function capture(arg) { relaunchAfterFail = arg; }
+    });
+    t.eq(relaunchAfterFail, { url: session.ACCOUNT_SWITCH_PAGE }, 'viewAsEnd 失败也回退出页（不卡在会话中）');
+    t.eq(throwStore.calls, ['setViewContext', 'hydrateFromBootstrap', 'clearViewContext', 'hydrateFromBootstrap'],
+      'viewAsEnd 失败仍执行清会话 + 身份水合');
+    t.eq(throwStore.ctx, null, 'viewAsEnd 失败也本地清会话（不残留票据）');
+
+    const noViewStore = makeFakeStore();
+    let relaunchNoView = null;
+    await session.exitViewContext({
+      store: noViewStore,
+      relaunch: function capture(arg) { relaunchNoView = arg; }
+    });
+    t.eq(relaunchNoView, { url: session.ACCOUNT_SWITCH_PAGE }, '无会话时退出直接回「账号切换」页');
+    t.eq(noViewStore.calls, [], '无会话退出不触达 viewAsEnd/水合（避免多余请求）');
+
+    const accountPage = readText('pkg-admin/pages/account-switch/index.js');
+    const sessionSrc = readText('utils/session.js');
+    t.check(accountPage.indexOf('session.enterViewContext') >= 0
+      && accountPage.indexOf('wx.reLaunch') > accountPage.indexOf('session.enterViewContext'),
+    '账号切换页：先 session.enterViewContext 再 reLaunch（水合顺序接线）');
+    t.check(accountPage.indexOf('store.setViewContext') < 0,
+      '账号切换页不再裸写 store.setViewContext（必须走统一入口水合）');
+    t.check(sessionSrc.indexOf('hydrateFromBootstrap') >= 0 && sessionSrc.indexOf('viewAsEnd') >= 0
+      && sessionSrc.indexOf('enterViewContext') >= 0, 'utils/session：进入/退出共用同一水合实现（单一入口）');
   });
 }
 
