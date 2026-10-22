@@ -386,8 +386,8 @@
 | `node tools/selftest.js` | 运行 **31 套**；失败 0 套；SKIP 0；**4,660 断言全 PASS**（B 批 +94：bind 79→119、messages 89→108、message-pages 138→144、recognize 195→214、order-flow 158→168） |
 | `node tools/check-functions.js` | 扫描 **307** 文件/3,526 函数；>50 行 37 个（基线 43）；**违规 0** |
 | `node tools/sync-cloud-shared.js --check` | 写 0/删 0/已一致 **32 件**；hash 对帐 OK |
-| `powershell -File gate.ps1 -Anchor 2933770 -ScopeFiles <25 路径> -Estimate 1500` | **提交后回填**（本行由收口证据提交补真实读数；锚点 `2933770`） |
-| B 批提交 | **提交后回填**（收口证据提交补哈希与 gate 终态） |
+| `powershell -File gate.ps1 -Anchor 2933770 -ScopeFiles "CHANGELOG.md,STATE.md,cloudfunctions/,docs/,pkg-customer/,pkg-partner/,tools/,utils/" -Estimate 1200` | 红色 **0** 项；黄色 **0** 项（退出码 0）；变更 **28 件**、范围 8 前缀全匹配、体量 **1,248 行 ≤ 1,800**、提交信息格式合规（HEAD=`62da7f3`） |
+| B 批提交 | **`62da7f3`**（28 文件 +1248/−192；提交后 gate 红 0/黄 0、体量 1,248 ≤ 1,800；工作树干净） |
 | 真机项（不代勾） | QA `C14`（换绑一次确认+单步恢复）、`E13`/`F30`（红点语义）、`R16`（低置信建议条采纳） |
 
 ## 7. 当前风险与红灯（如实记录）
@@ -473,6 +473,8 @@
 
 | 2026-10-23 | **批 10 C 批收口**：v1.0 一单多包裹（D23~D26）三端+后台+清理上线口径、`createBatch` 移除（TD-062 关闭）、性能 P0-1~P0-11、M 系列修复；`check.ps1` 4 步 0、selftest **31 套 4,566**、check **32/32**、docs **10/10**、零金额 0、gate 红 0/黄 0（199 件 +6322/−3306）；B 批 D28/D29 规格已备、D27 待用户裁决 |
 | 2026-10-23 | **批 10 收口提交 `305071c`**（199 文件 +11822/−3325）：提交后复跑 `check.ps1` 4 步 0、`gate.ps1 -Anchor 3cf805f` 红 0/黄 0（体量 11,822 ≤ 18,000）；工作树干净 |
+| 2026-10-23 | **批 10 B 批收口**：D28 换绑一体化（`utils/rebind.js` + bind 页一次确认 `release`→`create`、单步恢复只补 create）、D29 未读红点（`unread`=留言+状态事件、水位事务 CAS、`ALL` 置读、`watermarkMsOf` 修复、兼职端同口径）、D29 AI 低置信（仅 LOW+DEEPSEEK 不写入 + 采纳建议条）；`check.ps1` 4 步 0、selftest **31 套 4,660**（+94）、check **32/32**、docs **10/10**、零金额 0、check-functions 0 违规、sync 32 件一致；TD-067 登记 |
+| 2026-10-23 | **批 10 B 批提交 `62da7f3`**（28 文件 +1248/−192）：提交后 `gate.ps1 -Anchor 2933770` 红 0/黄 0（28 件、体量 1,248 ≤ 1,800、范围 8 前缀全匹配）；工作树干净（本行为收口证据回填提交） |
 
 ## 9. 下一步（按序）
 
