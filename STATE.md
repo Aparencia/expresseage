@@ -373,7 +373,7 @@
 | `node tools/sync-cloud-shared.js --check` | 16 源 × 2 套 32 件 hash 一致 |
 | `powershell -File gate.ps1 -Anchor 3cf805f -ScopeFiles "CHANGELOG.md,README.md,STATE.md,V4_REBUILD_SPEC.md,api/,app.js,app.json,check.ps1,cloudfunctions/,components/,config/,docs/,gate.ps1,pages/,pkg-admin/,pkg-customer/,pkg-partner/,shared/,store/,tools/,utils/" -Estimate 12000` | 红色 **0** 项；黄色 **0** 项（退出码 0）；变更 199 件、体量 5,442 行（未跟踪）+ tracked +6322/−3306 |
 | QA 条目计数 | `(Select-String -Path docs\QA_CHECKLIST.md -Pattern '^\| [A-Z]+\d+ \|').Count` → **271**（含新增 C14/D13~D16/L1/F24~F30/G18/R16/P23） |
-| 批 10 提交 | 见 §8 最近更新（提交后回读 HEAD） |
+| 批 10 提交 | **`305071c`**（199 文件 +11822/−3325；提交后 gate 红 0/黄 0、体量 11,822 ≤ 18,000） |
 
 ## 7. 当前风险与红灯（如实记录）
 
@@ -457,7 +457,7 @@
 > 说明：上表最后两行为收口当天记录，提交哈希与 gate 终态以仓库 `git log` 与门禁真实输出为准（本文件不在提交内自引用哈希）。
 
 | 2026-10-23 | **批 10 C 批收口**：v1.0 一单多包裹（D23~D26）三端+后台+清理上线口径、`createBatch` 移除（TD-062 关闭）、性能 P0-1~P0-11、M 系列修复；`check.ps1` 4 步 0、selftest **31 套 4,566**、check **32/32**、docs **10/10**、零金额 0、gate 红 0/黄 0（199 件 +6322/−3306）；B 批 D28/D29 规格已备、D27 待用户裁决 |
-| 2026-10-23 | 批 10 提交回读：见下方「批 10 收口提交」（提交后回填） |
+| 2026-10-23 | **批 10 收口提交 `305071c`**（199 文件 +11822/−3325）：提交后复跑 `check.ps1` 4 步 0、`gate.ps1 -Anchor 3cf805f` 红 0/黄 0（体量 11,822 ≤ 18,000）；工作树干净 |
 
 ## 9. 下一步（按序）
 
