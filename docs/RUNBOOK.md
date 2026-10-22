@@ -62,9 +62,10 @@
 ### 3.5 建数据库资源（用户，控制台）
 
 - 位置：云开发控制台 → 数据库。
-- 建 **14 个集合**（名称见 ENGINEERING §4.6；v0.9 不新增集合）。
+- 建 **14 个集合**（名称见 ENGINEERING §4.6；v0.9 不新增集合）。**名字必须逐个复制粘贴，不要手打**：长名最容易拼错（如 `invitation_codes`、`recognition_failures`、`admin_view_sessions`、`upload_tickets`）。拼错时控制台不会报错，但首次读写该集合的接口会以 `INTERNAL_ERROR` 失败——云端日志为 `-502005 ... Db or Table not exist: <名字>`，客户端只看到「重试/截图反馈开发者」。
 - 每个集合 → 权限设置 → **`{"read": false, "write": false}`**（客户端全部拒绝）。**两种填法等价，任选**：①控制台预设「**所有用户不可读写**（仅管理端可读写）」，一次点选、最不易错，**推荐**；②自定义安全规则手填上述 JSON。云函数的 admin 权限**不受数据库规则约束**，14 集合的业务读写全部经云函数（ARCHITECTURE §1），所以"客户端全拒"不会影响功能。
 - 按 DATA_MODEL §5.1 建全部索引；**唯一索引必须建**（如 `uk_customer_no`、`uk_partner_no`、`uk_active_key`、`uk_order_no`、`uk_request_key`、`uk_code`、`uk_failure_no`）。
+- 核对集合名：云函数 `api` → 测试 → 入参 `{"action":"admin.bootstrap","data":{}}`，返回的 `missingCollections` 必须为 `[]` 才算集合就位；**若控制台里出现拼错的集合（例如 `inbitation_codes`）**，先确认里面没有数据，删除后按正确名字新建，并补权限与索引。
 - 证据：集合列表截图 + 索引导出/截图 + 每个集合安全规则截图。
 - 失败处理：存量冲突先清场再建唯一索引；控制台不支持代码建索引时以控制台为准。**注意：`admin.bootstrap` 只返回「应建唯一索引清单」（15 项），不检测索引是否已建**——索引是否齐以控制台为准，建完逐项核对。
 
