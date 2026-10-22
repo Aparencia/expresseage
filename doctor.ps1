@@ -73,8 +73,8 @@ if ($missingCloud.Count -gt 0) {
 # 5. config/env.js 占位状态（占位 = 待用户回填，告警不失败）
 if (Test-Path -LiteralPath 'config/env.js') {
   $envText = Get-Content -LiteralPath 'config/env.js' -Raw -Encoding UTF8
-  if ($envText -match '__DEV_ENV_ID__' -or $envText -match '__PROD_ENV_ID__') {
-    Add-Result 'WARN' 'config/env.js 的 envId 仍为占位符（需用户在云控制台创建环境后回填）'
+  if ($envText -match '__ENV_ID__' -or $envText -match '__DEV_ENV_ID__' -or $envText -match '__PROD_ENV_ID__') {
+    Add-Result 'WARN' 'config/env.js 的 envId 仍为占位符（需用户在云控制台创建唯一环境后回填三档）'
   } else {
     Add-Result 'PASS' 'config/env.js 已配置 envId（非占位）'
   }

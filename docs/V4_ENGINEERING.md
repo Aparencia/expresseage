@@ -107,7 +107,7 @@ expressage_college_v4/
 │   └── cleanup/          # index.js + sweeps/{orders,retention,storage,accounts,invitations,viewSessions,counters,recognitionFailures,testData}.js + shared/ + package.json
 ├── tools/                # check.js / check-docs.js / zero-money-scan.js / zero-money-allowlist.json /
 │                         # selftest.js + selftest-{core,state,recognize,cloud,ai,bind,profile,switch,testaccount}.js / fake-db.js / fixtures/ /
-│                         # sync-cloud-shared.js / seed-dev.js（dev 种子+测试账号+环境断言）/ mutation.ps1
+│                         # sync-cloud-shared.js / seed-dev.js（单环境种子+测试账号+环境断言）/ mutation.ps1
 ├── assets/               # 自绘 tabbar 81×81 PNG、默认头像（首字色块，本地绘制）、品牌图；不引第三方图标库
 └── docs/                 # V4_CONTRACT / V4_DATA_MODEL / 三份 V4_UX_* / V4_ENGINEERING / V4_DECISIONS /
                           # V4_FIXTURES / QA_CHECKLIST / ARCHITECTURE / RUNBOOK / TECH_DEBT / privacy/ / lessons/
@@ -136,7 +136,7 @@ expressage_college_v4/
 ### 3.1 `project.config.json`（批 1 改造模板）
 | 字段 | v4 值 / 规则 | 理由 |
 | :-- | :-- | :-- |
-| `appid` | `wxcb7e5b41b89bc806`（D2 用户裁决：沿用 v3 appid） | 同一 storage 命名空间（v4 只读写自己的 `ex_college_v4.store`，不碰 v1/v2/v3 键）；云环境仍独立 dev/prod；发布 v4 替代 v3 |
+| `appid` | `wxcb7e5b41b89bc806`（D2 用户裁决：沿用 v3 appid） | 同一 storage 命名空间（v4 只读写自己的 `ex_college_v4.store`，不碰 v1/v2/v3 键）；云环境=**唯一环境**（D1 修订：账号只能开 1 个）；发布 v4 替代 v3 |
 | `compileType`/`projectname` | `miniprogram` / `expressage_college_v4` | — |
 | `cloudfunctionRoot` | `cloudfunctions/` | 云开发必需；模板无此字段，批 1 新增 |
 | `miniprogramRoot` | `./` | 不另建 `miniprogram/` 子目录 |
@@ -152,9 +152,10 @@ expressage_college_v4/
 | `.env.example` | 只键名+注释：`ADMIN_OPENIDS={"<openid>":"DEV-01","<openid2>":"DEV-02"}`（云函数环境变量，非 .env，JSON 映射）、`DEEPSEEK_API_KEY`（v0.8，仅 `api` 云函数环境变量） | 真实值永不提交；客户端无任何密钥；**订阅消息模板 ID/开关/文案、`viewTicketTtlMinutes`、`avatarMaxBytes`、`testAccountMaxPerRole`、`testDataRetentionDays` 全放 `config`（admin.updateConfig 维护）；`aiFallback` 也在 `config` 但 MVP 后台只读（改值走部署配置脚本/控制台）；均不进环境变量、不硬编码** |
 | `.gitignore` | `.env*`、`project.private.config.json`、`node_modules/`、`cloudfunctions/*/node_modules/`、`.dsh-code-index/`、`coverage/`、`*.log` | v3 教训：`.dsh-code-index` 误提交致 gate 假红/体量虚高 |
 | `sitemap.json` | 默认 `allow *`（无搜索需求） | 与 v3 一致 |
-### 3.3 云环境切换（`config/env.js`）
-- 内容形如 `{ develop:'<dev-envId>', trial:'<dev-envId>', release:'<prod-envId>' }`，用 `wx.getAccountInfoSync().miniProgram.envVersion` 选择；envId **不是密钥**，可入库。
-- `app.js` 启动 `wx.cloud.init({ env, traceUser:true })`；envId 缺失/未开通 ⇒ 启动页显示可操作错误（fail-closed），不得静默用默认环境；环境矩阵 `develop/trial → dev`、`release → prod`，禁止用 prod 做开发联调。
+### 3.3 云环境（`config/env.js`；**单环境方案**，D1 修订）
+- 内容形如 `{ develop:'<envId>', trial:'<envId>', release:'<envId>' }`——**三档填同一个 envId**（账号只能开通 1 个云环境；envId 不是密钥，可入库）。保留 envVersion→envId 映射形状：将来若可开第二环境，只改本文件拆成 dev/prod，调用方零改动。
+- `app.js` 启动 `wx.cloud.init({ env, traceUser:true })`；envId 缺失/未开通 ⇒ 启动页显示可操作错误（fail-closed），不得静默用默认环境。
+- **单环境纪律**：开发版/体验版/正式版共用同一个库与存储。因此：①任何联调都按"生产操作"对待，能本地的先本地（fake-DB 单测/纯件判据）；②必须上真机的只用**测试账号**（`isTest` 标记，不计统计、后台默认排除）；③上线前执行「单环境清零」（`admin.purgeTestData`→删测试账号→控制台核对 14 集合与云存储无测试残留），发布前导出 JSON 备份；④发布侧灰度用体验版 + 平台分阶段发布，不靠第二环境；⑤上线后结构/数据变更前先导出备份，事故按 RUNBOOK §10.4 R6 处置。
 ### 3.4 `ADMIN_OPENIDS`（开发者白名单，v0.9 支持多开发者）
 - 位置：**云开发控制台 → 云函数 → `api` → 函数配置 → 环境变量**（以控制台实际界面为准，批 1 记录截图）；值 = **JSON 映射** `{"<openid>":"DEV-01","<openid2>":"DEV-02"}`（MVP 建议 1 个，可配多个；**一个 openid 对应一个编号**）。
 - 代码只读 `process.env.ADMIN_OPENIDS` 并 `JSON.parse`；缺失/空/解析失败 ⇒ 所有 `admin.*` 返回 `FORBIDDEN`（fail-closed）并记告警日志（**不泄露白名单内容**）。
@@ -338,7 +339,7 @@ expressage_college_v4/
 | `recognition_failures`（v0.8） | **`uk_failure_no(failureNo)`、`uk_request_key(requestKey)`** | `idx_status_created(status,createdAt)`、`idx_uploader(uploaderOpenid)`、`idx_order(orderId)`、`idx_created(createdAt)`（复核保留期 cleanup） |
 
 **初始化步骤（批 1；用户 + agent 分工）**
-1. 【用户】确认 appid 主体/类目可用；开通云开发并创建 **dev/prod 两个环境**，envId 交 agent 填 `config/env.js`（D1/D2 开工门）。
+1. 【用户】确认 appid 主体/类目可用；开通云开发并创建**唯一云环境**（D1 修订：账号只能开 1 个环境），envId 交 agent 填 `config/env.js` 三档（D1/D2 开工门）。
 2. 【用户/agent 同屏】控制台创建 **14 个集合**（名称严格按 DATA_MODEL §1 集合总览；`config` 用 `_id='global'`；`recognition_failures` 为 v0.8 新增；**v0.9 不新增集合**——测试账号是 `users`/`customers`/`partners` 里的合成文档，头像复用云存储与 `upload_tickets`）。
 3. 【用户】每集合权限设置自定义安全规则 read/write 均 false，截图存档。
 4. 【用户】按 DATA_MODEL §5.1 建全部索引（`unique` 必须建，**含 `uk_customer_no`/`uk_partner_no`/`uk_code`**；存量冲突先清场），导出/截图索引清单作为批 1 退出证据。
@@ -598,7 +599,7 @@ expressage_college_v4/
 | # | 事项 | 为什么只能用户 | 何时 | 证据 |
 | :-- | :-- | :-- | :-- | :-- |
 | 1 | 确认 appid `wxcb7e5b41b89bc806` 主体可用（D2 已裁决沿用 v3 appid） | 账号持有者 | 批 0 | 公众平台截图 |
-| 2 | 开通云开发 + 创建 dev/prod 环境（D1） | 管理员权限/计费确认 | 批 0 | 控制台环境页截图 + envId |
+| 2 | 开通云开发 + 创建**唯一云环境**（D1 修订：单环境，账号限制 1 个） | 管理员权限/计费确认 | 批 0 | 控制台环境页截图 + envId |
 | 3 | 确认主体/类目（D13 已裁决：个人主体 + 工具类目；提审前在后台确认类目可选并完成备案） | 主体资质 | 批 0（阻塞批 9 提审） | 类目页截图 |
 | 4 | 配置 `ADMIN_OPENIDS`（JSON 映射含 `DEV-01`） | 控制台权限 | 批 1 | 环境变量截图 + admin 冒烟 |
 | 5 | 云存储权限设置（§3.5） | 控制台权限 | 批 1 | 权限截图 |
@@ -611,8 +612,8 @@ expressage_college_v4/
 - 导入 `D:\Code\expressage_college_v4\`（GUI，无 CLI）；首次确认 `cloudfunctionRoot` 被识别、云环境可选。
 - 本地跑测试（零依赖、秒级）：`node tools/selftest.js`、`node tools/selftest-ai.js`、`node tools/selftest-cloud.js`、`node tools/selftest-bind.js`、`node tools/selftest-order.js`、`node tools/selftest-order-flow.js`、`node tools/selftest-order-lifecycle.js`、`node tools/selftest-order-customer.js`、`node tools/selftest-order-partner.js`、`node tools/selftest-order-workbench.js`、`node tools/selftest-order-detail-partner.js`、`node tools/selftest-partner-customers.js`、`node tools/selftest-partner-orders.js`、`node tools/selftest-partner-pages.js`、`node tools/selftest-partner-stats.js`、`node tools/selftest-profile.js`、`node tools/selftest-switch.js`、`node tools/selftest-testaccount.js`、`node tools/check.js`、`node tools/check-docs.js`、`node tools/zero-money-scan.js --scope all`；**不需要** npm 依赖（fake DB 是仓库内零依赖件）。
 - 云函数本地调试：开发者工具右键 `cloudfunctions/api` →「本地调试」（或远端调试），仅用于联调；**机器门禁以 `tools/selftest-cloud.js` 的 handler 单测为准**。
-- 多账号调试：单机验收用测试账号（下一条）；真实双机时用开发者工具"多账号调试"分别登录顾客/兼职；真机一律「预览扫码」，模拟器读数不算数（v3 教训）；云环境联调只允许 dev，prod 只走发布流程（§10）。
-- **切换会话调试（v0.9）**：dev 用开发者微信号进后台 → `account-switch` → 真实账号 tab（黄条、写控件置灰）或测试账号 tab（蓝条 + `TEST` 角标）→ 选目标进业务页；验证服务端拒写时，用控制台/工具直接带票据调写 action（票据仅内存，切后台被杀即失效需重开）；真实账号传 `TEST_WRITE` 必须 `FORBIDDEN`。
+- 多账号调试：单机验收用测试账号（下一条）；真实双机时用开发者工具"多账号调试"分别登录顾客/兼职；真机一律「预览扫码」，模拟器读数不算数（v3 教训）；云环境为**单环境**（D1 修订）：联调一律视为生产操作，能本地的先在本地 fake-DB/纯件判据跑，必须上真机的只用测试账号，不在真实口径造数据（§10）。
+- **切换会话调试（v0.9）**：开发版（唯一环境）用开发者微信号进后台 → `account-switch` → 真实账号 tab（黄条、写控件置灰）或测试账号 tab（蓝条 + `TEST` 角标）→ 选目标进业务页；验证服务端拒写时，用控制台/工具直接带票据调写 action（票据仅内存，切后台被杀即失效需重开）；真实账号传 `TEST_WRITE` 必须 `FORBIDDEN`。
 - **测试账号单机验收（v0.9）**：`createTestAccount` 建测试顾客 + 测试兼职 → 测试账号 tab 分别以两端身份切换进入 → 绑定/下单/接单/送达/确认 → 退出后确认统计与红点不计数 → 删除测试账号（先 `dryRun` 看计数）。全程只需一个微信号。
 ### 6.3 决策：**不建客户端 `wx` 全局 mock**（ADR）
 - 背景：v3 的 `tools/selftest.js` 用内存 `wx` 替身跑页面零件（383 条断言）。v4 业务判据已下沉云函数 + `shared/` 纯件，页面只剩取参/setData/事件转发。
@@ -841,25 +842,28 @@ expressage_college_v4/
 
 ---
 ## 10. 部署发布 runbook
-### 10.1 环境矩阵
-| 环境 | 云环境 | 用途 | 谁能动 |
+### 10.1 环境矩阵（**单环境**，D1 修订）
+| 版本 | 云环境 | 用途 | 谁能动 |
 | :-- | :-- | :-- | :-- |
-| develop（工具内） | dev | 日常开发/单测/本地调试 | agent + 用户 |
-| trial（体验版） | dev | 双端验收/开发者后台与切换会话演练（READONLY/TEST_WRITE）/**识别失败复核演练**/**头像/昵称/测试账号演练** | 用户（体验成员 + 开发者微信号） |
-| release（线上） | prod | 发布 | 仅用户 |
+| develop（工具内） | **唯一环境** | 日常开发/单测/本地调试（**共用生产库，数据一律走测试账号/测试数据**） | agent + 用户 |
+| trial（体验版） | 同上 | 双端验收/开发者后台与切换会话演练（READONLY/TEST_WRITE）/**识别失败复核演练**/**头像/昵称/测试账号演练** | 用户（体验成员 + 开发者微信号） |
+| release（线上） | 同上 | 发布 | 仅用户 |
+
+- 用户 2026-10-22 确认「账号只能开通 1 个云环境」⇒ **不存在 dev/prod 两套库**：隔离靠测试账号/`isTest` 标记（§4.11）+ 上线前「单环境清零」（RUNBOOK §10.2.1）；发布侧灰度用体验版验收 + 平台分阶段发布（§10.4）。
+- 上线后禁止在正式库造测试数据；结构/数据变更前必须先导出 JSON 备份（§10.4 回滚条）。
 ### 10.2 首次部署（批 1 收口，按序）
-1. 【用户】建 dev/prod 云环境（§4.6 步骤 1）→ envId 交 agent 填 `config/env.js`。
+1. 【用户】开通**唯一云环境**（§4.6 步骤 1；D1 修订：账号只能开 1 个环境）→ envId 交 agent 填 `config/env.js` 三档。
 2. 【agent】`git init` + 配身份；`.gitignore`/`.tool-versions`/`.env.example`/`project.config.json` 就位；`check.ps1` 跑 0。
 3. 【用户】建 **14 集合** + 安全规则 + 全部索引（§4.6 步骤 2~4），截图/导出存档。
 4. 【agent】`node tools/sync-cloud-shared.js` → 上传部署 `cloudfunctions/api`（云端安装依赖）→ 【用户】配 `ADMIN_OPENIDS`（JSON 映射含 `DEV-01`）与 `DEEPSEEK_API_KEY`（v0.8，可先留空验证降级）→ 调 `health.check`/`admin.bootstrap`（内部动作：集合/索引校验 + config 种子）冒烟。
 5. 【agent】上传部署 `cleanup` → 【用户】控制台配**一条**定时触发器（每 10 分钟，按 §4.7 幂等跑全部到期任务，含邀请码过期与视角票据清理）。
 6. 【用户】云存储权限设置（§3.5）。
-7. 【agent】`node tools/seed-dev.js` 写 dev 种子（config 含 `aiFallback`、`recognitionFailureRetentionDays`、**`avatarMaxBytes`/`testAccountMaxPerRole`/`testDataRetentionDays`**，服务类型目录、**测试邀请码批次**、**测试顾客与兼职资料**、**各 1 个测试账号（可选）**；脚本内置环境断言，prod 拒绝运行）；【证据】环境页/集合/索引/权限/环境变量（含 Key 键名脱敏截图）/触发器截图 + 冒烟输出，写入 `docs/RUNBOOK.md`。
+7. 【agent】`node tools/seed-dev.js` 输出**单环境初始化计划**（config 键含 `aiFallback`、`recognitionFailureRetentionDays`、**`avatarMaxBytes`/`testAccountMaxPerRole`/`testDataRetentionDays`**，服务类型目录、**测试邀请码批次**、**测试顾客与兼职资料**、**各 1 个测试账号（可选）**；脚本只做 dry-run 计划与环境断言，不写真实库；真实初始化由用户/部署机按 RUNBOOK 执行）；【证据】环境页/集合/索引/权限/环境变量（含 Key 键名脱敏截图）/触发器截图 + 冒烟输出，写入 `docs/RUNBOOK.md`。
 8. 【用户】配置 `config.viewTicketTtlMinutes`（默认 30）、`avatarMaxBytes`（200KB）、`testAccountMaxPerRole`（3）、`testDataRetentionDays`（30）与 `serviceCatalog`（无费用项）；【agent】用开发者微信号跑一次 `viewAsStart(READONLY)→读→viewAsEnd→审计可查` 冒烟；**v0.8 追加**：造假失败图 → `ai.parseParcel` 返回 `recognized` 或 `failureId` → 复核页看原图（审计）→ 补录回填 → `FAILURE_FIX` 可查；**v0.9 追加**：测试账号 `TEST_WRITE` 两端各走一单 → 统计不计数 → 头像上传/替换删旧 → 删除测试账号（dryRun→确认）→ 审计 `ACCOUNT_SWITCH_*`/`TEST_ACCOUNT_*` 可查。
 9. 【用户/agent】账号切换与头像冒烟（v0.9）：真实账号 READONLY 进目标页（黄条 + 写拒绝）→ 测试账号 TEST_WRITE 两端各走一单（蓝条 + `TEST` 角标）→ 统计/红点不计数 → 上传头像（替换后旧文件已删、保存失败不落 `avatarFileId`）→ 删除测试账号（dryRun→确认）→ 审计 `ACCOUNT_SWITCH_*`/`TEST_ACCOUNT_*` 可查。
 ### 10.3 每批部署（实施期）
 1. 本地：`powershell -File check.ps1` 0（含零金额 0 命中）→ `sync-cloud-shared` → 上传 `api`（若改）。
-2. dev 冒烟：`health.check` + 本批新增 action 的最小链路（用户真机或 agent 调云函数）；**批 2/3 冒烟编号生成/账号切换与测试账号（含头像上传）、批 4 冒烟识别兜底降级（关开关/造假失败图）、批 8 冒烟邀请码全生命周期 + 后台脱敏 + 切换会话读写边界与测试数据隔离 + 复核补录与审计**。
+2. 环境冒烟（测试账号）：`health.check` + 本批新增 action 的最小链路（用户真机或 agent 调云函数）；**批 2/3 冒烟编号生成/账号切换与测试账号（含头像上传）、批 4 冒烟识别兜底降级（关开关/造假失败图）、批 8 冒烟邀请码全生命周期 + 后台脱敏 + 切换会话读写边界与测试数据隔离 + 复核补录与审计**。
 3. 更新 `CHANGELOG.md`「未发布/工程细节」+ 文档回写 → 提交 → `gate.ps1` 绿 → 贴输出。
 4. 体验版只在批 5/6/8/9 发（用户操作）；每批验收项写 `docs/QA_CHECKLIST.md`；**agent 不代勾"账号切换/测试账号/头像/脱敏/邀请码"等人执行项**。
 ### 10.4 发布、灰度与回滚
@@ -894,7 +898,7 @@ expressage_college_v4/
 
 | # | 风险/未取证 | 影响 | 缓解/取证动作 | 批次 |
 | :-- | :-- | :-- | :-- | :-- |
-| R1 | 云环境是否已开通、appid 是否可用（D1/D2） | 阻塞批 1 | 开工门确认 + RUNBOOK 记录 envId | 0/1 |
+| R1 | 云环境是否已开通、appid 是否可用（D1/D2；D1 修订=**单环境**：账号只能开 1 个，无 dev/prod 两套库） | 阻塞批 1 | 开工门确认 + RUNBOOK 记录 envId + 单环境清零清单（RUNBOOK §10.2.1） | 0/1 |
 | R2 | 云存储安全规则能否支持"仅创建者可写、不可读"且 `wx.cloud.uploadFile` 可用 | 上传链路/隐私 | 批 1 真机实测；不可行则改云函数代理上传（≤500KB）并登记 | 1/4 |
 | R3 | VisionKit 在顾客机型真实吐字（v3 未取证） | 识别体验 | 保留手填兜底；真机取证后再扩规则（无样本不加规则） | 4 |
 | R4 | 云函数冷启动/弱网/超时 | 下单/刷新等待 | 加载态、读重试、写幂等、关键页预拉取；真机实测 | 4/5 |

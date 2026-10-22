@@ -21,7 +21,7 @@
 | TD-012 | **订阅消息 P1 未实现**（模板审批、开关、文案进 config） | 通知体验依赖站内轮询/红点 | 按 D10 走 P1；MVP 不阻塞 | 开放 | CONTRACT §13 D10 / §9 |
 | TD-013 | **cleanup 单触发器每 10 分钟的高频查询成本未评估** | 云开发调用成本/配额 | 上线后按控制台调用日志评估，必要时降频或分批 | 开放 | ENGINEERING §4.7 / R13 |
 | TD-014 | **[R3] VisionKit 在目标机型真实吐字未取证** | 识别规则可能过度/不足 | 批 4 前不扩规则；真机取证后按 `docs/V4_FIXTURES.md` §6 入册 | 开放 | ENGINEERING §12 R3 |
-| TD-015 | **fake DB 与真实云环境行为差异**（事务/唯一索引冲突/分页/时间类型）未对照 | handler 单测可能"假绿" | 批 1 部署后挑关键路径在 dev 对照一次 | 开放 | ENGINEERING §7.3 / R14 |
+| TD-015 | **fake DB 与真实云环境行为差异**（事务/唯一索引冲突/分页/时间类型）未对照 | handler 单测可能"假绿" | 批 1 部署后挑关键路径在唯一环境（测试账号）对照一次 | 开放 | ENGINEERING §7.3 / R14 |
 | TD-016 | **`docs/lessons/` 目录尚未建立**：踩坑卡应先查重再建（≤12 行/卡） | 教训无法沉淀 | 出现踩坑即建（Lead 域）；v3 框架无关卡按 §9.3 搬迁清单逐步搬 | 开放 | ENGINEERING §9.1/§9.3 |
 
 | TD-017 | **四档排序归属口径冲突**：CONTRACT §5.2 要求客户端零件层排序，DATA_MODEL §5/ENGINEERING §5.1 旧表述为服务端返回并禁止重排；已裁决按 CONTRACT（客户端 `shared/order-view.sortByPickupRoute`），三份文档已回写 | 若实现按旧表述会与 CONTRACT 冲突 | 关闭依据：`shared/order-view.js:118` 为排序唯一源，生产消费 `pages/partner/workbench/parts/group-view.js:97`；服务端只做状态桶+站点过滤；`selftest-state.js` §8 有排序正控与「非数组→[]」反例；批 1 收口 `check.ps1` 全绿 | 已关闭 | Lead 裁决 2026-10-21 |
@@ -65,6 +65,7 @@
 | TD-055 | **`admin.setPartnerStatus(CLOSED)` 治理链非事务**：顺序写 partners/bindings/orders+events/invitations/recognition_failures，中途失败会部分生效（云 DB 事务不覆盖云存储删文件；文件删除失败仅告警留待人工/TD-051） | 极端故障下兼职可能「已释放绑定但未匿名化」等中间态；可重放同一动作收敛（审计 `requestKey` 幂等） | 评估把 DB 写合并进 `dao.transaction`（文件删除仍在事务外），失败时提示重试；当前依赖审计重放与 cleanup 兜底 | 跟踪中 | cloud-core task-83 回执 + Lead 裁决 2026-10-22 |
 | TD-056 | **兼职 CLOSED 后既有切换会话未立即 `endedAt`**：`switch-session` 因 `isPartnerActive=false` 使会话实际不可用（`NOT_FOUND`），但 `admin_view_sessions` 记录要等 viewSessions sweep 过期才 endedAt（顾客注销侧已由本批 `TARGET_DELETED` 立即结束覆盖） | 审计时点滞后（会话无法使用，非越权）；「删除账号立即结束会话」在兼职 CLOSED 路径未完全对齐 | 在 `admin.setPartnerStatus` CLOSED 分支对 `targetId=partner._id` 的有效会话写 `ACCOUNT_SWITCH_END`（reason=`TARGET_DELETED`），或 cleanup.viewSessions 增 CLOSED 目标扫描；需扩 selftest-deletion/selftest-switch 断言 | 跟踪中 | cloud-core task-83 回执 + Lead 裁决 2026-10-22 |
 | TD-057 | **`moveOrdersToException` 500 单上限**：CLOSED 时按 `createdAt desc` 取最新 500 单过滤进行中单，超 500 单的旧单漏转异常（`SUBMITTED` 有 timeout sweep 兜底，`ACCEPTED/PICKED` 无对应兜底） | 极端大单量兼职注销时，个别进行中单停留原状态（顾客可见但无兼职接手） | 改为按状态分页 `scanPage` 全量处理或按状态查询；当前规模下可接受，已在 `selftest-deletion` 覆盖 ≤500 路径 | 跟踪中 | cloud-core task-83 回执 + Lead 裁决 2026-10-22 |
+| TD-058 | **单环境无 dev/prod 隔离（D1 修订，外部约束）**：用户账号只能开通 **1 个云环境** ⇒ develop/trial/release 共用一个库与存储，开发联调/体验版/正式版**没有独立环境**；上线后不存在可随意试错的 staging | 开发期造数直接落正式库；上线后结构/数据变更与回滚只能靠备份；测试数据若未清会进入真实统计/后台列表（已有 `isTest` 隔离与统计排除，仍需上线前清零兜底） | 无法消除（账号配额），按运行纪律缓解：①测试账号/`isTest` 标记隔离（CONTRACT §1.3）；②上线前「单环境清零」RUNBOOK §10.2.1 + 发布前导出 JSON 备份；③结构/数据变更前先备份、事故按 RUNBOOK §10.4 R6「先清不先删库」；④发布侧用体验版验收 + 平台分阶段发布做灰度；⑤将来若可开第二环境，只改 `config/env.js` 拆 dev/prod，业务代码零改动 | 跟踪中（长期） | 用户 2026-10-22 约束 + DECISIONS D1 修订留痕 |
 
 
 
@@ -72,4 +73,4 @@
 2. 关闭条目：状态改 `已关闭` 并在条目末尾补 `（关闭依据：…）`；不删除历史行。
 3. 计划变更：改"计划/批次"并回写 `STATE.md` 对应风险项；涉及口径的必须先改 `docs/V4_CONTRACT.md`。
 4. 与门禁的关系：债务不豁免门禁；任何人不得以"已有 TD 记录"为理由跳过判据（关闭前必须绿）。
-5. 隐私/安全类债务（当前 TD-003/004/011/015）优先于体验类；上线前必须清零或由 Lead 明确接受风险（TD-002/005/007/009/010/017/018/020/021/026/028/029/030/031/039/046/049 已关闭）；TD-032（静态扫描简写盲区）/TD-033（真实云事务冲突码待核）/TD-051（云文件无主兜底）/TD-052（端内隐私文本双源）为工程/安全自检项，随批 8 收口与首次部署跟踪；TD-053（partners.openid 保留）/TD-054（users.purgeAt 未写）/TD-055（治理链非事务）/TD-056（CLOSED 会话结束时点）/TD-057（500 单上限）为批 9 注销链路回执新增，随首次部署与提审前核对。
+5. 隐私/安全类债务（当前 TD-003/004/011/015）优先于体验类；上线前必须清零或由 Lead 明确接受风险（TD-002/005/007/009/010/017/018/020/021/026/028/029/030/031/039/046/049 已关闭）；TD-032（静态扫描简写盲区）/TD-033（真实云事务冲突码待核）/TD-051（云文件无主兜底）/TD-052（端内隐私文本双源）为工程/安全自检项，随批 8 收口与首次部署跟踪；TD-053（partners.openid 保留）/TD-054（users.purgeAt 未写）/TD-055（治理链非事务）/TD-056（CLOSED 会话结束时点）/TD-057（500 单上限）为批 9 注销链路回执新增，随首次部署与提审前核对；**TD-058（单环境无 dev/prod 隔离，D1 修订外部约束）为长期运维风险**，按 RUNBOOK §10.2.1 与 §10.4 R6 执行，不可用"有 TD 记录"豁免任何发布前置。

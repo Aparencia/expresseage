@@ -1,6 +1,6 @@
 'use strict';
 /**
- * tools/seed-dev.js — dev 环境初始化计划器（14 集合 / 索引清单 / 测试账号 / 环境断言）。
+ * tools/seed-dev.js — 云环境初始化计划器（14 集合 / 索引清单 / 测试账号 / 环境断言）。
  *
  * 职责边界（AGENTS §7）：**不连真实云环境、不写库、不改控制台**。本脚本只做：
  *   1) 环境断言（node 版本、config/env.js 环境 ID 状态、git 身份、关键文件存在）；
@@ -40,12 +40,12 @@ function envChecks() {
     checks.push({ name: 'config/env.js 存在', ok: false, detail: '缺失' });
   } else {
     const s = F.readText(envFile);
-    const placeholder = /__DEV_ENV_ID__|__PROD_ENV_ID__/.test(s);
+    const placeholder = /__ENV_ID__/.test(s);
     checks.push({
       name: '云环境 ID 已回填（非占位符）',
       ok: !placeholder,
       warn: placeholder,
-      detail: placeholder ? '仍是 __DEV_ENV_ID__ / __PROD_ENV_ID__ 占位（需用户在云控制台创建环境后回填）' : '已配置',
+      detail: placeholder ? '仍是 __ENV_ID__ 占位（需用户在云控制台创建唯一环境后回填三档）' : '已配置（单环境：三档同一 envId）',
     });
   }
   const defaults = load('config/defaults.js');
@@ -130,7 +130,7 @@ function main() {
   if (jsonOut) {
     console.log(JSON.stringify({ checks, plan }, null, 2));
   } else {
-    console.log('== tools/seed-dev.js · dev 初始化计划（dry-run）==');
+    console.log('== tools/seed-dev.js · 单环境初始化计划（dry-run）==');
     console.log('环境断言：');
     checks.forEach((c) => {
       const level = c.ok ? 'PASS' : (c.warn ? 'WARN' : 'FAIL');
