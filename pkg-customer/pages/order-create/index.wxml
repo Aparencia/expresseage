@@ -118,6 +118,16 @@
       <view class="small error-text" wx:if="{{item.formErrors.trackingTail}}">{{item.formErrors.trackingTail}}</view>
       <view class="small needs-code" wx:if="{{item.codeStatus === 'NEED_CODE'}}">需查明（兼职接单后帮你查码）</view>
       <view class="small muted" wx:if="{{item.aiHint}}">{{item.aiHint}}</view>
+
+      <view class="ai-suggestion" wx:if="{{item.aiSuggestion}}">
+        <view class="small suggestion-title">{{lowCopy.title}}</view>
+        <view class="small muted">{{lowCopy.lowHint}}</view>
+        <view class="small muted" wx:if="{{item.aiSuggestion.stationName}}">建议站点：{{item.aiSuggestion.stationName}}</view>
+        <view class="small muted" wx:if="{{item.aiSuggestion.pickupCode}}">建议取件码：{{item.aiSuggestion.pickupCode}}</view>
+        <view class="small muted" wx:if="{{item.aiSuggestion.trackingTail}}">建议尾号：{{item.aiSuggestion.trackingTail}}</view>
+        <view class="small muted" wx:if="{{item.aiSuggestion.lockerNo}}">建议柜号：{{item.aiSuggestion.lockerNo}}</view>
+        <button class="btn btn-ghost btn-inline suggestion-adopt" data-index="{{index}}" bindtap="onAdoptSuggestion" disabled="{{readonly}}">{{lowCopy.adopt}}</button>
+      </view>
     </view>
 
     <view class="actions-row page-actions">

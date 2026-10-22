@@ -3,7 +3,7 @@
  * tools/selftest-recognize.js — v4 识别规则纯件（utils/recognize/** 与 utils/ocr/** 的纯部分）。
  * 分层依据：docs/V4_ENGINEERING.md §7.1「识别规则」：码/站点/柜号/运单尾号/形态闸 + 语料样本。
  * 判据纪律：先合法基线、再只有该闸能挡的反例；样本非空（不许空集全绿）；期望值以
- *           docs/V4_CONTRACT.md §3/§4.3 为准；语料带 sha256 指纹钉，防样本被悄悄改动。
+ *           docs/V4_CONTRACT.md §3/§4.3 与 §4.3.1（D29 低置信不写入/可采纳建议）为准；语料带 sha256 指纹钉，防样本被悄悄改动。
  * 接入：tools/selftest.js 里 `h.setExpected(require('./selftest-recognize').EXPECTED_ASSERTIONS)` 后 register(h)。
  * 零金额：本文件不得出现口径词表（ENGINEERING §7.6）字面量，需要时用构造串。
  */
@@ -22,7 +22,7 @@ const ocr = require(path.join(ROOT, 'utils/ocr/index.js'));
 const sharedStations = require(path.join(ROOT, 'shared/stations.js'));
 const sharedValidate = require(path.join(ROOT, 'shared/validate.js'));
 
-const EXPECTED_ASSERTIONS = 195; // 改为实际断言数时同步核对 `node tools/selftest-recognize.js` 读数
+const EXPECTED_ASSERTIONS = 214; // 改为实际断言数时同步核对 `node tools/selftest-recognize.js` 读数
 
 // v3 真机语料（sha256 指纹钉：改动语料必须同步改这里的期望与解析断言）
 const CORPUS_ONE = [
@@ -310,6 +310,77 @@ function sectionApplyAi(h) {
   });
 }
 
+// ---------------------------------------------------------------- AI 低置信（D29）
+function sectionLowConfidence(h) {
+  h.section('§4.3.1 AI 低置信不写入 + 可采纳建议（D29）', (t) => {
+    const low = {
+      recognized: false, stationId: 'P1', pickupCode: '123456', trackingTail: '12345',
+      lockerNo: 'A1', confidence: 'LOW', source: 'DEEPSEEK',
+      needsReview: true, failureId: 'F-20261022-LOW001'
+    };
+    const empty = recognize.makeEmptyParcel();
+    const held = recognize.applyAiSuggestion(empty, low);
+    t.eq(held.changed, [], 'D29 低置信+AI 来源 → 不写任何字段（changed=[]）');
+    t.eq([held.parcel.stationId, held.parcel.pickupCode, held.parcel.trackingTail, held.parcel.lockerNo],
+      ['', '', '', ''], 'D29 件字段保持空（旧行为会预填成 AI 猜测）');
+    t.eq([held.parcel.source, held.parcel.confidence, held.parcel.aiApplied],
+      [empty.source, empty.confidence, empty.aiApplied], 'D29 不改件来源/置信度/aiApplied（保持原值）');
+    t.eq(held.parcel.failureId, 'F-20261022-LOW001', 'D29 failureId 仍透传（复核队列/建单回填不变）');
+    t.eq(held.parcel.needsReview, true, 'D29 低置信件标 needsReview（仍需人核对）');
+    t.eq(held.suggestion, {
+      stationId: 'P1',
+      stationName: station.stationName('P1'),
+      pickupCode: '123456',
+      trackingTail: '12345',
+      lockerNo: 'A1',
+      confidence: 'LOW',
+      source: 'DEEPSEEK'
+    }, 'D29 返回可展示/可采纳建议快照（站点名归一 + LOW/DEEPSEEK 快照）');
+    const pruned = recognize.applyAiSuggestion({}, {
+      confidence: 'LOW', source: 'DEEPSEEK', stationId: 'P9', pickupCode: 'ab', trackingTail: '34567'
+    });
+    t.eq(pruned.suggestion, { trackingTail: '34567', confidence: 'LOW', source: 'DEEPSEEK' },
+      'D29 快照剔掉非法/不可采纳值（P9 非正式站、ab 不像码）');
+    t.eq(recognize.applyAiSuggestion({}, {
+      confidence: 'LOW', source: 'DEEPSEEK', recognized: false
+    }).suggestion, null, 'D29 一个可采纳字段都没有 → 建议快照 null（不渲染空建议条）');
+    const lowRule = recognize.applyAiSuggestion({}, { confidence: 'LOW', source: 'RULE', stationId: 'P1' });
+    t.eq([lowRule.changed, lowRule.suggestion], [['station'], null],
+      'D29 LOW+RULE（规则命中）照旧预填，不进建议条');
+    const lowNone = recognize.applyAiSuggestion({}, {
+      recognized: false, confidence: 'LOW', source: 'NONE', trackingTail: '34567'
+    });
+    t.eq([lowNone.changed, lowNone.parcel.trackingTail], [['trackingTail'], '34567'],
+      'D29 LOW+NONE（降级规则字段）照旧预填，不让用户白填');
+    t.notEmpty(held.suggestion.pickupCode, 'D29 样本非空（建议快照有可采纳字段）');
+
+    const adopted = recognize.adoptAiSuggestion(held.parcel, held.suggestion);
+    t.eq(adopted.changed.slice().sort(), ['lockerNo', 'pickupCode', 'station', 'trackingTail'],
+      'D29 采纳后四字段才写入（一次点击补齐）');
+    t.eq([adopted.parcel.source, adopted.parcel.confidence, adopted.parcel.aiApplied],
+      ['DEEPSEEK', 'LOW', true], 'D29 采纳后 source=DEEPSEEK / confidence=LOW 快照保留 / aiApplied');
+    t.eq(adopted.parcel.codeStatus, 'OK', 'D29 采纳后重算 codeStatus（行内校验即时生效）');
+    t.check(adopted.parcel.aiSuggestion === null, 'D29 采纳后清空建议条（aiSuggestion=null）');
+    const manualFirst = Object.assign(recognize.makeEmptyParcel(), {
+      stationId: 'P2', stationName: station.stationName('P2'), source: 'MANUAL'
+    });
+    const kept = recognize.adoptAiSuggestion(manualFirst, held.suggestion);
+    t.eq([kept.parcel.stationId, kept.changed.indexOf('station')], ['P2', -1],
+      'D29 采纳不覆盖手填字段（手填优先）');
+    t.check(kept.changed.indexOf('pickupCode') >= 0, 'D29 采纳只补空位（手填站点旁仍补取件码）');
+    const rejected = recognize.adoptAiSuggestion({}, {
+      stationId: 'P9', pickupCode: 'ab', lockerNo: 'A1'
+    });
+    t.eq([rejected.changed, rejected.rejected.slice().sort()],
+      [['lockerNo'], ['pickupCode', 'stationId']], 'D29 非法建议值不写、rejected 留痕');
+    const noop = recognize.adoptAiSuggestion({
+      stationId: 'P1', pickupCode: '123456', trackingTail: '12345', lockerNo: 'A1'
+    }, held.suggestion);
+    t.check(noop.changed.length === 0 && noop.parcel.aiApplied !== true,
+      'D29 全已填时采纳零改动、不误标 aiApplied');
+  });
+}
+
 // ---------------------------------------------------------------- 摘要
 function sectionSummary(h) {
   h.section('§4.3 页内摘要行', (t) => {
@@ -481,6 +552,7 @@ function register(h) {
   sectionValidateParcel(h);
   sectionParse(h);
   sectionApplyAi(h);
+  sectionLowConfidence(h);
   sectionSummary(h);
   sectionFrame(h);
   sectionVision(h);

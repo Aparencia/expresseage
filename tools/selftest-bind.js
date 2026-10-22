@@ -12,6 +12,7 @@
  *   §5.3  bind 模块 action 名只出现在 api/（页面层零直拼动作名）静态扫描
  *   §6    分享绑定卡纯件（只带兼职编号/零昵称头像宿舍尾号）+ 绑定页预览零头像、云端 message 原样展示（静态扫描）
  *   §6    分享绑定卡 path 单一来源：全页面层零自拼，客户页/我的页都只调 parts/share-card 纯件
+ *   §6.2  换绑一体化（D28/AC-C-68）：一次确认 release→create、失败单步恢复、零双重绑定（纯件 + 页面接线静态）
  *
  * 纪律：样本非空、先合法基线再反例；不 mock 全局 wx（api/client 用 setTransport 注入替身）；
  *       EXPECTED_ASSERTIONS 与实际断言数精确相等（少算/多算都判红）。
@@ -31,8 +32,9 @@ const client = require(path.join(ROOT, 'api/client.js'));
 const store = require(path.join(ROOT, 'store/index.js'));
 const groupView = require(path.join(ROOT, 'pages/partner/workbench/parts/group-view.js'));
 const shareCard = require(path.join(ROOT, 'pages/profile/parts/share-card.js'));
+const rebind = require(path.join(ROOT, 'utils/rebind.js'));
 
-const EXPECTED_ASSERTIONS = 79;
+const EXPECTED_ASSERTIONS = 119;
 
 const VIEW_TICKET = 'T'.repeat(enums.TOKEN_LENGTH);
 const UI_DIRS = ['pages', 'pkg-customer', 'pkg-partner', 'pkg-admin', 'components'];
@@ -408,6 +410,162 @@ function register(h) {
     t.check(customersJs.indexOf("'/pages/role/index?bind='") === -1, '客户页零 path 自拼（不复制第二份口径）');
     t.check(/open-type="share"/.test(customersWxml) && /wx:if="\{\{!session\}\}"/.test(customersWxml),
       '客户页分享按钮仅在非切换会话渲染（切换会话不能分享）');
+  });
+
+  // ---------------------------------------------------------------- §6.2 换绑一体化（D28）
+  h.section('§6.2 换绑一体化（D28/AC-C-68）：一次确认 release→create、失败单步恢复、零双重绑定', async (t) => {
+    const REBOUND_OK = { binding: { roomTag: 'A' }, partnerPublic: { displayName: '张同学', partnerNo: 'P-7K2-M9X' } };
+    // deps 注入 release/create：记录调用与载荷，可按需让某一步失败（不 mock wx）
+    function depsOf(calls, fail) {
+      const plan = fail || {};
+      return {
+        mode: 'rebind',
+        hasCurrentBinding: true,
+        partnerNo: 'P-7K2-M9X',
+        release(payload) {
+          calls.push({ action: 'release', payload: payload });
+          return plan.release
+            ? Promise.reject(new Error('网络不稳定，请稍后再试'))
+            : Promise.resolve({ binding: {} });
+        },
+        create(payload) {
+          calls.push({ action: 'create', payload: payload });
+          return plan.create
+            ? Promise.reject(new Error('这位兼职暂停接单'))
+            : Promise.resolve(REBOUND_OK);
+        }
+      };
+    }
+
+    // 编排计划：只有 rebind+有当前绑定 才先 release
+    t.eq(rebind.planRebind({ mode: 'rebind', hasCurrentBinding: true }).steps, ['release', 'create'],
+      'D28 计划：rebind+有绑定 → release→create');
+    t.eq(rebind.planRebind({ mode: 'rebind', hasCurrentBinding: false }).steps, ['create'],
+      'rebind 页无当前绑定 → 只 create（按普通绑定，不空跑 release）');
+    t.eq(rebind.planRebind({ mode: 'create', hasCurrentBinding: true }).steps, ['create'],
+      '普通绑定入口 → 只 create（即使本地残留绑定也不先解绑）');
+    t.eq(rebind.planRebind().steps, ['create'], '缺省入参 → 只 create（纯件不抛错）');
+
+    // 成功路径：一次确认内顺序 release→create
+    const successCalls = [];
+    const rebound = await rebind.runRebind(depsOf(successCalls));
+    t.eq(successCalls.map((call) => call.action), ['release', 'create'], '一次确认内顺序执行 release→create');
+    t.eq(successCalls[0].payload, { reason: 'CUSTOMER_INITIATED' },
+      '顾客侧解绑原因=CUSTOMER_INITIATED（服务端对 CUSTOMER 唯一接受的枚举）');
+    t.eq(successCalls[1].payload, { partnerNo: 'P-7K2-M9X' }, 'create 只带新兼职编号（不夹带解绑信息）');
+    t.eq([rebound.status, rebound.released, rebound.created, rebound.binding.roomTag,
+      rebound.partnerPublic.displayName], ['REBOUND', true, true, 'A', '张同学'],
+    '两步都成功 → REBOUND + 新 roomTag/公开资料（AC-C-68 换绑完成）');
+    t.eq(rebind.successToast(rebound, '张同学'), '已换绑为「张同学」', '成功 toast 逐字「已换绑为「{displayName}」」');
+    t.eq(rebind.resultText(rebound, '张同学'), '已换绑为「张同学」，同寝室标识已分配：',
+      '成功卡片文案用换绑语义（不写死「已绑定」）');
+
+    // release 失败：原绑定不变、零 create 调用、文案「换绑未开始」
+    const releaseFailCalls = [];
+    const releaseFailed = await rebind.runRebind(depsOf(releaseFailCalls, { release: true }));
+    t.eq(releaseFailCalls.filter((call) => call.action === 'create').length, 0,
+      'release 失败 → create 调用数=0（不可能出现半完成/双重绑定）');
+    t.eq([releaseFailed.status, releaseFailed.released, releaseFailed.created],
+      ['RELEASE_FAILED', false, false], 'release 失败：released=false（原绑定保持不变）');
+    t.eq(rebind.recoveryCopy(releaseFailed), '换绑未开始：网络不稳定，请稍后再试。',
+      'release 失败文案逐字「换绑未开始：{reason}。」');
+    t.eq([rebind.retryAction(releaseFailed), rebind.retryDeps(releaseFailed)],
+      ['release', { released: false }], 'release 失败 → 重新走 release→create（不是只补 create）');
+    t.check(rebind.failureView(releaseFailed).retryVisible === false,
+      'release 失败不显示「重新绑定」（原绑定还在，再点确认即可）');
+
+    // release 成功 + create 失败：保留 released、文案 AC-C-68、重试只补 create
+    const createFailCalls = [];
+    const createFailed = await rebind.runRebind(depsOf(createFailCalls, { create: true }));
+    t.eq(createFailCalls.map((call) => call.action), ['release', 'create'], '先 release 成功才会走到 create');
+    t.eq([createFailed.status, createFailed.released, createFailed.created],
+      ['CREATE_FAILED', true, false], 'create 失败：保留 released=true 供单步恢复');
+    t.eq(rebind.recoveryCopy(createFailed),
+      '已解除旧绑定，但绑定新兼职未完成：这位兼职暂停接单。可以重试绑定，或稍后再试。',
+      'create 失败文案逐字「已解除旧绑定，但绑定新兼职未完成：{reason}。」+ 下一步');
+    t.eq(rebind.retryAction(createFailed), 'create', 'create 失败 → 重试动作只补 create');
+    const failView = rebind.failureView(createFailed);
+    t.check(failView.retryVisible === true && failView.retryLabel === '重新绑定',
+      'create 失败 → 展示「重新绑定」单步重试按钮');
+    const plainFailCalls = [];
+    const plainFail = await rebind.runRebind(Object.assign(depsOf(plainFailCalls, { create: true }),
+      { hasCurrentBinding: false }));
+    t.eq(rebind.recoveryCopy(plainFail), '绑定未完成：这位兼职暂停接单。可以重试绑定，或稍后再试。',
+      '普通绑定失败不说「已解除旧绑定」（无旧绑定可说，说真话）');
+    t.check(rebind.failureView(plainFail).retryTitle === '绑定未完成',
+      '普通绑定失败的重试卡标题=「绑定未完成」（与换绑失败区分）');
+
+    // 失败恢复全链路：release 只调用 1 次，绝不二次 release
+    const recoverCalls = [];
+    let createAttempts = 0;
+    const flaky = {
+      mode: 'rebind',
+      hasCurrentBinding: true,
+      partnerNo: 'P-7K2-M9X',
+      release() {
+        recoverCalls.push('release');
+        return Promise.resolve({ binding: {} });
+      },
+      create() {
+        recoverCalls.push('create');
+        createAttempts += 1;
+        return createAttempts === 1
+          ? Promise.reject(new Error('网络不稳定'))
+          : Promise.resolve(REBOUND_OK);
+      }
+    };
+    const firstTry = await rebind.runRebind(flaky);
+    const recovered = await rebind.runRebind(Object.assign({}, flaky, { released: firstTry.released }));
+    t.eq(recoverCalls, ['release', 'create', 'create'],
+      '失败恢复：release 总调用数=1，恢复只补 create（不产生双重绑定）');
+    t.eq([firstTry.released, recovered.status, recovered.released], [true, 'REBOUND', true],
+      '补 create 成功后按换绑收官（released 态延续，成功后无需再重试）');
+    t.eq(rebind.retryAction(recovered), 'none', '成功后 retryAction=none');
+
+    // 换绑页无绑定 / 普通绑定：只 create，不冒充「已换绑」
+    const plainCalls = [];
+    const plainDeps = Object.assign(depsOf(plainCalls), { hasCurrentBinding: false });
+    const plain = await rebind.runRebind(plainDeps);
+    t.eq(plainCalls.map((call) => call.action), ['create'], '换绑页无当前绑定 → 只 create（不空跑 release）');
+    t.eq([plain.status, plain.released, rebind.successToast(plain, '张同学')], ['BOUND', false, '已绑定'],
+      '普通绑定成功 → BOUND + 沿用「已绑定」toast（不冒充已换绑）');
+    const broken = await rebind.runRebind({ mode: 'rebind', hasCurrentBinding: false });
+    t.eq([broken.status, rebind.retryAction(broken)], ['CREATE_FAILED', 'create'],
+      '依赖缺失不抛未捕获异常（归一为可重试的单步失败）');
+
+    // 文案逐字（AC-C-68 / UX §6.2）+ 服务端句尾句号归一
+    t.eq(rebind.confirmContent(), '换绑后这位兼职看不到你的新订单，历史订单仍保留。确定换绑？',
+      '一次确认弹窗文案逐字（UX §6.2）');
+    t.eq([rebind.successCopy('张同学'), rebind.successCopy('')], ['已换绑为「张同学」', '已换绑'],
+      '成功文案缺昵称时不拼空书名号');
+    const rebindLabels = rebind.labelsOf({ mode: 'rebind' });
+    const createLabels = rebind.labelsOf({ mode: 'create' });
+    t.eq([rebindLabels.confirm, rebindLabels.previewTitle, rebindLabels.resultTitle, createLabels.confirm],
+      ['确认换绑', '确认换绑到这位兼职？', '换绑成功', '确认绑定'],
+      'rebind/create 按钮与卡片标题分开（rebind 显式「换绑」语义）');
+    t.eq(rebind.recoveryCopy({
+      status: 'RELEASE_FAILED',
+      error: new Error('你还有进行中的订单，完成或取消后才能换绑/解绑。')
+    }), '换绑未开始：你还有进行中的订单，完成或取消后才能换绑/解绑。',
+    '服务端句尾句号归一（不出现「。。」）');
+
+    // 静态：页面接纯件、不再只 create、零业务常量、wxml 矛盾文案已删、失败重试按钮接线
+    const bindJs = fs.readFileSync(path.join(ROOT, 'pkg-customer/pages/bind/index.js'), 'utf8');
+    const bindWxml = fs.readFileSync(path.join(ROOT, 'pkg-customer/pages/bind/index.wxml'), 'utf8');
+    const rebindSrc = fs.readFileSync(path.join(ROOT, 'utils/rebind.js'), 'utf8');
+    t.check(/require\(['"]\.\.\/\.\.\/\.\.\/utils\/rebind['"]\)/.test(bindJs),
+      'bind 页接 utils/rebind 纯件（编排不在页面）');
+    t.check(/rebind\.planRebind\(/.test(bindJs) && /rebind\.runRebind\(/.test(bindJs)
+      && /rebind\.failureView\(/.test(bindJs), '页面只弹窗/展示：计划、编排、失败呈现都取纯件');
+    t.check(/bindApi\.release\(/.test(bindJs), '换绑实际调用 bindApi.release（旧实现只 create → 换绑不可用）');
+    t.check(!/CUSTOMER_INITIATED/.test(bindJs) && !/rebind\.STEP/.test(bindJs),
+      '解绑原因/步骤枚举只留 utils/rebind（页面零业务常量）');
+    t.check(!/\bwx\./.test(rebindSrc), 'utils/rebind 零 wx（纯件可单测）');
+    t.check(bindWxml.indexOf('解绑或换绑请到') === -1 && /labels\.confirm/.test(bindWxml),
+      'wxml 删掉「解绑或换绑请到我的页操作」矛盾文案，确认按钮走换绑语义');
+    t.check(/onRetryBind/.test(bindWxml) && /\{\{retryLabel\}\}/.test(bindWxml),
+      'wxml 失败态「重新绑定」按钮接线（onRetryBind + retryLabel）');
+    t.notEmpty(successCalls, '§6.2 换绑样本非空');
   });
 }
 

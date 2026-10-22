@@ -35,6 +35,7 @@ async function listOrderMessages(ctx, payload) {
   });
   const page = filtered.slice(0, limit);
   const user = await common.loadUser(ctx, scope.openid);
+  const readWatermarkMs = common.watermarkMsOf(user);
   const last = page[page.length - 1];
   return {
     list: page.map((item) => {
@@ -45,7 +46,7 @@ async function listOrderMessages(ctx, payload) {
     nextCursor: filtered.length > limit && last
       ? { sortValue: itemTime(last), tie: last._id }
       : null,
-    messageReadAt: common.toIso(user && user.messageReadAt),
+    messageReadAt: readWatermarkMs > 0 ? new Date(readWatermarkMs).toISOString() : '',
     orderNo,
     side
   };
@@ -54,56 +55,6 @@ async function listOrderMessages(ctx, payload) {
 function itemTime(item) {
   const ms = item && item.at ? Date.parse(item.at) : 0;
   return isNaN(ms) ? 0 : ms;
-}
-
-async function customerOrders(ctx, scope, isTest) {
-  return ctx.dao.find(common.COLLECTIONS.ORDERS, {
-    where: { customerId: scope.openid, isTest },
-    orderBy: [['statusUpdatedAt', 'desc']],
-    limit: common.MAX_ORDERS_SCAN
-  });
-}
-
-async function partnerOrders(ctx, scope, isTest) {
-  const partner = await ctx.dao.findOne(common.COLLECTIONS.PARTNERS, {
-    where: { openid: scope.openid }
-  });
-  if (!partner) {
-    return [];
-  }
-  return ctx.dao.find(common.COLLECTIONS.ORDERS, {
-    where: { partnerId: partner._id, isTest },
-    orderBy: [['statusUpdatedAt', 'desc']],
-    limit: common.MAX_ORDERS_SCAN
-  });
-}
-
-// 我的订单 = users.roles 含哪侧就取哪侧（双角色两侧合并去重，不依赖 activeRole）
-async function myOrders(ctx, scope) {
-  const isTest = scope.testWrite;
-  const roles = Array.isArray(scope.roles) ? scope.roles : [];
-  const lists = [];
-  if (roles.indexOf(common.enums.ROLES.CUSTOMER) >= 0) {
-    lists.push(await customerOrders(ctx, scope, isTest));
-  }
-  if (roles.indexOf(common.enums.ROLES.PARTNER) >= 0) {
-    lists.push(await partnerOrders(ctx, scope, isTest));
-  }
-  if (lists.length !== 2) {
-    return lists.length === 1 ? lists[0] : [];
-  }
-  const seen = {};
-  const merged = [];
-  lists.forEach((list) => list.forEach((order) => {
-    const key = String(order._id || '');
-    if (!key || seen[key]) {
-      return;
-    }
-    seen[key] = true;
-    merged.push(order);
-  }));
-  merged.sort((left, right) => common.time.toMs(right.statusUpdatedAt) - common.time.toMs(left.statusUpdatedAt));
-  return merged;
 }
 
 async function customerPartnerOpenids(ctx, scope) {
@@ -142,6 +93,16 @@ async function systemNoticeItems(ctx, scope) {
     .map((row) => common.buildMessageItem(scope, '', row));
 }
 
+// D29 未读口径：unread = 合并视图内「未读留言 + 未读状态事件」（公告/NOTICE/测试数据/软删单已在聚合时排除）；
+// unreadMessages 为旧字段（仅 MESSAGE）供旧调用方；两者都与分页游标无关。
+function unreadOf(all) {
+  const isCounted = (item) => item.type === 'MESSAGE' || item.type === 'EVENT';
+  return {
+    unread: all.filter((item) => isCounted(item) && !item.read).length,
+    unreadMessages: all.filter((item) => item.type === 'MESSAGE' && !item.read).length
+  };
+}
+
 async function listCenter(ctx, payload) {
   const scope = common.scopeOf(ctx);
   if (scope.roles.length === 0) {
@@ -150,9 +111,9 @@ async function listCenter(ctx, payload) {
   const limit = common.parseLimit(payload);
   const cursor = common.parseCursor(payload);
   const user = await common.loadUser(ctx, scope.openid);
-  const readWatermarkMs = common.time.toMs(user && user.messageReadAt);
+  const readWatermarkMs = common.watermarkMsOf(user);
   const config = await common.loadConfig(ctx);
-  const orders = await myOrders(ctx, scope);
+  const orders = await common.myOrders(ctx, scope);
   const items = [];
   const recentOrders = orders
     .filter((order) => !order.deletedByCustomerAt)
@@ -187,14 +148,13 @@ async function listCenter(ctx, payload) {
   const sorted = all.filter((item) => common.afterCursor(item, cursor));
   const page = sorted.slice(0, limit);
   const last = page[page.length - 1];
-  // 未读数与分页游标无关（DATA_MODEL §5.2：未读 = 合并视图内 order_messages.readAt=null 的计数）
-  const unreadMessages = all.filter((item) => item.type === 'MESSAGE' && !item.read).length;
+  const unread = unreadOf(all);
   return {
     list: page,
     nextCursor: sorted.length > limit && last ? common.makeListCursor(last) : null,
-    messageReadAt: common.toIso(user && user.messageReadAt),
-    unread: unreadMessages,
-    unreadMessages
+    messageReadAt: readWatermarkMs > 0 ? new Date(readWatermarkMs).toISOString() : '',
+    unread: unread.unread,
+    unreadMessages: unread.unreadMessages
   };
 }
 

@@ -74,6 +74,7 @@
 | TD-064 | **`admin/_common.scanPaged` 为死导出**：HEAD 起无生产调用（M-48 同类），违反 AGENTS §5.4「无生产调用的导出须登记或删除」 | 维护噪声/误用风险 | 删除该导出或补生产调用；删除时同步 ADMIN 域测试 | 开放 | 批 10 task-14 回执（review-backend-admin） |
 | TD-065 | **admin 列表默认排序索引缺口**：`customers.createdAt`、`partners.createdAt`、`orders.statusUpdatedAt`（无 status 过滤时）在 DATA_MODEL §5.1 现有索引上无直接命中；批 10 保留现排序、未新增索引 | >1 万级数据时默认列表可能慢查询（当前规模可接受） | 二选一收口：为默认排序补索引（控制台 + DATA_MODEL §5.1 回写）或明确默认排序键走现有复合索引；改动需回归 admin 列表测试 | 开放 | 批 10 task-14 回执（review-backend-admin） |
 | TD-066 | **顾客端多图订单的截图预览仍是逐张点看**：`pkg-customer/pages/order-detail/index.js` 现按 `imageUrl({orderNo,index})` 逐张签临时 URL 后 `wx.previewImage({urls:[url]})`（单张）；v1.0 一单 0~5 张，未实现同屏左右滑多图 | 多图单需点多次；多图同屏要逐张签 URL（N 次外呼 + 失败重试策略） | P1：一次 `imageUrl` 批量签名或新增 `indexes[]` 批量入参（需契约扩展 + 限流/审计评估）；当前逐张可用、无功能缺失 | 开放 | 批 10 C 批收口（review-frontend-customer 回执 + Lead 裁决） |
+| TD-067 | **系统通知（`orderId=''`）的未读点无清零路径**：D29 起 `message.markRead` 的 `ALL` 置读「合并视图内对方未读留言」、`ORDER` 置读该单留言，但无订单归属的系统通知（解绑/停用等，`fromId=SYSTEM`/`templateCode`）不写 `readAt`；列表未读圆点刷新后重现（消息页有本地「全部已读」观感补偿） | 仅列表圆点残留；**红点数字与全端角标不含 NOTICE，不受影响**（D29 口径） | P1：`markRead(ALL)` 按历史绑定来源把本人系统通知一并置读（需归属过滤，避免越权），或明确系统通知不显示未读圆点；改前先回写 CONTRACT §9/DATA_MODEL §5.2 并补 `selftest-messages` 断言 | 开放 | 批 10 B 批 task-37 回执（review-backend-core）+ Lead 登记 2026-10-23 |
 
 
 

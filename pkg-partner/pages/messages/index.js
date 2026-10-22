@@ -1,5 +1,6 @@
 // pkg-partner/pages/messages/index.js · 消息中心（message.list 聚合：状态事件+留言+公告；已读水位 users.messageReadAt）
 // 口径：UX_PARTNER §3.9（全部/订单/留言/公告分类、未读圆点、全部已读、下拉刷新+30s 轮询、READONLY 置灰）。
+// 红点（D29）：未读留言+未读状态事件；工作台 tab 红点=待接单数量，两者不合并。
 'use strict';
 
 const messageApi = require('../../../api/modules/message');
@@ -130,11 +131,9 @@ Page({
       });
   },
 
+  // 红点单源（D29）：服务端 unread（未读留言+未读状态事件）优先；无该字段才回落本地新口径计数
   serverUnreadOf(data, items) {
-    if (data && typeof data.unreadMessages === 'number') {
-      return Math.max(0, Math.floor(data.unreadMessages));
-    }
-    return view.unreadMessageCount(items);
+    return view.serverUnreadOf(data, items);
   },
 
   applyDerived() {
@@ -181,13 +180,14 @@ Page({
     });
   },
 
-  // 单订单已读：订单内条目置读 + 状态事件按水位；红点按「服务端未读数 − 本单未读留言」收敛
+  // 单订单已读：订单内条目置读 + 状态事件按水位；红点按「服务端未读数 − 本单未读留言+状态事件」收敛
+  // （不为负；服务端 markRead 前进全局水位，跨单事件一并清零属 D29 水位语义）
   markOrderRead(orderNo) {
     if (this.data.readonly) {
       return Promise.resolve(false);
     }
     const target = this._items.filter((item) => item.orderNo === orderNo);
-    const before = view.unreadMessageCount(target);
+    const before = view.unreadBadgeCount(target);
     return messageApi.markRead({ scope: 'ORDER', orderNo: orderNo }).then((data) => {
       this._items = view.applyOrderRead(this._items, orderNo, data && data.messageReadAt);
       this._serverUnread = Math.max(0, this._serverUnread - before);

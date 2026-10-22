@@ -821,8 +821,9 @@ function register(h) {
     ]);
     const centerApi = apiOf(centerDb, C1);
     const center = await centerApi.call('message.list', {});
+    // D29：unread=未读留言+未读状态事件（事件 at>watermark 计入）
     t.eq([center.ok, center.data.unreadMessages, center.data.unread, center.data.list.length > 0],
-      [true, 1, 1, true], 'G11 消息中心模式：只统计「对方发来且未读」的 MESSAGE（自己发的不计）');
+      [true, 1, 2, true], 'G11 消息中心模式：unread=未读留言+未读状态事件（自己发的不计）');
     const readRes = await centerApi.call('message.markRead', { scope: 'ORDER', orderNo: centerOrderNo },
       { clientRequestId: nextCrid('mark-read') });
     t.eq([readRes.ok, readRes.data.orderMessagesRead, readRes.data.messageReadAt], [true, 1, ISO_NOW],

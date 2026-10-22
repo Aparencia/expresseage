@@ -193,8 +193,7 @@ function buildMessageItem(scope, orderNo, message) {
   const fromRole = textOf(message.fromRole);
   const system = isSystemNotice(message);
   // "本人留言"按 users.roles 成员制判定（双角色时两侧留言都算本人；单角色与旧 fromRole===role 等价）。
-  const roles = Array.isArray(scope.roles) ? scope.roles : [];
-  const mine = !system && (fromRole === scope.role || roles.indexOf(fromRole) >= 0);
+  const mine = !system && isOwnMessage(scope, message);
   return {
     type: system ? 'NOTICE' : 'MESSAGE',
     title: system ? '系统通知' : messageTitleOf(fromRole),
@@ -205,6 +204,14 @@ function buildMessageItem(scope, orderNo, message) {
     fromRole: system ? SYSTEM_FROM : fromRole,
     templateCode: textOf(message.templateCode)
   };
+}
+
+// 「自己发的留言」= fromRole 属于本人角色集（双角色两侧都算本人）。
+// message.list 的 read 语义与 markRead 置读跳过条件共用本判据，避免两套口径。
+function isOwnMessage(scope, message) {
+  const roles = Array.isArray(scope.roles) ? scope.roles : [];
+  const fromRole = textOf(message && message.fromRole);
+  return fromRole === scope.role || roles.indexOf(fromRole) >= 0;
 }
 
 function buildEventItem(scope, orderNo, event, readWatermarkMs) {
@@ -306,6 +313,70 @@ async function loadUser(ctx, openid) {
   return ctx.dao.get(COLLECTIONS.USERS, openid);
 }
 
+// 已读水位毫秒：字段缺失/非法一律按 0（不能用 time.toMs：它把 undefined 回落成 Date.now()，
+// 会把「没有水位」误判成「已读到当前时刻」，导致事件全被当已读且 markRead 无法前进）。
+function watermarkMsOf(user) {
+  const value = user ? user.messageReadAt : null;
+  if (value instanceof Date) {
+    return isFinite(value.getTime()) ? Math.max(0, value.getTime()) : 0;
+  }
+  if (typeof value === 'number' && isFinite(value)) {
+    return value > 0 ? value : 0;
+  }
+  return 0;
+}
+
+async function customerOrders(ctx, scope, isTest) {
+  return ctx.dao.find(COLLECTIONS.ORDERS, {
+    where: { customerId: scope.openid, isTest },
+    orderBy: [['statusUpdatedAt', 'desc']],
+    limit: MAX_ORDERS_SCAN
+  });
+}
+
+async function partnerOrders(ctx, scope, isTest) {
+  const partner = await ctx.dao.findOne(COLLECTIONS.PARTNERS, {
+    where: { openid: scope.openid }
+  });
+  if (!partner) {
+    return [];
+  }
+  return ctx.dao.find(COLLECTIONS.ORDERS, {
+    where: { partnerId: partner._id, isTest },
+    orderBy: [['statusUpdatedAt', 'desc']],
+    limit: MAX_ORDERS_SCAN
+  });
+}
+
+// 我的订单 = users.roles 含哪侧就取哪侧（双角色两侧合并去重，不依赖 activeRole）；
+// 消息中心聚合与 markRead ALL 置读共用同一「本人订单集」口径（防两处扫描集漂移）。
+async function myOrders(ctx, scope) {
+  const isTest = scope.testWrite;
+  const roles = Array.isArray(scope.roles) ? scope.roles : [];
+  const lists = [];
+  if (roles.indexOf(enums.ROLES.CUSTOMER) >= 0) {
+    lists.push(await customerOrders(ctx, scope, isTest));
+  }
+  if (roles.indexOf(enums.ROLES.PARTNER) >= 0) {
+    lists.push(await partnerOrders(ctx, scope, isTest));
+  }
+  if (lists.length !== 2) {
+    return lists.length === 1 ? lists[0] : [];
+  }
+  const seen = {};
+  const merged = [];
+  lists.forEach((list) => list.forEach((order) => {
+    const key = String(order._id || '');
+    if (!key || seen[key]) {
+      return;
+    }
+    seen[key] = true;
+    merged.push(order);
+  }));
+  merged.sort((left, right) => time.toMs(right.statusUpdatedAt) - time.toMs(left.statusUpdatedAt));
+  return merged;
+}
+
 function passOrThrow(result) {
   if (!result || !result.ok) {
     throw errors.validation((result && result.field) || 'payload', '参数不合法，请核对后重试');
@@ -350,5 +421,7 @@ module.exports = {
   afterCursor,
   makeListCursor,
   loadUser,
+  watermarkMsOf,
+  myOrders,
   passOrThrow
 };

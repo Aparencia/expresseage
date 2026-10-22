@@ -44,6 +44,7 @@ Page({
     ocrTextOpen: false,
     // 包裹（件）与整单服务/预约/备注（v1.0：服务类型/预约/备注每单一份）
     items: [],
+    lowCopy: model.LOW_SUGGESTION_COPY,
     stations: [],
     services: [],
     slots: [],
@@ -285,6 +286,19 @@ Page({
       return;
     }
     this.setData({ step: 3 });
+  },
+
+  // D29：采纳低置信建议（只填空位、手填优先；采纳/清建议条逻辑在 model.adoptSuggestion 纯件）
+  onAdoptSuggestion(e) {
+    if (this.data.readonly) return;
+    const index = Number(e && e.currentTarget && e.currentTarget.dataset
+      ? e.currentTarget.dataset.index : -1);
+    if (!(index >= 0)) return;
+    const items = this.data.items.slice();
+    const result = model.adoptSuggestion(items[index]);
+    items[index] = result.item;
+    this.setData({ items: items, submission: model.clearSubmission() });
+    if (result.adopted) wx.showToast({ title: model.LOW_SUGGESTION_COPY.adopted, icon: 'none' });
   },
 
   // ── Step3：服务/预约/备注 + 配送地址（整单一份）────────────────────────────

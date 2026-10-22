@@ -33,7 +33,7 @@ const client = require(path.join(ROOT, 'api/client.js'));
 const store = require(path.join(ROOT, 'store/index.js'));
 const errorCopy = require(path.join(ROOT, 'shared/error-copy.js'));
 
-const EXPECTED_ASSERTIONS = 138; // 实际断言总数（运行后校准；少算/多算都判红）
+const EXPECTED_ASSERTIONS = 144; // 实际断言总数（运行后校准；少算/多算都判红）
 
 const NOW = Date.parse('2026-10-22T12:00:00+08:00');
 const WRITE_REJECTED = '系统维护中，暂时不能提交；急单请留言或联系开发者。';
@@ -172,7 +172,8 @@ function register(h) {
     t.eq(partnerView.emptyTextOf('all'), EMPTY_ALL, 'B10 全部空态文案「还没有消息」');
     t.eq(partnerView.emptyTextOf('order'), EMPTY_FILTER, 'B11 分类空态文案（不冒充分类业务文案）');
     t.eq(partnerView.countUnread(items), 4, 'B12 未读计数含 EVENT/MESSAGE/NOTICE（read=true 的公告不计）');
-    t.eq(partnerView.unreadMessageCount(items), 2, 'B13 红点口径只算 type=MESSAGE 的未读留言（与 unreadMessages 同源）');
+    t.eq(partnerView.unreadBadgeCount(items), 3,
+      'B13 红点口径（D29）= 未读留言+未读状态事件；NOTICE/公告未读不计入红点');
     t.eq(partnerView.readAtMs('2026-10-22T11:50:00+08:00'), Date.parse('2026-10-22T11:50:00+08:00'),
       'B14 已读水位 ISO 字符串转毫秒');
     t.eq([partnerView.readAtMs(''), partnerView.readAtMs(null)], [0, 0], 'B15 水位缺失/非法回 0');
@@ -207,6 +208,21 @@ function register(h) {
     t.eq(partnerView.buildMessages([{ type: 'MESSAGE', text: 'x', read: true }])[0].unread, false,
       'B30 read=true 不显示未读圆点');
     t.eq(partnerView.READONLY_COPY, READONLY_COPY, 'B31 只读会话文案单源');
+
+    // D29 红点：服务端 unread 优先（含状态事件），旧字段 unreadMessages 仅留言 → 缺 unread 时回落本地新口径
+    t.eq(partnerView.serverUnreadOf({ unread: 5, unreadMessages: 2 }, items), 5,
+      'B32 服务端 unread=5/unreadMessages=2 → 红点取 5（D29 新口径优先）');
+    t.eq(partnerView.serverUnreadOf({ unreadMessages: 2 }, items), 3,
+      'B33 仅返回旧字段 unreadMessages 时回落本地新口径计数 3（不沿用只算留言的旧字段）');
+    t.eq(partnerView.serverUnreadOf({ unread: -3 }, items), 0, 'B34 服务端 unread 负数一律钳到 0（不为负）');
+    t.eq(partnerView.serverUnreadOf(null, items), 3, 'B35 无 unread 字段（含 data 为空）回落本地计数，空数据不崩');
+    const orderBefore = items.filter((item) => item.orderNo === '20261022-0031');
+    const orderReadAfter = partnerView.applyOrderRead(items, '20261022-0031', '2026-10-22T11:50:00+08:00');
+    t.eq([partnerView.unreadBadgeCount(orderBefore), partnerView.unreadBadgeCount(orderReadAfter)],
+      [2, 1], 'B36 markOrderRead 后该单 MESSAGE+EVENT 未读均减（红点 3→1，跨单水位一并收敛）');
+    t.check(/view\.serverUnreadOf/.test(textOf(FILES.partnerPage))
+      && /view\.unreadBadgeCount/.test(textOf(FILES.partnerPage)),
+    'B37 页面红点取值/单订单扣减均走纯件新口径（不保留「只算未读留言」旧实现）');
   });
 
   // ---------------------------------------------------------------- C api 层（fake transport）

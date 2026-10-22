@@ -732,8 +732,8 @@ api(event):
 | action | 入参 → 出参 | 权限 | 幂等/限流 | 特有错误 |
 | :-- | :-- | :-- | :-- | :-- |
 | `message.send` | `{orderNo,text,templateCode?}` → `{message}` | 订单双方（**仅进行中五态** `SUBMITTED/ACCEPTED/PICKED/DELIVERED/EXCEPTION`；`COMPLETED` 只读归档、`CANCELLED` 不可留言 → `INVALID_TRANSITION`） | 同一 `clientRequestId` 不重复写；30 条/日/订单 | `VALIDATION_FAILED`（≤200/内容安全）/`FORBIDDEN`/`INVALID_TRANSITION` |
-| `message.list` | 订单留言：`{orderNo,cursor?,limit?}`；消息中心：`{cursor?,limit?}` → `{list,nextCursor,messageReadAt,unread}`（**v1.0/D29**：`unread` = 未读留言数 + 未读状态事件数（本人订单 `order_events` 状态类事件、`at>messageReadAt`；不含公告与测试数据）；进入消息中心/对应订单详情后 `message.markRead` 前进水位、只进不退；订单 tab 角标=进行中数量，与红点语义区分） | 订单双方/本人消息中心/只读视角 | 读 | `FORBIDDEN`/`NOT_FOUND` |
-| `message.markRead` | `{scope:'ALL'\|'ORDER',orderNo?}` → `{messageReadAt}` | 本人 | 水位只前进（幂等） | `VALIDATION_FAILED` |
+| `message.list` | 订单留言：`{orderNo,cursor?,limit?}`；消息中心：`{cursor?,limit?}` → `{list,nextCursor,messageReadAt,unread,unreadMessages}`（**v1.0/D29**：`unread` = 未读留言数 + 未读状态事件数（本人订单 `order_events` 状态类事件、`at>messageReadAt`；不含公告/系统通知与测试数据）；`unreadMessages` 为旧字段仅算未读留言；进入消息中心/对应订单详情后 `message.markRead` 前进水位、只进不退；订单 tab 角标=进行中数量，与红点语义区分） | 订单双方/本人消息中心/只读视角 | 读 | `FORBIDDEN`/`NOT_FOUND` |
+| `message.markRead` | `{scope:'ALL'\|'ORDER',orderNo?}` → `{messageReadAt,orderMessagesRead}` | 本人 | 水位只前进（事务内 CAS、幂等）；`ALL` 置读合并视图内「对方发来的未读留言」、`ORDER` 置读该单对方未读留言（自己的留言不写 `readAt`） | `VALIDATION_FAILED` |
 | `upload.prepare` | `{purpose:'TICKET'\|'AVATAR',draftId,contentType,size}` → `{ticket,cloudPath,expiresAt,draftId,purpose}`（TICKET→`orders/{ticket}/image.jpg`；AVATAR→`avatars/{role}/{random}.jpg`） | 顾客/兼职（资料完整+绑定；**头像上传对本人可用、无需绑定**；切换会话按目标测试账号） | 每次新 ticket；TICKET 30 次/日、**AVATAR 5 次/日/人** | `VALIDATION_FAILED`（类型/大小/用途不符）/`INVALID_STATE` |
 | `upload.cancel` | `{ticket}` → `{cancelled:true}` | 票据申请者 | 自然幂等 | `NOT_FOUND`/`FORBIDDEN` |
 | `config.getPublic` | `{}` → `{zoneLabels,serviceCatalog(不含费用字段),announcement,maintenance,privacyVersion,orderTimeoutMinutes,autoCompleteHours,screenshotRetentionDays,avatarMaxBytes,viewTicketTtlMinutes,subscribeEnabled}`（**v1.0：不下发 `orderMergeWindowMinutes`**——合并窗口是服务端治理参数，客户端文案不写死分钟数） | 任意登录用户 | 读 | — |

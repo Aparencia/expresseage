@@ -249,13 +249,23 @@ function aiStateOf(suggestion) {
   return 'OK';
 }
 
+// D29 低置信建议条文案（UX §4.3.1 ⑤ 逐字；页面/WXML 只消费本单源）
+const LOW_SUGGESTION_COPY = {
+  title: '智能识别建议，请核对',
+  lowHint: '没把握，点「采纳建议」或手动填写',
+  adopt: '采纳建议',
+  adopted: '已采纳建议，请再核对'
+};
+
 /**
  * 逐件 AI 兜底（DATA_MODEL §4.9「同图多单按单调用」）：只对缺站点/缺码的件各调一次 aiCall
  * （同一 uploadTicketId、各自独立 failureId），只填该件空字段；某件失败只降级该件。
+ * D29：LOW + source=DEEPSEEK 不写字段，只挂可采纳建议 aiSuggestion（suggested 计数），
+ * failed 只计真失败（TIMEOUT/CLOSED），不与「待采纳建议」混。
  * @param {object[]} items 规则解析后的件
  * @param {object} context {ocrTextMasked, hintTrackingTail, uploadTicketId, role}
  * @param {function} aiCall payload → Promise<suggestion>（页面传 aiApi.parseParcel）
- * @returns {Promise<{items:object[],called:number,changed:number,failed:number}>}
+ * @returns {Promise<{items:object[],called:number,changed:number,failed:number,suggested:number}>}
  */
 async function applyAiFallbacks(items, context, aiCall) {
   const ctx = context || {};
@@ -263,6 +273,7 @@ async function applyAiFallbacks(items, context, aiCall) {
   let called = 0;
   let changed = 0;
   let failed = 0;
+  let suggested = 0;
   for (let i = 0; i < (items || []).length; i += 1) {
     const item = items[i];
     if (typeof aiCall !== 'function' || !needsAiFallback(item)) {
@@ -285,13 +296,40 @@ async function applyAiFallbacks(items, context, aiCall) {
     const merged = recognize.applyAiSuggestion(item, suggestion);
     const nextItem = merged.parcel;
     if (merged.changed.length > 0) changed += 1;
+    nextItem.aiSuggestion = merged.suggestion || null;
+    if (merged.suggestion) suggested += 1;
     const failureId = typeof suggestion.failureId === 'string' ? suggestion.failureId : '';
     nextItem.failureId = failureId || item.failureId || '';
     nextItem.aiState = state;
-    if (state !== 'OK') failed += 1;
+    // LOW 是「待用户采纳」的建议，不算失败；只有超时/关闭才计 failed（降级文案口径）
+    if (state === 'TIMEOUT' || state === 'CLOSED') failed += 1;
     out.push(nextItem);
   }
-  return { items: out, called: called, changed: changed, failed: failed };
+  return { items: out, called: called, changed: changed, failed: failed, suggested: suggested };
+}
+
+/**
+ * 采纳低置信建议（D29，页面 onAdoptSuggestion 调）：逐字段只填空位（手填优先、不覆盖），
+ * 采纳后清建议条与逐件提示；重算行内校验由 recognize.adoptAiSuggestion 统一完成。
+ * @returns {{item:object, changed:string[], rejected:string[], adopted:boolean}}
+ */
+function adoptSuggestion(item) {
+  const value = Object.assign({}, item || {});
+  const snapshot = value.aiSuggestion || null;
+  if (!snapshot) {
+    return { item: revalidateItem(value), changed: [], rejected: [], adopted: false };
+  }
+  const result = recognize.adoptAiSuggestion(value, snapshot);
+  const next = result.parcel;
+  next.aiSuggestion = null;
+  next.aiHint = '';
+  next.aiState = result.changed.length > 0 ? 'OK' : value.aiState;
+  return {
+    item: revalidateItem(next),
+    changed: result.changed,
+    rejected: result.rejected,
+    adopted: result.changed.length > 0
+  };
 }
 
 // ── 提交载荷（order.create v1.0 单入口）──────────────────────────────────────
@@ -402,5 +440,8 @@ module.exports = {
   confidenceOf,
   needsAiFallback,
   withManualEdit,
-  applyAiFallbacks
+  applyAiFallbacks,
+  // D29：低置信建议条文案 + 采纳（只填空位、清建议条）
+  LOW_SUGGESTION_COPY,
+  adoptSuggestion
 };

@@ -15,7 +15,8 @@
  *      Step4 接线（ensureSubmission/clearSubmission/clientRequestId）、逐件预约备注控件、
  *      服务说明/截图预览/识别原文/AI 兜底三态文案与「取消」入口
  *   H. 逐件 AI 兜底纯件：按单调用/同一票据/独立 failureId/规则优先不外呼/只填空/
- *      某件失败只降级该件/降级 DTO 只预填/recognitionSource 优先级 MANUAL > AI 来源 > RULE
+ *      某件失败只降级该件/降级 DTO 只预填/recognitionSource 优先级 MANUAL > AI 来源 > RULE/
+ *      D29 低置信（LOW+DEEPSEEK）不写入、只挂建议快照、采纳后 DEEPSEEK+LOW 进载荷、手填不被覆盖
  *   I. 服务端契约联调（fake DB，真实 handler）：严格白名单接受/拒绝、recognition.source 落库、
  *      拆单逐单 source 不串、ORDER_CREATED 事件与零写入
  *
@@ -49,7 +50,7 @@ const app = require(path.join(CLOUD_API, 'app.js'));
 const { COLLECTIONS } = require(path.join(CLOUD_API, 'shared/collections.js'));
 const serverEnums = require(path.join(CLOUD_API, 'shared/enums.js'));
 
-const EXPECTED_ASSERTIONS = 158; // 实际断言总数（少算/多算都判红）
+const EXPECTED_ASSERTIONS = 168; // 实际断言总数（少算/多算都判红）
 
 const ORDER_CREATE_PAGE = 'pkg-customer/pages/order-create/index.js';
 const ORDER_CREATE_WXML = 'pkg-customer/pages/order-create/index.wxml';
@@ -801,6 +802,46 @@ function register(h) {
       [model.makeItem({}, { serviceCode: serviceCode })], ctx, stub);
     t.eq([shell.called, shell.items[0].stationId !== ''], [1, true],
       'H18 空壳件（规则一件没解析出）也走一次兜底并只填空');
+
+    // D29：低置信 + AI 来源 → 不写字段，只挂可采纳建议（suggested 计数、failed 不混入）
+    const lowStub = () => Promise.resolve({
+      recognized: false, stationId: 'P6', stationName: stations.stationNameOf('P6'),
+      pickupCode: 'D34567', trackingTail: '', lockerNo: '',
+      confidence: 'LOW', source: 'DEEPSEEK', needsReview: true, failureId: 'F-20261022-LOW01'
+    });
+    const lowResult = await model.applyAiFallbacks(
+      [model.makeItem({ stationId: 'P3' }, { serviceCode: serviceCode })], ctx, lowStub);
+    t.eq([lowResult.changed, lowResult.suggested, lowResult.failed], [0, 1, 0],
+      'H19 低置信+AI 来源：零字段写入、suggested=1、failed 不混入（D29）');
+    t.eq([lowResult.items[0].pickupCode, lowResult.items[0].aiState], ['', 'LOW'],
+      'H20 低置信件字段保持空（旧行为会预填）、aiState=LOW');
+    t.check(!!lowResult.items[0].aiSuggestion
+      && lowResult.items[0].aiSuggestion.stationId === 'P6'
+      && lowResult.items[0].aiSuggestion.source === 'DEEPSEEK',
+    'H21 建议快照挂到件上（站点/来源可展示，供「采纳建议」）');
+    const adopted = model.adoptSuggestion(lowResult.items[0]);
+    t.eq([adopted.item.stationId, adopted.item.pickupCode, adopted.item.aiSuggestion, adopted.adopted],
+      ['P3', 'D34567', null, true],
+      'H22 采纳只补空位（规则已填站点保留）、写入建议取件码并清空建议条');
+    const adoptedPayload = payloadOf([adopted.item]);
+    t.eq([adoptedPayload.parcels[0].parcel.recognitionSource, adoptedPayload.parcels[0].parcel.confidence],
+      ['DEEPSEEK', 'LOW'], 'H23 采纳后提交载荷 recognitionSource=DEEPSEEK / confidence=LOW（快照保留）');
+    const manualKeep = model.withManualEdit(lowResult.items[0], { pickupCode: 'E45678' });
+    const adoptManual = model.adoptSuggestion(manualKeep);
+    t.eq(adoptManual.item.pickupCode, 'E45678', 'H24 采纳不得覆盖手填字段（手填优先）');
+    t.eq([model.LOW_SUGGESTION_COPY.title, model.LOW_SUGGESTION_COPY.lowHint,
+      model.LOW_SUGGESTION_COPY.adopt, model.LOW_SUGGESTION_COPY.adopted],
+    ['智能识别建议，请核对', '没把握，点「采纳建议」或手动填写', '采纳建议', '已采纳建议，请再核对'],
+    'H25 低置信建议条四句文案逐字（UX §4.3.1 ⑤）');
+    const pageSrc = fs.readFileSync(path.join(ROOT, ORDER_CREATE_PAGE), 'utf8');
+    const pageXml = fs.readFileSync(path.join(ROOT, ORDER_CREATE_WXML), 'utf8');
+    t.check(/model\.adoptSuggestion\(/.test(pageSrc) && /onAdoptSuggestion/.test(pageSrc),
+      'H26 页面接线：onAdoptSuggestion 只调 model.adoptSuggestion（判据在纯件）');
+    t.check(/wx:if="\{\{item\.aiSuggestion\}\}"/.test(pageXml)
+      && /bindtap="onAdoptSuggestion"/.test(pageXml) && /data-index="\{\{index\}\}"/.test(pageXml),
+    'H27 件卡建议条接线（aiSuggestion 条件 + 采纳按钮带件下标）');
+    t.check(/\{\{lowCopy\.title\}\}/.test(pageXml) && /\{\{lowCopy\.adopt\}\}/.test(pageXml),
+      'H28 建议条文案取单源 lowCopy（不写死第二份）');
     t.notEmpty(two.items, 'H 组样本非空');
   });
 

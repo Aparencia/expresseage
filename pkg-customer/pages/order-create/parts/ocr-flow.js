@@ -303,7 +303,7 @@ async function identify(file, onState) {
     aiFallbackState = (items[0] && items[0].aiState) || '';
     items.forEach(function label(item) {
       if (item.aiPickupCodeUnaligned) unalignedCode = item.aiPickupCodeUnaligned;
-      if (item.aiState && item.aiState !== 'OK') item.aiHint = aiFallbackCopy(item.aiState).text;
+      if (!item.aiSuggestion && item.aiState && item.aiState !== 'OK') item.aiHint = aiFallbackCopy(item.aiState).text;
     });
   }
   if (unalignedCode) unaligned = recognize.FORM_ERROR.pickupCode;

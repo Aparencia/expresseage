@@ -154,13 +154,55 @@ function parseOcrText(rawText) {
   };
 }
 
+// ── AI 建议（D29）：低置信且来自 AI 的结果不写入，只给可采纳建议条 ──────────────
+const AI_SOURCE = 'DEEPSEEK';
+const CONFIDENCE_LOW = 'LOW';
+
+/** 仅 AI 来源的低置信建议适用 D29；RULE/NONE 降级结果照旧预填 */
+function isLowAiSuggestion(ai) {
+  return ai.confidence === CONFIDENCE_LOW && ai.source === AI_SOURCE;
+}
+
+/** 低置信建议快照：只留可展示/可采纳字段（过形态闸并归一），一个字段都没有回 null */
+function lowSuggestionOf(ai) {
+  const out = {};
+  if (ai.stationId && station.stationName(ai.stationId)) {
+    out.stationId = ai.stationId;
+    out.stationName = station.stationName(ai.stationId);
+  }
+  if (codes.isAutoFillCode(ai.pickupCode)) out.pickupCode = codes.normalizeCode(ai.pickupCode);
+  if (codes.isPlausibleTail(ai.trackingTail)) out.trackingTail = codes.normalizeTail(ai.trackingTail);
+  if (ai.lockerNo && codes.isPlausibleLocker(ai.lockerNo)) out.lockerNo = codes.normalizeLocker(ai.lockerNo);
+  if (Object.keys(out).length === 0) return null;
+  out.confidence = CONFIDENCE_LOW;
+  out.source = AI_SOURCE;
+  return out;
+}
+
+/** 写入后统一重算件形态闸（codeStatus/formErrors），避免各分支口径漂移 */
+function finishParcel(target) {
+  const result = validateParcel(target);
+  target.codeStatus = result.codeStatus;
+  target.formErrors = result.errors;
+  return target;
+}
+
 /**
  * AI 兜底结果合并且只填空字段（手填优先、不覆盖）。
  * suggestion: {recognized,stationId,stationName,pickupCode,trackingTail,lockerNo,confidence,source,failureId,needsReview}
+ * D29：仅「低置信且来自 AI」（confidence=LOW 且 source=DEEPSEEK）不写入任何字段，只返回可采纳建议快照；
+ * RULE/NONE 的规则/降级结果与 HIGH/MEDIUM 照旧预填（规则结果不是 AI 猜测，不能让用户白填）。
  */
 function applyAiSuggestion(parcel, suggestion) {
   const target = Object.assign(makeEmptyParcel(), parcel || {});
   const ai = suggestion || {};
+  if (isLowAiSuggestion(ai)) {
+    // 不写任何字段、不动 source/confidence/aiApplied（保持件原值）；只透传 failureId + 复核标记
+    target.failureId = ai.failureId || target.failureId || '';
+    target.needsReview = true;
+    finishParcel(target);
+    return { parcel: target, changed: [], suggestion: lowSuggestionOf(ai) };
+  }
   const changed = [];
   if (!target.stationId && ai.stationId && station.stationName(ai.stationId)) {
     target.stationId = ai.stationId;
@@ -190,10 +232,64 @@ function applyAiSuggestion(parcel, suggestion) {
   }
   target.failureId = ai.failureId || target.failureId || '';
   target.needsReview = ai.needsReview === true || !target.recognized;
-  const result = validateParcel(target);
-  target.codeStatus = result.codeStatus;
-  target.formErrors = result.errors;
-  return { parcel: target, changed: changed };
+  finishParcel(target);
+  return { parcel: target, changed: changed, suggestion: null };
+}
+
+/**
+ * 采纳低置信建议（D29）：用户点「采纳建议」后才写入——逐字段只填空位（手填优先、不覆盖），
+ * 非法值不写并进 rejected 留痕；写入后按建议来源归一 source=DEEPSEEK、保留 confidence=LOW 快照、
+ * aiApplied=true，并清空建议条（aiSuggestion=null）。仍需人核对，故 needsReview=true。
+ * @returns {{parcel:object, changed:string[], rejected:string[]}}
+ */
+function adoptAiSuggestion(parcel, suggestion) {
+  const target = Object.assign(makeEmptyParcel(), parcel || {});
+  const ai = suggestion || {};
+  const changed = [];
+  const rejected = [];
+  if (!target.stationId && ai.stationId) {
+    if (station.stationName(ai.stationId)) {
+      target.stationId = ai.stationId;
+      target.stationName = ai.stationName || station.stationName(ai.stationId);
+      changed.push('station');
+    } else {
+      rejected.push('stationId');
+    }
+  }
+  if (!target.pickupCode && ai.pickupCode) {
+    if (codes.isAutoFillCode(ai.pickupCode)) {
+      target.pickupCode = codes.normalizeCode(ai.pickupCode);
+      changed.push('pickupCode');
+    } else {
+      rejected.push('pickupCode');
+    }
+  }
+  if (!target.trackingTail && ai.trackingTail) {
+    if (codes.isPlausibleTail(ai.trackingTail)) {
+      target.trackingTail = codes.normalizeTail(ai.trackingTail);
+      changed.push('trackingTail');
+    } else {
+      rejected.push('trackingTail');
+    }
+  }
+  if (!target.lockerNo && ai.lockerNo) {
+    if (codes.isPlausibleLocker(ai.lockerNo)) {
+      target.lockerNo = codes.normalizeLocker(ai.lockerNo);
+      changed.push('lockerNo');
+    } else {
+      rejected.push('lockerNo');
+    }
+  }
+  if (changed.length > 0) {
+    target.source = AI_SOURCE;
+    target.confidence = CONFIDENCE_LOW;
+    target.aiApplied = true;
+    target.aiSuggestion = null;
+  }
+  target.failureId = ai.failureId || target.failureId || '';
+  target.needsReview = true;
+  finishParcel(target);
+  return { parcel: target, changed: changed, rejected: rejected };
 }
 
 // ── 多图汇总（v1.0 D23，纯函数）──────────────────────────────────────────────
@@ -267,6 +363,7 @@ module.exports = {
   validateParcel,
   parseOcrText,
   applyAiSuggestion,
+  adoptAiSuggestion,
   maskForAi,
   summarizeParcel,
   pickLocker,

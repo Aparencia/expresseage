@@ -4,7 +4,9 @@
  *
  * A 聚合口径：消息中心 = order_events（状态类）+ order_messages + config.announcement 合并视图，无 notifications 集合；
  *   顾客/兼职两角色各自只看本人订单；公告项形状；系统通知按历史绑定兼职归属过滤；测试数据隔离。
- * B 已读水位：users.messageReadAt 只前进；事件 read 与水位一致；own/系统通知 read 语义；unread=未读留言计数。
+ * B0 未读口径（D29）：unread = 合并视图内未读留言 + 未读状态事件（公告/系统通知/测试数据/软删单不计）；
+ *   unreadMessages 旧字段仅留言；进入消息中心（ALL）后 unread 清零。
+ * B 已读水位：users.messageReadAt 只进不退（事务内 CAS）；ORDER 该单留言置读；并发交错取 max。
  * C markRead：scope 枚举/ORDER 归属/幂等/READONLY 拒写/后台只读不可代操作；ORDER scope 只标对方留言。
  * D 分页：limit/cursor 不重不漏、末页 nextCursor=null、unread 与游标无关。
  * E 公告：enabled 开关生效（关闭不下发）、标题/正文/read 语义。
@@ -23,10 +25,12 @@ const { createHarness, installCrashGuard } = require('./selftest');
 const { createFakeDb } = require('./fake-db');
 const { createApi } = require(path.join(ROOT, 'cloudfunctions/api/app.js'));
 const messageCommon = require(path.join(ROOT, 'cloudfunctions/api/handlers/message/_common.js'));
+const markReadHandler = require(path.join(ROOT, 'cloudfunctions/api/handlers/message/markRead.js'));
+const { createDao } = require(path.join(ROOT, 'cloudfunctions/api/db/dao.js'));
 const switchSession = require(path.join(ROOT, 'cloudfunctions/api/middleware/switch-session.js'));
 const collections = require(path.join(ROOT, 'cloudfunctions/api/shared/collections.js'));
 
-const EXPECTED_ASSERTIONS = 89;
+const EXPECTED_ASSERTIONS = 108;
 
 const NOW = Date.UTC(2026, 9, 22, 5, 0, 0);
 const MINUTE = 60 * 1000;
@@ -197,7 +201,7 @@ function world(options) {
     messageDoc('ord-1', 'CUSTOMER', C1, '麻烦放到楼下', NOW - 80 * MINUTE),
     messageDoc('ord-1', 'PARTNER', P1, '好的，10 分钟到', NOW - 70 * MINUTE),
     messageDoc('ord-1', 'PARTNER', P1, '已取到', NOW - 50 * MINUTE),
-    messageDoc('ord-2', 'CUSTOMER', C2, '别人订单的留言', NOW - 19 * HOUR),
+    messageDoc('ord-2', 'CUSTOMER', C1, '已完成单的历史留言（本人发出）', NOW - 19 * HOUR),
     messageDoc('ord-test', 'PARTNER', TEST_P, '测试留言', NOW - 30 * MINUTE, { isTest: true }),
     messageDoc('', 'PARTNER', P1, '你与老张的绑定已解除', NOW - 5 * HOUR,
       { templateCode: 'BIND_RELEASED' }),
@@ -228,6 +232,113 @@ function apiOf(db, openid, options) {
 
 function nextCrid(tag, index) {
   return 'TASK75MSG' + String(tag || '').toUpperCase().padEnd(4, 'X') + String(index || 1).padStart(3, '0');
+}
+
+// D29 未读口径最小夹具：1 单 2 条未读状态事件 + 1 条对方未读留言（=3）；另含
+// 旧已读事件 / 自己留言 / 公告 / 系统通知 / 已软删单 / 测试单，用于逐类排除。
+function unreadWorld() {
+  const db = createFakeDb({
+    uniqueIndexes: {
+      orders: [['orderNo'], ['requestKey']],
+      order_events: [['requestKey']],
+      order_messages: [['requestKey']],
+      bindings: [['activeKey']]
+    }
+  });
+  db.seed('users', [userDoc(C1, ['CUSTOMER'], { messageReadAt: NOW - 10 * HOUR })]);
+  db.seed('config', [{
+    _id: 'global', privacyVersion: 'v4.0', maintenance: { enabled: false, text: '' },
+    announcement: { enabled: true, title: '开学季', text: '驿站 22:00 关门。', updatedAt: NOW - 3 * HOUR }
+  }]);
+  db.seed('partners', [
+    { _id: PID1, openid: P1, partnerNo: 'PAAAAAA', displayName: '老张', status: 'ACTIVE', serviceConfig: {} }
+  ]);
+  db.seed('customers', [
+    { _id: C1, customerNo: 'CADEFGHJK', displayName: '小王', zone: 'D', buildingNo: 4, room: '522', profileCompleted: true }
+  ]);
+  db.seed('bindings', [{
+    _id: 'bind-active', customerId: C1, partnerId: PID1, status: 'ACTIVE',
+    activeKey: C1 + ':ACTIVE:' + PID1, roomTag: 'A', boundAt: new Date(NOW - 10 * 24 * HOUR)
+  }]);
+  db.seed('orders', [
+    orderDoc('20260101-0101', 'SUBMITTED', { _id: 'unread-ord' }),
+    orderDoc('20260101-0102', 'COMPLETED', {
+      _id: 'unread-old', completedAt: new Date(NOW - 30 * HOUR), statusUpdatedAt: new Date(NOW - 30 * HOUR)
+    }),
+    orderDoc('20260101-0103', 'COMPLETED', {
+      _id: 'unread-deleted', deletedByCustomerAt: new Date(NOW - HOUR)
+    }),
+    orderDoc('20260101-0104', 'SUBMITTED', {
+      _id: 'unread-test', customerId: TEST_C, customerOpenid: TEST_C, customerNo: 'CTESTAAAA',
+      partnerId: TEST_PID, partnerOpenid: TEST_P, partnerNo: 'PTESTAA', isTest: true
+    })
+  ]);
+  db.seed('order_events', [
+    eventDoc('unread-ord', '20260101-0101', 'ACCEPTED', 'ACCEPTED', NOW - 120 * MINUTE),
+    eventDoc('unread-ord', '20260101-0101', 'PICKED', 'PICKED', NOW - 90 * MINUTE),
+    eventDoc('unread-old', '20260101-0102', 'COMPLETED', 'COMPLETED', NOW - 30 * HOUR),
+    eventDoc('unread-deleted', '20260101-0103', 'CANCELLED', 'CANCELLED', NOW - 20 * MINUTE),
+    eventDoc('unread-test', '20260101-0104', 'ACCEPTED', 'ACCEPTED', NOW - 40 * MINUTE)
+  ]);
+  db.seed('order_messages', [
+    messageDoc('unread-ord', 'PARTNER', P1, '对方未读留言', NOW - 100 * MINUTE),
+    messageDoc('unread-ord', 'CUSTOMER', C1, '本人留言（自己已读）', NOW - 110 * MINUTE),
+    messageDoc('unread-old', 'PARTNER', P1, '历史已读留言', NOW - 31 * HOUR, { readAt: new Date(NOW - 29 * HOUR) }),
+    messageDoc('', 'PARTNER', P1, '你与老张的绑定已解除', NOW - 5 * HOUR, { templateCode: 'BIND_RELEASED' })
+  ]);
+  return db;
+}
+
+function deferred() {
+  let resolve = null;
+  const promise = new Promise((done) => { resolve = done; });
+  return { promise, resolve: resolve };
+}
+
+function handlerCtxOf(db, nowMs, dao) {
+  return {
+    dao: dao || createDao(db),
+    ids: {},
+    now: nowMs,
+    env: {},
+    openid: C1,
+    identity: {
+      actorOpenid: C1, effectiveOpenid: C1, role: 'CUSTOMER',
+      isTestAccount: false, viewMode: '', viewTicketId: '', developerNo: ''
+    },
+    requestId: 'req-msg-cas-' + nowMs,
+    clientRequestId: nextCrid('cas'),
+    expectedVersion: undefined,
+    config: {}
+  };
+}
+
+// 并发交错注入（fake db 无事务隔离，用延迟执行模拟真实 DB 的串行化顺序）：
+// A 的水位事务延后到 B 提交之后才开始；A 的「事务外写水位」路径同时被延迟到 B 之后，
+// 因此旧实现（事务外读旧值→回写更小值）会在这里暴露为水位回退，新实现（事务内 CAS）取 max。
+async function concurrentMarkRead(nowA, nowB) {
+  const db = world();
+  const gate = deferred();
+  const daoA = createDao(db);
+  const realUpdate = daoA.update;
+  const realTransaction = daoA.transaction;
+  daoA.update = async (collection, id, data) => {
+    if (collection === collections.COLLECTIONS.USERS && id === C1) {
+      await gate.promise;
+    }
+    return realUpdate(collection, id, data);
+  };
+  daoA.transaction = async (handler) => {
+    await gate.promise;
+    return realTransaction(handler);
+  };
+  const pA = markReadHandler(handlerCtxOf(db, nowA, daoA), { scope: 'ALL' });
+  const pB = markReadHandler(handlerCtxOf(db, nowB), { scope: 'ALL' });
+  const resB = await pB;
+  gate.resolve();
+  const resA = await pA;
+  const row = db.dump('users').find((item) => item._id === C1);
+  return { resA, resB, stored: new Date(row.messageReadAt).getTime() };
 }
 
 async function expectCode(t, promise, code, message) {
@@ -317,46 +428,118 @@ function bannedKeysOf(value, banned, from) {
   return hits.sort();
 }
 
-// ── B. 已读水位 / 未读 ──────────────────────────────────────────────────────
+// ── B0. D29 未读口径 ────────────────────────────────────────────────────────
+async function sectionB0(h) {
+  h.section('§B0 D29 未读口径：未读留言 + 未读状态事件（公告/通知/测试数据/软删单不计）', async (t) => {
+    const db = unreadWorld();
+    const api = apiOf(db, C1);
+    const res = await api.call('message.list', {});
+    t.eq([res.ok, res.data.unread, res.data.unreadMessages], [true, 3, 1],
+      'B1 基线：2 条 at>水位 状态事件 + 1 条对方未读留言 → unread=3、unreadMessages=1');
+    const list = res.data.list;
+    t.eq(list.filter((item) => item.type === 'EVENT' && item.read === false).length, 2,
+      'B2 未读状态事件计入（at>messageReadAt 的 2 条）');
+    t.eq(findItem(list, (item) => item.orderNo === '20260101-0102' && item.type === 'EVENT').read, true,
+      'B3 at<=水位的旧事件 read=true、不计未读');
+    t.eq(findItem(list, (item) => item.type === 'MESSAGE' && item.fromRole === 'PARTNER').read, false,
+      'B4 对方 readAt=null 留言 read=false 且计入 unread');
+    t.eq(findItem(list, (item) => item.type === 'MESSAGE' && item.fromRole === 'CUSTOMER').read, true,
+      'B5 自己发的留言 read=true、不计未读');
+    t.eq([list.filter((item) => item.type === 'ANNOUNCEMENT').length,
+      list.filter((item) => item.type === 'NOTICE').length], [1, 1],
+      'B6 公告与系统通知在合并视图内（样本非空）');
+    t.eq(res.data.unread, 3, 'B7 公告/系统通知（未读）不计入 unread（仍为 3）');
+    t.eq([list.filter((item) => item.orderNo === '20260101-0103').length,
+      list.filter((item) => item.orderNo === '20260101-0104').length], [0, 0],
+      'B8 已软删单/测试单的事件与留言不进真实消息中心（不计未读）');
+    const markAll = await api.call('message.markRead', { scope: 'ALL' }, { clientRequestId: nextCrid('b9') });
+    t.eq([markAll.ok, markAll.data.messageReadAt, markAll.data.orderMessagesRead],
+      [true, new Date(NOW).toISOString(), 1],
+      'B9 markRead ALL：CAS 前进水位 + 置读本人订单集内对方未读留言（orderMessagesRead=1）');
+    const afterAll = await api.call('message.list', {});
+    t.eq([afterAll.data.unread, afterAll.data.unreadMessages], [0, 0],
+      'B10 ALL 后 unread=0、unreadMessages=0（红点清零）');
+    t.eq(afterAll.data.list.filter((item) => item.type === 'EVENT').every((item) => item.read === true), true,
+      'B11 ALL 后全部事件 read=true（at<=水位）');
+    t.eq(findItem(afterAll.data.list, (item) => item.type === 'MESSAGE' && item.fromRole === 'PARTNER').read, true,
+      'B12 ALL 后对方留言 read=true（readAt 落库，留言分量清零）');
+    const msgRows = db.dump('order_messages');
+    t.eq(msgRows.filter((row) => !!row.readAt && row.fromId === P1).length, 2,
+      'B13 readAt 真实落库：对方留言 2 条（1 新置读 + 1 历史已读），自己留言不写');
+    t.eq(msgRows.filter((row) => row.fromId === C1).map((row) => !!row.readAt), [false],
+      'B14 自己发的留言不写 readAt（只置读对方留言）');
+    const again = await api.call('message.markRead', { scope: 'ALL' }, { clientRequestId: nextCrid('b15') });
+    t.eq([again.data.messageReadAt, again.data.orderMessagesRead], [new Date(NOW).toISOString(), 0],
+      'B15 重复 ALL 幂等：水位不变、无新增可置读（orderMessagesRead=0）');
+  });
+}
+
+// ── B. 已读水位 / ORDER 置读 / 事务 CAS ─────────────────────────────────────
 async function sectionB(h) {
-  h.section('§B 已读水位 users.messageReadAt 与 unread 计数', async (t) => {
+  h.section('§B 已读水位与 markRead：只进不退、ORDER 置读、事务 CAS 取 max', async (t) => {
     const db = world();
     const api = apiOf(db, C1);
     const first = await api.call('message.list', {});
-    const firstEvents = first.data.list.filter((item) => item.type === 'EVENT');
-    t.eq([firstEvents.length, firstEvents.every((item) => item.read === false)], [3, true], 
-      'B1 水位=0 时全部事件 read=false（3 条：进行中单 2 + 已完成单 1）');
-    t.eq([first.data.messageReadAt, first.data.unread], ['', 2],
-      'B2 messageReadAt 初始空串、unread=2（两条对方未读留言；自己的不计）');
-    const markAll = await api.call('message.markRead', { scope: 'ALL' }, { clientRequestId: nextCrid('b3') });
+    t.eq([first.data.messageReadAt, first.data.unread, first.data.unreadMessages], ['', 5, 2],
+      'B16 水位=0：unread=5（3 状态事件 + 2 对方未读留言）、unreadMessages=2');
+    t.eq([first.data.list.filter((item) => item.type === 'EVENT').length,
+      first.data.list.filter((item) => item.type === 'EVENT' && item.read === false).length], [3, 3],
+      'B17 水位=0 时 3 条状态事件全未读');
+    const markAll = await api.call('message.markRead', { scope: 'ALL' }, { clientRequestId: nextCrid('b18') });
     t.eq([markAll.ok, markAll.data.messageReadAt, markAll.data.orderMessagesRead],
-      [true, new Date(NOW).toISOString(), 0], 'B3 markRead ALL 只推进水位、不动单条 readAt');
+      [true, new Date(NOW).toISOString(), 2], 'B18 ALL：水位推进 + 置读 2 条对方未读留言');
     const afterAll = await api.call('message.list', {});
-    t.eq(afterAll.data.messageReadAt, new Date(NOW).toISOString(), 'B4 列表回报的 messageReadAt 与服务端水位一致');
+    t.eq([afterAll.data.unread, afterAll.data.unreadMessages], [0, 0], 'B19 ALL 后 unread=0、事件与留言均已读');
     t.eq(afterAll.data.list.filter((item) => item.type === 'EVENT').every((item) => item.read === true), true,
-      'B5 水位推进后事件按 at<=水位 判为已读');
-    t.eq(afterAll.data.unread, 2, 'B6 未读留言不因 ALL 水位自动已读（readAt 仍 null，需 ORDER scope）');
-    const markOrder = await api.call('message.markRead', { scope: 'ORDER', orderNo: '20260101-0001' },
-      { clientRequestId: nextCrid('b7') });
-    t.eq([markOrder.ok, markOrder.data.orderMessagesRead], [true, 2], 'B7 markRead ORDER 只把该单对方 2 条留言置 readAt');
-    const afterOrder = await api.call('message.list', {});
-    t.eq(afterOrder.data.unread, 0, 'B8 ORDER scope 后 unread=0（自己的留言本就不计）');
-    t.eq(afterOrder.data.list.filter((item) => item.type === 'MESSAGE' && item.fromRole === 'PARTNER')
-      .every((item) => item.read === true), true, 'B9 对方留言 read=true（readAt 已写）');
-    const again = await api.call('message.markRead', { scope: 'ALL' }, { clientRequestId: nextCrid('b10') });
-    t.eq(again.data.messageReadAt, new Date(NOW).toISOString(), 'B10 重复 markRead：水位只前进不倒退');
+      'B20 水位推进后事件按 at<=水位 判为已读');
+    const again = await api.call('message.markRead', { scope: 'ALL' }, { clientRequestId: nextCrid('b21') });
+    t.eq([again.data.messageReadAt, again.data.orderMessagesRead], [new Date(NOW).toISOString(), 0],
+      'B21 重复 ALL：水位只前进不倒退、置读幂等');
     const userRow = db.dump('users').find((row) => row._id === C1);
-    t.eq(new Date(userRow.messageReadAt).getTime(), NOW, 'B11 水位落库 users.messageReadAt（服务端时间）');
-    const handlerCtx = {
-      dao: require(path.join(ROOT, 'cloudfunctions/api/db/dao.js')).createDao(db),
-      ids: {}, now: NOW - HOUR, env: {}, openid: C1,
-      identity: { actorOpenid: C1, effectiveOpenid: C1, role: 'CUSTOMER', isTestAccount: false, viewMode: '', viewTicketId: '', developerNo: '' },
-      requestId: 'req-msg-b12', clientRequestId: nextCrid('b12'), expectedVersion: undefined, config: {}
-    };
-    const markReadHandler = require(path.join(ROOT, 'cloudfunctions/api/handlers/message/markRead.js'));
-    const backdated = await markReadHandler(handlerCtx, { scope: 'ALL' });
-    t.eq(backdated.messageReadAt, new Date(NOW).toISOString(),
-      'B12 更早的服务端时间调用也不回退水位（forward 取 max）');
+    t.eq(new Date(userRow.messageReadAt).getTime(), NOW, 'B22 水位落库 users.messageReadAt（服务端时间）');
+
+    // ORDER：该单对方未读留言置 readAt + 水位前进（跨单事件一并清零，属 D29 已写明的水位语义）
+    const orderDb = world();
+    const orderApi = apiOf(orderDb, C1);
+    const markOrder = await orderApi.call('message.markRead', { scope: 'ORDER', orderNo: '20260101-0001' },
+      { clientRequestId: nextCrid('b23') });
+    t.eq([markOrder.ok, markOrder.data.orderMessagesRead, markOrder.data.messageReadAt],
+      [true, 2, new Date(NOW).toISOString()], 'B23 ORDER：该单对方 2 条留言置 readAt + 水位前进');
+    const orderRows = orderDb.dump('order_messages');
+    t.eq([orderRows.filter((row) => row.orderId === 'ord-1' && row.fromId === P1).every((row) => !!row.readAt),
+      orderRows.filter((row) => row.orderId === 'ord-1' && row.fromId === C1).map((row) => row.readAt)],
+    [true, [null]], 'B24 ORDER 只置读该单对方留言，自己的留言不写 readAt');
+    const afterOrder = await orderApi.call('message.list', {});
+    t.eq(afterOrder.data.unread, 0, 'B25 ORDER 水位前进后跨单事件一并清零、该单留言清零 → unread=0');
+    const earlier = apiOf(orderDb, C1, { now: NOW - 2 * HOUR });
+    const back = await earlier.call('message.markRead', { scope: 'ALL' }, { clientRequestId: nextCrid('b26') });
+    const backRow = orderDb.dump('users').find((row) => row._id === C1);
+    t.eq([back.data.messageReadAt, new Date(backRow.messageReadAt).getTime()],
+      [new Date(NOW).toISOString(), NOW], 'B26 更早 ctx.now（NOW-2h）调用：返回水位仍 NOW、DB 不回退（CAS 只进不退）');
+
+    // 并发交错（fake db 手写 transaction 注入，见 concurrentMarkRead）：最终水位取 max
+    const smallFirst = await concurrentMarkRead(NOW - 2 * HOUR, NOW);
+    t.eq([smallFirst.resA.messageReadAt, smallFirst.stored], [new Date(NOW).toISOString(), NOW],
+      'B27 并发：A(now=NOW-2h) 事务在 B(now=NOW) 提交后才开始 → A 返回 B 的更大值、DB=NOW（max）');
+    const largeFirst = await concurrentMarkRead(NOW, NOW - 2 * HOUR);
+    t.eq([largeFirst.resA.messageReadAt, largeFirst.stored], [new Date(NOW).toISOString(), NOW],
+      'B28 并发：A(now=NOW) 事务在 B(now=NOW-2h) 提交后才开始 → A 向前写 NOW、DB=NOW（max）');
+    t.eq(largeFirst.resB.messageReadAt, new Date(NOW - 2 * HOUR).toISOString(),
+      'B29 并发另一半返回其自身水位（不串值），最终落库仍=max');
+
+    // 水位字段缺失（历史脏数据/手工建号）：不能被 toMs(undefined)=Date.now() 误判为「已读到当前」；
+    // 列表回报空水位、CAS 用 exists(false) 兜底，仍能前进并落库
+    const noWatermarkDb = world();
+    noWatermarkDb.seed('users', [userDoc(C1, ['CUSTOMER'], { messageReadAt: undefined })]);
+    const noWatermarkApi = apiOf(noWatermarkDb, C1);
+    const noWatermarkList = await noWatermarkApi.call('message.list', {});
+    t.eq([noWatermarkList.data.messageReadAt, noWatermarkList.data.unread], ['', 5],
+      'B30 水位字段缺失：列表回报空串、事件按水位 0 全未读（unread=5），不误判为已读到现在');
+    const noWatermarkRes = await noWatermarkApi.call('message.markRead', { scope: 'ALL' },
+      { clientRequestId: nextCrid('b31') });
+    const noWatermarkRow = noWatermarkDb.dump('users').find((row) => row._id === C1);
+    t.eq([noWatermarkRes.data.messageReadAt, new Date(noWatermarkRow.messageReadAt).getTime()],
+      [new Date(NOW).toISOString(), NOW], 'B31 水位字段缺失（undefined）时仍前进并落库（exists(false) CAS 兜底）');
   });
 }
 
@@ -423,7 +606,7 @@ async function sectionD(h) {
     const keys1 = page1.data.list.map((item) => item.type + '|' + item.at + '|' + item.orderNo);
     const keys2 = page2.data.list.map((item) => item.type + '|' + item.at + '|' + item.orderNo);
     t.eq(keys1.filter((key) => keys2.indexOf(key) >= 0), [], 'D3 第二页与首页不重叠');
-    t.eq([page2.data.unread, page1.data.unread], [2, 2], 'D4 unread 与分页游标无关（两次读数一致）');
+    t.eq([page2.data.unread, page1.data.unread], [5, 5], 'D4 unread 与分页游标无关（两次读数一致，D29 含状态事件）');
     const seen = [];
     let cursorNext = null;
     let pages = 0;
@@ -546,6 +729,7 @@ async function sectionG(h) {
 function register(h) {
   h.setExpected(EXPECTED_ASSERTIONS);
   sectionA(h);
+  sectionB0(h);
   sectionB(h);
   sectionC(h);
   sectionD(h);

@@ -3,7 +3,8 @@
 
   <view class="card" wx:if="{{mode === 'rebind' && currentBinding}}">
     <view class="section-title">当前绑定</view>
-    <view class="muted">解绑或换绑请到「我的」页操作；换绑仅限无进行中订单。</view>
+    <view class="muted" wx:if="{{currentPartnerName}}">当前兼职：{{currentPartnerName}}</view>
+    <view class="muted">一次确认即可完成换绑：先解除当前绑定，再绑定新兼职；换绑仅限无进行中订单。</view>
     <room-tag-text dorm-key="{{currentBinding.dormKey}}" tag="{{currentBinding.roomTag}}" />
   </view>
 
@@ -27,8 +28,14 @@
     <view class="small error-text" wx:if="{{error}}">{{error}}</view>
   </view>
 
+  <view class="card" wx:if="{{retryVisible}}">
+    <view class="section-title">{{retryTitle}}</view>
+    <view class="muted">{{retryHint}}</view>
+    <button class="btn btn-primary btn-block" bindtap="onRetryBind" disabled="{{readonly}}">{{retryLabel}}</button>
+  </view>
+
   <view class="card" wx:if="{{preview}}">
-    <view class="section-title">确认绑定这位兼职？</view>
+    <view class="section-title">{{labels.previewTitle}}</view>
     <view class="row">
       <view class="col flex-1">
         <view class="strong">{{preview.displayName}}</view>
@@ -38,12 +45,12 @@
     <view class="muted">服务类型：{{servicesText}}</view>
     <view class="muted">服务范围：{{zonesText}}</view>
     <view class="muted" wx:if="{{!preview.acceptingOrders}}">这位兼职暂停接单，绑定后暂时不能下单。</view>
-    <button class="btn btn-primary btn-block" bindtap="onConfirm" disabled="{{readonly}}">{{submitting ? '绑定中…' : '确认绑定'}}</button>
+    <button class="btn btn-primary btn-block" bindtap="onConfirm" disabled="{{readonly}}">{{submitting ? labels.submitting : labels.confirm}}</button>
   </view>
 
   <view class="card" wx:if="{{roomTag}}">
-    <view class="section-title">绑定成功</view>
-    <view class="muted">已绑定「{{boundName}}」，同寝室标识已分配：</view>
+    <view class="section-title">{{labels.resultTitle}}</view>
+    <view class="muted">{{successText}}</view>
     <room-tag-text dorm-key="" tag="{{roomTag}}" />
     <button class="btn btn-ghost btn-block" bindtap="onOpenProfile">回「我的」</button>
   </view>

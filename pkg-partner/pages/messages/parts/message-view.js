@@ -1,5 +1,6 @@
 // pkg-partner/pages/messages/parts/message-view.js · 消息中心视图模型（纯函数，零 wx）
 // 真实 DTO：{type,title,text,orderNo,at,read,fromRole,templateCode}；分类桶 = 全部/订单/留言/公告（UX_PARTNER §3.9）。
+// 红点口径（D29）：未读留言 + 未读状态事件；公告/系统通知不计入红点数字。
 'use strict';
 
 const TYPE_LABELS = {
@@ -89,9 +90,20 @@ function countUnread(list) {
   return (Array.isArray(list) ? list : []).filter((item) => item.unread).length;
 }
 
-// 红点口径 = 服务端 unreadMessages（只算 type='MESSAGE' 的未读留言）
-function unreadMessageCount(list) {
-  return (Array.isArray(list) ? list : []).filter((item) => item.type === 'MESSAGE' && item.unread).length;
+// 红点口径（D29）：未读留言 + 未读状态事件；公告/系统通知只保留列表未读圆点，不入红点数字
+function unreadBadgeCount(list) {
+  return (Array.isArray(list) ? list : []).filter(function isUnreadBadge(item) {
+    return item && item.unread === true && (item.type === 'MESSAGE' || item.type === 'EVENT');
+  }).length;
+}
+
+// 红点单源（D29）：服务端 `unread` = 未读留言 + 未读状态事件（消息合并视图内计数）；
+// 旧字段 `unreadMessages` 只算留言，不再采用；无 `unread` 字段时才回落本地新口径计数。
+function serverUnreadOf(data, items) {
+  if (data && typeof data.unread === 'number') {
+    return Math.max(0, Math.floor(data.unread));
+  }
+  return unreadBadgeCount(items);
 }
 
 // 服务端 messageReadAt 是 ISO 字符串（旧口径可能是毫秒数）；统一成毫秒给页面比较
@@ -178,7 +190,8 @@ module.exports = {
   buildMessage,
   buildMessages,
   countUnread,
-  unreadMessageCount,
+  unreadBadgeCount,
+  serverUnreadOf,
   readAtMs,
   applyAllRead,
   applyOrderRead,
