@@ -33,8 +33,51 @@ const store = require(path.join(ROOT, 'store/index.js'));
 const groupView = require(path.join(ROOT, 'pages/partner/workbench/parts/group-view.js'));
 const shareCard = require(path.join(ROOT, 'pages/profile/parts/share-card.js'));
 const rebind = require(path.join(ROOT, 'utils/rebind.js'));
+const previewCache = require(path.join(ROOT, 'utils/preview-cache.js'));
+const autoQuery = require(path.join(ROOT, 'pkg-customer/pages/bind/parts/auto-query.js'));
 
-const EXPECTED_ASSERTIONS = 119;
+const EXPECTED_ASSERTIONS = 161;
+
+// 异步用例：microtask 全清（client.call → transport → normalizeResult 都是 promise 链）
+function flushAsync() {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
+// 注入时钟/调度（不 mock 全局 setTimeout；防抖窗口可精确推进到 299/300ms）
+function createFakeClock(start) {
+  let current = typeof start === 'number' ? start : 1000000;
+  const jobs = [];
+  let nextId = 1;
+  return {
+    now() {
+      return current;
+    },
+    schedule(fn, ms) {
+      const job = { id: nextId, at: current + ms, fn: fn };
+      nextId += 1;
+      jobs.push(job);
+      return job.id;
+    },
+    cancel(id) {
+      const index = jobs.findIndex((job) => job.id === id);
+      if (index >= 0) {
+        jobs.splice(index, 1);
+      }
+    },
+    advance(ms) {
+      current += ms;
+      const due = jobs.filter((job) => job.at <= current).sort((a, b) => a.at - b.at);
+      due.forEach((job) => {
+        const index = jobs.indexOf(job);
+        if (index >= 0) {
+          jobs.splice(index, 1);
+        }
+        job.fn();
+      });
+      return due.length;
+    }
+  };
+}
 
 const VIEW_TICKET = 'T'.repeat(enums.TOKEN_LENGTH);
 const UI_DIRS = ['pages', 'pkg-customer', 'pkg-partner', 'pkg-admin', 'components'];
@@ -566,6 +609,183 @@ function register(h) {
     t.check(/onRetryBind/.test(bindWxml) && /\{\{retryLabel\}\}/.test(bindWxml),
       'wxml 失败态「重新绑定」按钮接线（onRetryBind + retryLabel）');
     t.notEmpty(successCalls, '§6.2 换绑样本非空');
+  });
+
+  // ---------------------------------------------------------------- §3.6 P1-2 绑定页自动查询
+  h.section('§3.6 P1-2 绑定页自动查询（预览缓存去双请求 / 300ms 去抖 / 同编号失败不自动重试）', async (t) => {
+    const PREVIEW = {
+      partnerNo: 'P7K2M9X',
+      displayName: '张同学',
+      status: 'ACTIVE',
+      acceptingOrders: true,
+      services: [{ code: 'PICKUP', enabled: true }],
+      zones: ['东苑'],
+      avatarFileId: 'cloud://env/avatars/customer/x.jpg'
+    };
+    const T0 = 1000000;
+
+    // ---- 纯件：预览缓存（角色页 remember → 绑定页 take；TTL/有界/不含头像）
+    t.eq(previewCache.canonicalOf('p-7k2 m9x'), 'P7K2M9X', '缓存键归一：小写/空格/斜杠 → canonical 兼职编号');
+    t.eq(previewCache.canonicalOf('C-ABCD-2345'), '', '反例：顾客编号不进预览缓存');
+    t.eq(previewCache.canonicalOf('P-ABC'), '', '反例：不完整编号不进预览缓存');
+    t.check(previewCache.take('P-7K2-M9X', T0) === null, '未 remember 时 take 未命中（不猜、不造预览）');
+    t.check(previewCache.remember('P-7K2-M9X', PREVIEW, T0) === true, '角色页预览成功 → remember 一次');
+    const cached = previewCache.take('p-7k2 m9x', T0 + 1);
+    t.check(cached !== null && cached.displayName === '张同学' && Array.isArray(cached.zones),
+      'take 命中：归一键也能取到（绑定页落地 0 请求出预览）');
+    t.check(cached !== null && cached.avatarFileId === undefined,
+      '缓存只带绑定前公开字段：头像 fileId 不进入预览缓存（CONTRACT §5.3/D19）');
+    t.check(previewCache.take('P-7K2-M9X', T0 + 2) === null, 'take 取后即失效（一次落地只用一次）');
+    previewCache.remember('P-7K2-M9X', PREVIEW, T0);
+    t.check(previewCache.take('P-7K2-M9X', T0 + 30001) === null, '超过 30s TTL 的预览不再命中（TTL=30000ms）');
+    t.check(previewCache.remember('C-ABCD-2345', PREVIEW, T0) === false, 'remember 拒收非兼职编号（不污染缓存键）');
+    const many = ['AAAA22', 'BBBB33', 'CCCC44', 'DDDD55', 'EEEE66', 'FFFF77', 'GGGG88', 'HHHH99', 'JJJK22'];
+    many.forEach((body, index) => previewCache.remember('P' + body, { partnerNo: 'P' + body }, T0 + index));
+    t.check(previewCache.take('P-AAAA-22', T0) === null && previewCache.take('P-JJJK-22', T0) !== null,
+      '缓存条目有界（最多 8 条，最旧被淘汰：不无限增长）');
+
+    // ---- 自动查询状态机（本区内联 transport 替身 + 注入时钟/调度；不碰全局 api/client，避免跨节干扰）
+    const calls = [];
+    const answers = {};
+    function fakeTransport(partnerNo) {
+      calls.push(partnerNo);
+      const answer = answers[partnerNo];
+      if (answer instanceof Error) {
+        return Promise.reject(answer);
+      }
+      return Promise.resolve(answer === undefined
+        ? { partnerNo: partnerNo, displayName: '张同学', services: [], zones: [] }
+        : answer);
+    }
+    const clock = createFakeClock();
+    const previews = [];
+    const failures = [];
+    const ctl = autoQuery.create({
+      query(partnerNo) {
+        return fakeTransport(partnerNo);
+      },
+      now: clock.now,
+      schedule: clock.schedule,
+      cancel: clock.cancel,
+      onPreview(data, meta) {
+        previews.push({ data: data, meta: meta });
+      },
+      onError(err) {
+        failures.push(err);
+      }
+    });
+    t.eq(autoQuery.DEBOUNCE_MS, 300, '防抖窗口 = 300ms（UX §3.6 单源常量）');
+    t.eq(ctl.onInput('P-7K2-M9X'), 'debounce', '合法完整编号 → 安排自动查询（0 次「查询」点击）');
+    t.eq(calls.length, 0, '防抖期内不发请求（连续输入不轰炸服务端/不白扣每日限额）');
+    clock.advance(299);
+    await flushAsync();
+    t.eq(calls.length, 0, '299ms 时仍未请求');
+    clock.advance(1);
+    await flushAsync();
+    t.eq(calls.length, 1, '300ms 到期自动查询 1 次并出预览');
+    t.eq(calls[0], 'P7K2M9X', '自动查询传 canonical 兼职编号（归一口径同 utils/ids）');
+    t.check(previews.length === 1 && previews[0].meta.cached === false, '预览回调 1 次且标记来自网络');
+    t.eq(ctl.onInput('P-7K2-M9X'), 'done', '同编号已出预览后不再重复自动查');
+
+    // 连续输入只查最后一次（去抖）
+    clock.advance(1000);
+    const beforeDebounce = calls.length;
+    ctl.onInput('P-QQQ-222');
+    ctl.onInput('P-RRR-333');
+    clock.advance(300);
+    await flushAsync();
+    t.eq(calls.length - beforeDebounce, 1, '连续输入 A→B 只发 1 次请求（去抖）');
+    t.eq(calls[calls.length - 1], 'PRRR333', '只查最后输入的编号');
+
+    // 失败：同编号不自动重试、不循环；手动「查询」是唯一恢复口
+    answers['PFAKE22'] = new Error('网络开小差了');
+    clock.advance(1000);
+    const beforeFail = calls.length;
+    ctl.onInput('P-FAKE-22');
+    clock.advance(300);
+    await flushAsync();
+    t.eq(calls.length - beforeFail, 1, '失败路径只请求 1 次');
+    t.check(failures.length === 1 && failures[0].message === '网络开小差了',
+      '失败如实回调（页面原样展示 message，不吞错）');
+    t.eq(ctl.onInput('P-FAKE-22'), 'failed', '同编号失败后不再自动查（防自动循环）');
+    clock.advance(2000);
+    await flushAsync();
+    t.eq(calls.length - beforeFail, 1, '等待再久也不会自动重试同编号');
+    answers['PFAKE22'] = { partnerNo: 'PFAKE22', displayName: '恢复成功', services: [], zones: [] };
+    const recovered = await ctl.onManual('P-FAKE-22');
+    t.check(calls.length - beforeFail === 2 && recovered !== null && recovered.displayName === '恢复成功',
+      '手动「查询」立即重试同编号并成功（失败保留手动重试）');
+
+    // 不合法编号：零请求（不浪费每日 5 次限额）
+    const beforeInvalid = calls.length;
+    t.eq(ctl.onInput('P-ABC'), 'none', '不完整编号不自动查');
+    t.eq(ctl.onInput('C-ABCD-2345'), 'none', '顾客编号不自动查（绑定只认兼职编号）');
+    clock.advance(1000);
+    await flushAsync();
+    t.eq(calls.length, beforeInvalid, '不合法编号零请求');
+
+    // 落地去双请求：角色页 1 次 getPublic → remember；绑定页 take 缓存 → 0 请求（整次落地 =1）
+    const beforeLanding = calls.length;
+    answers['P7K2M9X'] = { partnerNo: 'P7K2M9X', displayName: '张同学', services: [], zones: [] };
+    await fakeTransport('P-7K2-M9X'); // 角色页卡片落地那次
+    previewCache.remember('P-7K2-M9X', answers['P7K2M9X'], clock.now()); // 成功回调 remember 一次
+    const landingPreviews = [];
+    const landing = autoQuery.create({
+      query(partnerNo) {
+        return fakeTransport(partnerNo);
+      },
+      now: clock.now,
+      schedule: clock.schedule,
+      cancel: clock.cancel,
+      onPreview(data, meta) {
+        landingPreviews.push(meta);
+      }
+    });
+    t.eq(landing.onInput('P-7K2-M9X'), 'cache', '绑定页落地命中角色页预览缓存（0 次「查询」点击）');
+    await flushAsync();
+    t.eq(calls.length - beforeLanding, 1,
+      '卡片落地整次 getPublic 调用 =1（角色页 1 次 + 绑定页缓存 0 次，去双请求）');
+    t.check(landingPreviews.length === 1 && landingPreviews[0].cached === true,
+      '缓存命中预览标记 cached=true（页面可区分缓存/网络来源）');
+
+    // dispose：离开页面取消防抖任务，不发幽灵请求
+    const beforeDispose = calls.length;
+    const disposed = autoQuery.create({
+      query(partnerNo) {
+        return fakeTransport(partnerNo);
+      },
+      now: clock.now,
+      schedule: clock.schedule,
+      cancel: clock.cancel
+    });
+    disposed.onInput('P-DSPT-22');
+    disposed.dispose();
+    clock.advance(300);
+    await flushAsync();
+    t.eq(calls.length, beforeDispose, 'dispose 后防抖任务取消（离开页面不再发请求）');
+
+    // ---- 静态接线：role 页只 remember 一次；bind 页只经纯件（自动查询/去抖/失败策略不在页面）
+    const roleJs = fs.readFileSync(path.join(ROOT, 'pages/role/index.js'), 'utf8');
+    const bindJs = fs.readFileSync(path.join(ROOT, 'pkg-customer/pages/bind/index.js'), 'utf8');
+    const bindWxml = fs.readFileSync(path.join(ROOT, 'pkg-customer/pages/bind/index.wxml'), 'utf8');
+    const autoQuerySrc = fs.readFileSync(path.join(ROOT, 'pkg-customer/pages/bind/parts/auto-query.js'), 'utf8');
+    t.check(/require\(['"]\.\.\/\.\.\/utils\/preview-cache['"]\)/.test(roleJs)
+      && (roleJs.match(/previewCache\.remember\(/g) || []).length === 1,
+    '角色页仅「成功回调 remember 一次」（不重复缓存、不改卡片渲染）');
+    t.check(/require\(['"]\.\/parts\/auto-query['"]\)/.test(bindJs) && /autoQuery\.create\(/.test(bindJs),
+      '绑定页接 auto-query 纯件（自动查询/去抖/失败策略不在页面）');
+    t.check(/if \(parsed\.ok\) this\._auto\.onInput\(/.test(bindJs),
+      '带合法编号落地即自动查（0 次点击出预览的接线点）');
+    t.check(/onInput\(e\)[\s\S]{0,200}?this\._auto\.onInput\(/.test(bindJs),
+      '输入合法编号走自动查询（300ms 去抖在纯件内）');
+    t.check(/onQuery\(\)[\s\S]{0,320}?this\._auto\.onManual\(/.test(bindJs),
+      '手动「查询」= onManual（自动查询失败后的唯一重试口）');
+    t.check(/onUnload\(\)[\s\S]{0,120}?this\._auto\.dispose\(/.test(bindJs),
+      '离开页面 dispose 定时器（不发幽灵请求）');
+    t.check(!/\bwx\./.test(autoQuerySrc) && autoQuerySrc.indexOf("pick(opts, 'schedule'") !== -1,
+      'auto-query 纯件零 wx（时钟/调度可注入，可脱离小程序单测）');
+    t.check(bindWxml.indexOf('bindtap="onQuery"') !== -1, 'wxml 保留手动「查询」按钮（自动查询失败可重试）');
+    t.check(bindJs.indexOf('preview-cache') === -1, '绑定页不直接碰预览缓存（唯一出口是 auto-query 纯件）');
   });
 }
 

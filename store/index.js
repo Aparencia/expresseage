@@ -12,7 +12,9 @@ const state = {
   // 无绑定时为 null，形状仍以 bindingId 存在与否判断是否已绑定。
   binding: null,
   config: null,
-  badges: { workbenchPending: 0, messages: 0 },
+  // badges = 客户端派生角标（ARCHITECTURE §3.4）：workbenchPending=兼职待接单数量、
+  // messages=未读留言+未读状态事件（D29）、ordersOngoing=顾客进行中订单数量（P1-5，数量角标不清零）。
+  badges: { workbenchPending: 0, messages: 0, ordersOngoing: 0 },
   privacyConsent: null,
   viewContext: null,
   serverTimeSkew: 0
@@ -132,7 +134,7 @@ function hydrateFromBootstrap(data) {
     state.privacyConsent = clone(data.privacyConsent);
   }
   if (data.badges !== undefined) {
-    state.badges = Object.assign({ workbenchPending: 0, messages: 0 }, clone(data.badges) || {});
+    state.badges = Object.assign({ workbenchPending: 0, messages: 0, ordersOngoing: 0 }, clone(data.badges) || {});
   }
   if (data.viewContext !== undefined) {
     // 服务端 viewContext 永不回票据（ARCHITECTURE §3.4：viewTicket 只存内存）。
@@ -189,7 +191,7 @@ function reset() {
   state.partner = null;
   state.binding = null;
   state.config = null;
-  state.badges = { workbenchPending: 0, messages: 0 };
+  state.badges = { workbenchPending: 0, messages: 0, ordersOngoing: 0 };
   state.privacyConsent = null;
   state.viewContext = null;
   state.serverTimeSkew = 0;

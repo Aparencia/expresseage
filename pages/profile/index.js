@@ -6,7 +6,6 @@
 const store = require('../../store/index');
 const modeGuard = require('../../api/mode-guard');
 const customerApi = require('../../api/modules/customer');
-const partnerApi = require('../../api/modules/partner');
 const bindApi = require('../../api/modules/bind');
 const userApi = require('../../api/modules/user');
 const uploadApi = require('../../api/upload');
@@ -16,6 +15,7 @@ const enums = require('../../shared/enums');
 const vm = require('./parts/view-model');
 const ui = require('./parts/ui');
 const shareCard = require('./parts/share-card');
+const saveFlow = require('./parts/save-flow');
 
 const BIND_PAGE = '/pkg-customer/pages/bind/index';
 const CUSTOMER_ORDERS_PAGE = '/pages/customer/orders/index';
@@ -76,12 +76,7 @@ Page({
       return;
     }
     this.refresh();
-    if (this._openEdit) {
-      this._openEdit = false;
-      if (this.data.canEdit) {
-        this.openEditForm();
-      }
-    }
+    this.maybeOpenEditForm();
     this.pullLatest();
   },
 
@@ -182,6 +177,22 @@ Page({
     this.setData({ editMode: true, form: vm.buildForm(source, this.data.isCustomer) });
   },
 
+  // P1-1：资料未完善自动展开编辑态（判定在 parts/view-model.js 纯件；每个页面实例只自动展开一次，取消后不回弹）
+  maybeOpenEditForm() {
+    const open = vm.shouldAutoOpenEdit({
+      edit: this._openEdit === true,
+      autoDone: this._autoEditDone === true,
+      isCustomer: this.data.isCustomer,
+      customerComplete: this.data.customerComplete,
+      profileCard: this.data.profileCard
+    });
+    this._openEdit = false;
+    this._autoEditDone = true;
+    if (open && this.data.canEdit) {
+      this.openEditForm();
+    }
+  },
+
   onNicknameInput(event) {
     const clamped = vm.clampNickname(event.detail && event.detail.value);
     if (clamped.truncated) {
@@ -275,40 +286,7 @@ Page({
       return;
     }
     this.setData({ saving: true });
-    this.persistProfile(checked.payload).then(() => {
-      this.setData({ saving: false, editMode: false });
-      this.refresh();
-      ui.toast('资料已保存');
-      this.continuePendingBind();
-    }).catch((err) => {
-      this.setData({ saving: false });
-      ui.toast((err && err.message) || '资料保存失败，请重试');
-    });
-  },
-
-  persistProfile(payload) {
-    if (this.data.isCustomer) {
-      return customerApi.saveProfile(payload).then((saved) => {
-        const patch = { customer: vm.mergeCustomer(store.get('customer'), saved) };
-        if (saved && saved.binding) {
-          patch.binding = Object.assign({}, store.get('binding') || {}, saved.binding);
-        }
-        store.patch(patch);
-      });
-    }
-    return partnerApi.saveProfile(payload).then((saved) => {
-      store.patch({ partner: vm.mergePartner(store.get('partner'), saved) });
-    });
-  },
-
-  // 资料未完成时被绑定卡片/深链引导到本页，保存成功后自动续跳 bind（pendingBind 仅内存）
-  continuePendingBind() {
-    const pending = this._pendingBind;
-    if (!pending || !this.data.isCustomer) {
-      return;
-    }
-    this._pendingBind = '';
-    wx.navigateTo({ url: BIND_PAGE + '?bind=' + encodeURIComponent(pending) });
+    saveFlow.save(this, checked.payload);
   },
 
   onCopyCustomerNo() {

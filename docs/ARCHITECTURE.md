@@ -99,11 +99,17 @@ const off = store.subscribe((snapshot) => { this.setData({ vm: snapshot }); });
   customer: { profileComplete, customerNo?, displayName?, avatarFileId?, dormKey?, roomTag?, zone?, buildingNo?, room?, phoneTail? },
   partner: { status, profileComplete, partnerNo?, displayName?, avatarFileId?, acceptingOrders? },
   binding: null | { bindingId, partnerNo, partnerDisplayName, partnerAvatarFileId?, roomTag, status, partnerPublic? },
-  config: {}, badges: { workbenchPending: 0, messages: 0 },
+  config: {}, badges: { workbenchPending: 0, messages: 0, ordersOngoing: 0 },
   viewContext: null | { viewTicket, viewMode, role, targetNo, targetDisplayName, targetAvatarFileId?, targetIsTest, expiresAt },
   serverTimeSkew: 0
 }
 ```
+
+- `badges` = 客户端派生角标（服务端 bootstrap 可下发 `workbenchPending`/`messages`，客户端按页面 `onShow` 刷新；**无轮询**）：
+  - `workbenchPending`：兼职端工作台 tab 数量角标 = 待接单数量（不清零）；
+  - `messages`：「我的」格红点 = 未读留言 + 未读状态事件（D29），进消息中心/对应订单详情后归零；
+  - `ordersOngoing`：顾客端「订单」tab 数量角标 = `order.listCustomer` 的 `counts.ongoing`（P1-5；**数量角标不清零**，与红点语义区分；完成/取消后由页面 `onShow` 刷新，不承诺实时）。
+  - 页面更新方式：`store.patch({ badges: Object.assign({}, store.get('badges'), { <key>: <n> }) })`（保留其他键，不互相覆盖）。
 
 - 方法：`snapshot()`、`get(key)`、`set(key,value)`、`patch(obj)`、`subscribe(fn)`（返回取消函数）、`hydrateFromBootstrap(data)`、`setViewContext(ctx)`、`clearViewContext()`、`getViewContext()`、`isDeveloper()`。
 - `viewContext` **只存内存**，绝不写本地存储、绝不做 URL 参数。

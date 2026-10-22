@@ -55,6 +55,8 @@ Page({
     startAt: '',
     endAt: '',
     note: '',
+    // A 批 P1-9：「其他代办」未填备注的行内红字（判据在 parts/precheck 纯件）
+    noteError: '',
     // 配送地址（D25）
     delivery: deliveryModel.createState(null),
     deliveryText: '',
@@ -110,6 +112,7 @@ Page({
         deliverySelfText: deliveryModel.selfDisplayText(delivery),
         deliveryZones: deliveryModel.zoneOptions(delivery)
       });
+      step3.syncNoteError(this);
     });
   },
 
@@ -152,15 +155,9 @@ Page({
     if (state && state.phase === 'ai') this.setData({ ocrState: 'ai' });
   },
 
+  // P1-4：无本地图 → 打开选择器（不空转）；有图 → 原地重识别（复用已上传 fileId/票据，不重复上传）
   onRetryOcr() {
-    if (!this.data.files || this.data.files.length === 0) {
-      wx.showToast({ title: '请先重新选择截图', icon: 'none' });
-      return;
-    }
-    const files = this.data.files;
-    this.setData({ files: [] }, () => {
-      this.onPickFile({ detail: { files: files } });
-    });
+    return filesFlow.onRetryOcr(this);
   },
 
   itemDefaults() {

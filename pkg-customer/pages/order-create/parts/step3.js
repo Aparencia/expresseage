@@ -1,16 +1,29 @@
 // pkg-customer/pages/order-create/parts/step3.js · Step3 服务/预约/备注 + 配送地址（D25）页面零件
+// A 批 P1-9：serviceCode=CUSTOM（其他代办）且备注去空白为空 → 行内红字 + 不可下一步（UX §3.7.3/AC-C-15）。
 // 页面方法只做一行转发；page 形参 = 页面实例（提供 data/setData）。
 'use strict';
 
 const deliveryModel = require('./delivery');
 const model = require('./model');
+const precheck = require('./precheck');
 
 const NOTE_MAX = 200;
+
+/** 备注行内校验：CUSTOM 强制备注（判据在 precheck 纯件，页面只渲染） */
+function syncNoteError(page) {
+  page.setData({ noteError: precheck.noteErrorOf(page.data.serviceCode, page.data.note) });
+}
 
 function setService(page, e) {
   const serviceIndex = Number(e.detail.value);
   const service = page.data.services[serviceIndex] || {};
-  page.setData({ serviceIndex: serviceIndex, serviceCode: service.code || '', submission: model.clearSubmission() });
+  const serviceCode = service.code || '';
+  page.setData({
+    serviceIndex: serviceIndex,
+    serviceCode: serviceCode,
+    noteError: precheck.noteErrorOf(serviceCode, page.data.note),
+    submission: model.clearSubmission()
+  });
 }
 
 function setAppointType(page, e) {
@@ -29,7 +42,12 @@ function setSlot(page, e) {
 }
 
 function setNote(page, e) {
-  page.setData({ note: String((e.detail && e.detail.value) || ''), submission: model.clearSubmission() });
+  const note = String((e.detail && e.detail.value) || '');
+  page.setData({
+    note: note,
+    noteError: precheck.noteErrorOf(page.data.serviceCode, note),
+    submission: model.clearSubmission()
+  });
 }
 
 function setMode(page, e) {
@@ -72,8 +90,14 @@ function setRecipient(page, e) {
   updateDelivery(page, { recipientName: String((e.detail && e.detail.value) || '') });
 }
 
-/** Step3 → Step4：整单预约/备注 + 配送地址校验后生成提交幂等键 */
+/** Step3 → Step4：CUSTOM 备注 → 整单预约/备注 → 配送地址 校验通过后生成提交幂等键 */
 function goNext(page) {
+  const noteError = precheck.noteErrorOf(page.data.serviceCode, page.data.note);
+  if (noteError) {
+    page.setData({ noteError: noteError });
+    wx.showToast({ title: precheck.CUSTOM_NOTE_TOAST, icon: 'none' });
+    return;
+  }
   if (page.data.appointType === 'SLOT') {
     const slot = page.data.slots[page.data.slotIndex];
     if (!slot || slot.expired) {
@@ -93,11 +117,12 @@ function goNext(page) {
     return;
   }
   const submission = model.ensureSubmission(page.data.submission, page.submitFingerprint());
-  page.setData({ step: 4, submission: submission, submitError: '', deliveryErrors: {} });
+  page.setData({ step: 4, submission: submission, submitError: '', deliveryErrors: {}, noteError: '' });
 }
 
 module.exports = {
   NOTE_MAX,
+  syncNoteError,
   setService,
   setAppointType,
   setSlot,

@@ -10,6 +10,9 @@ const time = require('../../lib/time');
 const { errors } = require('../../lib/errors');
 const { RECOGNITION_SOURCES } = require('../../lib/ai/parse');
 
+// CONTRACT §6 服务类型表 / D5：CUSTOM=其他代办「需备注说明；兼职可拒单」。常量收敛，避免裸字符串散落。
+const CUSTOM_SERVICE_CODE = 'CUSTOM';
+
 function isPlainObject(value) {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
@@ -283,9 +286,13 @@ function normalizeGuest(input) {
   };
 }
 
-// 订单备注 ≤200（顾客备注与代客单备注同口径）
-function normalizeOrderNote(value) {
+// 订单备注 ≤200（顾客备注与代客单备注同口径）；「其他代办」必须备注说明（CONTRACT §6 / UX AC-C-15）：
+// 备注去空白后为空 → VALIDATION_FAILED(field=note)。只拦新请求：历史单不校验、不回填、不改写。
+function normalizeOrderNote(value, serviceCode) {
   const result = validationOrThrow(validate.validateNote(value), 'note');
+  if (serviceCode === CUSTOM_SERVICE_CODE && result.value === '') {
+    throw errors.validation('note', '选「其他代办」需要填写备注，说明要代办什么（最多 200 字）');
+  }
   return result.value;
 }
 

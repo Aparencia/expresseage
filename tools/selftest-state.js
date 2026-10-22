@@ -25,7 +25,7 @@ const defaults = require(path.join(ROOT, 'config/defaults.js'));
 const statusView = require(path.join(ROOT, 'pkg-customer/parts/status-view.js'));
 const createModel = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/model.js'));
 
-const EXPECTED_ASSERTIONS = 339; // 改为实际断言数时同步核对 `node tools/selftest-state.js` 读数
+const EXPECTED_ASSERTIONS = 340; // 改为实际断言数时同步核对 `node tools/selftest-state.js` 读数
 
 const STATUS = state.STATUS;
 const ALL_ROLES = ['CUSTOMER', 'PARTNER', 'SYSTEM', 'ADMIN'];
@@ -506,13 +506,16 @@ function sectionLaunchRoute(h) {
     const customerProfile = route.decideLaunchRoute({
       hasRole: true, activeRole: 'CUSTOMER', customer: { profileComplete: false }
     });
-    t.eq(customerProfile.url, route.PROFILE_PAGE, '§7 顾客资料未完进资料页');
+    t.eq(customerProfile.url, route.PROFILE_PAGE + '?edit=1',
+      '§7 顾客资料未完进资料页（P1-1：URL 带 ?edit=1，落地即展开编辑态）');
     t.eq(customerProfile.reason, 'CUSTOMER_PROFILE', '§7 顾客资料未完分流原因');
     const customerReady = route.decideLaunchRoute({
       hasRole: true, activeRole: 'CUSTOMER', customer: { profileComplete: true }
     });
     t.eq(customerReady.url, route.CUSTOMER_HOME, '§7 顾客就绪进首页');
     t.eq(customerReady.reason, 'CUSTOMER_READY', '§7 顾客就绪分流原因');
+    t.check(customerReady.url.indexOf('?edit=') === -1,
+      '§7 P1-1 反例：资料已完成落地 URL 不带 ?edit=1（完成态不自动展开）');
 
     t.check(route.isRolePageAllowed('/pages/customer/home/index',
       { viewContext: { viewMode: 'READONLY', role: 'CUSTOMER' } }), '§7 只读视角可进对应角色页');

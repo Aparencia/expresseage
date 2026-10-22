@@ -8,9 +8,12 @@ const orderApi = require('../../../api/modules/order');
 const configApi = require('../../../api/modules/config');
 const messageApi = require('../../../api/modules/message');
 const maintenance = require('../../../utils/maintenance');
+const storage = require('../../../utils/storage');
 const route = require('../../../config/route');
 const format = require('../parts/format');
 const ordersView = require('../parts/orders-view');
+const homeView = require('./parts/home-view');
+const guideView = require('./parts/guide-view');
 
 const BIND_PAGE = '/pkg-customer/pages/bind/index';
 const CREATE_PAGE = '/pkg-customer/pages/order-create/index';
@@ -61,6 +64,7 @@ Page({
     roomTag: '',
     dormKey: '',
     servicesText: '',
+    scopeText: '',
     order: null,
     // M-21：order-row 需要视图模型（codeText/customerLine/serviceName/timeText），不能直喂服务端 DTO
     orderRow: null,
@@ -68,6 +72,7 @@ Page({
     announcement: '',
     announcementClosed: false,
     maintenance: { visible: false, title: '', text: '' },
+    guide: guideView.closedState(),
     canOrder: false,
     orderDisabledReason: '',
     readonly: false,
@@ -90,6 +95,7 @@ Page({
     this.refreshConfig();
     this.refresh();
     this.loadUnread();
+    this.initGuide();
   },
 
   onHide() {
@@ -135,16 +141,20 @@ Page({
     const maintenanceView = maintenance.buildMaintenanceView(vm.config);
     this._maintenanceView = maintenanceView;
     const maintenanceClosed = maintenanceView.enabled && this._maintenanceClosed === maintenanceView.text;
-    let reason = '';
-    if (maintenanceView.enabled) reason = maintenanceView.title;
-    else if (!customer.profileComplete) reason = '先完善资料';
-    else if (!active) reason = '先绑定兼职';
-    else if (readonly) reason = '开发者只读视角不能操作';
-    else if (partner && partner.acceptingOrders === false) reason = '该兼职暂不接单';
+    // 下单前置预检（P1-6）：维护 > 资料 > 绑定 > 只读 > 接单开关 > 服务范围；本地仅预检，服务端仍是唯一权威
+    const reason = homeView.orderBlockReasonOf({
+      maintenanceText: maintenanceView.enabled ? maintenanceView.title : '',
+      profileComplete: customer.profileComplete === true,
+      bound: active === true,
+      readonly: readonly,
+      partnerClosed: !!(partner && partner.acceptingOrders === false),
+      zoneAllowed: homeView.zoneAllowedOf(partner, customer.zone)
+    });
     this.setData({
       readonly: readonly,
       announcement: announcement,
       servicesText: serviceText(partner, (vm.config && vm.config.serviceCatalog) || []),
+      scopeText: homeView.scopeTextOf(partner),
       canOrder: reason === '',
       orderDisabledReason: reason,
       maintenance: {
@@ -267,6 +277,7 @@ Page({
         }) : null,
         waitedText: order ? '更新于 ' + format.formatTimeAgo(order.statusUpdatedAt) : ''
       });
+      this.syncOngoingBadge(listData.counts && listData.counts.ongoing);
       this.applyDerived();
       this.startTicker();
     } catch (err) {
@@ -294,6 +305,38 @@ Page({
     }).catch(function ignore() {
       // 红点读取失败不影响首页浏览，下次 onShow 再试
     });
+  },
+
+  // P1-5：订单 tab 数量角标 = 进行中订单数（不清零；onShow/下拉刷新更新，不新增轮询）
+  syncOngoingBadge(value) {
+    const total = Number(value);
+    const ongoing = isFinite(total) && total > 0 ? Math.floor(total) : 0;
+    const badges = store.get('badges') || {};
+    if (badges.ordersOngoing === ongoing) return;
+    store.patch({ badges: Object.assign({}, badges, { ordersOngoing: ongoing }) });
+  },
+
+  // P1-7：首用三步引导（只本机记忆；「我的→重新看新手引导」清标记后再次出现）
+  initGuide() {
+    this.setData({ guide: guideView.showGuideOf(storage.isGuideSeen(guideView.GUIDE_KEY)) });
+  },
+
+  onGuideNext() {
+    const nextState = guideView.next(this.data.guide);
+    if (nextState) {
+      this.setData({ guide: nextState });
+      return;
+    }
+    this.finishGuide();
+  },
+
+  onGuideSkip() {
+    this.finishGuide();
+  },
+
+  finishGuide() {
+    storage.markGuideSeen(guideView.GUIDE_KEY);
+    this.setData({ guide: guideView.closedState() });
   },
 
   clearTicker() {

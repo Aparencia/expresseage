@@ -443,7 +443,7 @@ function register(h) {
     t.eq(route.decideLaunchRoute({ roles: ['CUSTOMER'], activeRole: 'CUSTOMER', customer: { profileComplete: true } }),
       { url: route.CUSTOMER_HOME, reason: 'CUSTOMER_READY' }, '顾客已完善 → 首页');
     t.eq(route.decideLaunchRoute({ roles: ['CUSTOMER'], activeRole: 'CUSTOMER', customer: { profileComplete: false } }),
-      { url: route.PROFILE_PAGE, reason: 'CUSTOMER_PROFILE' }, '顾客未完善 → 资料页');
+      { url: route.PROFILE_PAGE + '?edit=1', reason: 'CUSTOMER_PROFILE' }, '顾客未完善 → 资料页（P1-1 带 ?edit=1 自动展开）');
     const viewCustomer = { viewContext: sampleViewContext() };
     t.check(route.isRolePageAllowed('/pages/customer/home/index', viewCustomer) === true
       && route.isRolePageAllowed('/pages/partner/workbench/index', viewCustomer) === false,

@@ -195,6 +195,24 @@ function buildVm(snapshot) {
   };
 }
 
+// P1-1（批 10 A 批）：资料未完善进入本页时自动展开编辑态，仅「未完成 + 每个页面实例一次」；
+// 完成态即使带 ?edit=1 也不展开（不打扰已填完资料的人）；取消后 _autoEditDone 已置位 → 不反复弹。
+function shouldAutoOpenEdit(options) {
+  const opts = options || {};
+  if (typeof opts.isCustomer !== 'boolean') {
+    return false;
+  }
+  const card = opts.profileCard || {};
+  const complete = opts.isCustomer ? opts.customerComplete === true : card.complete === true;
+  if (complete) {
+    return false;
+  }
+  if (opts.edit === true) {
+    return true;
+  }
+  return opts.autoDone !== true;
+}
+
 function buildForm(profile, isCustomer) {
   const doc = profile || {};
   const zoneIndex = ZONE_OPTIONS.findIndex(function same(item) {
@@ -322,6 +340,7 @@ module.exports = {
   BUILDING_LABELS,
   ZONE_LABELS,
   buildVm,
+  shouldAutoOpenEdit,
   buildForm,
   previewDorm,
   clampNickname,

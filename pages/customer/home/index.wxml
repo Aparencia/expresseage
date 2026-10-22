@@ -21,6 +21,7 @@
           <view class="section-title ellipsis">我的兼职 · {{partnerPublic.displayName}}</view>
           <id-text kind="PARTNER" no="{{partnerPublic.partnerNo}}" />
           <view class="muted">{{servicesText || '服务类型加载中'}}</view>
+          <view class="muted">服务范围：{{scopeText}}</view>
         </view>
       </view>
       <button class="btn btn-ghost btn-small" bindtap="onRebindTap">换绑</button>
@@ -80,6 +81,19 @@
       <view class="red-dot" wx:if="{{vm.badges.messages > 0}}"></view>
     </view>
     <view class="flex-1 center link-item" bindtap="onProfileTap">我的</view>
+  </view>
+
+  <!-- P1-7：顾客首用三步引导（可跳过；完成/跳过只写本机引导标记） -->
+  <view class="guide-mask" wx:if="{{guide.visible}}">
+    <view class="guide-box">
+      <view class="small muted">{{guide.stepText}}</view>
+      <view class="guide-title">{{guide.title}}</view>
+      <view class="muted">{{guide.text}}</view>
+      <view class="row between guide-actions">
+        <view class="small guide-skip" bindtap="onGuideSkip">{{guide.skipText}}</view>
+        <button class="btn btn-primary btn-small" bindtap="onGuideNext">{{guide.primaryText}}</button>
+      </view>
+    </view>
   </view>
 
   <!-- 维护模式全屏公告（页面级注册；enabled 由 utils/maintenance 纯件计算） -->

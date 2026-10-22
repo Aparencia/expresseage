@@ -19,6 +19,8 @@
  *      D29 低置信（LOW+DEEPSEEK）不写入、只挂建议快照、采纳后 DEEPSEEK+LOW 进载荷、手填不被覆盖
  *   I. 服务端契约联调（fake DB，真实 handler）：严格白名单接受/拒绝、recognition.source 落库、
  *      拆单逐单 source 不串、ORDER_CREATED 事件与零写入
+ *   K/L/M（批 10 A 批）：P1-8 相册授权修正、P1-4 换图替换/重试/失败卡两条出路（D24）、
+ *      P1-6 提交前服务范围预检、P1-9「其他代办」强制备注（纯件 + 有牙扫描 + 页面接线）
  *
  * 纪律：不 mock 全局 wx（api/client 用 setTransport 注入替身）；fake 数据、不连真云；
  *       先合法基线再反例；样本非空；EXPECTED_ASSERTIONS 与实际断言数精确相等（少算/多算都判红）。
@@ -43,6 +45,9 @@ const orderApi = require(path.join(ROOT, 'api/modules/order.js'));
 const aiApi = require(path.join(ROOT, 'api/modules/ai.js'));
 const zeroMoney = require(path.join(ROOT, 'tools/zero-money-scan.js'));
 const avatar = require(path.join(ROOT, 'utils/avatar.js'));
+const filesFlow = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/files-flow.js'));
+const precheck = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/precheck.js'));
+const pickerState = require(path.join(ROOT, 'components/image-picker/state.js'));
 const { createFakeDb } = require('./fake-db');
 
 const CLOUD_API = path.join(ROOT, 'cloudfunctions/api');
@@ -50,7 +55,7 @@ const app = require(path.join(CLOUD_API, 'app.js'));
 const { COLLECTIONS } = require(path.join(CLOUD_API, 'shared/collections.js'));
 const serverEnums = require(path.join(CLOUD_API, 'shared/enums.js'));
 
-const EXPECTED_ASSERTIONS = 168; // 实际断言总数（少算/多算都判红）
+const EXPECTED_ASSERTIONS = 195; // 实际断言总数（少算/多算都判红）
 
 const ORDER_CREATE_PAGE = 'pkg-customer/pages/order-create/index.js';
 const ORDER_CREATE_WXML = 'pkg-customer/pages/order-create/index.wxml';
@@ -884,6 +889,99 @@ function register(h) {
       'J12 已合规截图不压缩（不无谓重编码，避免伤识别质量）');
     t.eq(avatar.planTicketCompression({ width: 0, height: 0, size: 1 }, 500 * 1024).reason, 'UNREADABLE',
       'J13 尺寸读不到 → UNREADABLE（由 api/upload 说真话拒绝，不静默丢图）');
+  });
+
+  // ---------------------------------------------------------------- K A 批 P1-8 相册授权 + P1-4 换图替换
+  h.section('K. P1-8 不再请求 writePhotosAlbum + P1-4 换图替换/去重（纯件 + 有牙扫描）', (t) => {
+    const pickerSrc = textOf('components/image-picker/index.js');
+    const pickerStateSrc = textOf('components/image-picker/state.js');
+    const privacySrc = textOf('api/privacy.js');
+    const pickerHits = (code) => ['writePhotosAlbum', 'ensureAlbumAuth', "require('../../api/privacy')"]
+      .filter((key) => String(code || '').indexOf(key) >= 0);
+    const oldPicker = "const p = require('../../api/privacy');\nawait privacy.ensureAlbumAuth();\nwx.authorize({ scope: 'scope.writePhotosAlbum' });\n";
+    t.eq(pickerHits(oldPicker).length, 3, 'K1 有牙正控：旧实现样本被扫出 3 类（写相册授权/死导出/多余依赖）');
+    t.eq(pickerHits(fsutil.stripComments(pickerSrc)).concat(pickerHits(fsutil.stripComments(pickerStateSrc))), [],
+      'K2 image-picker 实际源码零命中（选相册不再请求 scope.writePhotosAlbum，TD-060 关闭条件）');
+    t.check(fsutil.stripComments(privacySrc).indexOf('writePhotosAlbum') < 0
+      && privacySrc.indexOf('ensureAlbumAuth') < 0 && privacySrc.indexOf('ALBUM_SCOPE') < 0,
+    'K3 api/privacy.js 已删死导出 ensureAlbumAuth/ALBUM_SCOPE（无生产调用不得保留）');
+    t.check(/openSource\(/.test(pickerSrc), 'K4 组件公开 openSource（「重新识别」无图时打开选择器，不空转）');
+    const a = { localPath: 'a.jpg' };
+    const b = { localPath: 'b.jpg' };
+    t.eq([pickerState.mergeFiles([a], [b], 1), pickerState.mergeFiles([a], [b], 5), pickerState.mergeFiles([a, b, a], [b, b], 5).length],
+      [[b], [a, b], 5], 'K5 单图模式再选图=替换旧图（选 A→再选 B 只剩 B，F4）；多图模式按 D23 追加并截到上限 5');
+    t.eq([pickerState.pickGateOf({ count: 1, maxCount: 1 }).ok, pickerState.pickGateOf({ count: 5, maxCount: 5 }),
+      pickerState.pickGateOf({ count: 1, maxCount: 5, uploading: true }).ok],
+    [true, { ok: false, limit: true, maxCount: 5 }, false],
+    'K6 单图模式满额仍可换图；多图模式满额拦截给上限文案；上传中不再开选择器');
+    t.eq([pickerState.newPathsOf([a], ['a.jpg', 'b.jpg']), pickerState.newPathsOf([a], ['a.jpg'])],
+      [['b.jpg'], []], 'K7 已上传的同一张图再选不重复上传（失败重试只上一次传新图）');
+    t.eq([pickerState.isCancelOf({ errMsg: 'chooseMedia:fail cancel' }),
+      pickerState.isCancelOf({ errMsg: 'chooseMedia:fail auth deny' })],
+    [true, false], 'K8 用户取消不算错误；权限拒绝才走替代路径文案');
+    t.check(pickerState.deniedCopyOf('camera').indexOf('从相册选择') >= 0
+      && pickerState.deniedCopyOf('camera').indexOf('从聊天选择') >= 0
+      && pickerState.deniedCopyOf('camera').indexOf('不传截图手动填写') >= 0
+      && pickerState.deniedCopyOf('album').indexOf('拍照') >= 0,
+    'K9 拍照/相册被拒 → 明确替代路径（相册/聊天/拍照 + 不传截图手填，UX §9.2）');
+    t.notEmpty(Object.keys(pickerState.DENIED_COPY), 'K 组样本非空');
+  });
+
+  // ---------------------------------------------------------------- L A 批 P1-6 范围预检 + P1-9 CUSTOM 备注
+  h.section('L. P1-6 提交前服务范围预检 + P1-9「其他代办」强制备注（纯件 + 页面接线）', (t) => {
+    const zones = { zones: ['D', 'X'] };
+    t.eq(precheck.CUSTOM_SERVICE_CODE, 'CUSTOM', 'L1 「其他代办」服务码取 shared/enums SERVICES 末项 = CUSTOM（不另抄码表）');
+    t.eq([precheck.rangeCheckOf({ zone: 'D', partnerPublic: zones }).ok, precheck.rangeCheckOf({ zone: 'N', partnerPublic: zones }).ok,
+      precheck.rangeCheckOf({ zone: 'N', partnerPublic: { zones: [] } }).ok, precheck.rangeCheckOf({ zone: '', partnerPublic: zones }).ok],
+    [true, false, true, true], 'L2 苑在范围放行/不在范围拦（范围空=全部苑；顾客苑未知不误拦）');
+    t.check(precheck.rangeCheckOf({ zone: 'N', partnerPublic: zones }).reason.indexOf('服务范围') >= 0,
+      'L3 本地拦截给原因（与首页 P1-6 同句：该兼职的服务范围不含你的苑）');
+    t.eq([precheck.noteErrorOf('CUSTOM', ''), precheck.noteErrorOf('CUSTOM', '   '),
+      precheck.noteErrorOf('CUSTOM', '帮我去修电脑'), precheck.noteErrorOf('PICKUP_STD', '')],
+    [precheck.CUSTOM_NOTE_TEXT, precheck.CUSTOM_NOTE_TEXT, '', ''],
+    'L4 CUSTOM 空/纯空白备注 → 行内红字；有备注放行；非 CUSTOM 不强制（AC-C-15）');
+    const step3Src = textOf('pkg-customer/pages/order-create/parts/step3.js');
+    t.check(step3Src.indexOf('noteErrorOf(') >= 0 && /if \(noteError\)/.test(step3Src)
+      && step3Src.indexOf('if (noteError)') < step3Src.indexOf("appointType === 'SLOT'"),
+    'L5 Step3 下一步先判备注（挡在预约/地址之前），判据在 precheck 纯件（页面零判据）');
+    const pageXml = textOf(ORDER_CREATE_WXML);
+    t.check(/\{\{noteError\}\}/.test(pageXml) && /noteError \? 'btn-disabled'/.test(pageXml),
+      'L6 备注行内红字渲染 + 下一步置灰（{{noteError}} / btn-disabled）');
+    const submitSrc = textOf('pkg-customer/pages/order-create/parts/submit.js');
+    t.check(submitSrc.indexOf('const range = rangeBlockOf(page)') >= 0
+      && submitSrc.indexOf('const range = rangeBlockOf(page)') < submitSrc.indexOf('orderApi.create('),
+    'L7 提交前先做本地范围预检（在 orderApi.create 之前 return，不产生失败请求）');
+    t.check(/store\.snapshot\(\)/.test(submitSrc) && !/configApi|bindApi|customerApi/.test(submitSrc),
+      'L8 预检数据只读 store 快照（customer.zone / binding.partnerPublic.zones），不新增请求');
+    t.notEmpty(zones.zones, 'L 组样本非空');
+  });
+
+  // ---------------------------------------------------------------- M A 批 P1-4 重试/失败卡出路（D24）
+  h.section('M. P1-4 重新识别/失败卡出路（无图打开选择器 / 有图原地重识别 / D24 两条出路）', (t) => {
+    const fileA = { localPath: 'a.jpg', fileId: 'cloud://x/a.jpg', uploadTicketId: 'TK-A' };
+    const manualItem = { manual: true };
+    const ocrItem = { manual: false, stationId: 'P3' };
+    t.eq([filesFlow.retryPlanOf({ files: [] }).mode,
+      filesFlow.retryPlanOf({ files: [fileA], items: [manualItem] }).confirm,
+      filesFlow.retryPlanOf({ files: [fileA], items: [ocrItem] }).confirm], ['picker', false, true],
+    'M1 无本地图→打开选择器（不空转）；有图→原地重识别；清空已识别件前需二次确认（UX §4.5）');
+    t.check(filesFlow.retryPlanOf({ files: [] }).source === 'album', 'M2 无图时默认打开相册选择器（用户仍可选其他来源）');
+    t.check(filesFlow.FAIL_NEXT_UPLOAD.indexOf('不传截图') >= 0
+      && filesFlow.FAIL_NEXT_UPLOAD.indexOf('重新选择截图') >= 0,
+    'M3 上传失败卡文案给两条真实出路（补截图 / 不传截图手填，D24）');
+    const oldCopyHits = (code) => /必须先(有|上传)截图/.test(String(code || ''));
+    t.check(oldCopyHits('上传失败：必须先有截图才能提交'), 'M4 有牙正控：旧「必须先有截图」文案样本被扫出');
+    t.eq(oldCopyHits(fsutil.stripComments(orderFlowSource())) || /必须先(有|上传)截图/.test(textOf(ORDER_CREATE_WXML)),
+      false, 'M5 下单链路不再出现「必须先有截图」类旧文案（D24：无截图手填合法）');
+    const flowSrc = textOf('pkg-customer/pages/order-create/parts/files-flow.js');
+    t.check(flowSrc.indexOf('identifyMany(') >= 0 && flowSrc.indexOf('prepareAndUpload') < 0
+      && flowSrc.indexOf('api/upload') < 0 && /filesFlow\.onRetryOcr\(this\)/.test(textOf(ORDER_CREATE_PAGE)),
+    'M6 重识别复用已上传的 fileId/票据（不重新上传同一图），页面「重新识别」接到 filesFlow');
+    const xml = textOf(ORDER_CREATE_WXML);
+    t.check(/bindtap="onManualOnlyTap"/.test(xml) && /bindtap="onRetryOcr"/.test(xml)
+      && /重新选择截图/.test(xml) && /bindtap="onManualTap"/.test(xml),
+    'M7 失败卡两条出路接线（不传截图手填/手动填写 + 重新选择截图/重新识别）');
+    t.notEmpty([fileA], 'M 组样本非空');
   });
 
 }

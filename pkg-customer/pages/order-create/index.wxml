@@ -20,7 +20,7 @@
     <view class="card">
       <view class="section-title">上传取件码截图（0~{{maxImages}} 张）</view>
       <view class="muted">可一次多选，也可分几次添加；多张截图会合并成同一张订单。截图仅用于识别取件码与兼职核对；订单完成或取消后 7 天删除。</view>
-      <image-picker purpose="TICKET" max-count="{{maxImages}}" disabled="{{readonly}}" bind:change="onPickFile" bind:error="onPickError" bind:limit="onPickLimit" />
+      <image-picker id="ticketPicker" purpose="TICKET" max-count="{{maxImages}}" disabled="{{readonly}}" bind:change="onPickFile" bind:error="onPickError" bind:limit="onPickLimit" />
       <view class="muted upload-state" wx:if="{{ocrState === 'upload'}}">正在上传…</view>
       <view class="muted upload-state" wx:if="{{ocrState === 'ocr'}}">正在识别截图里的取件码…（通常 3~10 秒）</view>
       <view class="muted upload-state" wx:if="{{ocrState === 'ai'}}">正在智能识别…（最多 8 秒）</view>
@@ -48,13 +48,15 @@
       <view class="small link-text" bindtap="onPreviewImage">点击查看截图（{{files.length}} 张）</view>
     </view>
 
+    <!-- P1-4/D24：失败卡给两条真实出路——补截图（无图时打开选择器）或不传截图手填，不指向不可能路径 -->
     <view class="card fail-card" wx:if="{{ocrState === 'failed' && failureText}}">
       <view class="fail-title">{{failureText}}</view>
       <view class="muted">{{failureNext}}</view>
       <view class="muted" wx:if="{{ocrError}}">{{ocrError}}</view>
       <view class="actions-row">
-        <button class="btn btn-ghost btn-inline" bindtap="onManualTap">手动填写</button>
-        <button class="btn btn-primary btn-inline" bindtap="onRetryOcr">重新识别</button>
+        <button class="btn btn-ghost btn-inline" bindtap="onManualOnlyTap" wx:if="{{!files.length}}">不传截图，手动填写</button>
+        <button class="btn btn-ghost btn-inline" bindtap="onManualTap" wx:else>手动填写</button>
+        <button class="btn btn-primary btn-inline" bindtap="onRetryOcr">{{files.length ? '重新识别' : '重新选择截图'}}</button>
       </view>
     </view>
   </block>
@@ -165,6 +167,8 @@
         <view class="form-label">备注</view>
         <input class="form-input" value="{{note}}" placeholder="给兼职的话（≤200 字）" maxlength="200" bindinput="onNoteInput" />
       </view>
+      <!-- P1-9：选「其他代办」未填备注 → 行内红字 + 下一步不可用（UX §3.7.3/AC-C-15） -->
+      <view class="small error-text" wx:if="{{noteError}}">{{noteError}}</view>
     </view>
 
     <view class="card">
@@ -205,7 +209,7 @@
 
     <view class="actions-row page-actions">
       <button class="btn btn-ghost btn-inline" bindtap="goPrev">上一步</button>
-      <button class="btn btn-primary btn-inline" bindtap="goStep3Next">下一步：确认提交</button>
+      <button class="btn btn-primary btn-inline {{noteError ? 'btn-disabled' : ''}}" bindtap="goStep3Next">下一步：确认提交</button>
     </view>
   </block>
 

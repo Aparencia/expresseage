@@ -31,6 +31,9 @@ const flow = require(path.join(ROOT, 'pkg-customer/parts/order-detail-flow.js'))
 const poll = require(path.join(ROOT, 'pkg-customer/parts/poll-policy.js'));
 const format = require(path.join(ROOT, 'pkg-customer/parts/format.js'));
 const ordersView = require(path.join(ROOT, 'pages/customer/parts/orders-view.js'));
+const homeView = require(path.join(ROOT, 'pages/customer/home/parts/home-view.js'));
+const guideView = require(path.join(ROOT, 'pages/customer/home/parts/guide-view.js'));
+const storage = require(path.join(ROOT, 'utils/storage.js'));
 const reorder = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/reorder.js'));
 const pickupView = require(path.join(ROOT, 'pkg-customer/pages/pickup-list/parts/pickup-view.js'));
 const parcelView = require(path.join(ROOT, 'pkg-customer/pages/order-detail/parts/parcel-view.js'));
@@ -42,7 +45,7 @@ const client = require(path.join(ROOT, 'api/client.js'));
 const orderApi = require(path.join(ROOT, 'api/modules/order.js'));
 const serverDto = require(path.join(ROOT, 'cloudfunctions/api/handlers/order/_dto.js'));
 
-const EXPECTED_ASSERTIONS = 202; // 实际断言总数（少算/多算都判红）
+const EXPECTED_ASSERTIONS = 228; // 实际断言总数（少算/多算都判红）
 
 const STATUS = orderState.STATUS;
 const ACTION_KEYS = view.ACTION_KEYS;
@@ -737,6 +740,88 @@ function register(h) {
       && /orderApi\.imageUrl\(\{[\s\S]*index:\s*index/.test(detailJs),
     'I7 详情多图切换接线：WXML 按 image.list[].index → onViewImage 取 dataset.index → order.imageUrl({orderNo,index})');
     t.notEmpty(multi.list, 'I 组样本非空');
+  });
+
+  // ---------------------------------------------------------------- J. A 批 P1-5/P1-6/P1-7（顾客端）
+  h.section('J. A 批：订单角标接线/服务范围预检/首用三步引导（P1-5/P1-6/P1-7）', (t) => {
+    const home = textOf(PAGES.home);
+    const orders = textOf(PAGES.orders);
+
+    // P1-5 页面侧：订单格数量角标（不清零）
+    t.check(/ordersOngoing/.test(home) && /counts\.ongoing/.test(home),
+      'J1 首页用 counts.ongoing 更新 store.badges.ordersOngoing（P1-5）');
+    t.check(/ordersOngoing/.test(orders) && /counts\.ongoing/.test(orders),
+      'J2 订单列表同源更新 ordersOngoing（onShow/下拉刷新，不新增轮询）');
+    t.check(!/ordersOngoing:\s*0/.test(home) && !/ordersOngoing:\s*0/.test(orders),
+      'J3 页面无「进列表/点击清零」写法（数量角标与红点语义区分）');
+    t.check(/badgeKey: 'ordersOngoing'/.test(textOf('custom-tab-bar/index.js')),
+      'J4 顾客「订单」格由 tabbar 按 badgeKey 渲染数量角标（冻结件接线生效）');
+
+    // P1-6 服务范围 + CTA 预检
+    t.eq(homeView.scopeTextOf({ zones: ['东苑', '西苑'] }), '东苑 / 西苑', 'J5 服务范围文案=苑列表');
+    t.eq([homeView.scopeTextOf({ zones: [] }), homeView.scopeTextOf(null)], ['全部苑', '全部苑'],
+      'J6 无服务范围配置=全部苑（不误判为不可下单）');
+    t.eq([
+      homeView.zoneAllowedOf({ zones: ['东苑'] }, '东苑'),
+      homeView.zoneAllowedOf({ zones: ['东苑'] }, '西苑'),
+      homeView.zoneAllowedOf({ zones: [] }, '西苑'),
+      homeView.zoneAllowedOf({ zones: ['东苑'] }, '')
+    ], [true, false, true, true],
+    'J7 顾客苑在范围→允许；不在→拦截；范围为空/顾客苑未知不误拦（服务端仍是唯一权威）');
+    t.eq(homeView.orderBlockReasonOf({
+      maintenanceText: '系统维护中', profileComplete: false, bound: false, partnerClosed: true, zoneAllowed: false
+    }), '系统维护中', 'J8 前置原因优先级第一档=维护（高于资料/绑定/接单/范围）');
+    t.eq([
+      homeView.orderBlockReasonOf({ profileComplete: false }),
+      homeView.orderBlockReasonOf({ profileComplete: true, bound: false })
+    ], ['先完善资料', '先绑定兼职'], 'J9 资料/绑定原因文案');
+    t.eq([
+      homeView.orderBlockReasonOf({ profileComplete: true, bound: true, partnerClosed: true }),
+      homeView.orderBlockReasonOf({ profileComplete: true, bound: true, zoneAllowed: false })
+    ], ['该兼职暂不接单', '该兼职的服务范围不含你的苑，可换绑其他兼职。'],
+    'J10 先接单开关后服务范围（两条文案分开，不合并）');
+    t.eq([
+      homeView.orderBlockReasonOf({ profileComplete: true, bound: true }),
+      homeView.orderBlockReasonOf({ profileComplete: true, bound: true, zoneAllowed: true })
+    ], ['', ''], 'J11 合法基线：条件全满足 → 可下单');
+    t.check(/scopeText/.test(textOf(PAGES.homeWxml)) && /homeView\.orderBlockReasonOf/.test(home)
+      && /homeView\.zoneAllowedOf/.test(home),
+    'J12 首页 WXML 展示服务范围 + CTA 预检走纯件（页面层零判据）');
+
+    // P1-7 顾客首用三步引导
+    t.eq([guideView.GUIDE_KEY, guideView.total()], ['CUSTOMER_HOME_V1', 3],
+      'J13 引导键=白名单 CUSTOMER_HOME_V1、共三步');
+    t.eq([guideView.stateOf(0).title, guideView.stateOf(1).title, guideView.stateOf(2).title],
+      ['先绑定兼职', '截图下单', '在「订单」看进度'], 'J14 三步=绑定/下单/看进度');
+    t.eq([
+      guideView.stateOf(0).primaryText, guideView.stateOf(1).primaryText, guideView.stateOf(2).primaryText
+    ], ['下一步', '下一步', '完成'], 'J15 按钮：前两步「下一步」、最后一步「完成」');
+    t.eq([guideView.stateOf(0).isLast, guideView.stateOf(2).isLast], [false, true], 'J16 isLast 仅最后一步');
+    t.eq([
+      guideView.next(guideView.stateOf(0)).step,
+      guideView.next(guideView.stateOf(2))
+    ], [1, null], 'J17 下一步推进到 step1；最后一步 next=null（调用方写标记后关闭）');
+    t.eq([
+      guideView.showGuideOf(false).visible, guideView.showGuideOf(false).step, guideView.showGuideOf(true).visible
+    ], [true, 0, false], 'J18 未看过→step0 显示；已完成→closed 不再出现');
+    const platform = {
+      data: {},
+      getStorageSync: function get(key) { return this.data[key] || ''; },
+      setStorageSync: function set(key, value) { this.data[key] = value; },
+      removeStorageSync: function remove(key) { delete this.data[key]; }
+    };
+    t.eq(storage.isGuideSeen(guideView.GUIDE_KEY, platform), false, 'J19 首次进无引导标记（会展示引导）');
+    t.eq(storage.markGuideSeen(guideView.GUIDE_KEY, platform), true, 'J20 完成/跳过写引导标记（utils/storage 单一出口）');
+    t.eq(storage.isGuideSeen(guideView.GUIDE_KEY, platform), true, 'J21 有标记后不再出现（只本机记忆）');
+    t.eq(storage.clearGuideSeen(guideView.GUIDE_KEY, platform), true,
+      'J22 「我的→重新看新手引导」清标记（profile 既有入口，未改）');
+    t.eq(storage.isGuideSeen(guideView.GUIDE_KEY, platform), false, 'J23 清标记后回到首次态（可重看）');
+    t.check(/guide-mask/.test(textOf(PAGES.homeWxml)) && /onGuideSkip/.test(textOf(PAGES.homeWxml))
+      && /storage\.isGuideSeen/.test(home) && /storage\.markGuideSeen/.test(home),
+    'J24 首页接线：引导遮罩可跳过 + 读/写标记只经 utils/storage');
+    t.check(/clearGuideSeen/.test(textOf('pages/profile/index.js')),
+      'J25 「我的→重新看新手引导」仍走 clearGuideSeen（portal 未改，与新引导联动）');
+    t.notEmpty(home, 'J 组样本非空');
   });
 }
 

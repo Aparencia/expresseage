@@ -9,6 +9,7 @@ const bindApi = require('../../../api/modules/bind');
 const partnerApi = require('../../../api/modules/partner');
 const ids = require('../../../utils/ids');
 const rebind = require('../../../utils/rebind');
+const autoQuery = require('./parts/auto-query');
 
 const HOME_PAGE = '/pages/customer/home/index';
 const PROFILE_PAGE = '/pages/profile/index';
@@ -55,8 +56,31 @@ Page({
     const readonly = !!(snapshot.viewContext && snapshot.viewContext.viewMode === 'READONLY');
     this.setData({ mode: mode, readonly: readonly, labels: rebind.labelsOf({ mode: mode }) });
     if (mode === rebind.MODE.REBIND) wx.setNavigationBarTitle({ title: '换绑兼职' });
-    if (prefill) this.handleInput(prefill);
+    this.createAutoQuery();
+    if (prefill) {
+      const parsed = this.handleInput(prefill);
+      // P1-2：带合法编号落地即自动出预览（优先角色页预览缓存 → 0 请求；未命中 300ms 防抖自动 query）
+      if (parsed.ok) this._auto.onInput(parsed.canonical);
+    }
     if (mode === rebind.MODE.REBIND) this.loadCurrent();
+  },
+
+  onUnload() {
+    if (this._auto) this._auto.dispose();
+  },
+
+  // 自动查询编排全在 ./parts/auto-query 纯件：本页只注入「真网络 + setData」与结果展示
+  createAutoQuery() {
+    this._auto = autoQuery.create({
+      query(partnerNo) {
+        return partnerApi.getPublic({ partnerNo: partnerNo });
+      },
+      onLoading: (loading) => this.setData({ loading: loading }),
+      onPreview: (data, meta) => this.applyPreview(data, meta),
+      onError: (err) => {
+        this.setData({ loading: false, preview: null, error: (err && err.message) || '查询失败，请稍后重试' });
+      }
+    });
   },
 
   loadCurrent() {
@@ -92,10 +116,13 @@ Page({
     if (parsed.ok && this.data.preview && this.data.preview.partnerNo !== parsed.canonical) {
       this.setData({ preview: null });
     }
+    return { ok: parsed.ok, canonical: parsed.ok ? (parsed.canonical || normalized) : '' };
   },
 
   onInput(e) {
-    this.handleInput((e.detail && e.detail.value) || '');
+    const parsed = this.handleInput((e.detail && e.detail.value) || '');
+    // 合法完整编号才自动查；不合法不发请求也不清已有预览（与既有输入回显口径一致）
+    if (this._auto) this._auto.onInput(parsed.ok ? parsed.canonical : '');
   },
 
   onPaste() {
@@ -105,40 +132,42 @@ Page({
     }
     wx.getClipboardData({
       success: (res) => {
-        this.handleInput((res && res.data) || '');
+        const parsed = this.handleInput((res && res.data) || '');
+        // 粘贴也是一次输入：合法编号同样走 300ms 防抖自动查询（与手动输入同一条口径）
+        if (this._auto) this._auto.onInput(parsed.ok ? parsed.canonical : '');
         wx.showToast({ title: '已粘贴', icon: 'none' });
       },
       fail: () => wx.showToast({ title: '读取剪贴板失败，请手动输入', icon: 'none' })
     });
   },
 
+  // 手动「查询」：失败后唯一恢复口（自动查询对同编号失败不重试，避免循环）
   onQuery() {
     const partnerNo = this.data.canonical;
     if (!partnerNo) {
       this.setData({ error: this.data.hint || '请输入兼职编号后再查询' });
-      return;
+      return Promise.resolve(null);
     }
-    this.setData({ loading: true, error: '' });
-    partnerApi.getPublic({ partnerNo: partnerNo }).then((data) => {
-      // partner.getPublic 直接返回 partnerPublic：{partnerNo,displayName,services,zones,acceptingOrders,status}
-      // 绑定前只回昵称，不下发 avatarFileId（CONTRACT v0.9 §5.3）
-      const partner = data || {};
-      const config = store.snapshot().config || {};
-      const catalog = config.serviceCatalog || [];
-      const names = serviceNames(partner.services, catalog);
-      this.setData({
-        loading: false,
-        preview: {
-          partnerNo: partner.partnerNo || partnerNo,
-          displayName: partner.displayName || '',
-          status: partner.status || '',
-          acceptingOrders: partner.acceptingOrders !== false
-        },
-        servicesText: names.length > 0 ? names.join(' / ') : '服务类型加载中',
-        zonesText: (partner.zones || []).join(' / ') || '全部苑'
-      });
-    }).catch((err) => {
-      this.setData({ loading: false, preview: null, error: (err && err.message) || '查询失败，请稍后重试' });
+    return this._auto.onManual(partnerNo);
+  },
+
+  // 预览卡数据组装（getPublic 原样 DTO 或预览缓存命中）：页面只做展示字段映射，判定在纯件
+  applyPreview(data, meta) {
+    const partner = data || {};
+    const config = store.snapshot().config || {};
+    const catalog = config.serviceCatalog || [];
+    const names = serviceNames(partner.services, catalog);
+    this.setData({
+      loading: false,
+      error: '',
+      preview: {
+        partnerNo: partner.partnerNo || (meta && meta.partnerNo) || '',
+        displayName: partner.displayName || '',
+        status: partner.status || '',
+        acceptingOrders: partner.acceptingOrders !== false
+      },
+      servicesText: names.length > 0 ? names.join(' / ') : '服务类型加载中',
+      zonesText: (partner.zones || []).join(' / ') || '全部苑'
     });
   },
 

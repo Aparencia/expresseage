@@ -119,6 +119,7 @@ Page({
         tabs: ordersView.tabsWithCounts(counts),
         hasPending: ordersView.hasPending(list)
       });
+      this.syncOngoingBadge(counts.ongoing);
       this.syncTicker();
       return true;
     }).catch((err) => {
@@ -147,6 +148,15 @@ Page({
   syncTicker() {
     if (this.data.hasPending) this.startTicker();
     else this.stopTicker();
+  },
+
+  // P1-5：订单 tab 数量角标 = counts.ongoing（不清零；onShow/下拉刷新更新，不新增轮询）
+  syncOngoingBadge(value) {
+    const total = Number(value);
+    const ongoing = isFinite(total) && total > 0 ? Math.floor(total) : 0;
+    const badges = store.get('badges') || {};
+    if (badges.ordersOngoing === ongoing) return;
+    store.patch({ badges: Object.assign({}, badges, { ordersOngoing: ongoing }) });
   },
 
   // 本地秒级倒计时（不发网络请求；P0-6：只对时间文案变化的等待接单行做行级 path 补丁，不整表下发）

@@ -25,8 +25,10 @@ const privacy = require(path.join(ROOT, 'utils/privacy-policy.js'));
 const validate = require(path.join(ROOT, 'shared/validate.js'));
 const launchRoute = require(path.join(ROOT, 'config/route.js'));
 const uploadCommon = require(path.join(ROOT, 'cloudfunctions/api/handlers/upload/_common.js'));
+const profileVm = require(path.join(ROOT, 'pages/profile/parts/view-model.js'));
+const avatarSave = require(path.join(ROOT, 'pages/profile/parts/avatar-save.js'));
 
-const EXPECTED_ASSERTIONS = 102;
+const EXPECTED_ASSERTIONS = 130;
 
 const TOKEN = 'T'.repeat(32);
 const CONSENT_AT = 1700000000000;
@@ -211,7 +213,8 @@ function register(h) {
     t.eq(launchRoute.decideLaunchRoute({ roles: ['CUSTOMER'], customer: { profileComplete: true } }),
       { url: launchRoute.CUSTOMER_HOME, reason: 'CUSTOMER_READY' }, '单角色顾客直进首页（无需 activeRole）');
     t.eq(launchRoute.decideLaunchRoute({ roles: ['CUSTOMER'], customer: { profileComplete: false } }),
-      { url: launchRoute.PROFILE_PAGE, reason: 'CUSTOMER_PROFILE' }, '单角色顾客资料未完善 → 资料页');
+      { url: launchRoute.PROFILE_PAGE + '?edit=1', reason: 'CUSTOMER_PROFILE' },
+      '单角色顾客资料未完善 → 资料页（P1-1：落地 URL 带 ?edit=1，进页即展开编辑态）');
     t.eq(launchRoute.decideLaunchRoute({ roles: ['PARTNER'], partner: { profileComplete: true, status: 'ACTIVE' } }),
       { url: launchRoute.PARTNER_WORKBENCH, reason: 'PARTNER_ACTIVE' }, '单角色兼职直进工作台（无需 activeRole）');
     t.eq(launchRoute.decideLaunchRoute({ roles: ['PARTNER'], partner: { profileComplete: false } }),
@@ -376,6 +379,206 @@ function register(h) {
     'contentType 由扩展名单源映射（jpg/jpeg→image/jpeg、png→image/png），不透传客户端自报 MIME');
     t.check(body.indexOf('await uploadFile(cloudPath, local.filePath)') > prepareAt,
       'uploadFile 在 prepare 之后（cloudPath/票据由服务端签发，size 用本地压缩后真实值）');
+  });
+
+  // ---------------------------------------------------------------- §3.5 P1-1 资料未完善自动展开
+  h.section('§3.5 P1-1 资料未完善自动展开（仅未完成一次、完成态不展开、取消不回弹）', (t) => {
+    const incomplete = { complete: false };
+    const complete = { complete: true };
+    t.check(profileVm.shouldAutoOpenEdit({
+      isCustomer: true, customerComplete: false, profileCard: incomplete, autoDone: false
+    }) === true, '顾客资料未完成 + 首次进入 → 自动展开编辑态（首单少点一次）');
+    t.check(profileVm.shouldAutoOpenEdit({
+      isCustomer: true, customerComplete: false, profileCard: incomplete, edit: true, autoDone: true
+    }) === true, '路由落地带 ?edit=1 → 未完成即展开（P1-1 接线）');
+    t.check(profileVm.shouldAutoOpenEdit({
+      isCustomer: true, customerComplete: true, profileCard: complete, edit: true, autoDone: false
+    }) === false, '反例：资料已完成即使带 ?edit=1 也不自动展开（不打扰已填完的人）');
+    t.check(profileVm.shouldAutoOpenEdit({
+      isCustomer: true, customerComplete: false, profileCard: incomplete, autoDone: true
+    }) === false, '反例：已自动展开过（autoDone=true）→ 不再展开（取消可回摘要、不反复弹）');
+    t.check(profileVm.shouldAutoOpenEdit({
+      isCustomer: false, profileCard: incomplete, autoDone: false
+    }) === true, '兼职资料未完成 → 同口径自动展开（我的页双角色共用）');
+    t.check(profileVm.shouldAutoOpenEdit({
+      isCustomer: false, profileCard: complete, autoDone: false
+    }) === false, '兼职资料已完成 → 不自动展开');
+    t.check(profileVm.shouldAutoOpenEdit() === false, '缺省入参不抛错且不展开（纯件防御，不猜资料状态）');
+
+    const profileJs = readSource('pages/profile/index.js');
+    t.check(/vm\.shouldAutoOpenEdit\(/.test(profileJs) && /_autoEditDone/.test(profileJs),
+      '展开判定只经纯件 + 每页面实例一次标记（页面零业务判据）');
+    t.check(/_openEdit = false;/.test(profileJs) && /maybeOpenEditForm\(\)/.test(profileJs),
+      '?edit=1 只消费一次（消费后清标记，不反复展开）');
+  });
+
+  // ---------------------------------------------------------------- §4.10 P1-10 头像票据自愈
+  h.section('§4.10 P1-10 头像票据过期自愈（换票 1 次 → 默认头像保底；其它错误不重试不掩盖）', async (t) => {
+    const OLD_TICKET = 'T'.repeat(32);
+    const NEW_TICKET = 'N'.repeat(32);
+    const TICKET_ERR = new Error('头像上传凭证已失效，请重新上传');
+    TICKET_ERR.code = 'INVALID_STATE';
+    const NOT_FOUND_ERR = new Error('头像上传凭证不存在或已失效');
+    NOT_FOUND_ERR.code = 'NOT_FOUND';
+    const OTHER_STATE = new Error('有进行中的订单，暂不能修改宿舍信息');
+    OTHER_STATE.code = 'INVALID_STATE';
+    const NETWORK_ERR = new Error('网络开小差了');
+    NETWORK_ERR.code = 'DEPENDENCY_FAILED';
+    const RATE_ERR = new Error('头像上传次数今天已用完（每天 5 次）');
+    RATE_ERR.code = 'RATE_LIMITED';
+    const payload = {
+      displayName: '阿杰',
+      zone: 'D4',
+      buildingNo: 5,
+      room: '522',
+      avatarTicket: OLD_TICKET,
+      avatarFileId: 'cloud://env/avatars/customer/a.jpg'
+    };
+
+    // 判别力：只认「头像上传凭证」类错误（TD-027 重放 / 过期），其它 INVALID_STATE 不误判
+    t.check(avatarSave.isAvatarTicketFailure(TICKET_ERR) === true,
+      'INVALID_STATE + 上传凭证 → 判为头像票据失败（TD-027 重放 INVALID_STATE）');
+    t.check(avatarSave.isAvatarTicketFailure(NOT_FOUND_ERR) === true,
+      'NOT_FOUND + 上传凭证 → 同样走换票自愈（票据被清理/过期）');
+    t.check(avatarSave.isAvatarTicketFailure(OTHER_STATE) === false,
+      '反例：INVALID_STATE（进行中订单/维护闸）不触发头像重试');
+    t.check(avatarSave.isAvatarTicketFailure(NETWORK_ERR) === false
+      && avatarSave.isAvatarTicketFailure(null) === false, '反例：网络错误/空错误不重试（不掩盖其它错误）');
+
+    // ① 过期 → 自动换票 1 次 → 保存成功
+    const refreshCalls = [];
+    let refreshAttempt = 0;
+    const refreshed = await avatarSave.saveWithRecovery({
+      payload,
+      save(next) {
+        refreshCalls.push(next);
+        refreshAttempt += 1;
+        return refreshAttempt === 1 ? Promise.reject(TICKET_ERR) : Promise.resolve({ profile: { displayName: '阿杰' } });
+      },
+      reupload() {
+        refreshCalls.push({ reupload: true });
+        return Promise.resolve({ avatarTicket: NEW_TICKET, avatarFileId: 'cloud://env/avatars/customer/b.jpg' });
+      }
+    });
+    t.eq([refreshed.mode, refreshCalls.filter((item) => item.reupload).length,
+      refreshCalls.filter((item) => !item.reupload).length],
+    ['refreshed', 1, 2], '过期 → 只换票 1 次 + 重试保存 1 次（不无限重试）');
+    const secondSave = refreshCalls.filter((item) => !item.reupload)[1];
+    t.check(secondSave.avatarTicket === NEW_TICKET
+      && secondSave.avatarFileId.indexOf('/b.jpg') >= 0
+      && secondSave.displayName === '阿杰' && secondSave.room === '522',
+    '第二次保存用新票据/新文件，其它已校验字段原样保留');
+    t.eq(avatarSave.resultCopy(refreshed), '资料已保存，头像已更新', '换票成功提示如实（头像确实已更新）');
+
+    // ② 换票后仍票据失败 → 清空头像保底保存（资料不丢）
+    const clearCalls = [];
+    let clearAttempt = 0;
+    const cleared = await avatarSave.saveWithRecovery({
+      payload,
+      save(next) {
+        clearCalls.push(next);
+        clearAttempt += 1;
+        return clearAttempt <= 2 ? Promise.reject(TICKET_ERR) : Promise.resolve({ profile: { displayName: '阿杰' } });
+      },
+      reupload() {
+        return Promise.resolve({ avatarTicket: NEW_TICKET, avatarFileId: 'cloud://env/avatars/customer/c.jpg' });
+      }
+    });
+    t.eq(cleared.mode, 'cleared', '换票后仍失败 → 退化为「只清空头像后保存」');
+    const clearedPayload = clearCalls[clearCalls.length - 1];
+    t.check(clearedPayload.avatarTicket === undefined && clearedPayload.avatarFileId === ''
+      && clearedPayload.displayName === '阿杰' && clearedPayload.room === '522',
+    '保底保存不带票据、头像置空、其它资料字段不丢（服务端 avatarFileId=\'\' 即清空头像）');
+    const clearedCopy = avatarSave.resultCopy(cleared);
+    t.check(clearedCopy.indexOf('默认头像') !== -1 && clearedCopy.indexOf('重新选择头像') !== -1,
+      '保底提示明确「已用默认头像 + 可重新选择」（说真话给下一步）');
+
+    // ③ 换票失败（5 次/日限额）→ 如实带原因，仍保底保存
+    const rateCalls = [];
+    const rateResult = await avatarSave.saveWithRecovery({
+      payload,
+      save(next) {
+        rateCalls.push(next);
+        return rateCalls.length === 1 ? Promise.reject(TICKET_ERR) : Promise.resolve({ profile: {} });
+      },
+      reupload() {
+        return Promise.reject(RATE_ERR);
+      }
+    });
+    t.eq([rateResult.mode, rateCalls.length], ['cleared', 2], '换票被限额拒绝也保底保存资料（不整体失败）');
+    t.check(avatarSave.resultCopy(rateResult).indexOf('5 次') !== -1,
+      '限额原因如实带给用户（不谎报头像已更新、不吞上传错误）');
+
+    // ④ 非票据错误：不重试、不换票、原样抛出
+    let otherSaves = 0;
+    let otherReuploads = 0;
+    let otherCaught = null;
+    try {
+      await avatarSave.saveWithRecovery({
+        payload,
+        save() {
+          otherSaves += 1;
+          return Promise.reject(NETWORK_ERR);
+        },
+        reupload() {
+          otherReuploads += 1;
+          return Promise.resolve({ avatarTicket: NEW_TICKET, avatarFileId: 'cloud://env/avatars/customer/d.jpg' });
+        }
+      });
+    } catch (err) {
+      otherCaught = err;
+    }
+    t.check(otherCaught === NETWORK_ERR && otherSaves === 1 && otherReuploads === 0,
+      '非票据错误不重试、不换票、原样抛出（不掩盖其它错误）');
+
+    // ⑤ 换票后第二次保存遇非票据错误 → 如实抛出，不拿默认头像掩盖
+    let secondErrSaves = 0;
+    let secondErrCaught = null;
+    try {
+      await avatarSave.saveWithRecovery({
+        payload,
+        save() {
+          secondErrSaves += 1;
+          return secondErrSaves === 1 ? Promise.reject(TICKET_ERR) : Promise.reject(OTHER_STATE);
+        },
+        reupload() {
+          return Promise.resolve({ avatarTicket: NEW_TICKET, avatarFileId: 'cloud://env/avatars/customer/e.jpg' });
+        }
+      });
+    } catch (err) {
+      secondErrCaught = err;
+    }
+    t.check(secondErrCaught === OTHER_STATE && secondErrSaves === 2,
+      '换票后保存遇非票据错误 → 如实抛出（不用清头像掩盖真实原因）');
+
+    // ⑥ 本地预览已失效（无可重传文件）→ 不空转重传，直接清空头像保底
+    const noPreviewCalls = [];
+    let noPreviewReupload = 0;
+    const noPreview = await avatarSave.saveWithRecovery({
+      payload,
+      save(next) {
+        noPreviewCalls.push(next);
+        return noPreviewCalls.length === 1 ? Promise.reject(TICKET_ERR) : Promise.resolve({ profile: {} });
+      },
+      reupload() {
+        noPreviewReupload += 1;
+        return Promise.reject(new Error('头像预览已失效，请重新选择头像'));
+      }
+    });
+    t.eq([noPreview.mode, noPreviewCalls.length, noPreviewReupload], ['cleared', 2, 1],
+      '本地预览失效 → 换票失败即清空头像保底（不重复消费票据、不空转）');
+
+    // 静态接线：页面只经 save-flow；自愈纯件与头像重传都有生产调用点
+    const profileJs = readSource('pages/profile/index.js');
+    const saveFlowJs = readSource('pages/profile/parts/save-flow.js');
+    t.check(/require\(['"]\.\/parts\/save-flow['"]\)/.test(profileJs)
+      && /saveFlow\.save\(this,/.test(profileJs), '我的页保存经 save-flow（重试链不在页面）');
+    t.check(!/persistProfile\(/.test(profileJs) && !/continuePendingBind\(/.test(profileJs),
+      '页面删除旧保存/续跳实现（唯一入口，防两份口径）');
+    t.check(/avatarSave\.saveWithRecovery\(/.test(saveFlowJs)
+      && /uploadApi\.prepareAndUpload\(/.test(saveFlowJs),
+    'save-flow 生产调用自愈纯件 + 头像重传（新导出都有生产调用）');
+    t.check(/avatarSave\.resultCopy\(/.test(saveFlowJs), '保存结果文案取纯件（页面不写第二份提示）');
   });
 }
 

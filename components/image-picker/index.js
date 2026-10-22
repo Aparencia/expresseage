@@ -1,11 +1,13 @@
 // components/image-picker/index.js · 截图/头像选择与上传（相册/拍照/聊天；唯一上传路径经 api/upload）
 // v1.0（D23）：支持一次多选/分多次添加的 0~maxCount 张；去重、删除、超限明确文案；半途失败不丢已上传文件。
-// change 事件：{files}（追加/删除后全量快照）；error：{reason,message,files}（失败时仍带已成功文件）；
+// P1-8（TD-060）：相册/拍照/聊天直接走 wx.chooseMedia / wx.chooseMessageFile，不再预请求任何 scope
+//   （尤其不请求 scope.writePhotosAlbum——那是「保存到相册」，不是选图所需）；首拒给替代路径文案。
+// P1-4：单图模式（maxCount=1）再选图 = 替换旧图（修复换图静默无效）；多图模式按 D23 追加。
+// change 事件：{files}（追加/替换/删除后全量快照）；error：{reason,message,files}（失败时仍带已成功文件）；
 // limit：{maxCount,message}（已达上限仍尝试添加）。页面只消费事件，不直接改组件内部状态。
 const uploadApi = require('../../api/upload');
-const privacy = require('../../api/privacy');
+const state = require('./state');
 
-const DEFAULT_MAX = 5;
 const LIMIT_MESSAGE = '最多只能添加 %d 张截图，可以先删除一张再添加';
 
 function message(code, maxCount) {
@@ -45,16 +47,15 @@ Component({
 
   methods: {
     maxCountOf() {
-      const max = Number(this.data.maxCount);
-      return max > 0 ? Math.floor(max) : DEFAULT_MAX;
+      return state.maxCountOf(this.data.maxCount);
     },
 
     remaining() {
-      return Math.max(0, this.maxCountOf() - this.data.files.length);
+      return state.remainingOf(this.data.files.length, this.data.maxCount);
     },
 
     syncFlags() {
-      this.setData({ maxReached: this.remaining() <= 0 });
+      this.setData({ maxReached: this.remaining() <= 0 && !state.singleModeOf(this.data.maxCount) });
     },
 
     limitText() {
@@ -68,96 +69,90 @@ Component({
     },
 
     canPick() {
-      if (this.data.disabled || this.data.uploading) {
-        return false;
-      }
-      if (this.remaining() <= 0) {
-        this.rejectLimit();
+      const gate = state.pickGateOf({
+        disabled: this.data.disabled,
+        uploading: this.data.uploading,
+        count: this.data.files.length,
+        maxCount: this.data.maxCount
+      });
+      if (!gate.ok) {
+        if (gate.limit) this.rejectLimit();
         return false;
       }
       return true;
     },
 
-    async onChooseAlbum() {
-      if (!this.canPick()) {
-        return;
-      }
-      const allowed = await privacy.ensureAlbumAuth();
-      if (!allowed) {
-        this.triggerEvent('error', {
-          reason: 'PRIVACY_DENIED',
-          message: '需要相册权限才能选择图片，也可用拍照或从聊天选择',
-          files: this.data.files
-        });
-        return;
-      }
+    // P1-8：相册选择不做任何前置授权（wx.chooseMedia 自带隐私流程，TD-060）
+    onChooseAlbum() {
+      if (!this.canPick()) return;
       this.chooseMedia(['album']);
     },
 
     onChooseCamera() {
-      if (!this.canPick()) {
-        return;
-      }
+      if (!this.canPick()) return;
       this.chooseMedia(['camera']);
     },
 
     onChooseChat() {
-      if (!this.canPick()) {
-        return;
-      }
+      if (!this.canPick()) return;
       wx.chooseMessageFile({
-        count: this.remaining(),
+        count: state.pickCountOf(this.data.files.length, this.data.maxCount),
         type: 'image',
         success: (res) => {
           const paths = (res.tempFiles || []).map((item) => item.path);
           this.uploadAll(paths);
+        },
+        fail: (err) => {
+          this.onChooseFail('chat', err);
         }
       });
     },
 
     chooseMedia(sourceType) {
+      const list = Array.isArray(sourceType) ? sourceType : [String(sourceType || 'album')];
+      const source = String(list[0] || 'album');
       wx.chooseMedia({
-        count: this.remaining(),
+        count: state.pickCountOf(this.data.files.length, this.data.maxCount),
         mediaType: ['image'],
-        sourceType,
+        sourceType: list,
         success: (res) => {
           const paths = (res.tempFiles || []).map((item) => item.tempFilePath);
           this.uploadAll(paths);
+        },
+        fail: (err) => {
+          this.onChooseFail(source, err);
         }
       });
     },
 
-    // 去重：同一临时路径重复选择只留一次（相册/聊天来源可能返回相同 path）
-    dedupe(paths) {
-      const seen = {};
-      this.data.files.forEach((file) => {
-        const key = String((file && file.localPath) || '');
-        if (key) {
-          seen[key] = true;
-        }
+    // 取消不报错；拒绝/失败给「换其他来源 / 不传截图手动填写」的替代路径（UX §9.2）
+    onChooseFail(sourceType, err) {
+      if (state.isCancelOf(err)) return;
+      this.triggerEvent('error', {
+        reason: 'PRIVACY_DENIED',
+        message: state.deniedCopyOf(sourceType),
+        files: this.data.files
       });
-      const out = [];
-      (paths || []).forEach((path) => {
-        const key = String(path || '');
-        if (!key || seen[key]) {
-          return;
-        }
-        seen[key] = true;
-        out.push(path);
-      });
-      return out;
+    },
+
+    // 页面「重新识别」在无本地图时调用：直接打开选择器（不空转，P1-4）
+    openSource(sourceType) {
+      if (this.data.disabled || this.data.uploading) return;
+      if (sourceType === 'camera') {
+        this.onChooseCamera();
+      } else if (sourceType === 'chat') {
+        this.onChooseChat();
+      } else {
+        this.onChooseAlbum();
+      }
     },
 
     async uploadAll(paths) {
       if (this.data.disabled) {
         return;
       }
-      const remaining = this.remaining();
-      if (remaining <= 0) {
-        this.rejectLimit();
-        return;
-      }
-      const picked = this.dedupe(paths).slice(0, remaining);
+      const picked = state.newPathsOf(this.data.files, paths)
+        .slice(0, state.pickCountOf(this.data.files.length, this.data.maxCount));
       if (!picked.length) {
         return;
       }
@@ -176,8 +171,11 @@ Component({
           break;
         }
       }
-      // 半途失败：已成功的文件仍然保留（不因一张失败把已上传的图丢掉），用 error.files 交给页面
-      const files = this.data.files.concat(uploadedFiles).slice(0, this.maxCountOf());
+      // 半途失败：已成功的文件仍然保留（不因一张失败把已上传的图丢掉），用 error.files 交给页面；
+      // 单图模式替换失败时保留旧图（新图没有上传成功就不算替换，不能把可用旧图弄丢）
+      const files = uploadedFiles.length === 0
+        ? this.data.files
+        : state.mergeFiles(this.data.files, uploadedFiles, this.data.maxCount);
       this.setData({ files, uploading: false, progressText: '' });
       this.syncFlags();
       if (uploadedFiles.length > 0) {

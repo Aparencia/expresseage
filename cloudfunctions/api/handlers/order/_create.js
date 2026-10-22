@@ -222,7 +222,7 @@ async function normalizeOrderInput(ctx, context, payload, now) {
     delivery,
     service,
     appoint: parcelUtil.normalizeAppoint(input.appoint, now),
-    note: parcelUtil.normalizeOrderNote(input.note),
+    note: parcelUtil.normalizeOrderNote(input.note, service.code),
     batchActionId: common.readBatchActionId(input),
     mergeAppend: readMergeAppend(input)
   };

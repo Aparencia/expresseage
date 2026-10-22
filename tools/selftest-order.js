@@ -50,7 +50,7 @@ const DAY_KEY = '20261022';
 const ORDER_NO_RE = /^\d{8}-\d{4}$/;
 const CLIENT_ID_RE = /^[A-Za-z0-9_-]{16,32}$/;
 
-const EXPECTED_ASSERTIONS = 127;
+const EXPECTED_ASSERTIONS = 137;
 
 const ALL_COLLECTION_NAMES = Object.keys(COLLECTIONS).map((key) => COLLECTIONS[key]);
 
@@ -773,6 +773,78 @@ function register(h) {
     const batchUnknown = await cApi.call('order.create', { items: [], unexpectedKey: 1 }, { clientRequestId: crid('17') });
     t.check(batchUnknown.ok !== true && batchUnknown.code === 'VALIDATION_FAILED' && resField(batchUnknown) === 'items',
       'F16 旧批量入参 items 已移除 + 未知字段拒绝（先于任何写入，field=items）');
+    // P1-9（批 10 A 批）：「其他代办」CUSTOM 强制备注（CONTRACT §6 / UX §3.7.3 AC-C-15）。
+    // 判定位置=normalizeOrderInput（早于 findAppendTarget）→ 新建与合并窗口追加两条路径同一判据。
+    // 独立 fake DB 世界（同 F12/F13）：F 组已用掉当日 order.create 配额 15/20，避免撞 RATE_LIMITED。
+    const customWorld = seedWorld({ db: createTestDb() });
+    const customDb = customWorld.db;
+    const customApi = apiOf(customDb, customWorld.customerOpenid);
+    const customCrid = (tag) => nextCrid('f-custom-' + tag);
+    const ordersBeforeCustom = customDb.dump('orders').length;
+    const eventsBeforeCustom = customDb.dump('order_events').length;
+    await expectField(t, customApi.call('order.create', createPayload({ serviceCode: 'CUSTOM', note: '' }),
+      { clientRequestId: customCrid('17') }), 'VALIDATION_FAILED', 'note',
+    'F17 其他代办未填备注 → VALIDATION(data.field=note)（服务端兜底，不靠客户端行内校验）');
+    await expectField(t, customApi.call('order.create', createPayload({ serviceCode: 'CUSTOM', note: '   ' }),
+      { clientRequestId: customCrid('18') }), 'VALIDATION_FAILED', 'note',
+    'F18 其他代办备注全是空白字符 → 同判据拒绝（空白=未填）');
+    t.eq([customDb.dump('orders').length, customDb.dump('order_events').length],
+      [ordersBeforeCustom, eventsBeforeCustom], 'F19 被拒请求零落库（不建单、不写 ORDER_CREATED 事件）');
+    const customNote = '帮取东门快递柜，送到 3 号楼下交给朋友';
+    const customCreated = await customApi.call('order.create', createPayload({
+      serviceCode: 'CUSTOM', note: customNote, mergeAppend: false
+    }), { clientRequestId: customCrid('19') });
+    t.eq([customCreated.ok, customCreated.data.order.service.code, customCreated.data.order.note],
+      [true, 'CUSTOM', customNote], 'F20 其他代办填了备注 → 建单成功且 service/note 落库');
+    const stdNoNote = await customApi.call('order.create', createPayload({ note: '', mergeAppend: false }),
+      { clientRequestId: customCrid('20') });
+    t.eq([stdNoNote.ok, stdNoNote.data.order.note], [true, ''],
+      'F21 标准服务不填备注 → 仍可建单（CUSTOM 专属闸，不误伤既有可选口径）');
+    await expectField(t, customApi.call('order.create', createPayload({ serviceCode: 'CUSTOM', note: 'x'.repeat(201) }),
+      { clientRequestId: customCrid('21') }), 'VALIDATION_FAILED', 'note',
+    'F22 其他代办备注 >200 字 → 沿用既有 VALIDATION(data.field=note)');
+    const customAppend = await customApi.call('order.create', createPayload({ serviceCode: 'CUSTOM', note: customNote }),
+      { clientRequestId: customCrid('22') });
+    t.eq([customAppend.ok, customAppend.data.merged, customAppend.data.order.parcels.length,
+      customAppend.data.order.service.code, customAppend.data.order.note], [true, true, 2, 'CUSTOM', customNote],
+    'F23 其他代办（有备注）命中合并窗口 → 追加入原单（parcels 1→2，service/note 不变）');
+    // 带牙反例：种一条「本闸上线前」的 CUSTOM 无备注存量单——若校验只在 createNewOrder 之后，无备注新提交会被追加进它。
+    const histOrder = {
+      _id: 'hist-custom-empty-note', orderNo: '20261022-9900', requestKey: 'hist:custom-empty-note',
+      customerId: customWorld.customerOpenid, customerOpenid: customWorld.customerOpenid,
+      customerNo: customWorld.customerNo,
+      partnerId: customWorld.partnerId, partnerOpenid: customWorld.partnerOpenid, partnerNo: 'PABC234',
+      source: 'CUSTOMER', isTest: false, status: ORDER_STATUS.SUBMITTED,
+      parcels: [{ stationId: 'P3', stationName: '西区驿站', pickupCode: 'Z90001', lockerNo: '',
+        trackingTail: '', codeStatus: 'OK', recognitionSource: 'RULE' }],
+      images: [], manualEntry: true,
+      dorm: { zone: 'D', buildingNo: 4, room: '522', dormKey: 'D4-522', buildingText: 'D4', roomTag: 'A' },
+      delivery: { zone: 'D', buildingNo: 4, room: '522', dormKey: 'D4-522', buildingText: 'D4', phoneTail: '1234' },
+      guest: null, service: { code: 'CUSTOM', name: '其他代办' }, appoint: { type: 'ASAP' }, note: '',
+      clientRequestId: 'hist-custom-empty', version: 1,
+      createdAt: new Date(NOW), updatedAt: new Date(NOW), statusUpdatedAt: new Date(NOW)
+    };
+    customDb.seed('orders', [histOrder]);
+    const appendEventsBefore = customDb.dump('order_events').length;
+    const histAppend = await customApi.call('order.create', createPayload({ serviceCode: 'CUSTOM', note: '' }),
+      { clientRequestId: customCrid('23') });
+    const histAfter = customDb.dump('orders').filter((row) => row._id === histOrder._id)[0];
+    t.eq([histAppend.ok, histAppend.code, resField(histAppend), histAfter.parcels.length, histAfter.version,
+      customDb.dump('order_events').length - appendEventsBefore],
+    [false, 'VALIDATION_FAILED', 'note', 1, 1, 0],
+    'F24 合并追加路径同判据：窗口内既有 CUSTOM 无备注单也不得被无备注请求追加（零改动/零事件）');
+    // 代客单（PARTNER 创建）同口径：备注整单一份，闸不看来源角色（同一 normalizeOrderInput 路径）。
+    const customPartnerApi = apiOf(customDb, customWorld.partnerOpenid);
+    const guestInfo = { displayName: '小张', phoneTail: '5678', zone: 'D', buildingNo: 4, room: '522' };
+    await expectField(t, customPartnerApi.call('order.create',
+      createPayload({ serviceCode: 'CUSTOM', note: '', guest: guestInfo }), { clientRequestId: customCrid('24') }),
+    'VALIDATION_FAILED', 'note', 'F25 代客单其他代办未填备注 → 同样 VALIDATION(data.field=note)（与顾客单同判据）');
+    const guestCustom = await customPartnerApi.call('order.create', createPayload({
+      serviceCode: 'CUSTOM', note: '代买水果送到宿舍', guest: guestInfo
+    }), { clientRequestId: customCrid('25') });
+    t.eq([guestCustom.ok, guestCustom.data.order.source, guestCustom.data.order.service.code,
+      guestCustom.data.order.note], [true, 'PARTNER', 'CUSTOM', '代买水果送到宿舍'],
+    'F26 代客单其他代办填了备注 → 建单成功（source=PARTNER，备注落整单）');
     t.notEmpty(db.dump('orders'), 'F 组样本非空');
   });
 

@@ -7,6 +7,7 @@ const userApi = require('../../api/modules/user');
 const partnerApi = require('../../api/modules/partner');
 const route = require('../../config/route');
 const storage = require('../../utils/storage');
+const previewCache = require('../../utils/preview-cache');
 
 const ACTIVATE_PAGE = '/pkg-partner/pages/activate/index';
 const BIND_PAGE = '/pkg-customer/pages/bind/index';
@@ -100,6 +101,8 @@ Page({
       // partner.getPublic 直接返回 partnerPublic DTO
       // {partnerNo,displayName,services,zones,acceptingOrders,status}；绑定前不含 avatarFileId
       const partner = data || {};
+      // P1-2：这次 getPublic 的公开预览缓存给绑定页（take 后失效，避免落地双请求）
+      previewCache.remember(partner.partnerNo || bindNo, partner);
       this.setData({
         bindLoading: false,
         bindCard: {

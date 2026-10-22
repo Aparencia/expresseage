@@ -6,8 +6,9 @@ const configModule = require('./modules/config');
 const store = require('../store/index');
 const privacyPolicy = require('../utils/privacy-policy');
 
+// 只保留真正需要的授权 scope：相册选图走 wx.chooseMedia（自带隐私流程），
+// 不请求 scope.writePhotosAlbum（那是「保存到相册」，TD-060/P1-8）；本层零权限扩张。
 const CAMERA_SCOPE = 'scope.camera';
-const ALBUM_SCOPE = 'scope.writePhotosAlbum';
 
 function getSetting() {
   return new Promise((resolve) => {
@@ -49,10 +50,6 @@ async function ensureScope(scope) {
 
 function ensureCameraAuth() {
   return ensureScope(CAMERA_SCOPE);
-}
-
-function ensureAlbumAuth() {
-  return ensureScope(ALBUM_SCOPE);
 }
 
 function openSetting() {
@@ -141,9 +138,7 @@ function docQuery(kind) {
 
 module.exports = {
   CAMERA_SCOPE,
-  ALBUM_SCOPE,
   ensureCameraAuth,
-  ensureAlbumAuth,
   ensureScope,
   openSetting,
   openPrivacyContract,

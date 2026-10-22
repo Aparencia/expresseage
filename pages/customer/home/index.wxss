@@ -61,3 +61,40 @@
   display: flex;
   align-items: center;
 }
+
+/* P1-7：顾客首用三步引导（遮罩可跳过；不承载业务操作） */
+.guide-mask {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 20;
+}
+
+.guide-box {
+  width: 600rpx;
+  padding: 32rpx;
+  border-radius: 20rpx;
+  background: #FFFFFF;
+}
+
+.guide-title {
+  margin: 12rpx 0;
+  font-size: 32rpx;
+  font-weight: 600;
+}
+
+.guide-actions {
+  margin-top: 24rpx;
+  align-items: center;
+}
+
+.guide-skip {
+  padding: 16rpx 24rpx;
+  color: var(--v4-text-2);
+}

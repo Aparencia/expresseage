@@ -33,7 +33,7 @@ const client = require(path.join(ROOT, 'api/client.js'));
 const store = require(path.join(ROOT, 'store/index.js'));
 const errorCopy = require(path.join(ROOT, 'shared/error-copy.js'));
 
-const EXPECTED_ASSERTIONS = 144; // 实际断言总数（运行后校准；少算/多算都判红）
+const EXPECTED_ASSERTIONS = 149; // 实际断言总数（运行后校准；少算/多算都判红）
 
 const NOW = Date.parse('2026-10-22T12:00:00+08:00');
 const WRITE_REJECTED = '系统维护中，暂时不能提交；急单请留言或联系开发者。';
@@ -82,6 +82,7 @@ const FILES = {
   partnerParts: 'pkg-partner/pages/messages/parts/message-view.js',
   home: 'pages/customer/home/index.js',
   homeWxml: 'pages/customer/home/index.wxml',
+  orders: 'pages/customer/orders/index.js',
   homeJson: 'pages/customer/home/index.json',
   workbench: 'pages/partner/workbench/index.js',
   workbenchWxml: 'pages/partner/workbench/index.wxml',
@@ -358,6 +359,22 @@ function register(h) {
       'D10 首页未读刷新保留 workbenchPending（只改 messages）');
     t.check(/vm\.badges\.messages/.test(textOf(FILES.homeWxml)), 'D11 首页铃铛红点按 badges.messages 渲染');
     t.check(/badgePatchOf/.test(textOf(FILES.partnerPage)), 'D12 兼职消息页红点补丁走纯件（不手写覆盖）');
+
+    // A 批 P1-5：顾客「订单」格数量角标 ordersOngoing（数量角标不清零，与红点语义区分）
+    const ordersTabBadge = textOf(FILES.tabJs)
+      .match(/pagePath: 'pages\/customer\/orders\/index'[^\n]*badgeKey: 'ordersOngoing'/g) || [];
+    t.eq(ordersTabBadge.length, 1, 'D13 顾客「订单」tab 按 badgeKey=ordersOngoing 渲染数量角标（P1-5）');
+    t.check(/ordersOngoing/.test(textOf(FILES.home)) && /counts\.ongoing/.test(textOf(FILES.home)),
+      'D14 首页用 order.listCustomer 的 counts.ongoing 更新 ordersOngoing（onShow/下拉刷新，无轮询）');
+    t.check(/ordersOngoing/.test(textOf(FILES.orders)) && /counts\.ongoing/.test(textOf(FILES.orders)),
+      'D15 订单列表同源更新 ordersOngoing（服务端 counts 不受 tab/关键词影响）');
+    t.check(!/ordersOngoing:\s*0/.test(textOf(FILES.home)) && !/ordersOngoing:\s*0/.test(textOf(FILES.orders)),
+      'D16 页面无「进列表/点击清零」写法（数量角标不清零）');
+    store.reset();
+    store.patch({ badges: Object.assign({}, store.get('badges'), { ordersOngoing: 3 }) });
+    store.patch({ badges: Object.assign({}, store.get('badges'), { messages: 2 }) });
+    t.eq(store.get('badges'), { workbenchPending: 0, messages: 2, ordersOngoing: 3 },
+      'D17 ordersOngoing 与 messages 双向不覆盖（同一 badges 键合并、保留其他键）');
     store.reset();
   });
 

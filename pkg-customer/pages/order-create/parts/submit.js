@@ -3,10 +3,24 @@
 'use strict';
 
 const orderApi = require('../../../../api/modules/order');
+const store = require('../../../../store/index');
 const deliveryModel = require('./delivery');
 const model = require('./model');
+const precheck = require('./precheck');
 
 const DETAIL_PAGE = '/pkg-customer/pages/order-detail/index';
+
+/**
+ * A 批 P1-6：提交前本地服务范围预检（只读 store 快照，不新增请求）。
+ * 服务端 order.create 的 assertServiceRange 仍是唯一权威——本地只在必失败时提前拦，省一次失败请求。
+ */
+function rangeBlockOf(page) {
+  const snapshot = store.snapshot();
+  const binding = snapshot.binding || null;
+  const partnerPublic = (binding && binding.partnerPublic) || page.data.partnerPublic || null;
+  const customer = snapshot.customer || null;
+  return precheck.rangeCheckOf({ zone: customer ? customer.zone : '', partnerPublic: partnerPublic });
+}
 
 /** 提交内容指纹（含图片/票据/配送地址）→ clientRequestId 生命周期 */
 function fingerprintOf(page) {
@@ -59,6 +73,13 @@ async function onSubmit(page) {
     wx.showToast({ title: '截图还没上传成功，请重新上传', icon: 'none' });
     return;
   }
+  // P1-6：必失败的提交提前拦下（不上送、不产生失败请求）；服务端校验仍是唯一权威
+  const range = rangeBlockOf(page);
+  if (!range.ok) {
+    page.setData({ submitError: range.reason });
+    wx.showToast({ title: range.reason, icon: 'none' });
+    return;
+  }
   page.setData({ submitting: true, submitError: '' });
   const submission = model.ensureSubmission(page.data.submission, fingerprintOf(page));
   page.setData({ submission: submission });
@@ -88,6 +109,7 @@ module.exports = {
   fingerprintOf,
   buildPayloadOf,
   imagesReady,
+  rangeBlockOf,
   onSubmit,
   onViewOrder
 };

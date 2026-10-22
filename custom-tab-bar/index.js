@@ -3,7 +3,7 @@ const store = require('../store/index');
 
 const CUSTOMER_TABS = [
   { pagePath: 'pages/customer/home/index', text: '首页', icon: '/assets/tabbar/customer-home.png', activeIcon: '/assets/tabbar/customer-home-active.png' },
-  { pagePath: 'pages/customer/orders/index', text: '订单', icon: '/assets/tabbar/customer-orders.png', activeIcon: '/assets/tabbar/customer-orders-active.png' },
+  { pagePath: 'pages/customer/orders/index', text: '订单', icon: '/assets/tabbar/customer-orders.png', activeIcon: '/assets/tabbar/customer-orders-active.png', badgeKey: 'ordersOngoing' },
   { pagePath: 'pages/profile/index', text: '我的', icon: '/assets/tabbar/profile.png', activeIcon: '/assets/tabbar/profile-active.png', badgeKey: 'messages' }
 ];
 

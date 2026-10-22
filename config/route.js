@@ -8,6 +8,7 @@ const PARTNER_WORKBENCH = '/pages/partner/workbench/index';
 const ADMIN_OVERVIEW = '/pkg-admin/pages/overview/index';
 const ROLE_PAGE = '/pages/role/index';
 const PROFILE_PAGE = '/pages/profile/index';
+const PROFILE_EDIT_QUERY = '?edit=1';
 
 const ROLES = { CUSTOMER: 'CUSTOMER', PARTNER: 'PARTNER' };
 
@@ -56,7 +57,8 @@ function routeOfRole(role, state) {
   }
   const customer = snapshot.customer || {};
   if (!customer.profileComplete) {
-    return { url: PROFILE_PAGE, reason: 'CUSTOMER_PROFILE' };
+    // P1-1（批 10 A 批）：资料未完善落地即展开编辑态（0 点击），完成态不带 edit=1（不打扰）
+    return { url: PROFILE_PAGE + PROFILE_EDIT_QUERY, reason: 'CUSTOMER_PROFILE' };
   }
   return { url: CUSTOMER_HOME, reason: 'CUSTOMER_READY' };
 }
