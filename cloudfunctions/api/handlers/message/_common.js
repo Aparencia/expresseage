@@ -21,10 +21,30 @@ function identityOf(ctx) {
   return (ctx && ctx.identity) || {};
 }
 
+// identity.roles = auth 按 users.roles 归一出的业务角色集（双角色 [CUSTOMER,PARTNER]）；
+// 切换会话/手工注入 ctx 只有 role 时回落单元素集，保持单角色语义不变。
+function rolesOfIdentity(identity) {
+  const source = identity || {};
+  const raw = Array.isArray(source.roles) ? source.roles : [];
+  const roles = [];
+  if (raw.indexOf(enums.ROLES.CUSTOMER) >= 0) {
+    roles.push(enums.ROLES.CUSTOMER);
+  }
+  if (raw.indexOf(enums.ROLES.PARTNER) >= 0) {
+    roles.push(enums.ROLES.PARTNER);
+  }
+  if (roles.length === 0
+    && (source.role === enums.ROLES.CUSTOMER || source.role === enums.ROLES.PARTNER)) {
+    roles.push(source.role);
+  }
+  return roles;
+}
+
 function scopeOf(ctx) {
   const identity = identityOf(ctx);
   return {
     role: identity.role || '',
+    roles: rolesOfIdentity(identity),
     openid: identity.effectiveOpenid || (ctx && ctx.openid) || '',
     readOnly: identity.viewMode === enums.VIEW_MODE.READONLY,
     testWrite: identity.viewMode === enums.VIEW_MODE.TEST_WRITE,
@@ -81,7 +101,8 @@ function normalizeOrderNoInput(value) {
   return orderNo;
 }
 
-// 订单参与方：CUSTOMER（本人单）/ PARTNER（本人订单，含代客单）/ ADMIN（只读，不允许发消息）
+// 订单参与方：CUSTOMER（本人单）/ PARTNER（本人订单，含代客单）/ ADMIN（只读，不允许发消息）。
+// 侧别按「订单归属 + users.roles 是否含该侧角色」判定（双角色两类订单都可参与，不依赖 activeRole）。
 function orderSideOf(ctx, order) {
   if (!order) {
     return '';
@@ -90,10 +111,12 @@ function orderSideOf(ctx, order) {
   if (scope.role === enums.CANCELLED_BY.ADMIN) {
     return 'ADMIN';
   }
-  if (scope.role === enums.ROLES.PARTNER && order.partnerOpenid && order.partnerOpenid === scope.openid) {
+  if (scope.roles.indexOf(enums.ROLES.PARTNER) >= 0
+    && order.partnerOpenid && order.partnerOpenid === scope.openid) {
     return 'PARTNER';
   }
-  if (scope.role === enums.ROLES.CUSTOMER && order.customerId && order.customerId === scope.openid) {
+  if (scope.roles.indexOf(enums.ROLES.CUSTOMER) >= 0
+    && order.customerId && order.customerId === scope.openid) {
     return 'CUSTOMER';
   }
   return '';
@@ -169,7 +192,9 @@ function isSystemNotice(message) {
 function buildMessageItem(scope, orderNo, message) {
   const fromRole = textOf(message.fromRole);
   const system = isSystemNotice(message);
-  const mine = !system && fromRole === scope.role;
+  // "本人留言"按 users.roles 成员制判定（双角色时两侧留言都算本人；单角色与旧 fromRole===role 等价）。
+  const roles = Array.isArray(scope.roles) ? scope.roles : [];
+  const mine = !system && (fromRole === scope.role || roles.indexOf(fromRole) >= 0);
   return {
     type: system ? 'NOTICE' : 'MESSAGE',
     title: system ? '系统通知' : messageTitleOf(fromRole),

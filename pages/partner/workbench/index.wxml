@@ -122,6 +122,9 @@
             <view class="code-text">{{row.codeText}}</view>
             <view wx:if="{{row.lockerText}}" class="small code-locker">{{row.lockerText}}</view>
             <view wx:if="{{row.isGuest}}" class="tag guest-tag">代客单</view>
+            <view wx:if="{{row.parcelCountText}}" class="tag parcel-tag">{{row.parcelCountText}}</view>
+            <view wx:if="{{row.stationSummaryText}}" class="small station-summary">{{row.stationSummaryText}}</view>
+            <view wx:if="{{row.manualEntryText}}" class="tag manual-tag">{{row.manualEntryText}}</view>
           </view>
           <view class="muted ellipsis">{{row.anchorKeyText || row.senderText || '顾客信息待同步'}}</view>
           <view class="row between small line-foot">
@@ -131,6 +134,7 @@
           <view wx:if="{{row.exceptionText}}" class="exception-text">异常：{{row.exceptionText}}</view>
           <view class="row line-tags">
             <view wx:if="{{row.needCode}}" class="need-code-tag" data-order-no="{{row.orderNo}}" catchtap="onNeedCodeTap">需查明 · 补码</view>
+            <view wx:if="{{row.needCodeCountText}}" class="parcel-need-tag">{{row.needCodeCountText}}</view>
             <view wx:if="{{row.reviewText}}" class="review-tag">{{row.reviewText}}</view>
           </view>
           <view wx:if="{{!selecting && !readonly}}" class="row row-tools">
@@ -189,6 +193,17 @@
               />
             </block>
             <block wx:elif="{{panel.type === 'code'}}">
+              <view wx:if="{{panel.multi}}" class="row panel-pieces">
+                <view
+                  wx:for="{{panel.items}}"
+                  wx:key="index"
+                  wx:for-item="piece"
+                  class="chip {{panel.itemIndex === piece.index ? 'chip-active' : ''}}"
+                  data-index="{{piece.index}}"
+                  catchtap="onPanelPiece"
+                >{{piece.indexText}}{{piece.needCode ? ' · 需查明' : ''}}</view>
+              </view>
+              <view wx:if="{{panel.multi}}" class="small panel-piece-hint">正在改：{{panel.itemIndexText}}{{panel.stationName ? ' · ' + panel.stationName : ''}}</view>
               <view class="form-row">
                 <view class="form-label">取件码（必填，最多 40 字符）</view>
                 <input class="form-input" value="{{panel.code}}" maxlength="{{panel.codeMax}}" placeholder="驿站短信 / 取件页上的取件码" data-field="code" bindinput="onPanelInput" />

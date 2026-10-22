@@ -14,6 +14,8 @@
  *   fix 只回填识别三字段（+recognitionSource=MANUAL）/不改状态归属/审计 FAILURE_FIX、ignore 备注必填/审计 FAILURE_IGNORE、
  *   notifyUploader 站内消息同日幂等。
  * G 负向矩阵与静态纪律：action 注册表 23 个、错误码 ∈ 13 码集、admin 域零 db.collection、_dto 零 avatarFileId/adminOpenid。
+ * H v1.0（D23/D24/D25）：后台多包裹/无截图手填/delivery 脱敏/按件补录/合并窗口配置 —— 用例表在
+ *   tools/lib/admin-v1-cases.js（拆出控本文件 ≤1000 行，门禁 #18；断言数合并计入 EXPECTED_ASSERTIONS）。
  *
  * 纪律：fake DB + createApi 全链路（app.js 中间件链）或 handler 直调，不 mock 全局 wx、不连真实网络/真库；
  *      先合法基线再反例；EXPECTED_ASSERTIONS 与实际精确相等（少算/多算都判红）。
@@ -27,8 +29,10 @@ const { createHarness, installCrashGuard } = require('./selftest');
 const { createFakeDb } = require('./fake-db');
 const { createApi } = require(path.join(ROOT, 'cloudfunctions/api/app.js'));
 const sharedActions = require(path.join(ROOT, 'cloudfunctions/api/shared/actions.js'));
+// v1.0（D23/D24/D25）用例表：拆出以控本文件 ≤1000 行（门禁 #18），断言数合并计
+const v1Cases = require(path.join(__dirname, 'lib', 'admin-v1-cases.js'));
 
-const EXPECTED_ASSERTIONS = 220;
+const EXPECTED_ASSERTIONS = 220 + v1Cases.EXPECTED_ASSERTIONS;
 
 const NOW = Date.UTC(2026, 9, 22, 4, 0, 0);
 const MINUTE = 60 * 1000;
@@ -835,6 +839,22 @@ function register(h) {
   sectionE(h);
   sectionF(h);
   sectionG(h);
+  v1Cases.register(h, {
+    world,
+    apiOf,
+    failureDoc,
+    expectCode,
+    keysOf,
+    bannedKeysOf,
+    auditsOf,
+    nextCrid,
+    ADMIN,
+    C1,
+    PID1,
+    P1,
+    NOW,
+    HOUR
+  });
 }
 
 module.exports = {

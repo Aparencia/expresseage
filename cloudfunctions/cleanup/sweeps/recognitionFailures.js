@@ -1,8 +1,8 @@
 // cloudfunctions/cleanup/sweeps/recognitionFailures.js · 识别失败记录到期清理（删原图引用并置 IGNORED/EXPIRED）
-// 口径：ENGINEERING §4.7 recognitionFailures（到期条件 = createdAt 超 retentionDays 且 status≠FIXED）；
-//       DATA_MODEL §2.14/§10.1/§10.3。
+// 口径：CONTRACT §11.1「识别失败原图与复核记录默认 30 天到期删除」优先（ENGINEERING §4.7 旧口径
+//       status≠FIXED 已按 CONTRACT 修正）；DATA_MODEL §2.14/§10.1/§10.3。
 //   - 到期：删原图引用（引用计数 0 才删云文件）→ PENDING 置 IGNORED + resolution.note='EXPIRED'
-//     + reviewedAt=now；IGNORED 只清原图引用（保留人工忽略的 note，禁止覆盖）；
+//     + reviewedAt=now；IGNORED 保留人工忽略的 note；FIXED 保留复核结果，只清原图引用（禁止覆盖）；
 //   - 上传者已注销（uploaderOpenid=''）：记录已匿名化，按 §10.3 保留至到期后物理删（ocrTextMasked 不再留）。
 'use strict';
 
@@ -58,11 +58,15 @@ async function anonymizedPass(ctx, counters, defaultDays) {
   }
 }
 
-// ② 未匿名记录（IGNORED/PENDING）：到期删原图引用；PENDING 置 IGNORED(EXPIRED)
-//    先处理已 IGNORED（人工忽略），再处理 PENDING；同一轮被置 IGNORED 的记录不会在本轮被二次处理。
+// ② 未匿名记录（IGNORED/FIXED/PENDING）：到期删原图引用；PENDING 置 IGNORED(EXPIRED)。
+//    FIXED 纳入到期清理：CONTRACT §11.1「识别失败原图与复核记录默认 30 天到期删除」优先于
+//    ENGINEERING §4.7 旧口径「status≠FIXED」；FIXED 只清原图引用、保留状态与复核结果（记录主体到期后
+//    由匿名化分支/注销链路收敛），避免"补录成功=原图永久留存"。
+//    先处理已 IGNORED（人工忽略），再 FIXED，最后 PENDING；同一轮被置 IGNORED 的记录不会在本轮被二次处理。
 async function activePass(ctx, counters, defaultDays) {
   const C = util.collectionsOf(ctx);
-  const statuses = [util.enums.FAILURE_STATUS.IGNORED, util.enums.FAILURE_STATUS.PENDING];
+  const statuses = [util.enums.FAILURE_STATUS.IGNORED, util.enums.FAILURE_STATUS.FIXED,
+    util.enums.FAILURE_STATUS.PENDING];
   const command = util.commandOf(ctx);
   const nowDate = util.nowDateOf(ctx);
   for (let s = 0; s < statuses.length; s += 1) {
@@ -77,8 +81,8 @@ async function activePass(ctx, counters, defaultDays) {
       if (record.uploaderOpenid === '' || !isDue(record, ctx.now, defaultDays)) {
         continue;
       }
-      // 已人工忽略且原图引用已清：到期后无剩余动作，重跑不得重复计 acted
-      if (record.status === util.enums.FAILURE_STATUS.IGNORED && fileId === '') {
+      // 已终态（人工忽略/已修复）且原图引用已清：到期后无剩余动作，重跑不得重复计 acted
+      if (record.status !== util.enums.FAILURE_STATUS.PENDING && fileId === '') {
         continue;
       }
       counters.scanned += 1;

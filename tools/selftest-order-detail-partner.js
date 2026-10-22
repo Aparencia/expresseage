@@ -31,7 +31,7 @@ const client = require(path.join(ROOT, 'api/client.js'));
 const orderApi = require(path.join(ROOT, 'api/modules/order.js'));
 const serverDto = require(path.join(ROOT, 'cloudfunctions/api/handlers/order/_dto.js'));
 
-const EXPECTED_ASSERTIONS = 153; // 实际断言总数（少算/多算都判红）
+const EXPECTED_ASSERTIONS = 170; // 实际断言总数（少算/多算都判红）
 const STATUS = orderState.STATUS;
 const STATUS_LITERALS = enums.ORDER_STATUS_LIST.slice();
 const PAGE_JS = 'pkg-partner/pages/order-detail/index.js';
@@ -634,6 +634,72 @@ function register(h) {
       client.restoreTransport();
       store.reset();
     }
+  });
+
+  // ---------------------------------------------------------------- H v1.0 多包裹/配送/无截图
+  h.section('H. v1.0 一单多包裹/逐件纠错/配送地址/无截图·手填（CONTRACT D23/D24/D25）', async (t) => {
+    function multiDto(overrides) {
+      return Object.assign({
+        orderNo: '20261022-0031', status: STATUS.ACCEPTED, statusText: '已接单', version: 3,
+        source: enums.ORDER_SOURCE.CUSTOMER,
+        parcels: [
+          { stationId: 'P4', stationName: '北部菜鸟驿站', pickupCode: '27-2-7016', lockerNo: '3 号柜', trackingTail: '66785',
+            codeStatus: 'OK', codeStatusText: '取件码可用', recognitionSource: 'RULE' },
+          { stationId: 'P6', stationName: '南苑菜鸟驿站', pickupCode: '', lockerNo: '', trackingTail: '12345',
+            codeStatus: enums.CODE_STATUS.NEED_CODE, codeStatusText: '需补充取件码', recognitionSource: 'MANUAL', failureId: 'F-2' }
+        ],
+        images: [{ fileId: 'cloud://a/1.jpg' }, { fileId: 'cloud://a/2.jpg' }],
+        manualEntry: false,
+        delivery: { zone: 'D', buildingNo: 4, room: '522', dormKey: 'D4-522', buildingText: 'D4', recipientName: '小李', phoneTail: '6678' },
+        service: { code: 'PICKUP_STD', name: '标准代取' }, appoint: { type: 'ASAP' },
+        counterpart: { displayName: '小王' }, guest: null, exception: null,
+        note: '', deliveryNote: '', customerNo: 'C-7K2M-9QX4', partnerNo: 'P-8F3-K2M'
+      }, overrides || {});
+    }
+    const multi = multiDto();
+    const detail = orderView.buildDetail(multi);
+    t.eq([detail.parcels.length, detail.parcelCountText, detail.parcels[1].stationText, detail.parcels[1].trackingTailText],
+      [2, '2 件', '南苑菜鸟驿站', '12345'], 'H1 多包裹逐件展示（站点/尾号逐件，不聚合猜测）');
+    t.eq([detail.parcels[0].recognitionSourceText, detail.parcels[1].recognitionSourceText], ['截图识别', '手动填写'],
+      'H2 逐件识别来源文案（RULE/MANUAL 单源 shared/enums）');
+    t.eq([detail.needCode, detail.parcels[1].needCode, detail.failureHint], [true, true, true],
+      'H3 任一包裹需查明/识别失败 → 整单聚合仍按服务端逐件字段');
+    t.eq([detail.deliveryText, detail.deliveryRecipientText, detail.deliveryIsDefault],
+      ['D4-522', '收件人：小李', false], 'H4 配送地址（D25）：本单收件人地址原样展示');
+    const defaultDelivery = orderView.buildDetail(multiDto({ delivery: { zone: 'D', buildingNo: 4, room: '522', dormKey: 'D4-522' } }));
+    t.eq([defaultDelivery.deliveryRecipientText, defaultDelivery.deliveryIsDefault], ['送至下单人宿舍', true],
+      'H5 无收件人 → 明示送至下单人宿舍（不猜第三方）');
+    const manualDto = multiDto({ manualEntry: true, images: [] });
+    t.eq([manualDto.manualEntry, orderView.buildDetail(manualDto).manualEntryText], [true, '无截图·手填'],
+      'H6 无截图·手填标识（D24）取服务端 manualEntry');
+    t.check(orderView.buildDetail(multiDto({ manualEntry: true, images: [] })).manualEntryText === '无截图·手填'
+      && orderView.buildDetail(multiDto()).manualEntryText === '', 'H6b 有截图单不显示「无截图·手填」');
+
+    const panel = correctPanel.buildPanel(multi);
+    t.check(panel.multi === true && panel.items.length === 2 && panel.items[1].index === 1,
+      'H7 多包裹补码面板：逐件目标（items）可选');
+    t.eq(correctPanel.buildEditor(multi, 1), { stationId: 'P6', pickupCode: '', lockerNo: '', trackingTail: '12345' },
+      'H8 逐件编辑初值 = 该件服务端当前值');
+    const perItem = correctPanel.validateSave(Object.assign(correctPanel.buildEditor(multi, 1), { pickupCode: '27-2-9999' }), multi, 1);
+    t.check(perItem.ok && perItem.patch.pickupCode === '27-2-9999', 'H9 逐件差异校验按 itemIndex 取目标件');
+    t.eq([correctPanel.buildSubmit(multi, perItem.patch, 1).data.itemIndex,
+      'itemIndex' in correctPanel.buildSubmit(multi, perItem.patch, 0).data], [1, false],
+      'H10 提交带 itemIndex（逐件纠正）；首件缺省 0 不传（兼容契约缺省）');
+    const pageSrc = textOf(PAGE_JS);
+    const wxmlSrc = textOf(PAGE_WXML);
+    t.check(pageSrc.indexOf('itemIndex') >= 0 && pageSrc.indexOf('correctPanel.buildEditor(this.data.order, index)') >= 0,
+      'H11 页面按 itemIndex 打开/提交逐件纠正（不改订单级动作）');
+    t.check(wxmlSrc.indexOf('order.parcels') >= 0 && wxmlSrc.indexOf('deliveryText') >= 0
+      && wxmlSrc.indexOf('manualEntryText') >= 0 && wxmlSrc.indexOf('onCorrectItemTap') >= 0,
+    'H12 WXML 渲染多包裹列表 + 配送地址 + 无截图标识 + 逐件改码入口');
+    t.check(pageSrc.indexOf('index: 0') >= 0 && pageSrc.indexOf('orderApi.imageUrl') >= 0,
+      'H13 截图 URL 契约 v1.0：order.imageUrl 带 index');
+    const legacy = await realDto(partnerDoc(STATUS.SUBMITTED));
+    t.eq([orderView.buildDetail(legacy).parcels.length, orderView.buildDetail(legacy).stationText],
+      [1, legacy.parcel.stationName], 'H14 单包裹历史 DTO 仍渲染 1 件（兼容窗口，不白屏）');
+    t.eq(viewModel.buildView(multi, [], { nowMs: NOW_MS }).order.parcels.length, 2,
+      'H15 视图快照透出 parcels[]（页面不直读服务端嵌套结构）');
+    t.notEmpty(detail.parcels, 'H 组样本非空');
   });
 }
 

@@ -23,6 +23,16 @@ function exceptionTextOf(exception) {
   return source.codeText || source.text || (source.code ? '已上报异常' : '');
 }
 
+// v1.0（D23/D24）：一行=一单，件数独立呈现（N>1 才出 chip）；无截图·手填单独标识
+function parcelCountTextOf(count) {
+  const total = Number(count);
+  return total > 1 ? total + ' 件' : '';
+}
+
+function manualEntryTextOf(row) {
+  return row && row.manualEntry === true ? '无截图' : '';
+}
+
 function decorateRow(item) {
   const row = item || {};
   const exception = row.exception || {};
@@ -35,7 +45,9 @@ function decorateRow(item) {
     isTest: row.isTest === true,
     exceptionText: exceptionTextOf(exception),
     partnerNo: row.partnerNo || '',
-    reportedAtText: exception.reportedAt ? F.formatTime(exception.reportedAt) : ''
+    reportedAtText: exception.reportedAt ? F.formatTime(exception.reportedAt) : '',
+    parcelCountText: parcelCountTextOf(row.parcelCount),
+    manualEntryText: manualEntryTextOf(row)
   };
 }
 

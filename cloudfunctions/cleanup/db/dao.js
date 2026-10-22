@@ -138,6 +138,14 @@ function createBody(db, collectionOf) {
 
   body.inc = (value) => db.command.inc(value);
   body.serverDate = () => db.serverDate();
+  // 查询指令工厂：业务层需要范围/前缀/集合条件（gte/lt/gt/neq/in/exists）时经此构造，
+  // 保持"云函数不出现 db.collection"铁律；指令对象仍由本层唯一的 db 实例生成（另一部署单元逐份一致）。
+  body.command = (name, value) => {
+    if (!db.command || typeof db.command[name] !== 'function') {
+      throw new Error('当前数据库 SDK 不支持查询指令：' + name);
+    }
+    return db.command[name](value);
+  };
   body.isDuplicateError = isDuplicateError;
 
   body.transaction = async (handler) => {

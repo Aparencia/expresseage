@@ -70,7 +70,7 @@ function generateTestOpenid() {
   return TEST_OPENID_PREFIX + randomFromAlphabet(TEST_OPENID_RANDOM_LENGTH);
 }
 
-// 订单号：counters 事务内取当日全局序号（UTC+8，4 位零填充），同事务内可连取 N 个（createBatch ≤5）。
+// 订单号：counters 事务内取当日全局序号（UTC+8，4 位零填充），同事务内可连取 N 个（一单多包裹/预留专用）。
 async function nextOrderNos(trx, nowMs, count) {
   const total = typeof count === 'number' && count > 0 ? count : 1;
   const day = time.dayKey(nowMs);
@@ -79,7 +79,7 @@ async function nextOrderNos(trx, nowMs, count) {
   let seq;
   if (!row) {
     seq = 1;
-    // 首次取号一次预留 total 个（createBatch 同事务连取 N 个）：计数器落 total，否则同日下一单从 2 开始撞已用 orderNo。
+    // 首次取号一次预留 total 个（同事务连取 N 个）：计数器落 total，否则同日下一单从 2 开始撞已用 orderNo。
     await trx.add(COLLECTIONS.COUNTERS, { key, seq: total, updatedAt: nowMs });
   } else {
     const current = typeof row.seq === 'number' ? row.seq : 0;

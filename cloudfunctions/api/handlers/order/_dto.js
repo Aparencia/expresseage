@@ -1,4 +1,5 @@
 // handlers/order/_dto.js · 订单视图模型（本人完整；admin 真实会话走脱敏投影，完整 L3 只经只读视角）
+// v1.0 一单多包裹（D23/D24/D25）：parcels[]/images[]/delivery/manualEntry；历史单 parcel{}/image{} 只在本文件归一（不写库）。
 // 规则：不返回 _id/partnerId/openid/clientRequestId/requestKey/batchActionId/cloudPath；
 //       isTest/impersonatedBy 仅测试写会话可见；对方昵称头像只在「当前 ACTIVE 绑定」内现查，不落订单快照。
 'use strict';
@@ -9,7 +10,16 @@ const orderState = require('../../shared/order-state');
 const orderView = require('../../shared/order-view');
 const time = require('../../lib/time');
 const mask = require('../../db/dto/mask');
-const { recognitionSourceLabel } = require('../../lib/ai/parse');
+const {
+  buildParcelDto,
+  buildParcelDtos,
+  buildImageDto,
+  buildImageDtos,
+  deliveryOf,
+  needCodeOf,
+  failureHintOf,
+  maskDeliveryDto
+} = require('./_dto-fields');
 
 const ACTION_LABELS = Object.freeze({
   accept: '接单',
@@ -125,37 +135,7 @@ async function resolveCounterpart(ctx, order, side) {
   return null;
 }
 
-function buildParcelDto(order) {
-  const parcel = (order && order.parcel) || {};
-  const codeStatus = parcel.codeStatus === enums.CODE_STATUS.NEED_CODE
-    ? enums.CODE_STATUS.NEED_CODE
-    : enums.CODE_STATUS.OK;
-  const source = textOf(parcel.recognitionSource) || enums.RECOGNITION_SOURCE.RULE;
-  return {
-    stationId: textOf(parcel.stationId),
-    stationName: textOf(parcel.stationName),
-    pickupCode: textOf(parcel.pickupCode),
-    lockerNo: textOf(parcel.lockerNo),
-    trackingTail: textOf(parcel.trackingTail),
-    codeStatus,
-    codeStatusText: enums.CODE_STATUS_TEXT[codeStatus],
-    recognitionSource: source,
-    recognitionSourceLabel: recognitionSourceLabel(source),
-    confidence: textOf(parcel.confidence)
-  };
-}
-
-// 截图可见性（批 5 契约 B）：cleaned=已按隐私策略清理（cleanup 写 image.cleanedAt）；
-// hasImage=有 fileId 且未被清理。只读投影——DTO 不清理、不改写订单，清理只由 cleanup 任务执行。
-function buildImageDto(order) {
-  const image = (order && order.image) || {};
-  const cleaned = !!image.cleanedAt;
-  return {
-    hasImage: typeof image.fileId === 'string' && image.fileId !== '' && !cleaned,
-    cleaned
-  };
-}
-
+// v1.0 聚合字段（parcels[]/images[]/delivery/manualEntry）由 _dto-fields 提供，本文件只负责订单视图组装。
 function buildDormDto(dorm) {
   if (!dorm || typeof dorm !== 'object') {
     return null;
@@ -301,8 +281,15 @@ function buildActions(order, side, nowMs) {
 }
 
 // admin 真实会话：默认脱敏（不返回完整 L3、不展示头像、昵称脱敏；完整 L3 只经只读视角）
+// v1.0：多包裹逐件脱敏取件码；images[] 剔除 fileId（只留 status/hasImage/cleaned）；delivery 按宿舍/称呼脱敏。
 function applyAdminMask(dto, counterpart) {
-  dto.parcel.pickupCode = mask.maskPickupCode(dto.parcel.pickupCode);
+  const parcels = Array.isArray(dto.parcels) ? dto.parcels : [];
+  parcels.forEach((parcel) => {
+    parcel.pickupCode = mask.maskPickupCode(parcel.pickupCode);
+  });
+  dto.parcel = parcels[0] || buildParcelDto(null);
+  const images = Array.isArray(dto.images) ? dto.images : [];
+  dto.image = images[0] || buildImageDto(null);
   dto.phoneTail = mask.maskPhoneTail(dto.phoneTail);
   if (dto.dorm) {
     dto.dorm = {
@@ -313,6 +300,9 @@ function applyAdminMask(dto, counterpart) {
       dormKey: '',
       roomTag: ''
     };
+  }
+  if (dto.delivery) {
+    dto.delivery = maskDeliveryDto(dto.delivery);
   }
   if (dto.guest) {
     dto.guest = {
@@ -330,6 +320,56 @@ function applyAdminMask(dto, counterpart) {
     : null;
 }
 
+// 订单视图字段装配（buildOrderDto 的主体；拆出以控单函数行数，参数 parts 见调用处）
+function buildOrderFields(order, parts) {
+  const side = parts.side;
+  const parcels = parts.parcels;
+  const images = parts.images;
+  const delivery = parts.delivery;
+  return {
+    orderNo: textOf(order.orderNo),
+    status: parts.status,
+    statusText: orderState.statusText(parts.status),
+    bucket: orderView.bucketOf(parts.status),
+    progressIndex: orderState.progressIndex(parts.status),
+    needCode: needCodeOf(order),
+    failureHint: failureHintOf(order),
+    source: textOf(order.source),
+    service: { code: textOf(order.service && order.service.code), name: textOf(order.service && order.service.name) },
+    appoint: buildAppointDto(order.appoint),
+    parcels,
+    parcel: parcels[0] || buildParcelDto(null),
+    images,
+    image: images[0] || buildImageDto(null),
+    delivery,
+    manualEntry: order.manualEntry === true,
+    note: textOf(order.note),
+    phoneTail: textOf(order.phoneTail) || (delivery && delivery.phoneTail) || '',
+    dorm: buildDormDto(order.dorm),
+    guest: side === 'PARTNER' ? buildGuestDto(order.guest) : null,
+    exception: buildExceptionDto(order.exception),
+    deliveryNote: textOf(order.deliveryNote),
+    cancelReason: textOf(order.cancelReason),
+    cancelReasonText: order.cancelReason ? enums.cancelReasonText(order.cancelReason) : '',
+    cancelledBy: textOf(order.cancelledBy),
+    cancelledByText: order.cancelledBy ? enums.CANCELLED_BY_LABELS[order.cancelledBy] || '' : '',
+    customerNo: textOf(order.customerNo),
+    partnerNo: textOf(order.partnerNo),
+    counterpart: parts.counterpart,
+    actions: parts.withActions ? buildActions(order, side, parts.nowMs) : [],
+    version: numberOrZero(order.version),
+    statusUpdatedAt: isoOf(order.statusUpdatedAt),
+    createdAt: isoOf(order.createdAt),
+    updatedAt: isoOf(order.updatedAt),
+    acceptedAt: isoOf(order.acceptedAt),
+    pickedAt: isoOf(order.pickedAt),
+    deliveredAt: isoOf(order.deliveredAt),
+    completedAt: isoOf(order.completedAt),
+    cancelledAt: isoOf(order.cancelledAt),
+    deletedByCustomerAt: isoOf(order.deletedByCustomerAt)
+  };
+}
+
 /**
  * 订单视图模型。
  * @param {object} ctx handler 上下文
@@ -342,58 +382,24 @@ async function buildOrderDto(ctx, order, options) {
   const withActions = opts.withActions !== false;
   const withCounterpart = opts.withCounterpart !== false;
   const identity = (ctx && ctx.identity) || {};
-  const isTestWrite = identity.viewMode === enums.VIEW_MODE.TEST_WRITE;
-  const nowMs = time.toMs(ctx && ctx.now);
-  const status = textOf(order.status);
   const counterpart = withCounterpart && side !== 'ADMIN'
     ? await resolveCounterpart(ctx, order, side)
     : null;
-  const dto = {
-    orderNo: textOf(order.orderNo),
-    status,
-    statusText: orderState.statusText(status),
-    bucket: orderView.bucketOf(status),
-    progressIndex: orderState.progressIndex(status),
-    needCode: (order.parcel || {}).codeStatus === enums.CODE_STATUS.NEED_CODE,
-    failureHint: !!(order.image && order.image.failureId),
-    source: textOf(order.source),
-    service: {
-      code: textOf(order.service && order.service.code),
-      name: textOf(order.service && order.service.name)
-    },
-    appoint: buildAppointDto(order.appoint),
-    parcel: buildParcelDto(order),
-    note: textOf(order.note),
-    phoneTail: textOf(order.phoneTail),
-    dorm: buildDormDto(order.dorm),
-    guest: side === 'PARTNER' ? buildGuestDto(order.guest) : null,
-    exception: buildExceptionDto(order.exception),
-    deliveryNote: textOf(order.deliveryNote),
-    cancelReason: textOf(order.cancelReason),
-    cancelReasonText: order.cancelReason ? enums.cancelReasonText(order.cancelReason) : '',
-    cancelledBy: textOf(order.cancelledBy),
-    cancelledByText: order.cancelledBy ? enums.CANCELLED_BY_LABELS[order.cancelledBy] || '' : '',
-    customerNo: textOf(order.customerNo),
-    partnerNo: textOf(order.partnerNo),
-    image: buildImageDto(order),
+  const dto = buildOrderFields(order, {
+    side,
+    withActions,
     counterpart,
-    actions: withActions ? buildActions(order, side, nowMs) : [],
-    version: numberOrZero(order.version),
-    statusUpdatedAt: isoOf(order.statusUpdatedAt),
-    createdAt: isoOf(order.createdAt),
-    updatedAt: isoOf(order.updatedAt),
-    acceptedAt: isoOf(order.acceptedAt),
-    pickedAt: isoOf(order.pickedAt),
-    deliveredAt: isoOf(order.deliveredAt),
-    completedAt: isoOf(order.completedAt),
-    cancelledAt: isoOf(order.cancelledAt),
-    deletedByCustomerAt: isoOf(order.deletedByCustomerAt)
-  };
+    nowMs: time.toMs(ctx && ctx.now),
+    status: textOf(order.status),
+    parcels: buildParcelDtos(order),
+    images: buildImageDtos(order),
+    delivery: deliveryOf(order)
+  });
   if (side === 'ADMIN') {
     applyAdminMask(dto, counterpart);
     dto.actions = [];
   }
-  if (isTestWrite) {
+  if (identity.viewMode === enums.VIEW_MODE.TEST_WRITE) {
     dto.isTest = order.isTest === true;
     dto.impersonatedBy = textOf(order.impersonatedBy);
   }

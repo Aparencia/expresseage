@@ -1,4 +1,8 @@
 // handlers/admin/listOrders.js · admin.listOrders（默认脱敏 + 默认 isTest=false；异常单可筛选）
+// 口径：DATA_MODEL §5.2「admin 订单列表：默认 isTest=false、status 筛选、customerNo/partnerNo 精确」、
+//       §5.3「游标分页、禁止 skip/where({}) 全表扫描与客户端过滤」。
+// 分页：游标 {sortValue,id}（statusUpdatedAt desc + orderNo 平局），过滤条件全部进服务端 where；
+// 关键词=订单号/顾客编号/兼职编号前缀，走服务端 gte(prefix) 升序游标（内存只做 startsWith 收敛）。
 'use strict';
 
 const { COLLECTIONS } = require('../../shared/collections');
@@ -7,12 +11,12 @@ const {
   errors,
   sharedValidate,
   createAdminScope,
-  readTrimmedText,
-  parsePage,
-  findPage,
-  MAX_SCAN
+  readTrimmedText
 } = require('./_common');
 const dto = require('./_dto');
+const paging = require('./_paging');
+
+const ORDER_NO_START = /^\d/;
 
 function normalizeStatus(value) {
   if (value === undefined || value === null || value === '') {
@@ -35,33 +39,31 @@ function normalizeNo(value, field, validator) {
   return check.canonical;
 }
 
-function buildMatcher(rawKeyword) {
-  const keyword = readTrimmedText(rawKeyword, 32).toUpperCase();
-  if (!keyword) {
-    return function matchAll() {
-      return true;
-    };
+// 关键词分派：数字开头=订单号前缀；C…=顾客编号前缀；P…=兼职编号前缀。
+function keywordQueryOf(rawKeyword) {
+  const text = readTrimmedText(rawKeyword, 40);
+  if (!text) {
+    return null;
   }
-  return function matchKeyword(row) {
-    const orderNo = String(row.orderNo || '');
-    if (orderNo.indexOf(keyword) === 0) {
-      return true;
-    }
-    return String(row.customerNo || '').indexOf(keyword) === 0
-      || String(row.partnerNo || '').indexOf(keyword) === 0;
-  };
+  const upper = text.toUpperCase();
+  if (ORDER_NO_START.test(upper)) {
+    return { field: 'orderNo', prefix: upper };
+  }
+  const compact = paging.prefixOf(upper);
+  if (/^C[A-Z2-9]*$/.test(compact)) {
+    return { field: 'customerNo', prefix: compact };
+  }
+  if (/^P[A-Z2-9]*$/.test(compact)) {
+    return { field: 'partnerNo', prefix: compact };
+  }
+  return { field: 'orderNo', prefix: upper };
 }
 
-async function handler(ctx, payload) {
-  const scope = await createAdminScope(ctx);
-  const input = payload || {};
-  const page = parsePage(input);
+function buildWhere(input) {
+  const where = {};
   const status = normalizeStatus(input.status);
   const customerNo = normalizeNo(input.customerNo, 'customerNo', sharedValidate.validateCustomerNo);
   const partnerNo = normalizeNo(input.partnerNo, 'partnerNo', sharedValidate.validatePartnerNo);
-  const includeTest = input.includeTest === true;
-  const match = buildMatcher(input.keyword);
-  const where = {};
   if (status) {
     where.status = status;
   }
@@ -71,32 +73,46 @@ async function handler(ctx, payload) {
   if (partnerNo) {
     where.partnerNo = partnerNo;
   }
-  const rows = [];
-  let scanned = 0;
-  while (rows.length < page.limit && scanned < MAX_SCAN) {
-    const size = Math.min(Math.max(page.limit - rows.length + 10, 20), 100);
-    const batch = await findPage(scope, COLLECTIONS.ORDERS, where, [['createdAt', 'desc']], page.offset + scanned, size);
-    if (batch.length === 0) {
-      break;
-    }
-    for (let i = 0; i < batch.length && rows.length < page.limit; i += 1) {
-      const row = batch[i];
-      if (!includeTest && row.isTest === true) {
-        continue;
-      }
-      if (!match(row)) {
-        continue;
-      }
-      rows.push(row);
-    }
-    scanned += batch.length;
-    if (batch.length < size) {
-      break;
-    }
+  const includeTest = input.includeTest === true;
+  if (!includeTest) {
+    where.isTest = false;
   }
-  const list = rows.map((row) => dto.orderBrief(row, row.isTest === true));
-  const nextCursor = rows.length >= page.limit ? { offset: page.offset + scanned } : null;
-  return { list: list, nextCursor: nextCursor, includeTest: includeTest };
+  return { where: where, includeTest: includeTest };
+}
+
+async function handler(ctx, payload) {
+  const scope = await createAdminScope(ctx);
+  const input = payload || {};
+  const query = paging.parseQuery(input);
+  const built = buildWhere(input);
+  const keyword = keywordQueryOf(input.keyword);
+  let result = null;
+  if (keyword) {
+    result = await paging.pagedCollect(scope, paging.fetchPrefixPage, {
+      collection: COLLECTIONS.ORDERS,
+      where: built.where,
+      field: keyword.field,
+      prefix: keyword.prefix,
+      limit: query.limit,
+      cursor: query.cursor
+    }, null);
+  } else {
+    result = await paging.pagedCollect(scope, paging.fetchOrderedPage, {
+      collection: COLLECTIONS.ORDERS,
+      where: built.where,
+      sortField: 'statusUpdatedAt',
+      idField: 'orderNo',
+      order: 'desc',
+      idOrder: 'desc',
+      limit: query.limit,
+      cursor: query.cursor
+    }, null);
+  }
+  return {
+    list: result.list.map((row) => dto.orderBrief(row, row.isTest === true)),
+    nextCursor: result.nextCursor,
+    includeTest: built.includeTest
+  };
 }
 
 module.exports = handler;

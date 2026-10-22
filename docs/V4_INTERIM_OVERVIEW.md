@@ -1,7 +1,7 @@
 # v4 临时总体说明（Interim Overview）
 
 > **性质**：临时总览，**不是**最终交付文档，也不替代任何口径或状态文件。
-> **生成/更新**：2026-10-22（Asia/Shanghai；**v0.4 = 云环境就绪（envId 回填）+ AI Key 就位后更新**）｜**依据**：`check.ps1` 四步全 PASS、`git ls-files` 565 件（回写提交见 `git log -1`）。
+> **生成/更新**：2026-10-23（Asia/Shanghai；**v0.5 = 批 10 C 批 v1.0 一单多包裹收口后更新**）｜**依据**：`check.ps1` 四步全 PASS（`check.js` 32/32、`check-docs` 10/10、零金额 0 命中、selftest 31 套 4,566 断言）、`gate.ps1` 红 0/黄 0（回写提交见 `git log -1`）。
 > **权威顺序**：口径 → `docs/V4_CONTRACT.md`；状态与待办 → `STATE.md`；工程规则 → `docs/V4_ENGINEERING.md`；接口与写作用域 → `docs/ARCHITECTURE.md`。本文只做汇总；如与上述文件冲突，以上述文件为准，并回报 Lead 修订本文。
 > **维护**：每批收口或重大状态变化时更新，并在 §11 记版本；最终由《交付说明/运维手册》取代。
 > **读者**：项目 owner（用户本人）、接手开发者、提审材料准备者。
@@ -11,9 +11,9 @@
 | 问题 | 一句话答案 |
 | :-- | :-- |
 | 这是什么 | 校园快递代取小程序 **v4**：顾客下单 + 兼职接单履约 + 开发者治理；微信云开发；**零金额**（只做信息与履约，不涉及任何交易语义） |
-| 做到哪 | 批 0~9 的**工程侧（离线）全部收口**：30 页、2 个云函数、81 个动作、14 集合、28 套判据 4,151 条断言、门禁四步全绿；已提交，工作树干净 |
+| 做到哪 | 批 0~10 的**工程侧（离线）全部收口**：31 页、2 个云函数、80 个动作、14 集合、31 套判据 4,566 条断言、门禁四步全绿（2026-10-23 批 10 C 批收口，工作树待提交） |
 | 还差什么 | **真实云环境创建/部署、真机点检、隐私 13 项填写与微信后台声明、审核提审、灰度与回滚演练**——这些只能由你执行，Agent 不代做、不代勾 |
-| 你现在做三件事 | ①控制台建 **14 集合/索引/安全规则** → 部署 `api`/`cleanup` → 配环境变量/触发器/存储权限（**云环境已建、envId 已回填、AI Key 已就位**）；②真机点检；③按 §7 推进隐私 → 提审 → 灰度（**D1~D22 已于 2026-10-22 全部裁决**） |
+| 你现在做三件事 | ①控制台建 **14 集合/索引/安全规则** → 部署 `api`/`cleanup` → 配环境变量/触发器/存储权限（**云环境已建、envId 已回填、AI Key 已就位**）；②真机点检；③按 §7 推进隐私 → 提审 → 灰度（**D1~D26、D28~D29 已裁决；D27 位置方案待裁决**） |
 | 想先看效果 | 见**附录 B** 三角色最短体验路径（开发者工具/测试账号即可跑通） |
 
 ## 1. 项目是什么
@@ -72,7 +72,7 @@ v4 是面向**真实顾客**的校园快递代取小程序：顾客上传取件�
 
 | 阶段 | 内容 | 状态 |
 | :-- | :-- | :-- |
-| 开工裁决 | D1~D22 全部裁决（D2 沿用 v3 appid；D8 东/西/南/北/翠苑；D13 个人主体+工具类目；D22=A） | ✅ 已闭环（2026-10-22） |
+| 开工裁决 | D1~D26、D28~D29 全部裁决（D2 沿用 v3 appid；D8 东/西/南/北/翠苑；D13 个人主体+工具类目；D22 改判 B→D24；D23~D26 C 批；D28/D29 B 批）；D27 位置方案待裁决 | ✅ 已闭环（2026-10-22） |
 | 云环境 | 建**唯一云环境**（D1 修订：账号只能开 1 个，开发/体验/正式共用一库）、14 集合/索引/安全规则、环境变量、存储权限、定时触发器、部署 | **环境已建 + envId 已回填（2026-10-22）；集合/索引/规则/环境变量/触发器/部署未开始** |
 | 真机与联调 | QA 附录 B 批 2~9 分区 + §H12~H17（双端/越权/隐私/弱网/后台/切换会话） | 未开始 |
 | 隐私与提审 | 13 项填写、微信后台逐项声明、`privacyVersion` 定稿、审核材料与提审 | 未开始 |
@@ -87,13 +87,13 @@ v4 是面向**真实顾客**的校园快递代取小程序：顾客上传取件�
 | `node tools/check.js` | 通过 **31** 项；失败 0 项 |
 | `node tools/check-docs.js --batch 1` | 通过 **10** 项；失败 0 项 |
 | `node tools/zero-money-scan.js` | **0 命中**（白名单精确项 136） |
-| `node tools/selftest.js` | **28 套 / 4,151 条断言全 PASS**，失败 0、SKIP 0 |
+| `node tools/selftest.js` | **31 套 / 4,566 条断言全 PASS**，失败 0、SKIP 0 |
 | `node tools/sync-cloud-shared.js --check` | 写 0/删 0/已一致 **32** 件；16 源 × 2 套 hash 对帐 OK |
 | `powershell -File gate.ps1 -Anchor <批前HEAD> …` | 红色 **0** 项；黄色 **0** 项（退出码 0） |
 
 ## 3. 系统全貌
 
-### 3.1 端侧（微信小程序，30 页）
+### 3.1 端侧（微信小程序，31 页）
 
 | 包 | 页数 | 页面 |
 | :-- | :-- | :-- |
@@ -145,17 +145,18 @@ expressage_college_v4/
 
 ## 4. 质量证据：凭什么说「工程侧收口」
 
-### 4.1 判据规模（`node tools/selftest.js`，28 套 4,151 条）
+### 4.1 判据规模（`node tools/selftest.js`，31 套 4,566 条）
 
 | 分组 | 套件（断言数） |
 | :-- | :-- |
-| 底座 | core 58、state 341、recognize 187 |
-| 身份/绑定/会话 | cloud 168、bind 79、bind-cloud 108、profile 98、switch 140、testaccount 153 |
-| 订单（顾客/兼职/详情/生命周期） | order 126、order-flow 135、order-lifecycle 98、order-customer 190、order-partner 127、order-workbench 197、order-detail-partner 153 |
-| 兼职客户/统计 | partner-customers 120、partner-orders 89、partner-pages 156、partner-stats 203 |
-| 后台/消息/清理/隐私 | admin 220、messages 89、cleanup 183、admin-pages 145、message-pages 138、privacy-text 164 |
+| 底座 | core 57、state 339、recognize 195 |
+| 身份/绑定/会话 | cloud 174、bind 79、bind-cloud 108、profile 102、switch 165、testaccount 172 |
+| 订单（顾客/兼职/详情/生命周期/双角色） | order 127、order-flow 158、order-lifecycle 98、order-customer 202、order-partner 128、order-workbench 222、order-detail-partner 170、cloud-dual 36 |
+| 兼职客户/统计 | partner-customers 120、partner-orders 89、partner-pages 184、partner-stats 203 |
+| 后台/消息/清理/隐私 | admin 249、messages 89、cleanup 212、admin-pages 154、message-pages 138、privacy-text 203 |
 | AI 兜底 | ai 197 |
 | 注销/数据删除 | deletion 89 |
+| 性能/工具链 | performance 97、tools 10 |
 
 ### 4.2 判据有牙与一致性
 
@@ -176,7 +177,7 @@ expressage_college_v4/
 | :-- | :-- | :-- |
 | 口径与设计 | `docs/V4_CONTRACT.md` | **唯一口径卡 v0.9**：角色/术语/编号/集合/状态机/页面地图/隐私/裁决索引 |
 | | `V4_REBUILD_SPEC.md`（根） | 主规格书：产品/架构/权限/流程/批次/验收/风险/裁决 |
-| | `docs/V4_DECISIONS.md` | D1~D22 裁决清单（含推荐、代价、被否方案、落点） |
+| | `docs/V4_DECISIONS.md` | D1~D26、D28~D29 裁决清单（含推荐、代价、被否方案、落点；D27 待裁决） |
 | | `docs/V4_DATA_MODEL.md` | 集合/字段/索引/云函数 API 契约/编号/roomTag/头像/测试账号/识别失败队列/安全规则 |
 | | `docs/V4_UX_CUSTOMER.md` · `V4_UX_PARTNER.md` · `V4_UX_DEVELOPER.md` | 三端逐页交互与验收 |
 | | `docs/ARCHITECTURE.md` | 代码分层、冻结接口、S0~S10 写作用域 |
@@ -202,7 +203,7 @@ expressage_college_v4/
 | 状态 | 条目 | 落地 |
 | :-- | :-- | :-- |
 | 开工门（4，已闭环） | D1 A 云开发；**D2 沿用 v3 appid `wxcb7e5b41b89bc806`**；D3 A 邀请码；D13 个人主体+工具类目 | `project.config.json` 已改；云环境待建；类目可选性提审前确认 |
-| 用户新增（已定） | **D8 东苑/西苑/南苑/北苑/翠苑**（C=翠苑）；**D22 A**（上传失败必须先有截图） | `shared/zones.js` 默认值已改并同步云副本；UX §4.5 已限定 |
+| 用户新增（已定） | **D8 东苑/西苑/南苑/北苑/翠苑**（C=翠苑）；**D22 已改判 B→D24**（允许无截图手填，每件仍需站点+取件码或尾号） | `shared/zones.js` 默认值已改并同步云副本；UX/隐私文本/QA 按 D24 回写 |
 | 早前已定（4） | D5 服务只分类型、D6 零金额、D20 绑定只能顾客发起、D21 roomTag 大写 | 已关闭 |
 | 按推荐确认（12） | D4、D7、D9、D10、D11、D12、D14、D15、D16、D17、D18、D19 | 无改动；按原设计执行 |
 
@@ -271,7 +272,7 @@ expressage_college_v4/
 ```powershell
 # 在仓库根目录 D:\Code\expressage_college_v4 执行
 powershell -File check.ps1          # 四步门禁：必须看到「全部通过（4 步，退出码 0）」
-node tools/selftest.js              # 判据套件：应看到「运行 28 套；失败 0 套」与各套断言数
+node tools/selftest.js              # 判据套件：应看到「运行 31 套；失败 0 套」与各套断言数
 node tools/zero-money-scan.js       # 零金额扫描：应看到「0 命中（白名单 136 项）」
 node tools/sync-cloud-shared.js --check  # 共享副本对帐：应看到「hash 对帐 OK（16 件 × 2 套）」
 powershell -File tools/doctor.ps1   # 环境体检：envId 占位会告警（D1 未闭环的预期结果）
@@ -306,7 +307,7 @@ node tools/selftest.js | Select-String '运行'                              # �
 | upload_tickets | 上传票据（一次性、短时有效），防止绕过服务端校验直接上传 |
 | purge / 注销两阶段 | 申请即解绑+置已注销；下一轮清理匿名化/删文件；30 天物理删除 |
 | sweep | `cleanup` 云函数里的幂等清理任务（一轮失败不影响其它任务） |
-| 门禁四步 | check.js（代码/配置 31 条）→ check-docs（文档 10 条）→ 零金额扫描 → selftest（28 套断言） |
+| 门禁四步 | check.js（代码/配置 32 条）→ check-docs（文档 10 条）→ 零金额扫描 → selftest（31 套断言） |
 | 变异电池 | 故意注入缺陷验证判据会「红」，再逐字节还原并复跑绿 |
 | gate 红/黄 | 红=失败（exit 1）；黄=告警（exit 2），黄不等于绿 |
 
@@ -318,6 +319,7 @@ node tools/selftest.js | Select-String '运行'                              # �
 | v0.2 | 2026-10-22 | 用户裁决回写：D1~D22 全部闭环（D2 沿用 v3 appid；D8 东/西/南/北/翠苑；D13 个人主体+工具类目；D22=A）；更新进度表/裁决表/下一步/风险；TD 关闭数更新为 19 |
 | v0.3 | 2026-10-22 | **D1 单环境修订**：账号只能开 1 个云环境 → 三档同 envId；更新下一步②/进度表/风险（单环境无 staging）/术语表；发布前新增「单环境清零」步骤（RUNBOOK §10.2.1） |
 | v0.4 | 2026-10-22 | **云环境就绪**：用户创建唯一环境 + envId 回填 `config/env.js`（doctor 占位告警转 PASS）；`DEEPSEEK_API_KEY` 已提供（只入云函数环境变量，仓库零落值）；更新 30 秒版/进度表/下一步②/风险；下一步=控制台资源与首部署冒烟 |
+| v0.5 | 2026-10-23 | **批 10 C 批收口（v1.0 一单多包裹 D23~D26）**：更新进度表/判据规模（31 套 4,566）/门禁读数（check 32/32、gate 红0黄0）/页面数 31；`createBatch` 移除、性能 P0、M 系列修复；B 批 D28/D29 规格已备、D27 待裁决 |
 
 ## 附录 A · 关键文件索引
 

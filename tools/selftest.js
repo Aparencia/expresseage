@@ -190,25 +190,57 @@ function installCrashGuard(getStats, name) {
 module.exports = { createHarness, installCrashGuard, isPlainEqual, ROOT };
 
 if (require.main === module) {
-  // 聚合入口：依次运行全部"已存在"的分域 suite（按 register 形态集成；未落盘/非 register 形态打印 SKIP 不算失败）。
+  // 聚合入口：注册表 SUITES + 磁盘完整性闸（M-46/R-C-04）。
+  // 完整性闸：磁盘上的 selftest-*.js 必须「要么在 SUITES 注册、要么在 NON_AGGREGATE 显式声明」；
+  //   SUITES 每项必须在磁盘存在且导出 register + EXPECTED_ASSERTIONS。违反任一条 → 红。
+  //   历史实现：SUITES 与磁盘硬编码脱钩（新增套件忘登记即静默不跑），非 register 形态打印 [SKIP]
+  //   且 SKIP 不计失败 —— 聚合可在少跑套件的情况下仍全绿。
   // 每套 suite 自己打印汇总行（断言 N/N；失败 M 项 + 结果：PASS|FAIL），最后再打印全局汇总。
   const fs = require('fs');
-  const SUITES = ['selftest-core', 'selftest-state', 'selftest-recognize', 'selftest-cloud', 'selftest-ai',
+  const SUITES = ['selftest-core', 'selftest-state', 'selftest-recognize', 'selftest-cloud', 'selftest-cloud-dual', 'selftest-ai',
     'selftest-bind', 'selftest-bind-cloud', 'selftest-order', 'selftest-order-flow', 'selftest-order-lifecycle',
     'selftest-order-customer', 'selftest-order-partner', 'selftest-order-workbench', 'selftest-order-detail-partner',
     'selftest-partner-customers', 'selftest-partner-orders', 'selftest-partner-pages', 'selftest-partner-stats',
     'selftest-profile', 'selftest-switch', 'selftest-testaccount',
     'selftest-admin', 'selftest-messages', 'selftest-cleanup', 'selftest-admin-pages',
-    'selftest-message-pages', 'selftest-privacy-text', 'selftest-deletion'];
+    'selftest-message-pages', 'selftest-privacy-text', 'selftest-tools', 'selftest-deletion', 'selftest-performance'];
+  // 非独立套件（被其他 suite require 的夹具/用例表）：显式声明、不参与聚合。
+  // 磁盘上新增 selftest-*.js 时必须二选一：进 SUITES（参与聚合）或在此登记并给理由，否则完整性闸判红。
+  const NON_AGGREGATE = new Map([
+    ['selftest-cloud-fixtures', '被 selftest-cloud require 的 fake DB 夹具，非独立套件'],
+    ['selftest-order-partner-cases', 'selftest-order-partner 的用例表，非独立套件'],
+    ['selftest-partner-customers-cases', 'selftest-partner-customers 的用例表，非独立套件'],
+    ['selftest-partner-orders-cases', 'selftest-partner-orders 的用例表，非独立套件'],
+  ]);
   const agg = { count: 0, passed: 0, failures: 0 };
   installCrashGuard(() => ({ count: agg.count, passed: agg.passed, failures: agg.failures }), 'selftest');
   (async () => {
     let failedSuites = 0;
     let ranSuites = 0;
-    const skipped = [];
+    // ① 完整性：注册表 ↔ 磁盘双向核对
+    const integrity = [];
+    const onDisk = fs.readdirSync(__dirname)
+      .filter((f) => /^selftest-.+\.js$/.test(f))
+      .map((f) => f.slice(0, -3));
+    for (const name of SUITES) {
+      if (!fs.existsSync(path.join(__dirname, name + '.js'))) integrity.push('SUITES 登记但磁盘缺失：' + name + '.js');
+      if (NON_AGGREGATE.has(name)) integrity.push('同时登记 SUITES 与 NON_AGGREGATE：' + name);
+    }
+    for (const name of onDisk) {
+      if (!SUITES.includes(name) && !NON_AGGREGATE.has(name)) {
+        integrity.push('磁盘存在但未注册（聚合不会运行）：' + name + '.js');
+      }
+    }
+    for (const name of NON_AGGREGATE.keys()) {
+      if (!fs.existsSync(path.join(__dirname, name + '.js'))) {
+        integrity.push('NON_AGGREGATE 声明但磁盘缺失：' + name + '.js');
+      }
+    }
+    integrity.forEach((msg) => console.log('[FAIL] 套件完整性 · ' + msg));
+    // ② 逐套运行：非 register 形态判红（不再 SKIP 静默跳过）
     for (const name of SUITES) {
       const file = path.join(__dirname, name + '.js');
-      if (!fs.existsSync(file)) { skipped.push(name); continue; }
+      if (!fs.existsSync(file)) { continue; }
       let mod;
       try {
         mod = require(file);
@@ -219,8 +251,10 @@ if (require.main === module) {
         continue;
       }
       if (typeof mod.register !== 'function' || typeof mod.EXPECTED_ASSERTIONS !== 'number') {
-        console.log('[SKIP] ' + name + '：非 register 聚合形态（可独立运行 node tools/' + name + '.js）');
-        skipped.push(name);
+        console.log('[FAIL] ' + name + ' · 非 register 聚合形态（缺 register/EXPECTED_ASSERTIONS，聚合会静默漏跑；'
+          + '请改 register 形态或登记 NON_AGGREGATE）');
+        failedSuites += 1;
+        ranSuites += 1;
         continue;
       }
       const h = createHarness({ name });
@@ -234,10 +268,11 @@ if (require.main === module) {
       ranSuites += 1;
       if (code !== 0) failedSuites += 1;
     }
+    const ok = failedSuites === 0 && integrity.length === 0;
     console.log('------------------------------------------------------------');
-    console.log('selftest：运行 ' + ranSuites + ' 套；失败 ' + failedSuites + ' 套；SKIP ' + skipped.length
-      + ' 套（' + (skipped.join('、') || '无') + '）');
-    console.log('结果：' + (failedSuites === 0 ? 'PASS' : 'FAIL'));
-    process.exitCode = failedSuites === 0 ? 0 : 1;
+    console.log('selftest：运行 ' + ranSuites + ' 套；失败 ' + failedSuites + ' 套；SKIP 0 套（无）；完整性 '
+      + integrity.length + ' 项；非聚合辅助文件 ' + NON_AGGREGATE.size + ' 件（已声明）');
+    console.log('结果：' + (ok ? 'PASS' : 'FAIL'));
+    process.exitCode = ok ? 0 : 1;
   })();
 }

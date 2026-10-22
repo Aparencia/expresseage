@@ -44,7 +44,7 @@ const viewAsStart = require(path.join(ROOT, 'cloudfunctions/api/handlers/admin/v
 const viewAsEnd = require(path.join(ROOT, 'cloudfunctions/api/handlers/admin/viewAsEnd.js'));
 const switchSession = require(path.join(ROOT, 'cloudfunctions/api/middleware/switch-session.js'));
 
-const EXPECTED_ASSERTIONS = 163;
+const EXPECTED_ASSERTIONS = 165;
 
 const VIEW_TICKET = 'T'.repeat(enums.TOKEN_LENGTH);
 // 旧审计名用拼接构造：本文件不出现旧名字面量（门禁 #30 / 文档纪律）
@@ -223,8 +223,8 @@ function register(h) {
       removeStorageSync: function removeStorageSync() { saved = ''; }
     };
     const loaded = storage.load(platform);
-    t.eq(Object.keys(loaded).sort(), ['draftPointer', 'guides', 'lastRole'],
-      '本地存储只归三键（会话票据/模式/目标测试标记不进存储）');
+    t.eq(Object.keys(loaded).sort(), ['draftPointer', 'guides', 'lastRole', 'pickupChecks'],
+      '本地存储只归白名单四键（会话票据/模式/目标测试标记不进存储）');
     t.check(!/viewTicket|viewMode|targetIsTest|viewContext/.test(JSON.stringify(loaded)),
       '存储读数零会话字段（ENGINEERING §5.6 / 门禁 #15）');
     t.eq(loaded.guides, { PARTNER_WORKBENCH_V1: true }, '引导标记按白名单保留（纯 UI 偏好）');
@@ -644,6 +644,21 @@ function register(h) {
     ]);
     const foreign = await switchResult(() => viewAsEnd(switchCtx(db), { viewTicket: otherExitTicket }));
     t.eq(foreign.code, 'FORBIDDEN', '非本人票据结束 → FORBIDDEN（不泄露存在性）');
+    // 审查整改 M-13：目标账号失效（停用/注销/不存在）后退出会话必须仍可达 —— 中间件 EXIT 分支不再解析
+    // 目标身份；identity 回填发起人，handler 写 endedAt + ACCOUNT_SWITCH_END（黄条退出不再滞留到过期）。
+    const goneTicket = 'G'.repeat(enums.TOKEN_LENGTH);
+    db.seed('admin_view_sessions', [
+      switchSessionRow(goneTicket, cloudEnums.VIEW_MODE.READONLY, cloudEnums.ROLES.CUSTOMER, 'openid-gone', 'CGONE0001', false)
+    ]);
+    const goneState = switchState(switchCtx(db), 'admin.viewAsEnd', {}, { viewTicket: goneTicket, hasViewTicket: true });
+    const goneExit = await switchResult(() => switchSession.middleware(goneState));
+    t.check(goneExit.ok && goneState.ctx.identity.actorOpenid === ADMIN_OPENID
+      && goneState.ctx.identity.effectiveOpenid === ADMIN_OPENID
+      && goneState.ctx.identity.viewMode === cloudEnums.VIEW_MODE.READONLY,
+    '目标失效时退出会话可达：EXIT 不解析目标身份，identity 回填发起人（不再 NOT_FOUND）');
+    const goneEnded = await viewAsEnd(goneState.ctx, goneState.payload);
+    t.check(sessionDocOf(db, goneTicket).endedAt !== null && goneEnded && goneEnded.duplicated !== true,
+      '目标失效时 viewAsEnd 写 endedAt（会话不滞留到过期）');
   });
 
   // ---------------------------------------------------------------- §1.3 进入/退出会话身份水合（批 10 修复）

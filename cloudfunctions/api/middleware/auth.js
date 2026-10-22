@@ -8,6 +8,56 @@ const errors = require('../lib/errors');
 // 后台读数据一律走 admin.* 脱敏接口（不走 order.get/message.list 等业务读，避免绕过后台 DTO 脱敏）。
 const ADMIN_BUSINESS_ACTIONS = Object.freeze(['order.cancel']);
 
+// 双角色（users.roles 同时含 CUSTOMER+PARTNER）的「动作域角色」表：只登记恰好需要某一个业务角色的动作。
+// ARCHITECTURE §4.1 冻结口径：服务端权限判定只看「users.roles 是否包含该动作所需业务角色」，不依赖客户端 activeRole，
+// 同一 openid 双角色时两类动作都允许；identity.role 按动作域解析，解析不出所需角色 → 各 handler 的既有守卫拒绝。
+// 双角色都可执行的动作（order.get/create/cancel、message.*、user.*、upload.*、partner.getPublic、
+// partner.activate、config.getPublic 等）不登记：identity.role 留空（歧义动作不做单角色归一），
+// 由 handler 用 identity.roles 成员制判定（订单归属/入参选择哪一侧）。
+const ACTION_REQUIRED_ROLES = Object.freeze({
+  // 顾客域
+  'customer.saveProfile': ROLES.CUSTOMER,
+  'customer.getProfile': ROLES.CUSTOMER,
+  'bind.create': ROLES.CUSTOMER,
+  'bind.release': ROLES.CUSTOMER,
+  'bind.getCurrent': ROLES.CUSTOMER,
+  'bind.claimGuestOrder': ROLES.CUSTOMER,
+  'order.listCustomer': ROLES.CUSTOMER,
+  'order.confirmDelivery': ROLES.CUSTOMER,
+  'order.deleteRecord': ROLES.CUSTOMER,
+  // 兼职域
+  'partner.saveProfile': ROLES.PARTNER,
+  'partner.saveServiceConfig': ROLES.PARTNER,
+  'partner.listBindings': ROLES.PARTNER,
+  'partner.getCustomer': ROLES.PARTNER,
+  'partner.stats': ROLES.PARTNER,
+  'partner.unbindCustomer': ROLES.PARTNER,
+  'partner.saveCustomerNote': ROLES.PARTNER,
+  'order.listPartner': ROLES.PARTNER,
+  'order.accept': ROLES.PARTNER,
+  'order.reject': ROLES.PARTNER,
+  'order.markPicked': ROLES.PARTNER,
+  'order.unmarkPicked': ROLES.PARTNER,
+  'order.markDelivered': ROLES.PARTNER,
+  'order.unmarkDelivered': ROLES.PARTNER,
+  'order.reportException': ROLES.PARTNER,
+  'order.resolveException': ROLES.PARTNER,
+  'order.correct': ROLES.PARTNER,
+  'order.undo': ROLES.PARTNER
+});
+
+// 声明式业务角色（目前只有 ai.parseParcel 的入参 role）：仅用于双角色歧义动作选定本次动作域角色，
+// 不构成权限授予——调用方仍须 users.roles 已包含该角色（否则保持空角色，由 handler 校验拒绝）。
+function declaredRoleOf(action, payload) {
+  if (action !== 'ai.parseParcel') {
+    return '';
+  }
+  const role = payload && typeof payload === 'object' && typeof payload.role === 'string'
+    ? payload.role.trim().toUpperCase()
+    : '';
+  return role === ROLES.CUSTOMER || role === ROLES.PARTNER ? role : '';
+}
+
 // ADMIN_OPENIDS 只从环境变量读（每次请求重查，不缓存）；缺失/空/解析失败 ⇒ admin 通道关闭。
 function resolveDeveloperNo(env, openid) {
   if (!env || !openid) {
@@ -72,6 +122,44 @@ function resolveRole(user) {
   return '';
 }
 
+// users.roles 归一为业务角色集（CUSTOMER/PARTNER，顺序固定、去重）：双角色场景成员制判定的唯一依据。
+function businessRolesOf(user) {
+  const raw = user && Array.isArray(user.roles) ? user.roles : [];
+  const roles = [];
+  if (raw.indexOf(ROLES.CUSTOMER) >= 0) {
+    roles.push(ROLES.CUSTOMER);
+  }
+  if (raw.indexOf(ROLES.PARTNER) >= 0) {
+    roles.push(ROLES.PARTNER);
+  }
+  return roles;
+}
+
+// identity.role 按动作域解析：
+//  · 单角色：保持原语义（users.roles 恰好一个合法业务角色 → 该角色，否则空角色）；
+//  · 双角色：动作在 ACTION_REQUIRED_ROLES 内 → 解析为所需角色（users.roles 必含）；不在表内 → 空角色
+//    （歧义动作不归一），但 ai.parseParcel 允许按入参 role 选定（仍须 users.roles 已含该角色）；
+//  · 其余形状（0 个/异常数据）：保持原「空角色」语义，不放大权限。
+function resolveRoleForAction(user, action, payload) {
+  const raw = user && Array.isArray(user.roles) ? user.roles : [];
+  if (raw.length === 1) {
+    return resolveRole(user);
+  }
+  if (raw.length !== 2) {
+    return '';
+  }
+  const roles = businessRolesOf(user);
+  if (roles.length !== 2) {
+    return '';
+  }
+  const required = ACTION_REQUIRED_ROLES[action] || '';
+  if (required) {
+    return roles.indexOf(required) >= 0 ? required : '';
+  }
+  const declared = declaredRoleOf(action, payload);
+  return declared && roles.indexOf(declared) >= 0 ? declared : '';
+}
+
 function isAdminAction(action) {
   return typeof action === 'string' && action.indexOf('admin.') === 0;
 }
@@ -117,7 +205,9 @@ async function middleware(state) {
     throw errors.forbidden('账号已停用，请联系开发者');
   }
   ctx.identity.developerNo = resolveDeveloperNo(ctx.env, ctx.openid);
-  ctx.identity.role = resolveRole(user);
+  // users.roles 归一（双角色成员制判定的依据）；identity.role 按动作域解析（ARCHITECTURE §4.1 双角色口径）。
+  ctx.identity.roles = businessRolesOf(user);
+  ctx.identity.role = resolveRoleForAction(user, state.action, state.payload);
   // 开发者无业务角色时，仅 ADMIN_BUSINESS_ACTIONS 按 ADMIN 解析（否则保持空角色 → 各 handler 按业务角色守卫拒绝）。
   // 供 order 域 orderSideOf 识别「后台介入」分支（CONTRACT §5.1 order.cancel：admin 仅异常介入 + 审计）。
   if (!ctx.identity.role && ctx.identity.developerNo && ADMIN_BUSINESS_ACTIONS.indexOf(state.action) >= 0) {
@@ -139,6 +229,10 @@ module.exports = {
   ensureUser,
   resolveDeveloperNo,
   resolveRole,
+  resolveRoleForAction,
+  businessRolesOf,
+  declaredRoleOf,
   isAdminAction,
-  ADMIN_BUSINESS_ACTIONS
+  ADMIN_BUSINESS_ACTIONS,
+  ACTION_REQUIRED_ROLES
 };

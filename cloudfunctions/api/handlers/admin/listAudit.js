@@ -1,4 +1,8 @@
 // handlers/admin/listAudit.js · admin.listAudit（审计分页；旧切换会话审计名只读兼容映射）
+// 口径：DATA_MODEL §5.2「admin 审计：action 按 at desc / developerNo 按 at desc」、
+//       CONTRACT §11.3 / UX_DEVELOPER US-D11「多开发者各自登录，会话与审计互不可见」。
+// 隔离：默认且强制 developerNo = 当前开发者；显式查询他人编号 → FORBIDDEN。
+// 过滤：action/developerNo 全部进服务端 where（命索引）；历史旧名与现名分两条查询后按 at 归并。
 'use strict';
 
 const { COLLECTIONS } = require('../../shared/collections');
@@ -6,13 +10,10 @@ const { AUDIT_ACTION_LIST } = require('../../shared/audit-actions');
 const {
   errors,
   sharedValidate,
-  createAdminScope,
-  readTrimmedText,
-  parsePage,
-  findPage,
-  MAX_SCAN
+  createAdminScope
 } = require('./_common');
 const dto = require('./_dto');
+const paging = require('./_paging');
 
 const LEGACY_PREFIX = 'VIEW' + '_' + 'AS' + '_';
 
@@ -35,58 +36,52 @@ function mappedActionOf(action) {
 
 function normalizeAction(value) {
   if (value === undefined || value === null || value === '') {
-    return '';
+    return { actions: [] };
   }
   if (AUDIT_ACTION_LIST.indexOf(value) >= 0) {
-    return value;
+    return { actions: [value] };
   }
   const mapped = mappedActionOf(value);
   if (mappedActionOf(mapped) === mapped && AUDIT_ACTION_LIST.indexOf(mapped) >= 0) {
-    return mapped;
+    return { actions: mapped === value ? [value] : [mapped, value] };
   }
   throw errors.validation('action', '审计动作不正确');
+}
+
+function normalizeDeveloperNo(scope, value) {
+  if (value === undefined || value === null || value === '') {
+    return scope.developerNo;
+  }
+  const check = sharedValidate.validateDeveloperNo(value);
+  if (!check.ok) {
+    throw errors.validation('developerNo', '开发者编号格式不正确');
+  }
+  if (check.canonical !== scope.developerNo) {
+    throw errors.forbidden('开发者审计互不可见，只能查看本人审计');
+  }
+  return check.canonical;
 }
 
 async function handler(ctx, payload) {
   const scope = await createAdminScope(ctx);
   const input = payload || {};
-  const page = parsePage(input);
+  const query = paging.parseQuery(input);
   const action = normalizeAction(input.action);
-  let developerNo = '';
-  if (input.developerNo !== undefined && input.developerNo !== null && input.developerNo !== '') {
-    const check = sharedValidate.validateDeveloperNo(input.developerNo);
-    if (!check.ok) {
-      throw errors.validation('developerNo', '开发者编号格式不正确');
-    }
-    developerNo = check.canonical;
-  }
-  const where = {};
-  if (developerNo) {
-    where.developerNo = developerNo;
-  }
-  const rows = [];
-  let scanned = 0;
-  while (rows.length < page.limit && scanned < MAX_SCAN) {
-    const size = Math.min(Math.max(page.limit - rows.length + 10, 20), 100);
-    const batch = await findPage(scope, COLLECTIONS.ADMIN_AUDIT, where, [['at', 'desc']], page.offset + scanned, size);
-    if (batch.length === 0) {
-      break;
-    }
-    for (let i = 0; i < batch.length && rows.length < page.limit; i += 1) {
-      const row = batch[i];
-      if (action && dto.auditActionOf(row.action) !== action) {
-        continue;
-      }
-      rows.push(row);
-    }
-    scanned += batch.length;
-    if (batch.length < size) {
-      break;
-    }
-  }
-  const list = rows.map(dto.auditBrief);
-  const nextCursor = rows.length >= page.limit ? { offset: page.offset + scanned } : null;
-  return { list: list, nextCursor: nextCursor };
+  const developerNo = normalizeDeveloperNo(scope, input.developerNo);
+  const wheres = action.actions.length === 0
+    ? [{ developerNo: developerNo }]
+    : action.actions.map((name) => ({ developerNo: developerNo, action: name }));
+  const result = await paging.pagedCollect(scope, paging.fetchOrderedPage, {
+    collection: COLLECTIONS.ADMIN_AUDIT,
+    wheres: wheres,
+    sortField: 'at',
+    idField: 'requestKey',
+    order: 'desc',
+    idOrder: 'asc',
+    limit: query.limit,
+    cursor: query.cursor
+  }, null);
+  return { list: result.list.map(dto.auditBrief), nextCursor: result.nextCursor };
 }
 
 module.exports = handler;

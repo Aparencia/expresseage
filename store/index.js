@@ -8,6 +8,8 @@ const state = {
   me: null,
   customer: null,
   partner: null,
+  // binding 可选字段 partnerPublic（P0-3）：启动期 bind.getCurrent 结果一并水合，首页首次 onShow 直接复用；
+  // 无绑定时为 null，形状仍以 bindingId 存在与否判断是否已绑定。
   binding: null,
   config: null,
   badges: { workbenchPending: 0, messages: 0 },

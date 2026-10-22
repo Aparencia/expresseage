@@ -101,7 +101,7 @@ check(1, '文档地图/分阶段必需文件', () => {
 });
 
 // ---------------------------------------------------------------- #2 页面路径
-check(2, 'CONTRACT §7 页面路径 = app.json 声明（30 页）', () => {
+check(2, 'CONTRACT §7 页面路径 = app.json 声明（页数口径 ' + P.ALL_PAGES.length + '，与 ALL_PAGES 联动）', () => {
   if (BATCH === 0) return { skip: '§8.3 #2 明确"批 1 后生效"' };
   const contract = text('docs/V4_CONTRACT.md');
   if (contract === null) return ['缺失: docs/V4_CONTRACT.md'];
@@ -226,19 +226,34 @@ function defineRefSets() {
   (eText.match(/\bE(\d{1,2})\b/g) || []).forEach((m) => eDefined.add(Number(m.slice(1))));
   return { dDefined, eDefined };
 }
-check(5, 'D#/E# 引用可解析（D1~D22；E1~E18）', () => {
-  const { dDefined, eDefined } = defineRefSets();
+
+// D 裁决编号范围（CONTRACT §13）：上限随裁决扩展而变（D22 → D26 → D29 …）。
+// 条目数不写死：以 CONTRACT §13 实际 D 行为准，只要求「1..最大定义号连续、无缺号」；
+// D_MAX 是引用硬上界——伪造 D30 引用必须判红（负向判据由 E 轴 selftest/手工钻取验证）。
+const D_MAX = 29;
+
+function dRangeProblems(dDefined) {
   const out = [];
-  if (dDefined.size !== 22) out.push('CONTRACT §13 D 条目数 ' + dDefined.size + ' ≠ 22');
-  [1, 2].forEach((i) => {
-    if (!dDefined.has(i)) out.push('CONTRACT §13 缺 D' + i);
-  });
+  if (dDefined.size === 0) {
+    out.push('CONTRACT §13 未解析到 D 条目');
+    return out;
+  }
+  const max = Math.max.apply(null, Array.from(dDefined));
+  for (let i = 1; i <= max; i += 1) {
+    if (!dDefined.has(i)) out.push('CONTRACT §13 缺 D' + i + '（1..' + max + ' 应连续）');
+  }
+  if (max > D_MAX) out.push('CONTRACT §13 D 编号 ' + max + ' 超出上限 D' + D_MAX);
+  return out;
+}
+check(5, 'D#/E# 引用可解析（D1~D' + D_MAX + '；E1~E18）', () => {
+  const { dDefined, eDefined } = defineRefSets();
+  const out = dRangeProblems(dDefined);
   if (eDefined.size === 0) out.push('ENGINEERING §13 未解析到 E 条目');
   DOCS.forEach((rel) => {
     const s = text(rel) || '';
     (s.match(/\bD(\d{1,2})\b/g) || []).forEach((tok) => {
       const n = Number(tok.slice(1));
-      if (n < 1 || n > 22) out.push(rel + ': D' + n + ' 越界（D1~D22）');
+      if (n < 1 || n > D_MAX) out.push(rel + ': D' + n + ' 越界（D1~D' + D_MAX + '）');
     });
     (s.match(/\bE(\d{1,2})\b/g) || []).forEach((tok) => {
       const n = Number(tok.slice(1));
@@ -380,9 +395,9 @@ check(10, 'v0.9 文档一致性（旧口径禁词/审计枚举/roomTag 大写/�
     });
   });
   if (exempt) console.log('  · 旧口径历史修订说明行（带作废/清扫上下文）' + exempt + ' 处，按修订说明豁免');
-  // ② D# 引用可解析（复用 #5 的判定：D1~D22，D22 起为批 4 登记的新待裁项）
+  // ② D# 引用可解析（复用 #5 的判定：D1~D29 上限 + §13 实际条目连续，不写死条目数）
   const { dDefined } = defineRefSets();
-  if (dDefined.size !== 22) out.push('CONTRACT §13 D 条目数 ≠ 22');
+  dRangeProblems(dDefined).forEach((m) => out.push(m));
   // ③ 审计枚举：CONTRACT §4.2 列全 16 个；注册表（代码侧）集合相等
   const contract = text('docs/V4_CONTRACT.md') || '';
   const auditSection = (contract.match(/\*\*admin 审计\*\*[^\n]*/) || [''])[0];

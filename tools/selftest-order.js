@@ -2,7 +2,7 @@
 /**
  * tools/selftest-order.js — 云端订单建单引擎端到端断言套件（批 4-A / task-60）。
  *
- * 背景：order.create/createBatch + 上传票据/图片路径此前只有 selftest-bind-cloud G 组（acceptingOrders）
+ * 背景：order.create（v1.0 单入口；`createBatch` 已于 v1.0 移除）+ 上传票据/图片路径此前只有 selftest-bind-cloud G 组（acceptingOrders）
  *       一条旁证，建单引擎（_create/_parcel/_store/_dto + upload.prepare/cancel）几乎零覆盖；
  *       selftest-cloud 已 999/1000 行（TD-029），故本文件独立成套、register 形态由 tools/selftest.js 聚合。
  *
@@ -12,15 +12,17 @@
  *   B. 幂等：同 clientRequestId → 同 orderNo + duplicated，订单/事件/计数器不增；不同 id → 新单；跨身份独立。
  *   C. 票据与图片：prepare 前缀/TTL/用途/归属/大小与类型闸；cancel 归属/幂等/已消费；下单侧
  *      ticket 缺失/非本人/过期/用途不符/已消费/fileId 不匹配/size/contentType；拆单共享票据一次性消费。
- *   D. 批量原子性：3 单成功（orderNo 连续、requestKey :itemIndex、事件 itemIndex）；0/6 件 VALIDATION；
- *      中间一件非法整批 0 单 0 事件票据仍可用；部分已存在 CONFLICT；全已存在 duplicated；
- *      事务中途失败整体回滚（0 单 0 事件、 counters 不消耗、票据不消费）。
+ *   D. 一单多包裹原子性 + 合并窗口（v1.0，D23）：`createBatch` 未登记 → 拒绝；旧形态 {items[]} → VALIDATION；
+ *      1~10 件同事务原子建单（任一件非法 → 整单零建、序号不消耗、票据不消费）；11 件超上限 VALIDATION；
+ *      窗口内同顾客同兼职同配送地址 → 追加入同单（PARCELS_APPENDED、version+1、status 不变），不同地址另建单；
+ *      事务中途失败整体回滚。
  *   E. 守卫：资料未完整/无绑定/绑定异常/兼职 CLOSED/SUSPENDED/注销/接单关闭/真实×测试/只读视角/无角色；
  *      PARTNER 代客单 guest 必填+范围+快照，且不写 bindings。
  *   F. 字段闸：站点/码/柜号/尾号/note/预约/服务类型与启用/服务范围/未知字段/缺 parcel。
  *   G. 识别失败关联：recognition.failureId 优先、回填 orderId/fileId、非本人/非法格式静默丢弃不阻断、
  *      拆单共享 fileId 但 image.failureId 按单独立（逐单补齐失败记录，CONTRACT §4.3）。
- *   H. 静态回退闸：小写集合键正控/反例/全仓零命中、_create 幂等与单事务分支存在性、MAX_CREATE_BATCH=5。
+ *   H. 静态回退闸：小写集合键正控/反例/全仓零命中、_create 幂等与单事务分支存在性、
+ *      已移除的 `createBatch` 不再被登记/导出（负向闸）。
  *
  * 纪律：fake DB 注入、不连真库、不 mock 全局 wx；先合法基线再反例，样本非空；
  *       EXPECTED_ASSERTIONS 与实际断言数精确相等（少算/多算都判红）。
@@ -48,7 +50,7 @@ const DAY_KEY = '20261022';
 const ORDER_NO_RE = /^\d{8}-\d{4}$/;
 const CLIENT_ID_RE = /^[A-Za-z0-9_-]{16,32}$/;
 
-const EXPECTED_ASSERTIONS = 126;
+const EXPECTED_ASSERTIONS = 127;
 
 const ALL_COLLECTION_NAMES = Object.keys(COLLECTIONS).map((key) => COLLECTIONS[key]);
 
@@ -161,8 +163,11 @@ function parcelOf(extra) {
 }
 
 function createPayload(extra) {
-  const payload = { parcel: parcelOf(), serviceCode: 'PICKUP_STD', appoint: { type: 'ASAP' }, note: '放门口' };
-  Object.keys(extra || {}).forEach((key) => { payload[key] = extra[key]; });
+  const opt = Object.assign({ parcel: parcelOf(), serviceCode: 'PICKUP_STD', appoint: { type: 'ASAP' }, note: '放门口' }, extra || {});
+  const payload = Object.assign({}, opt);
+  const parcel = payload.parcel === undefined ? parcelOf() : payload.parcel;
+  delete payload.parcel;
+  payload.parcels = payload.parcels || [{ parcel }];
   return payload;
 }
 
@@ -179,6 +184,19 @@ function seedTicket(db, openid, extra) {
   return doc;
 }
 
+function parcelsOf(order) {
+  const list = order && Array.isArray(order.parcels) ? order.parcels : [];
+  if (list.length > 0) return list;
+  return order && order.parcel ? [order.parcel] : [];
+}
+function parcel0(order) {
+  return parcelsOf(order)[0] || {};
+}
+function imagesOf(order) {
+  const list = order && Array.isArray(order.images) ? order.images : [];
+  if (list.length > 0) return list;
+  return order && order.image ? [order.image] : [];
+}
 function imageOf(ticket, extra) {
   return Object.assign({ fileId: 'cloud://env.bucket/' + ticket.cloudPath, width: 800, height: 1200, size: 1024 }, extra || {});
 }
@@ -334,14 +352,14 @@ function register(h) {
     [world.customerOpenid, world.customerOpenid, world.customerNo, world.partnerId, world.partnerOpenid,
       'PABC234', 'CUSTOMER', false, 1, world.customerOpenid + ':' + cridA],
     'A4 订单身份/编号快照 + requestKey={customerId}:{clientRequestId} + isTest=false + version=1');
-    t.eq([order.parcel.stationId, order.parcel.stationName], ['P3', stations.stationNameOf('P3')],
+    t.eq([parcel0(order).stationId, parcel0(order).stationName], ['P3', stations.stationNameOf('P3')],
       'A5 客户端乱填 stationName 被忽略：站名由服务端按 stationId 派生（' + stations.stationNameOf('P3') + '）');
-    t.eq([order.parcel.pickupCode, order.parcel.lockerNo, order.parcel.trackingTail, order.parcel.codeStatus,
-      order.parcel.recognitionSource, order.parcel.confidence],
+    t.eq([parcel0(order).pickupCode, parcel0(order).lockerNo, parcel0(order).trackingTail, parcel0(order).codeStatus,
+      parcel0(order).recognitionSource, parcel0(order).confidence],
     ['A12345', 'B-01', '12345', 'OK', 'DEEPSEEK', 'HIGH'],
     'A6 取件码/柜号/尾号/识别来源与置信度按入参快照（confidence 仅合法枚举才写）');
     t.eq([order.dorm.zone, order.dorm.buildingNo, order.dorm.room, order.dorm.dormKey, order.dorm.roomTag,
-      order.phoneTail], ['D', 4, '522', 'D4-522', 'A', '1234'],
+      order.delivery.phoneTail], ['D', 4, '522', 'D4-522', 'A', '1234'],
     'A7 宿舍快照来自顾客资料 + 当前绑定 roomTag，手机尾号来自顾客资料');
     t.eq([order.service.code, order.service.name], ['PICKUP_STD', enums.serviceNameOf('PICKUP_STD')],
       'A8 服务类型快照：code 入参 + name 由服务端下发（不信任客户端）');
@@ -350,7 +368,7 @@ function register(h) {
       created.data.order.parcel.codeStatusText], [order.orderNo, true, 'submitted', '取件码可用'],
     'A10 DTO 含 orderNo/statusText/bucket/parcel.codeStatusText（页面只渲染不判状态机）');
     t.eq([created.data.order.image.hasImage, created.data.order.image.cleaned, Object.keys(created.data.order.image)],
-      [true, false, ['hasImage', 'cleaned']],
+      [true, false, ['index', 'status', 'hasImage', 'cleaned']],
       'A11 DTO 图片只回 {hasImage:true, cleaned:false}（fileId/cloudPath 不出云；批5 契约 B 只增 cleaned 字段）');
     t.eq([order.note, order.appoint.type], ['放门口', 'ASAP'], 'A12 note 去首尾空白、appoint ASAP 快照');
     const stationOnly = await apiOf(db, world.customerOpenid).call('order.create', createPayload({
@@ -374,7 +392,7 @@ function register(h) {
     const db = world.db;
     const api = apiOf(db, world.customerOpenid);
     const cridB = nextCrid('b');
-    const first = await api.call('order.create', createPayload(), { clientRequestId: cridB });
+    const first = await api.call('order.create', createPayload({ mergeAppend: false }), { clientRequestId: cridB });
     t.check(first.ok === true && ORDER_NO_RE.test(first.data.orderNo), 'B1 基线建单成功');
     const replay = await api.call('order.create', createPayload({ note: '重试请求' }), { clientRequestId: cridB });
     t.check(replay.ok === true && replay.data.duplicated === true && replay.data.orderNo === first.data.orderNo,
@@ -382,11 +400,11 @@ function register(h) {
     t.eq([db.dump('orders').length, db.dump('order_events').length,
       db.dump('counters').filter((row) => row.key === 'orderNo:' + DAY_KEY)[0].seq], [1, 1, 1],
     'B3 重放不新增订单/事件、不重复消耗当日序号');
-    const other = await api.call('order.create', createPayload(), { clientRequestId: nextCrid('b2') });
+    const other = await api.call('order.create', createPayload({ mergeAppend: false }), { clientRequestId: nextCrid('b2') });
     t.check(other.ok === true && other.data.orderNo !== first.data.orderNo,
       'B4 不同 clientRequestId → 新订单（orderNo 不同）');
     t.eq([db.dump('orders').length, db.dump('order_events').length], [2, 2], 'B5 新请求各落 1 条订单/事件');
-    const replayAgain = await api.call('order.create', createPayload(), { clientRequestId: cridB });
+    const replayAgain = await api.call('order.create', createPayload({ mergeAppend: false }), { clientRequestId: cridB });
     t.eq([replayAgain.data.duplicated, db.dump('orders').length], [true, 2], 'B6 重放多次仍只 1 单（幂等稳定）');
     // 跨身份独立：另一顾客用同一 clientRequestId 不复用他人订单
     const otherC = seedWorld({
@@ -479,96 +497,97 @@ function register(h) {
     const usedRow = db.dump('upload_tickets').filter((row) => row.ticket === okTicket.ticket)[0];
     t.eq([usedRow.usedAt instanceof Date, usedRow.usedAt.getTime()], [true, NOW], 'C22 建单成功在事务内消费票据（usedAt=服务端 now）');
     const okOrder = db.dump('orders')[0];
-    t.eq([okOrder.image.fileId, okOrder.image.width, okOrder.image.height,
-      new Date(okOrder.image.uploadedAt).getTime(), okOrder.image.cloudPath], [imageOf(okTicket).fileId, 800, 1200, NOW, okTicket.cloudPath],
-    'C23 订单 image 快照 {fileId,width,height,uploadedAt,cloudPath}（cloudPath 仅服务端内部）');
+    const okImage = imagesOf(okOrder)[0] || {};
+    t.eq([okImage.fileId, okImage.width, okImage.height, Object.keys(okImage).sort()],
+      [imageOf(okTicket).fileId, 800, 1200, ['fileId', 'height', 'width']],
+    'C23 订单 images[] 快照 {fileId,width,height}（v1.0 多图；cloudPath 仅票据内部）');
     // 已消费票据 + 同 clientRequestId 重放：票据一次性优先（TD-027 同口径，Lead 已裁决接受）
-    await expectCode(t, cApi.call('order.create', createPayload({ ticket: okTicket.ticket, image: imageOf(okTicket) },
-      { clientRequestId: cridC }), { clientRequestId: cridC }), 'INVALID_STATE',
-    'C24 已消费票据重放 → INVALID_STATE（票据一次性优先于幂等，TD-027 同口径）');
+    const replayUsed = await cApi.call('order.create', createPayload({ ticket: okTicket.ticket, image: imageOf(okTicket) },
+      { clientRequestId: cridC }), { clientRequestId: cridC });
+    t.eq([replayUsed.ok, replayUsed.data.duplicated],
+      [true, true], 'C24 已消费票据 + 同 clientRequestId 重放 → duplicated=true（幂等预查先于票据校验，v1.0）');
     t.eq(db.dump('orders').length, 1, 'C25 重放失败不产生第二单（仍 1 单）');
     t.notEmpty(db.dump('upload_tickets'), 'C 组样本非空');
   });
 
-  // ---------------------------------------------------------------- D 批量原子性
-  asyncSection('D. 批量原子性（3 单成功/0 与 6 件/中间非法整批不建/部分 CONFLICT/全重复 duplicated/事务回滚）', async (t) => {
+  // ---------------------------------------------------------------- D 一单多包裹（v1.0；createBatch 已移除）
+  asyncSection('D. 一单多包裹（一图多码同单多件 / 上限 / 整单校验原子性 / 幂等重放 / 事务回滚）', async (t) => {
     const world = seedWorld();
     const db = world.db;
     const cApi = apiOf(db, world.customerOpenid);
     const ticket = seedTicket(db, world.customerOpenid);
     const cridD = nextCrid('d');
-    const items = [
-      createPayload({ parcel: parcelOf({ pickupCode: 'A10001' }) }),
-      createPayload({ parcel: parcelOf({ pickupCode: 'A10002' }) }),
-      createPayload({ parcel: parcelOf({ pickupCode: 'A10003' }) })
-    ].map((p) => ({ parcel: p.parcel, serviceCode: p.serviceCode, appoint: p.appoint, note: p.note }));
-    const batch = await cApi.call('order.createBatch', { items, ticket: ticket.ticket, image: imageOf(ticket) }, { clientRequestId: cridD });
-    t.check(batch.ok === true && batch.data.orders.length === 3, 'D1 批量 3 单成功（orders[] 长度 3）');
-    const rows = db.dump('orders');
-    t.eq(rows.map((row) => row.orderNo), [DAY_KEY + '-0001', DAY_KEY + '-0002', DAY_KEY + '-0003'],
-      'D2 同事务连取 3 个序号：orderNo 连续（0001~0003）');
-    t.eq(rows.map((row) => row.requestKey), [0, 1, 2].map((i) => world.customerOpenid + ':' + cridD + ':' + i),
-      'D3 每条 requestKey={identity}:{clientRequestId}:{itemIndex}（批量逐单幂等键）');
-    const events = db.dump('order_events');
-    t.eq([events.length, events.map((event) => event.payload.itemIndex)], [3, [0, 1, 2]],
-      'D4 事件 3 条且 payload.itemIndex=0/1/2（可按单追溯）');
-    t.eq([db.dump('counters').filter((row) => row.key === 'orderNo:' + DAY_KEY)[0].seq,
-      db.dump('upload_tickets').filter((row) => row.ticket === ticket.ticket)[0].usedAt instanceof Date], [3, true],
-    'D5 counters 到 3 且共享票据在事务内消费一次');
-    // 跨域回归（Lead 授权修 cloudfunctions/api/lib/id-generator.js 的一行）：当天首单是拆单 N 件时，
-    // 首次取号必须一次预留 total 个；否则同日下一次下单从 2 开始，撞已用 orderNo → INTERNAL_ERROR（修复前首红）。
-    const afterBatchTicket = seedTicket(db, world.customerOpenid);
-    const afterBatch = await cApi.call('order.create', createPayload({ ticket: afterBatchTicket.ticket, image: imageOf(afterBatchTicket) }),
-      { clientRequestId: nextCrid('d-regression') });
-    t.check(afterBatch.ok === true && afterBatch.data.orderNo === DAY_KEY + '-0004',
-      'D5b 当天首单是拆单 3 件 → 当天第二次下单成功且 orderNo=0004（修复前 INTERNAL_ERROR 首红）');
-    t.eq(db.dump('counters').filter((row) => row.key === 'orderNo:' + DAY_KEY)[0].seq, 4,
-      'D5c 取号计数器连续到 4（首次预留 total 个，不重复占号）');
-    const before = [db.dump('orders').length, db.dump('order_events').length];
-    await expectField(t, cApi.call('order.createBatch', { items: [], ticket: ticket.ticket, image: imageOf(ticket) },
-      { clientRequestId: nextCrid('d2') }), 'VALIDATION_FAILED', 'items', 'D6 0 件 → VALIDATION(data.field=items)');
-    const six = [0, 1, 2, 3, 4, 5].map((i) => ({ parcel: parcelOf({ pickupCode: 'A2000' + i }), serviceCode: 'PICKUP_STD' }));
-    await expectField(t, cApi.call('order.createBatch', { items: six, ticket: ticket.ticket, image: imageOf(ticket) },
-      { clientRequestId: nextCrid('d3') }), 'VALIDATION_FAILED', 'items', 'D7 6 件 > 上限 5 → VALIDATION(data.field=items)');
-    const midTicket = seedTicket(db, world.customerOpenid);
-    const badItems = [
-      { parcel: parcelOf({ pickupCode: 'A30001' }), serviceCode: 'PICKUP_STD' },
-      { parcel: parcelOf({ pickupCode: '!!!' }), serviceCode: 'PICKUP_STD' },
-      { parcel: parcelOf({ pickupCode: 'A30003' }), serviceCode: 'PICKUP_STD' }
+    const parcelsD = [
+      { parcel: parcelOf({ pickupCode: 'A10001' }), imageIndex: 0 },
+      { parcel: parcelOf({ pickupCode: 'A10002' }), imageIndex: 0 },
+      { parcel: parcelOf({ pickupCode: 'A10003' }), imageIndex: 0 }
     ];
-    await expectField(t, cApi.call('order.createBatch', { items: badItems, ticket: midTicket.ticket, image: imageOf(midTicket) },
-      { clientRequestId: nextCrid('d4') }), 'VALIDATION_FAILED', 'pickupCode',
+    const multiPayload = {
+      parcels: parcelsD, images: [imageOf(ticket)], tickets: [ticket.ticket],
+      serviceCode: 'PICKUP_STD', appoint: { type: 'ASAP' }, note: '放门口'
+    };
+    const created = await cApi.call('order.create', multiPayload, { clientRequestId: cridD });
+    t.check(created.ok === true && created.data.merged !== true,
+      'D1 一单 3 件包裹建单成功（单张订单、非合并追加）');
+    const rows = db.dump('orders');
+    t.eq([rows.length, rows[0].parcels.length], [1, 3],
+      'D2 落库 1 张订单、parcels=3（一图多码不再拆 N 单）');
+    t.eq(rows[0].parcels.map((parcel) => parcel.pickupCode), ['A10001', 'A10002', 'A10003'],
+      'D3 parcels[] 顺序与入参一致（逐件快照）');
+    t.eq(rows[0].requestKey, world.customerOpenid + ':' + cridD,
+      'D4 requestKey={identity}:{clientRequestId}（单入口无 :itemIndex）');
+    const events = db.dump('order_events');
+    t.eq([events.length, events[0].type, events[0].payload.parcels, events[0].payload.images], [1, 'ORDER_CREATED', 3, 1],
+      'D5 事件 1 条 ORDER_CREATED，payload 记录包裹 3 件 / 图片 1 张');
+    t.eq([rows[0].images.length, rows[0].manualEntry,
+      db.dump('upload_tickets').filter((row) => row.ticket === ticket.ticket)[0].usedAt instanceof Date], [1, false, true],
+      'D5b 订单 images[]=1、manualEntry=false、共用票据事务内消费一次');
+    t.eq(rows[0].parcels.every((parcel) => parcel.imageIndex === 0), true,
+      'D5c 三件共享同一张截图：imageIndex 均=0（一图多码口径）');
+    const before = [db.dump('orders').length, db.dump('order_events').length];
+    const emptyTicket = seedTicket(db, world.customerOpenid);
+    await expectField(t, cApi.call('order.create', {
+      parcels: [], images: [imageOf(emptyTicket)], tickets: [emptyTicket.ticket], serviceCode: 'PICKUP_STD'
+    }, { clientRequestId: nextCrid('d2') }), 'VALIDATION_FAILED', 'parcels', 'D6 0 件 → VALIDATION(data.field=parcels)');
+    const eleven = [];
+    for (let i = 0; i < 11; i += 1) eleven.push({ parcel: parcelOf({ pickupCode: 'B100' + i }) });
+    const overTicket = seedTicket(db, world.customerOpenid);
+    await expectField(t, cApi.call('order.create', {
+      parcels: eleven, images: [imageOf(overTicket)], tickets: [overTicket.ticket], serviceCode: 'PICKUP_STD'
+    }, { clientRequestId: nextCrid('d3') }), 'VALIDATION_FAILED', 'parcels', 'D7 11 件 > 上限 10 → VALIDATION(data.field=parcels)');
+    const badTicket = seedTicket(db, world.customerOpenid);
+    const badParcels = [
+      { parcel: parcelOf({ pickupCode: 'A30001' }) },
+      { parcel: parcelOf({ pickupCode: '!!!' }) },
+      { parcel: parcelOf({ pickupCode: 'A30003' }) }
+    ];
+    await expectField(t, cApi.call('order.create', {
+      parcels: badParcels, images: [imageOf(badTicket)], tickets: [badTicket.ticket], serviceCode: 'PICKUP_STD'
+    }, { clientRequestId: nextCrid('d4') }), 'VALIDATION_FAILED', 'pickupCode',
     'D8 中间一件取件码非法 → VALIDATION(data.field=pickupCode)（先全量校验再开事务）');
     t.eq([db.dump('orders').length, db.dump('order_events').length,
-      db.dump('upload_tickets').filter((row) => row.ticket === midTicket.ticket)[0].usedAt], [before[0], before[1], null],
+      db.dump('upload_tickets').filter((row) => row.ticket === badTicket.ticket)[0].usedAt], [before[0], before[1], null],
     'D9 整批 0 单 0 事件、票据仍可用（未被消费）');
-    // 部分已存在 → CONFLICT（模拟同一 clientRequestId 前一批已落 1 条）
-    const cridPartial = nextCrid('d5');
-    db.seed('orders', [Object.assign({}, {
-      _id: 'order-oc-partial', orderNo: DAY_KEY + '-9001', requestKey: world.customerOpenid + ':' + cridPartial + ':1',
-      customerId: world.customerOpenid, customerOpenid: world.customerOpenid, customerNo: world.customerNo,
-      partnerId: world.partnerId, partnerOpenid: world.partnerOpenid, partnerNo: 'PABC234', source: 'CUSTOMER',
-      isTest: false, status: ORDER_STATUS.SUBMITTED, parcel: parcelOf(), version: 1,
-      statusUpdatedAt: new Date(NOW), createdAt: new Date(NOW)
-    })]);
-    const countBeforePartial = db.dump('orders').length;
-    const partialTicket = seedTicket(db, world.customerOpenid);
-    await expectCode(t, cApi.call('order.createBatch', { items: items.slice(0, 2), ticket: partialTicket.ticket, image: imageOf(partialTicket) },
-      { clientRequestId: cridPartial }), 'CONFLICT', 'D10 部分 itemIndex 已存在 → CONFLICT（幂等键不一致，不静默重建）');
-    t.eq([db.dump('orders').length, db.dump('order_events').length], [countBeforePartial, before[1]],
-      'D11 CONFLICT 后不补建剩余单、不写事件');
-    // 全已存在 → duplicated（同 clientRequestId 整批重放；无图路径避开"票据一次性优先"，见 C24/TD-027 口径）
-    const replayCrid = nextCrid('d6');
-    const replayItems = items.slice(0, 2);
-    const firstBatch = await cApi.call('order.createBatch', { items: replayItems }, { clientRequestId: replayCrid });
-    const replayBatch = await cApi.call('order.createBatch', { items: replayItems }, { clientRequestId: replayCrid });
-    t.check(firstBatch.ok === true && replayBatch.ok === true && replayBatch.data.duplicated === true,
-      'D12 同 clientRequestId 整批重放 → duplicated=true');
-    t.eq(replayBatch.data.orders.map((order) => order.orderNo), firstBatch.data.orders.map((order) => order.orderNo),
-      'D13 重放返回同一批 orderNo（不重复创建）');
-    t.eq([db.dump('orders').length, db.dump('order_events').length], [countBeforePartial + 2, before[1] + 2],
+    const legacyTicket = seedTicket(db, world.customerOpenid);
+    await expectField(t, cApi.call('order.create', {
+      items: parcelsD, ticket: legacyTicket.ticket, image: imageOf(legacyTicket)
+    }, { clientRequestId: nextCrid('d10') }), 'VALIDATION_FAILED', 'items',
+    'D10 旧批量入参 items 已移除（createBatch 下线）→ VALIDATION(data.field=items)');
+    t.eq([db.dump('orders').length, db.dump('order_events').length], [before[0], before[1]],
+      'D11 旧批量入参零落库（不静默兼容已移除接口）');
+    const replayPayload = {
+      parcels: [{ parcel: parcelOf({ pickupCode: 'C10001' }) }], images: [], tickets: [],
+      serviceCode: 'PICKUP_STD', appoint: { type: 'ASAP' }, note: '重放'
+    };
+    const replayCrid = nextCrid('d12');
+    const firstReplay = await cApi.call('order.create', replayPayload, { clientRequestId: replayCrid });
+    const secondReplay = await cApi.call('order.create', replayPayload, { clientRequestId: replayCrid });
+    t.check(firstReplay.ok === true && secondReplay.ok === true && secondReplay.data.duplicated === true,
+      'D12 同 clientRequestId 重放 → duplicated=true（单一入口幂等）');
+    t.eq(secondReplay.data.orderNo, firstReplay.data.orderNo,
+      'D13 重放返回同一 orderNo（不重复创建）');
+    t.eq([db.dump('orders').length, db.dump('order_events').length], [before[0] + 1, before[1] + 1],
       'D14 重放不新增订单/事件');
-    // 事务中途失败 → 整体回滚：0 单 0 事件、counters 不消耗、票据不消费
     const rollbackDb = seedWorld().db;
     const rollbackTicket = seedTicket(rollbackDb, 'openid-oc-c');
     const realDao = createDao(rollbackDb);
@@ -579,7 +598,7 @@ function register(h) {
           add: async (collection, doc) => {
             if (collection === COLLECTIONS.ORDERS) {
               orderAdds += 1;
-              if (orderAdds === 2) throw new Error('boom');
+              throw new Error('boom');
             }
             return trx.add(collection, doc);
           }
@@ -590,8 +609,9 @@ function register(h) {
     const ctx = handlerCtx(rollbackDb, 'openid-oc-c', { dao: flakyDao, identity: { role: ROLES.CUSTOMER } });
     let rollbackError = null;
     try {
-      await require(path.join(API, 'handlers/order/createBatch.js'))(ctx, {
-        items: replayItems, ticket: rollbackTicket.ticket, image: imageOf(rollbackTicket)
+      await require(path.join(API, 'handlers/order/create.js'))(ctx, {
+        parcels: [{ parcel: parcelOf({ pickupCode: 'ROLLBACK1' }) }],
+        images: [imageOf(rollbackTicket)], tickets: [rollbackTicket.ticket], serviceCode: 'PICKUP_STD'
       });
     } catch (error) {
       rollbackError = error;
@@ -673,7 +693,7 @@ function register(h) {
     t.check(guestOrder.ok === true && guestOrder.data.order.guest && guestOrder.data.order.guest.dormKey === 'D4-522',
       'E13 兼职代客单成功：DTO guest 含服务端 derive 的 dormKey');
     t.eq([guestRow.source, guestRow.customerId, guestRow.customerOpenid, guestRow.customerNo, guestRow.guest.zone,
-      guestRow.guest.buildingText, guestRow.guest.phoneTail, guestRow.phoneTail],
+      guestRow.guest.buildingText, guestRow.guest.phoneTail, guestRow.delivery.phoneTail],
     ['PARTNER', '', '', '', 'D', 'D4', '5678', '5678'],
     'E14 代客单身份字段为空、guest 快照完整（dormKey/buildingText 服务端 derive）');
     t.eq([pWorld.db.dump('bindings').length, bindCountBefore], [1, 1], 'E15 代客单不写 bindings（绑定只能由顾客发起）');
@@ -711,10 +731,11 @@ function register(h) {
       { clientRequestId: crid('3') }), 'VALIDATION_FAILED', 'pickupCode', 'F3 取件码原始长度 >40 → VALIDATION(data.field=pickupCode)');
     await expectField(t, cApi.call('order.create', createPayload({ parcel: parcelOf({ pickupCode: '!!' }) }),
       { clientRequestId: crid('4') }), 'VALIDATION_FAILED', 'pickupCode', 'F4 取件码含非法字符 → VALIDATION(data.field=pickupCode)');
-    const emptyCode = await cApi.call('order.create', createPayload({ parcel: { stationId: '', pickupCode: '' } }),
-      { clientRequestId: crid('5') });
+    const emptyCode = await apiOf(db, world.customerOpenid).call('order.create', createPayload({
+      parcel: { stationId: 'P3', pickupCode: '', trackingTail: '12345' }, mergeAppend: false
+    }), { clientRequestId: crid('5') });
     t.eq([emptyCode.ok, emptyCode.data.order.needCode, emptyCode.data.order.parcel.stationId],
-      [true, true, ''], 'F5 站点/码都为空 → 允许建单并标 needCode（兼职 order.correct 补录）');
+      [true, true, 'P3'], 'F5 有站点+运单尾号、缺取件码 → 允许建单并标 needCode（兼职 order.correct 补录）');
     await expectField(t, cApi.call('order.create', createPayload({ parcel: parcelOf({ lockerNo: '1'.repeat(11) }) }),
       { clientRequestId: crid('6') }), 'VALIDATION_FAILED', 'lockerNo', 'F6 柜号 >10 字 → VALIDATION(data.field=lockerNo)');
     const tailCodes = [];
@@ -748,118 +769,125 @@ function register(h) {
     t.check(unknownKeyRes.ok !== true && unknownKeyRes.code === 'VALIDATION_FAILED' && resField(unknownKeyRes) === 'unexpectedKey',
       'F14 未知顶层字段 → VALIDATION(data.field=未知键名)（零金额口径 #12：不认识的字段不得静默入库）');
     await expectField(t, cApi.call('order.create', { serviceCode: 'PICKUP_STD' }, { clientRequestId: crid('16') }),
-      'VALIDATION_FAILED', 'parcel', 'F15 缺 parcel → VALIDATION(data.field=parcel)');
-    const batchUnknown = await cApi.call('order.createBatch', { items: [], unexpectedKey: 1 }, { clientRequestId: crid('17') });
-    t.check(batchUnknown.ok !== true && batchUnknown.code === 'VALIDATION_FAILED',
-      'F16 批量未知顶层字段同样拒绝（幂等/参数闸先于任何写入）');
+      'VALIDATION_FAILED', 'parcels', 'F15 缺 parcels[] → VALIDATION(data.field=parcels)');
+    const batchUnknown = await cApi.call('order.create', { items: [], unexpectedKey: 1 }, { clientRequestId: crid('17') });
+    t.check(batchUnknown.ok !== true && batchUnknown.code === 'VALIDATION_FAILED' && resField(batchUnknown) === 'items',
+      'F16 旧批量入参 items 已移除 + 未知字段拒绝（先于任何写入，field=items）');
     t.notEmpty(db.dump('orders'), 'F 组样本非空');
   });
 
-  // ---------------------------------------------------------------- G 识别失败关联
-  asyncSection('G. 识别失败关联（逐单 recognition.failureId / 回填 orderId+fileId / 非法静默丢弃 / 拆单不串）', async (t) => {
+  // ---------------------------------------------------------------- G 识别失败关联（包裹级 failureId）
+  asyncSection('G. 识别失败关联（包裹级 failureId / 回填 orderId+fileId / 非法静默丢弃 / 多件不串）', async (t) => {
     const world = seedWorld();
     const db = world.db;
     const cApi = apiOf(db, world.customerOpenid);
     const recordA = seedFailure(db, world.customerOpenid);
     const ticket1 = seedTicket(db, world.customerOpenid);
-    const created = await cApi.call('order.create', createPayload({
-      parcel: { stationId: '', pickupCode: '' }, ticket: ticket1.ticket, image: imageOf(ticket1),
-      recognition: { failureId: recordA.failureNo }
-    }), { clientRequestId: nextCrid('g') });
+    const created = await cApi.call('order.create', {
+      parcels: [{ parcel: parcelOf({ pickupCode: '' }), failureId: recordA.failureNo }],
+      images: [imageOf(ticket1)], tickets: [ticket1.ticket], serviceCode: 'PICKUP_STD', mergeAppend: false, appoint: { type: 'ASAP' }
+    }, { clientRequestId: nextCrid('g') });
     const order1 = db.dump('orders')[0];
-    t.check(created.ok === true && order1.image.failureId === recordA._id,
-      'G1 recognition.failureId 命中本人记录 → orders.image.failureId=记录 _id');
+    t.check(created.ok === true && parcel0(order1).failureId === recordA._id
+      && !Object.prototype.hasOwnProperty.call(imagesOf(order1)[0] || {}, 'failureId'),
+    'G1 recognition.failureId（包裹级）命中本人记录 → parcels[0].failureId=记录 _id；images[] 不带 failureId');
     const recordARow = db.dump('recognition_failures').filter((row) => row._id === recordA._id)[0];
-    t.eq([recordARow.orderId, recordARow.fileId], [order1._id, order1.image.fileId],
-      'G2 建单后回填记录 orderId=本单、fileId=订单原图');
+    t.eq([recordARow.orderId, recordARow.fileId], [order1._id, imagesOf(order1)[0].fileId],
+      'G2 建单后回填记录 orderId=本单、fileId=来源截图（文件已回填）');
     const recordB = seedFailure(db, world.customerOpenid);
     const ticket2 = seedTicket(db, world.customerOpenid);
-    const viaImage = await cApi.call('order.create', createPayload({
-      parcel: { stationId: '', pickupCode: '' }, ticket: ticket2.ticket, image: imageOf(ticket2, { failureId: recordB.failureNo })
-    }), { clientRequestId: nextCrid('g2') });
-    t.check(viaImage.ok === true && db.dump('orders')[1].image.failureId === recordB._id,
-      'G3 image.failureId 兼容旧入参 → 关联成功');
-    const recordC = seedFailure(db, world.customerOpenid);
-    const recordD = seedFailure(db, world.customerOpenid);
-    const ticket3 = seedTicket(db, world.customerOpenid);
-    const both = await cApi.call('order.create', createPayload({
-      ticket: ticket3.ticket, image: imageOf(ticket3, { failureId: recordC.failureNo }),
-      recognition: { failureId: recordD.failureNo }
-    }), { clientRequestId: nextCrid('g3') });
-    const order3 = db.dump('orders')[2];
-    t.eq([both.ok, order3.image.failureId,
-      db.dump('recognition_failures').filter((row) => row._id === recordC._id)[0].orderId], [true, recordD._id, ''],
-    'G4 recognition.failureId 优先于 image.failureId（二选一优先口径）');
+    const viaParcel = await cApi.call('order.create', {
+      parcels: [{ parcel: parcelOf({ pickupCode: 'B20001' }), failureId: recordB.failureNo }],
+      images: [imageOf(ticket2)], tickets: [ticket2.ticket], serviceCode: 'PICKUP_STD', mergeAppend: false, appoint: { type: 'ASAP' }
+    }, { clientRequestId: nextCrid('g2') });
+    t.check(viaParcel.ok === true && parcel0(db.dump('orders')[1]).failureId === recordB._id,
+      'G3 包裹级 failureId 关联成功（v1.0 唯一入口）');
+    const relC = seedFailure(db, world.customerOpenid);
     const otherRecord = seedFailure(db, 'openid-oc-other');
+    const ticket3 = seedTicket(db, world.customerOpenid);
+    const twoParcels = await cApi.call('order.create', {
+      parcels: [
+        { parcel: parcelOf({ pickupCode: 'C30001' }), failureId: relC.failureNo },
+        { parcel: parcelOf({ pickupCode: 'C30002' }), failureId: otherRecord.failureNo }
+      ],
+      images: [imageOf(ticket3)], tickets: [ticket3.ticket], serviceCode: 'PICKUP_STD', mergeAppend: false, appoint: { type: 'ASAP' }
+    }, { clientRequestId: nextCrid('g3') });
+    const order3 = db.dump('orders')[2];
+    t.eq([twoParcels.ok, parcel0(order3).failureId, parcelsOf(order3)[1].failureId,
+      db.dump('recognition_failures').filter((row) => row._id === relC._id)[0].orderId], [true, relC._id, undefined, order3._id],
+    'G4 多件各有 failureId：本人记录关联并回填，非本人记录静默丢弃（parcels[1] 无 failureId）');
     const ticket4 = seedTicket(db, world.customerOpenid);
-    const notMine = await cApi.call('order.create', createPayload({
-      ticket: ticket4.ticket, image: imageOf(ticket4), recognition: { failureId: otherRecord.failureNo }
-    }), { clientRequestId: nextCrid('g4') });
-    t.eq([notMine.ok, Object.prototype.hasOwnProperty.call(db.dump('orders')[3].image, 'failureId'),
+    const notMine = await cApi.call('order.create', {
+      parcels: [{ parcel: parcelOf({ pickupCode: 'D40001' }), failureId: otherRecord.failureNo }],
+      images: [imageOf(ticket4)], tickets: [ticket4.ticket], serviceCode: 'PICKUP_STD', mergeAppend: false
+    }, { clientRequestId: nextCrid('g4') });
+    t.eq([notMine.ok, Object.prototype.hasOwnProperty.call(parcel0(db.dump('orders')[3]), 'failureId'),
       db.dump('recognition_failures').filter((row) => row._id === otherRecord._id)[0].orderId], [true, false, ''],
     'G5 非本人失败记录 → 静默丢弃不阻断下单、不越权回填');
     const ticket5 = seedTicket(db, world.customerOpenid);
-    const badFormat = await cApi.call('order.create', createPayload({
-      ticket: ticket5.ticket, image: imageOf(ticket5), recognition: { failureId: 'not-a-failure-no' }
-    }), { clientRequestId: nextCrid('g5') });
-    t.eq([badFormat.ok, Object.prototype.hasOwnProperty.call(db.dump('orders')[4].image, 'failureId')], [true, false],
+    const badFormat = await cApi.call('order.create', {
+      parcels: [{ parcel: parcelOf({ pickupCode: 'E50001' }), failureId: 'not-a-failure-no' }],
+      images: [imageOf(ticket5)], tickets: [ticket5.ticket], serviceCode: 'PICKUP_STD', mergeAppend: false
+    }, { clientRequestId: nextCrid('g5') });
+    t.eq([badFormat.ok, Object.prototype.hasOwnProperty.call(parcel0(db.dump('orders')[4]), 'failureId')], [true, false],
       'G6 非法 failureId 形态 → 静默丢弃、订单照常创建');
-    // 拆单 2 单各带不同 failureId：各单 image.failureId 指向自己的记录、逐条回填 orderId/fileId、互不串
-    const batchRec1 = seedFailure(db, world.customerOpenid);
-    const batchRec2 = seedFailure(db, world.customerOpenid);
+    const rec1 = seedFailure(db, world.customerOpenid);
+    const rec2 = seedFailure(db, world.customerOpenid);
     const batchTicket = seedTicket(db, world.customerOpenid);
-    const perItemItems = [
-      { parcel: { stationId: '', pickupCode: '' }, serviceCode: 'PICKUP_STD', recognition: { failureId: batchRec1.failureNo } },
-      { parcel: parcelOf({ pickupCode: 'B77889' }), serviceCode: 'PICKUP_STD', recognition: { failureId: batchRec2.failureNo } }
-    ];
-    const perItemBatch = await cApi.call('order.createBatch', {
-      items: perItemItems, ticket: batchTicket.ticket, image: imageOf(batchTicket)
+    const multi = await cApi.call('order.create', {
+      parcels: [
+        { parcel: parcelOf({ pickupCode: 'F60001' }), failureId: rec1.failureNo },
+        { parcel: parcelOf({ pickupCode: 'F60002' }), failureId: rec2.failureNo }
+      ],
+      images: [imageOf(batchTicket)], tickets: [batchTicket.ticket], serviceCode: 'PICKUP_STD', mergeAppend: false
     }, { clientRequestId: nextCrid('g6') });
-    const perItemOrders = db.dump('orders').slice(5);
-    t.check(perItemBatch.ok === true && perItemOrders.length === 2, 'G7 拆单 2 单（每单各带 failureId）建单成功');
-    t.eq(perItemOrders.map((order) => order.image.failureId), [batchRec1._id, batchRec2._id],
-      'G8 每单 image.failureId 指向本单自己的失败记录（不串单）');
+    const multiOrder = db.dump('orders')[5];
+    t.check(multi.ok === true && parcelsOf(multiOrder).length === 2,
+      'G7 一单两件各带 failureId 建单成功（同图多件）');
+    t.eq(parcelsOf(multiOrder).map((parcel) => parcel.failureId), [rec1._id, rec2._id],
+      'G8 每件 failureId 指向本件自己的失败记录（不串件）');
     const recRows = db.dump('recognition_failures');
-    const recRow1 = recRows.filter((row) => row._id === batchRec1._id)[0];
-    const recRow2 = recRows.filter((row) => row._id === batchRec2._id)[0];
+    const recRow1 = recRows.filter((row) => row._id === rec1._id)[0];
+    const recRow2 = recRows.filter((row) => row._id === rec2._id)[0];
     t.eq([[recRow1.orderId, recRow1.fileId], [recRow2.orderId, recRow2.fileId]],
-      [[perItemOrders[0]._id, perItemOrders[0].image.fileId], [perItemOrders[1]._id, perItemOrders[1].image.fileId]],
-    'G9 事务后逐条回填：各自 orderId/fileId 指向各自订单（同一 fileId 共享）');
-    t.eq([recRow1.failureNo === batchRec2.failureNo,
-      perItemOrders[0].image.fileId === perItemOrders[1].image.fileId], [false, true],
-    'G10 两单 failureNo 互异、fileId 共享（同一截图）');
-    // 只带顶层 recognition.failureId → 只回退 item0，其余单不得串用同一记录
+      [[multiOrder._id, imagesOf(multiOrder)[0].fileId], [multiOrder._id, imagesOf(multiOrder)[0].fileId]],
+    'G9 事务后逐条回填：同一订单 orderId，fileId 指向同一来源截图（一图多件共享文件）');
+    t.eq([recRow1.failureNo === recRow2.failureNo,
+      parcel0(multiOrder).failureId === parcelsOf(multiOrder)[1].failureId], [false, false],
+    'G10 两条记录 failureNo 互异、两件关联互相独立（不串用同一记录）');
     const topRec = seedFailure(db, world.customerOpenid);
     const topTicket = seedTicket(db, world.customerOpenid);
-    const topItems = [
-      { parcel: { stationId: '', pickupCode: '' }, serviceCode: 'PICKUP_STD' },
-      { parcel: parcelOf({ pickupCode: 'C88990' }), serviceCode: 'PICKUP_STD' }
-    ];
-    const topBatch = await cApi.call('order.createBatch', {
-      items: topItems, ticket: topTicket.ticket, image: imageOf(topTicket), recognition: { failureId: topRec.failureNo }
+    const topOnly = await cApi.call('order.create', {
+      parcels: [{ parcel: parcelOf({ pickupCode: 'G70001' }) }],
+      recognition: { failureId: topRec.failureNo },
+      images: [imageOf(topTicket)], tickets: [topTicket.ticket], serviceCode: 'PICKUP_STD', mergeAppend: false
     }, { clientRequestId: nextCrid('g7') });
-    const topOrders = db.dump('orders').slice(7);
-    t.check(topBatch.ok === true && topOrders.length === 2, 'G11 顶层 recognition.failureId 拆单 2 单建单成功');
-    t.eq([topOrders[0].image.failureId, Object.prototype.hasOwnProperty.call(topOrders[1].image, 'failureId')], [topRec._id, false],
-      'G12 顶层 failureId 只回退 item0；其余单 image.failureId 不存在（不串用同一记录）');
-    const topRow = db.dump('recognition_failures').filter((row) => row._id === topRec._id)[0];
-    t.eq([topRow.orderId, topRow.fileId, db.dump('recognition_failures').length], [topOrders[0]._id, topOrders[0].image.fileId, recRows.length + 1],
-      'G13 顶层记录只回填 item0 的 orderId/fileId；服务端不补建记录（写入唯一入口仍是 ai.parseParcel）');
-    // 同 clientRequestId 整批重放 → duplicated、不新增订单、不重复回填记录（无图路径避开票据一次性优先）
-    const replayCridG = nextCrid('g8');
-    const replayItemsG = [topItems[0], topItems[1]];
-    const firstReplay = await cApi.call('order.createBatch', { items: replayItemsG }, { clientRequestId: replayCridG });
+    const topOrder = db.dump('orders')[6];
+    t.eq([topOnly.ok, Object.prototype.hasOwnProperty.call(parcel0(topOrder), 'failureId')], [true, false],
+      'G11 顶层 recognition.failureId 不再关联（v1.0 关联粒度=包裹级，识别记录按件传）');
+    t.eq(db.dump('recognition_failures').filter((row) => row._id === topRec._id)[0].orderId, '',
+      'G12 顶层失败记录不被回填（无包裹声明即无关联）');
+    t.eq(db.dump('recognition_failures').length, recRows.length + 1,
+      'G13 服务端不补建记录（写入唯一入口仍是 ai.parseParcel）');
     const ordersBeforeReplay = db.dump('orders').length;
     const recCountBefore = db.dump('recognition_failures').length;
-    const secondReplay = await cApi.call('order.createBatch', { items: replayItemsG }, { clientRequestId: replayCridG });
+    const replayPayload = {
+      parcels: [{ parcel: parcelOf({ pickupCode: 'H80001' }), failureId: rec1.failureNo }],
+      images: [], tickets: [], serviceCode: 'PICKUP_STD', mergeAppend: false
+    };
+    const replayCrid = nextCrid('g8');
+    const firstReplay = await cApi.call('order.create', replayPayload, { clientRequestId: replayCrid });
+    const secondReplay = await cApi.call('order.create', replayPayload, { clientRequestId: replayCrid });
     t.check(firstReplay.ok === true && secondReplay.ok === true && secondReplay.data.duplicated === true
-      && db.dump('orders').length === ordersBeforeReplay && db.dump('recognition_failures').length === recCountBefore,
-    'G14 同 clientRequestId 整批重放：duplicated 且不新增订单/不回填新记录');
+      && db.dump('orders').length === ordersBeforeReplay + 1 && db.dump('recognition_failures').length === recCountBefore,
+    'G14 同 clientRequestId 重放：duplicated 且不新增订单/不重复回填记录');
     t.notEmpty(db.dump('recognition_failures'), 'G 组样本非空');
   });
 
   // ---------------------------------------------------------------- H 静态回退闸
   asyncSection('H. 静态回退闸（小写集合键/幂等与单事务分支存在性/批量上限）', async (t) => {
+    const hWorld = seedWorld();
+    const cApi = apiOf(hWorld.db, hWorld.customerOpenid);
     const controlHit = lowercaseCollectionKeyHitsInText(fsutil.stripComments(
       'ctx.dao.findOne(COLLECTIONS.orders, { where: {} });\n'
     ));
@@ -876,9 +904,14 @@ function register(h) {
       'H5 _create.js 幂等分支存在（requestKey 预查 + duplicated 返回，防回退成"每次新单"）');
     t.check(createCode.indexOf('nextOrderNos') !== -1 && createCode.indexOf('trx.add(COLLECTIONS.ORDERS') !== -1,
       'H6 批量在单事务内连取序号并插单（不拆成多次事务）');
-    t.eq([orderState.MAX_CREATE_BATCH, enums.FAILURE_NO_PATTERN.test('F-' + DAY_KEY + '-ABCDEF'),
-      enums.FAILURE_NO_PATTERN.test('F-' + DAY_KEY + '-000000')], [5, true, false],
-    'H7 批量上限=5 且 failureNo 形态闸有效（正控/反例）');
+    t.eq([orderState.MAX_PARCELS_PER_ORDER, enums.FAILURE_NO_PATTERN.test('F-' + DAY_KEY + '-ABCDEF'),
+      enums.FAILURE_NO_PATTERN.test('F-' + DAY_KEY + '-000000')], [10, true, false],
+    'H7 一单包裹上限=10 且 failureNo 形态闸有效（正控/反例）');
+    // v1.0：createBatch 已移除（CONTRACT §13 D23）——未登记动作走全局口径 FORBIDDEN「不支持的操作」，
+    // 与"旧 {items[]} 形态调 order.create → VALIDATION_FAILED（字段闸）"是两条不同的闸，不可混。
+    const legacyAction = await cApi.call('order.createBatch', { items: [] }, { clientRequestId: nextCrid('h8') });
+    t.eq([legacyAction.ok, legacyAction.code], [false, 'FORBIDDEN'],
+      'H8 order.createBatch 未登记 → FORBIDDEN（全局未登记动作口径，负向闸）');
   });
 }
 

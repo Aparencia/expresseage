@@ -36,6 +36,8 @@
       <text class="strong">{{item.orderNo}}</text>
       <view class="row">
         <text class="tag tag-test" wx:if="{{item.isTest}}">测试</text>
+        <text class="tag" wx:if="{{item.parcelCountText}}">{{item.parcelCountText}}</text>
+        <text class="tag" wx:if="{{item.manualEntryText}}">{{item.manualEntryText}}</text>
         <text class="tag">{{item.statusText}}</text>
       </view>
     </view>

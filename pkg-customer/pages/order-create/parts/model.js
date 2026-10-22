@@ -1,15 +1,19 @@
 // pkg-customer/pages/order-create/parts/model.js · 下单四步视图模型（纯函数，零 wx）
+// v1.0（D23/D24/D25）：一单多包裹——`order.create` 入参 {parcels[1~10], images[0~5], tickets?[],
+//   serviceCode, appoint, note, delivery?, manualEntry, clientRequestId}；服务类型/预约/备注为**整单一份**
+//   （订单级动作作用于全部包裹，CONTRACT §4.1/§5.2）。无截图手填：images=[] 且 manualEntry=true（D24）。
 // 提交流程：submission id（= clientRequestId，防重复建单）在进入 Step4 生成，失败重试复用，
-//          提交内容变更后重生成，成功后清空（UX §4.8 / AC-C-19）。
+//           提交内容（含图片/配送地址）变更后重生成，成功后清空（UX §4.8 / AC-C-19）。
 'use strict';
 
 const client = require('../../../../api/client');
 const enums = require('../../../../shared/enums');
-const orderState = require('../../../../shared/order-state');
 const recognize = require('../../../../utils/recognize/index');
 
 const STEP_TITLES = ['截图', '核对', '服务', '提交'];
-const MAX_BATCH = orderState.MAX_CREATE_BATCH;
+// 一单上限（CONTRACT §5.2/D23）：包裹 ≤10、截图 ≤5
+const MAX_PARCELS = recognize.MAX_PARCELS_PER_ORDER;
+const MAX_IMAGES = recognize.MAX_IMAGES_PER_ORDER;
 // 幂等键：服务端 validateClientRequestId 同口径 16~32 位 [A-Za-z0-9_-]
 const SUBMISSION_ID_PATTERN = /^[A-Za-z0-9_-]{16,32}$/;
 const SUBMISSION_ID_LENGTH = 24;
@@ -24,8 +28,7 @@ function pad(value) {
 }
 
 function dateAt(base, dayOffset, hour) {
-  const date = new Date(base.getFullYear(), base.getMonth(), base.getDate() + dayOffset, hour, 0, 0, 0);
-  return date;
+  return new Date(base.getFullYear(), base.getMonth(), base.getDate() + dayOffset, hour, 0, 0, 0);
 }
 
 function iso(date) {
@@ -70,12 +73,11 @@ function serviceOptions(config, partnerPublic) {
   const enabled = ((partnerPublic && partnerPublic.services) || [])
     .filter(function on(item) { return item.enabled !== false; })
     .map(function code(item) { return item.code; });
-  const list = catalog.filter(function filter(item) {
+  return catalog.filter(function filter(item) {
     return enabled.length === 0 || enabled.indexOf(item.code) >= 0;
   }).map(function map(item) {
     return { code: item.code, name: item.name, desc: item.desc || '' };
   });
-  return list;
 }
 
 let itemSeq = 0;
@@ -85,43 +87,28 @@ function nextItemKey() {
   return 'item_' + itemSeq;
 }
 
+/** 单件（包裹）视图模型：取件字段 + 来源图下标（缺省 0）+ 包裹级 failureId（D23 契约）
+ * 手填件（manual=true）不绑定来源图（imageIndex=-1）：删图/换图不得丢掉用户手填的件。 */
 function makeItem(partial, defaults) {
   const base = recognize.makeEmptyParcel();
   const item = Object.assign({}, base, partial || {});
   const def = defaults || {};
   item.key = nextItemKey();
   item.checked = true;
-  item.serviceCode = def.serviceCode || '';
-  item.serviceIndex = typeof def.serviceIndex === 'number' ? def.serviceIndex : 0;
+  item.manual = item.manual === true;
+  item.imageIndex = item.manual
+    ? -1
+    : (typeof item.imageIndex === 'number' && item.imageIndex >= 0 ? item.imageIndex : 0);
+  item.failureId = typeof item.failureId === 'string' ? item.failureId : '';
   // 再次下单只预填站点（取件码/尾号/柜号绝不继承）；识别已命中的站点优先，不覆盖
   if (!item.stationId && def.stationId) {
     item.stationId = def.stationId;
     item.stationName = def.stationName || stationName(def.stationId);
   }
-  // 每件独立预约/备注（UX §3.7/§4.4）；新增件默认继承第一件，第一件默认尽快/空备注
-  item.appointType = def.appointType || 'ASAP';
-  item.slotIndex = typeof def.slotIndex === 'number' ? def.slotIndex : -1;
-  item.startAt = def.startAt || '';
-  item.endAt = def.endAt || '';
-  item.note = typeof def.note === 'string' ? def.note : '';
   const result = recognize.validateParcel(item);
   item.codeStatus = result.codeStatus;
   item.formErrors = result.errors;
   return item;
-}
-
-/** 新增件的默认值：服务/预约/备注继承第一件（取件信息绝不继承，各件各的） */
-function inheritedDefaults(items) {
-  const first = (items || [])[0] || {};
-  return {
-    serviceCode: first.serviceCode || '',
-    serviceIndex: typeof first.serviceIndex === 'number' ? first.serviceIndex : 0,
-    appointType: first.appointType || 'ASAP',
-    slotIndex: typeof first.slotIndex === 'number' ? first.slotIndex : -1,
-    startAt: first.startAt || '',
-    endAt: first.endAt || '',
-    note: typeof first.note === 'string' ? first.note : ''
-  };
 }
 
 function revalidateItem(item) {
@@ -131,10 +118,11 @@ function revalidateItem(item) {
   return item;
 }
 
+/** 提交前形态闸：勾选件 1~MAX_PARCELS，每件站点 + 取件码或运单尾号（NEED_CODE 口径不变） */
 function canSubmit(items) {
   const checked = (items || []).filter(function on(item) { return item.checked; });
   if (checked.length === 0) return { ok: false, reason: '至少选择一件再提交' };
-  if (checked.length > MAX_BATCH) return { ok: false, reason: '一图最多拆 ' + MAX_BATCH + ' 件' };
+  if (checked.length > MAX_PARCELS) return { ok: false, reason: '一单最多 ' + MAX_PARCELS + ' 件' };
   for (let i = 0; i < checked.length; i += 1) {
     const item = revalidateItem(checked[i]);
     if (!item.stationId) return { ok: false, reason: '请补全站点后再提交', index: items.indexOf(item) };
@@ -166,15 +154,31 @@ function createSubmissionId(seed) {
   return out;
 }
 
-/** 提交内容指纹：勾选件（提交顺序）+ 每件取件信息/服务/预约/备注；内容变了幂等键必须重生成 */
-function submissionFingerprint(items) {
+/**
+ * 提交内容指纹：勾选件（提交顺序）+ 每件取件信息/来源图 + 图片 fileId 序列 + 服务/预约/备注 + 配送地址。
+ * 内容变了幂等键必须重生成（否则服务端按重放处理，会吞掉新内容）。
+ */
+function submissionFingerprint(items, context) {
+  const ctx = context || {};
   const rows = (items || []).filter(function on(item) { return item && item.checked; })
     .map(function map(item) {
       return [item.stationId || '', item.pickupCode || '', item.lockerNo || '',
-        item.trackingTail || '', item.serviceCode || '', item.appointType || 'ASAP',
-        item.startAt || '', item.endAt || '', String(item.note || '')].join('\u0001');
+        item.trackingTail || '', String(item.imageIndex || 0), item.failureId || ''].join('\u0001');
     });
-  return rows.join('\u0002');
+  const images = (ctx.images || []).map(function map(image) { return String((image && image.fileId) || ''); });
+  const tickets = (ctx.tickets || []).map(function map(ticket) { return String(ticket || ''); });
+  return [
+    rows.join('\u0002'),
+    images.join('\u0003'),
+    tickets.join('\u0003'),
+    String(ctx.serviceCode || ''),
+    String(ctx.appointType || 'ASAP'),
+    String(ctx.startAt || ''),
+    String(ctx.endAt || ''),
+    String(ctx.note || ''),
+    String(ctx.deliveryFingerprint || 'SELF'),
+    ctx.manualEntry === true ? 'MANUAL' : 'SCREENSHOT'
+  ].join('\u0004');
 }
 
 /** 进入 Step4 / 提交前：内容未变复用同一 id（失败重试不换键），变了重新生成 */
@@ -192,7 +196,7 @@ function clearSubmission() {
   return null;
 }
 
-// ── 识别来源快照（recognition.source / parcel.confidence）─────────────────────
+// ── 识别来源快照（parcel.recognitionSource / parcel.confidence）───────────────
 function recognitionSourceOf(item) {
   const value = item && typeof item.source === 'string' ? item.source : '';
   if (CLIENT_SOURCES.indexOf(value) >= 0) {
@@ -290,58 +294,76 @@ async function applyAiFallbacks(items, context, aiCall) {
   return { items: out, called: called, changed: changed, failed: failed };
 }
 
-function itemAppointOf(item) {
-  if (!item || item.appointType !== 'SLOT') return { type: 'ASAP' };
-  return { type: 'SLOT', startAt: item.startAt || '', endAt: item.endAt || '' };
+// ── 提交载荷（order.create v1.0 单入口）──────────────────────────────────────
+/** 整单预约：ASAP 不填时间；SLOT 必填时段（服务端按 serverTime 再校验） */
+function appointPayloadOf(type, slot) {
+  if (type !== 'SLOT' || !slot) {
+    return { type: 'ASAP' };
+  }
+  return { type: 'SLOT', startAt: slot.startAt || '', endAt: slot.endAt || '' };
 }
 
-/** 该件的 recognition 入参（服务端定稿形状：{failureId?, source?}；source 逐单优先，顶层只回退 item0） */
-function recognitionOfItem(item) {
-  const out = { source: recognitionSourceOf(item) };
-  if (typeof item.failureId === 'string' && item.failureId) out.failureId = item.failureId;
-  return out;
+/** 图片快照：来自识别结果（含宽高）；同一顺序返回 tickets（images[i] ↔ tickets[i] 一一对应） */
+function buildImages(perImage, maxCount) {
+  const limit = typeof maxCount === 'number' ? maxCount : MAX_IMAGES;
+  const images = [];
+  const tickets = [];
+  (perImage || []).forEach(function each(entry) {
+    const image = entry && entry.image ? entry.image : null;
+    const ticket = entry && typeof entry.ticket === 'string' ? entry.ticket : '';
+    if (!image || !image.fileId || !ticket || images.length >= limit) {
+      return;
+    }
+    const item = { fileId: image.fileId, width: image.width || 0, height: image.height || 0 };
+    if (typeof image.size === 'number' && image.size > 0) item.size = image.size;
+    images.push(item);
+    tickets.push(ticket);
+  });
+  return { images: images, tickets: tickets };
 }
 
-function buildPayload(items, ticket, image, recognition) {
-  const macro = recognition && typeof recognition.failureId === 'string' ? recognition.failureId : '';
-  const recognitions = [];
-  const list = (items || []).filter(function on(item) { return item.checked; }).map(function map(item) {
+/**
+ * order.create 入参（CONTRACT §5.3 v1.0 单入口）：
+ * {parcels[], images[], tickets[], serviceCode, appoint, note, delivery?, manualEntry}
+ * 包裹级：{parcel:{stationId,stationName,pickupCode,lockerNo,trackingTail,codeStatus,recognitionSource?,confidence?},
+ *          imageIndex?, failureId?}
+ */
+function buildPayload(options) {
+  const opt = options || {};
+  const checked = (opt.items || []).filter(function on(item) { return item && item.checked; });
+  const parcels = checked.map(function map(item) {
     const parcel = {
       stationId: item.stationId,
       stationName: item.stationName || stationName(item.stationId),
       pickupCode: item.pickupCode || '',
       lockerNo: item.lockerNo || '',
       trackingTail: item.trackingTail || '',
-      codeStatus: recognize.validateParcel(item).codeStatus
+      codeStatus: recognize.validateParcel(item).codeStatus,
+      recognitionSource: recognitionSourceOf(item)
     };
     const confidence = confidenceOf(item);
     if (confidence) parcel.confidence = confidence;
-    recognitions.push(recognitionOfItem(item));
-    return {
-      parcel: parcel,
-      serviceCode: item.serviceCode,
-      appoint: itemAppointOf(item),
-      note: item.note || ''
-    };
+    const row = { parcel: parcel };
+    // imageIndex = 本件来源截图在 images[] 的下标（DATA_MODEL §2.5 / CONTRACT §4.2 v1.0）：
+    // 手填件/无截图件（manual=true 或 imageIndex<0）必须省略该键——不写 0 冒充来自第 1 张图。
+    const hasImageIndex = typeof item.imageIndex === 'number' && item.imageIndex >= 0;
+    if (item.manual !== true && hasImageIndex) row.imageIndex = item.imageIndex;
+    if (typeof item.failureId === 'string' && item.failureId) row.failureId = item.failureId;
+    return row;
   });
-  const single = list.length === 1;
-  let topRecognition = null;
-  if (single) {
-    // 单件走顶层 recognition（服务端 order.create 入参形状）；顶层 failureId 只回退给 item0
-    topRecognition = Object.assign({}, recognitions[0]);
-    if (!topRecognition.failureId && macro) topRecognition.failureId = macro;
-  } else {
-    // 拆单：每项自己的 recognition（逐单 failureId/source，不套同一记录）；顶层不带
-    list.forEach(function attach(row, index) { row.recognition = recognitions[index]; });
-  }
-  return {
-    ticket: ticket,
-    image: image,
-    items: list,
-    recognition: topRecognition,
-    single: single,
-    batch: list.length > 1
+  const images = Array.isArray(opt.images) ? opt.images : [];
+  const tickets = Array.isArray(opt.tickets) ? opt.tickets : [];
+  const payload = {
+    parcels: parcels,
+    images: images,
+    tickets: tickets,
+    serviceCode: opt.serviceCode || '',
+    appoint: opt.appoint || { type: 'ASAP' },
+    note: String(opt.note || ''),
+    manualEntry: images.length === 0
   };
+  if (opt.delivery) payload.delivery = opt.delivery;
+  return payload;
 }
 
 function summaryText(item) {
@@ -354,17 +376,18 @@ function stepTitle(step) {
 
 module.exports = {
   STEP_TITLES,
-  MAX_BATCH,
+  MAX_PARCELS,
+  MAX_IMAGES,
   appointmentSlots,
   stationOptions,
   stationName,
   serviceOptions,
   makeItem,
-  inheritedDefaults,
   revalidateItem,
   canSubmit,
+  appointPayloadOf,
+  buildImages,
   buildPayload,
-  itemAppointOf,
   summaryText,
   stepTitle,
   // 提交幂等键生命周期（clientRequestId）

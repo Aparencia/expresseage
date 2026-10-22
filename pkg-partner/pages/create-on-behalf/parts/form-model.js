@@ -7,7 +7,6 @@
 const stations = require('../../../../shared/stations');
 const zones = require('../../../../shared/zones');
 const enums = require('../../../../shared/enums');
-const orderState = require('../../../../shared/order-state');
 const errorCopy = require('../../../../shared/error-copy');
 
 const NOTE_MAX = 200;
@@ -16,7 +15,7 @@ const LOCKER_NO_MAX = 10;
 const TRACKING_TAIL_LENGTH = 5;
 const PHONE_TAIL_LENGTH = 4;
 const DISPLAY_NAME_MAX = 20;
-const BATCH_MAX = orderState.MAX_CREATE_BATCH;
+const BATCH_MAX = 10; // v1.0：一个订单 1~10 件包裹（CONTRACT D23；后端常量随 task-21 收口）
 const CUSTOMER_MODES = ['BOUND', 'GUEST'];
 const MODE_LABEL = { BOUND: '已绑定（对方发起）', GUEST: '新顾客（代客单）' };
 const PARTNER_CLOSED_TEXT = '接单已关闭，暂时不能下单；已有订单不受影响。';
@@ -34,6 +33,7 @@ function emptyParcel() { return { pickupCode: '', lockerNo: '', trackingTail: ''
 function emptyState() {
   return {
     customerMode: 'GUEST',
+    presetMiss: false,
     bindingOptions: [],
     bindingIndex: 0,
     guest: emptyGuest(),
@@ -110,7 +110,7 @@ function buildBindingOptions(bindingList) {
     .filter((item) => item !== null);
 }
 
-// 预约：尽快 + 今天三个时段（时段起止由端侧按当前时间展开，服务端只收 type/startAt/endAt）
+// 预约：尽快 + 今天未结束的时段（时段起止由端侧按服务端校时展开，服务端只收 type/startAt/endAt）
 function buildAppointOptions(nowMs) {
   const now = numberOr(nowMs, 0) || Date.now();
   const base = new Date(now);
@@ -123,7 +123,7 @@ function buildAppointOptions(nowMs) {
   slots.forEach((slot) => {
     const start = new Date(base.getFullYear(), base.getMonth(), base.getDate(), slot.startHour, 0, 0, 0).getTime();
     const end = new Date(base.getFullYear(), base.getMonth(), base.getDate(), slot.endHour, 0, 0, 0).getTime();
-    options.push({ key: enums.APPOINT_TYPE.SLOT, label: slot.label, startAt: start, endAt: end });
+    if (end > now) { options.push({ key: enums.APPOINT_TYPE.SLOT, label: slot.label, startAt: start, endAt: end }); }
   });
   return options;
 }
@@ -134,13 +134,15 @@ function createInitialState(input) {
   const state = emptyState();
   const services = serviceOptionsOf(source.config, source.partner);
   const bindingOptions = buildBindingOptions(source.bindingList);
+  const appointOptions = buildAppointOptions(source.nowMs);
   return Object.assign(state, {
     customerMode: bindingOptions.length ? 'BOUND' : 'GUEST',
     bindingOptions: bindingOptions,
     zones: zoneOptionsOf(source.config, source.partner),
     services: services,
     stationOptions: stationOptionsOf(),
-    appointOptions: buildAppointOptions(source.nowMs)
+    appointOptions: appointOptions,
+    appointNotice: appointOptions.length > 1 ? '' : '今天的预约时段已过，只能选「尽快」；需要指定时间请稍后再约。'
   });
 }
 
@@ -265,34 +267,6 @@ function validate(state) {
   return '';
 }
 
-// 提交内容签名：内容变化 → 更换幂等键（避免旧键复用导致"提交成功却报重复"）
-function contentSignature(state) {
-  const source = state || emptyState();
-  const binding = source.customerMode === 'BOUND' ? currentBinding(source) : null;
-  const guest = source.customerMode === 'GUEST' ? (source.guest || emptyGuest()) : null;
-  return JSON.stringify({
-    mode: source.customerMode,
-    bindingId: binding ? binding.bindingId : '',
-    guest: guest ? {
-      displayName: textOf(guest.displayName),
-      phoneTail: textOf(guest.phoneTail),
-      zone: textOf(guest.zone),
-      buildingNo: textOf(guest.buildingNo),
-      room: textOf(guest.room)
-    } : null,
-    service: (currentService(source) || {}).code || '',
-    station: (currentStation(source) || {}).id || '',
-    appoint: currentAppoint(source).key || '',
-    items: listOf(source.items).map((item) => [
-      textOf(item && item.pickupCode), textOf(item && item.lockerNo), textOf(item && item.trackingTail)
-    ]),
-    note: textOf(source.note),
-    ticket: textOf(source.imageTicketId),
-    image: textOf(source.imageFileId),
-    recognition: textOf(source.recognitionFailureId)
-  });
-}
-
 // 幂等键生命周期：同内容复用上次键（失败重试不重复建单）；内容变了重新生成（helpers 由页面注入 api/client 单源）
 function ensureRequestKey(previous, signature, helpers) {
   const prev = previous || {};
@@ -307,108 +281,6 @@ function ensureRequestKey(previous, signature, helpers) {
     return { clientRequestId: '', signature: signature };
   }
   return { clientRequestId: makeId(), signature: signature };
-}
-
-function appointOf(state) {
-  const option = currentAppoint(state);
-  const appoint = { type: option.key || enums.APPOINT_TYPE.ASAP };
-  if (appoint.type === enums.APPOINT_TYPE.SLOT) {
-    appoint.startAt = option.startAt;
-    appoint.endAt = option.endAt;
-  }
-  return appoint;
-}
-
-function imageOf(state) {
-  const ticket = textOf(state.imageTicketId);
-  const fileId = textOf(state.imageFileId);
-  if (!ticket || !fileId) {
-    return null;
-  }
-  return { image: { fileId: fileId }, ticket: ticket };
-}
-
-function recognitionOf(state) {
-  const failureId = textOf(state.recognitionFailureId);
-  return failureId ? { recognition: { failureId: failureId } } : null;
-}
-
-function parcelPayloadOf(item, state) {
-  const parcel = item || emptyParcel();
-  const station = currentStation(state);
-  const parcelData = {
-    pickupCode: textOf(parcel.pickupCode),
-    lockerNo: textOf(parcel.lockerNo),
-    trackingTail: textOf(parcel.trackingTail),
-    stationId: textOf(station && station.id),
-    stationName: station && station.id ? textOf(station.name) : ''
-  };
-  return parcelData;
-}
-
-// 请求体：单件 order.create / 多件 order.createBatch（共用同一 fileId；绑定路径 bindingId 顶层、guest 逐条）
-function buildPayload(state) {
-  const source = state || emptyState();
-  const message = validate(source);
-  if (message) {
-    return { ok: false, batch: false, data: null, message: message };
-  }
-  const items = listOf(source.items);
-  const batch = items.length > 1;
-  const service = currentService(source);
-  const appoint = appointOf(source);
-  const image = imageOf(source);
-  const recognition = recognitionOf(source);
-  const note = textOf(source.note);
-  const guest = source.customerMode === 'GUEST' ? {
-    displayName: textOf(source.guest.displayName),
-    phoneTail: textOf(source.guest.phoneTail),
-    zone: source.guest.zone,
-    buildingNo: Number(source.guest.buildingNo),
-    room: textOf(source.guest.room),
-    dormKey: guestDormKey(source.guest)
-  } : null;
-  const binding = source.customerMode === 'BOUND' ? currentBinding(source) : null;
-  if (batch) {
-    const data = { items: items.map((item) => {
-      const row = { parcel: parcelPayloadOf(item, source), serviceCode: service.code, appoint: appoint, note: note };
-      if (guest) {
-        row.guest = Object.assign({}, guest);
-      }
-      if (recognition) {
-        row.recognition = recognition.recognition;
-      }
-      return row;
-    }) };
-    if (image) {
-      data.image = image.image;
-      data.ticket = image.ticket;
-    }
-    if (binding) {
-      data.bindingId = binding.bindingId;
-    }
-    return { ok: true, batch: true, data: data, message: '' };
-  }
-  const data = {
-    parcel: parcelPayloadOf(items[0], source),
-    serviceCode: service.code,
-    appoint: appoint,
-    note: note
-  };
-  if (image) {
-    data.image = image.image;
-    data.ticket = image.ticket;
-  }
-  if (binding) {
-    data.bindingId = binding.bindingId;
-  }
-  if (guest) {
-    data.guest = guest;
-  }
-  if (recognition) {
-    data.recognition = recognition.recognition;
-  }
-  return { ok: true, batch: false, data: data, message: '' };
 }
 
 // 识别响应 → 表单预填（只填空白字段，不覆盖用户已填；站点只在命中 P1~P8 时选中）
@@ -476,8 +348,6 @@ module.exports = {
   TRACKING_TAIL_LENGTH,
   buildAppointOptions,
   buildBindingOptions,
-  buildPayload,
-  contentSignature,
   createInitialState,
   currentAppoint,
   currentBinding,

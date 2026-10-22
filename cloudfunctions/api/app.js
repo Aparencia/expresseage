@@ -105,7 +105,8 @@ async function invokeCore(event, deps) {
     if (!spec) {
       throw errors.forbidden('不支持的操作');
     }
-    const handler = router.getRouter()[request.action];
+    // P0-5：按 action 所属域懒加载（首请求不再 require 全部 11 域）；未登记/非 api 域 → null → FORBIDDEN
+    const handler = router.getHandler(request.action);
     if (typeof handler !== 'function') {
       throw errors.forbidden('不支持的操作');
     }

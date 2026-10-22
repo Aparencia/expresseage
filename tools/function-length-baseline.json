@@ -1,0 +1,242 @@
+{
+  "limit": 50,
+  "note": "存量 >50 行函数基线（AGENTS §4.2 / ENGINEERING §8.2 #32）。判据=当前违规 ⊆ 本基线；重构删除后基线可保留（不判红），重新生成：node tools/check-functions.js --baseline > tools/function-length-baseline.json",
+  "functions": {
+    "cloudfunctions/api/app.js": [
+      {
+        "name": "invokeCore",
+        "lines": 87
+      }
+    ],
+    "cloudfunctions/api/db/dao.js": [
+      {
+        "name": "createBody",
+        "lines": 120
+      }
+    ],
+    "cloudfunctions/api/handlers/admin/createInvites.js": [
+      {
+        "name": "handler",
+        "lines": 58
+      }
+    ],
+    "cloudfunctions/api/handlers/admin/fixRecognitionFailure.js": [
+      {
+        "name": "handler",
+        "lines": 58
+      }
+    ],
+    "cloudfunctions/api/handlers/admin/ignoreRecognitionFailure.js": [
+      {
+        "name": "handler",
+        "lines": 56
+      }
+    ],
+    "cloudfunctions/api/handlers/admin/setPartnerStatus.js": [
+      {
+        "name": "handler",
+        "lines": 90
+      }
+    ],
+    "cloudfunctions/api/handlers/admin/testAccounts.js": [
+      {
+        "name": "deleteTestAccount",
+        "lines": 61
+      },
+      {
+        "name": "purgeTestData",
+        "lines": 56
+      }
+    ],
+    "cloudfunctions/api/handlers/admin/viewAsStart.js": [
+      {
+        "name": "handler",
+        "lines": 56
+      }
+    ],
+    "cloudfunctions/api/handlers/ai/parseParcel.js": [
+      {
+        "name": "aiParseParcel",
+        "lines": 157
+      }
+    ],
+    "cloudfunctions/api/handlers/bind/create.js": [
+      {
+        "name": "handler",
+        "lines": 88
+      }
+    ],
+    "cloudfunctions/api/handlers/customer/saveProfile.js": [
+      {
+        "name": "handler",
+        "lines": 154
+      }
+    ],
+    "cloudfunctions/api/handlers/message/list.js": [
+      {
+        "name": "listCenter",
+        "lines": 55
+      }
+    ],
+    "cloudfunctions/api/handlers/order/_common.js": [
+      {
+        "name": "runOrderAction",
+        "lines": 118
+      }
+    ],
+    "cloudfunctions/api/handlers/order/_create.js": [
+      {
+        "name": "createOne",
+        "lines": 54
+      }
+    ],
+    "cloudfunctions/api/handlers/order/_dto.js": [
+      {
+        "name": "buildOrderDto",
+        "lines": 63
+      }
+    ],
+    "cloudfunctions/api/handlers/order/_parcel.js": [
+      {
+        "name": "normalizeParcel",
+        "lines": 58
+      }
+    ],
+    "cloudfunctions/api/handlers/order/correct.js": [
+      {
+        "name": "applyPatch",
+        "lines": 53
+      }
+    ],
+    "cloudfunctions/api/handlers/partner/activate.js": [
+      {
+        "name": "handler",
+        "lines": 62
+      }
+    ],
+    "cloudfunctions/api/handlers/user/bootstrap.js": [
+      {
+        "name": "handler",
+        "lines": 68
+      }
+    ],
+    "cloudfunctions/api/lib/ai/deepseek.js": [
+      {
+        "name": "attemptOnce",
+        "lines": 51
+      },
+      {
+        "name": "createDeepSeekClient",
+        "lines": 130
+      }
+    ],
+    "cloudfunctions/api/middleware/switch-session.js": [
+      {
+        "name": "middleware",
+        "lines": 66
+      }
+    ],
+    "cloudfunctions/cleanup/db/dao.js": [
+      {
+        "name": "createBody",
+        "lines": 120
+      }
+    ],
+    "cloudfunctions/cleanup/sweeps/testData.js": [
+      {
+        "name": "purgeAccountData",
+        "lines": 62
+      }
+    ],
+    "pages/partner/workbench/parts/group-view.js": [
+      {
+        "name": "toRow",
+        "lines": 58
+      }
+    ],
+    "pages/partner/workbench/parts/load-view.js": [
+      {
+        "name": "applyRefresh",
+        "lines": 56
+      }
+    ],
+    "pages/partner/workbench/parts/row-actions.js": [
+      {
+        "name": "buildWrite",
+        "lines": 59
+      },
+      {
+        "name": "validatePanel",
+        "lines": 70
+      }
+    ],
+    "pkg-customer/pages/order-create/parts/files-flow.js": [
+      {
+        "name": "onPickFile",
+        "lines": 75
+      }
+    ],
+    "pkg-customer/pages/order-create/parts/ocr-flow.js": [
+      {
+        "name": "executor",
+        "lines": 58
+      },
+      {
+        "name": "identify",
+        "lines": 134
+      },
+      {
+        "name": "identifyMany",
+        "lines": 92
+      },
+      {
+        "name": "runVision",
+        "lines": 60
+      }
+    ],
+    "pkg-partner/pages/order-detail/parts/voucher.js": [
+      {
+        "name": "buildVoucher",
+        "lines": 55
+      }
+    ],
+    "store/index.js": [
+      {
+        "name": "hydrateFromBootstrap",
+        "lines": 80
+      }
+    ],
+    "utils/avatar.js": [
+      {
+        "name": "<anonymous>",
+        "lines": 61
+      },
+      {
+        "name": "<anonymous>#2",
+        "lines": 55
+      },
+      {
+        "name": "<anonymous>#3",
+        "lines": 53
+      },
+      {
+        "name": "compressAvatar",
+        "lines": 75
+      },
+      {
+        "name": "compressTicket",
+        "lines": 63
+      },
+      {
+        "name": "downscaleImage",
+        "lines": 55
+      }
+    ],
+    "utils/recognize/index.js": [
+      {
+        "name": "parseOcrText",
+        "lines": 53
+      }
+    ]
+  }
+}

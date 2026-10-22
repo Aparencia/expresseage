@@ -37,13 +37,11 @@ function matchKeyword(order, keyword) {
     return true;
   }
   const text = keyword.toLowerCase();
-  const parcel = order.parcel || {};
-  const fields = [
-    order.orderNo,
-    parcel.pickupCode,
-    parcel.trackingTail,
-    parcel.stationName
-  ];
+  // v1.0 多包裹：订单号 / 任一件取件码、运单尾号、站点名均可命中（历史单 parcel{} 由 orderParcelsOf 归一）
+  const fields = [order.orderNo];
+  common.orderParcelsOf(order).forEach((parcel) => {
+    fields.push(parcel.pickupCode, parcel.trackingTail, parcel.stationName);
+  });
   for (let i = 0; i < fields.length; i += 1) {
     if (typeof fields[i] === 'string' && fields[i].toLowerCase().indexOf(text) >= 0) {
       return true;

@@ -25,7 +25,7 @@ const defaults = require(path.join(ROOT, 'config/defaults.js'));
 const statusView = require(path.join(ROOT, 'pkg-customer/parts/status-view.js'));
 const createModel = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/model.js'));
 
-const EXPECTED_ASSERTIONS = 341; // 改为实际断言数时同步核对 `node tools/selftest-state.js` 读数
+const EXPECTED_ASSERTIONS = 339; // 改为实际断言数时同步核对 `node tools/selftest-state.js` 读数
 
 const STATUS = state.STATUS;
 const ALL_ROLES = ['CUSTOMER', 'PARTNER', 'SYSTEM', 'ADMIN'];
@@ -43,7 +43,7 @@ function sectionStatusMachine(h) {
     t.eq(state.ACTIVE_STATUSES.length, 5, '§5 进行中集合 5 个（非终态）');
     t.eq(state.PROGRESS_STEPS.slice(), ['SUBMITTED', 'ACCEPTED', 'PICKED', 'DELIVERED', 'COMPLETED'],
       '§5 顾客进度条固定五步');
-    t.eq(state.MAX_CREATE_BATCH, 5, '§5 一图多码批量上限 5');
+    t.eq(state.MAX_PARCELS_PER_ORDER, 10, '§5 一单包裹上限 10 件（v1.0 多包裹，替代已移除的批量上限）');
     t.eq(state.STATUS_TEXT, enums.ORDER_STATUS_TEXT, '§5 状态文案与 shared/enums 同源');
 
     const edges = [];
@@ -583,7 +583,7 @@ function sectionOrderCreateModel(h) {
     t.eq(createModel.STEP_TITLES.slice(), ['截图', '核对', '服务', '提交'], '§7 下单四步标题');
     t.eq(createModel.stepTitle(1), '截图', '§7 第一步标题');
     t.eq(createModel.stepTitle(9), '', '§7 越界步骤返回空串');
-    t.eq(createModel.MAX_BATCH, 5, '§7 一图多码批量上限 5');
+    t.eq([createModel.MAX_PARCELS, createModel.MAX_IMAGES], [10, 5], '§7 一单上限：包裹 10 / 截图 5（D23）');
 
     const now = new Date(2026, 0, 5, 21, 30, 0);
     const slots = createModel.appointmentSlots(now);
@@ -621,24 +621,35 @@ function sectionOrderCreateModel(h) {
 
     t.eq(createModel.canSubmit([]).reason, '至少选择一件再提交', '§7 空选不可提交');
     t.eq(createModel.canSubmit([].concat(
-      new Array(6).fill(0).map(() => createModel.makeItem({ stationId: 'P1', pickupCode: '123456' }))
-    )).reason, '一图最多拆 5 件', '§7 超 5 件不可提交');
+      new Array(11).fill(0).map(() => createModel.makeItem({ stationId: 'P1', pickupCode: '123456' }))
+    )).reason, '一单最多 10 件', '§7 超 10 件不可提交（v1.0 一单多包裹上限 10）');
     t.check(createModel.canSubmit([validItem]).ok, '§7 单件合法可提交');
     const unchecked = createModel.makeItem({ stationId: 'P1', pickupCode: '123456' });
     unchecked.checked = false;
     t.check(createModel.canSubmit([unchecked]).ok === false, '§7 全不勾选不可提交');
     t.check(createModel.canSubmit([validItem]).items.length === 1, '§7 提交只返回勾选件');
 
-    const single = createModel.buildPayload([validItem], 'ticket-1', 'file-1');
-    t.eq(single.single, true, '§7 单件标记 single');
-    t.eq(single.batch, false, '§7 单件不标 batch');
-    t.eq(single.items[0].parcel.stationName, '西苑顺丰快递（西苑五食堂）', '§7 提交补全站点名称');
-    t.eq(single.items[0].appoint, { type: 'ASAP' }, '§7 默认尽快');
-    t.eq(single.ticket, 'ticket-1', '§7 票据透传');
-    t.eq(single.image, 'file-1', '§7 图片透传');
-    const batch = createModel.buildPayload([validItem, tailItem], 'ticket-2', 'file-2');
-    t.eq(batch.batch, true, '§7 多件标记 batch');
-    t.eq(batch.items.length, 2, '§7 多件明细齐全');
+    const payload = createModel.buildPayload({
+      items: [validItem],
+      images: [{ fileId: 'cloud://file-1', width: 1, height: 1 }],
+      tickets: ['ticket-1'],
+      serviceCode: 'PICKUP_STD',
+      appoint: { type: 'ASAP' },
+      note: ''
+    });
+    t.eq(payload.parcels.length, 1, '§7 单件 → 1 个包裹（v1.0 单入口载荷）');
+    t.eq(payload.parcels[0].parcel.stationName, '西苑顺丰快递（西苑五食堂）', '§7 提交补全站点名称');
+    t.eq(payload.parcels[0].parcel.recognitionSource, 'MANUAL', '§7 手填件来源 MANUAL');
+    t.eq([payload.images[0].fileId, payload.tickets[0]], ['cloud://file-1', 'ticket-1'],
+      '§7 图片/票据同序透传（images[i] ↔ tickets[i]）');
+    t.eq([payload.manualEntry, payload.appoint], [false, { type: 'ASAP' }], '§7 有图 manualEntry=false；默认尽快');
+    const multi = createModel.buildPayload({
+      items: [validItem, tailItem],
+      images: [],
+      tickets: [],
+      serviceCode: 'PICKUP_STD'
+    });
+    t.eq([multi.parcels.length, multi.manualEntry], [2, true], '§7 多件同单 + 无图手填 manualEntry=true');
 
     t.eq(createModel.summaryText(validItem), '西苑顺丰快递（西苑五食堂） · 123456', '§7 摘要行拼接');
     t.eq(createModel.summaryText(createModel.makeItem({})), '待补充', '§7 空件摘要提示待补充');

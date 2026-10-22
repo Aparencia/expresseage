@@ -39,36 +39,56 @@
       <view wx:if="{{guestAutoHint}}" class="small auto-hint">{{guestAutoHint}}</view>
     </view>
 
-    <!-- 取件信息（L3 只在原位展示，不拼进任何 URL） -->
+    <!-- 取件信息（v1.0 一单多包裹：逐件站点/码/柜/尾号/识别来源；L3 只在原位展示，不拼进任何 URL） -->
     <view class="card">
       <view class="row between">
-        <view class="section-title">取件信息</view>
-        <text wx:if="{{order.codeStatusText}}" class="tag {{order.needCode ? 'tag-test' : ''}}">{{order.codeStatusText}}</text>
+        <view class="section-title">取件信息（{{order.parcelCountText}}）</view>
+        <text wx:if="{{order.manualEntry}}" class="tag">{{order.manualEntryText}}</text>
       </view>
-      <view class="form-row">
-        <view class="form-label">站点</view>
-        <view class="form-input">{{order.stationText}}</view>
+      <view wx:for="{{order.parcels}}" wx:key="index" class="parcel-block">
+        <view class="row between">
+          <view class="strong">{{item.indexText}}</view>
+          <text wx:if="{{item.codeStatusText}}" class="tag {{item.needCode ? 'tag-test' : ''}}">{{item.codeStatusText}}</text>
+        </view>
+        <view class="form-row">
+          <view class="form-label">站点</view>
+          <view class="form-input">{{item.stationText}}</view>
+        </view>
+        <view class="form-row">
+          <view class="form-label">取件码</view>
+          <view class="form-input">{{item.pickupCodeText || '需查明'}}</view>
+        </view>
+        <view class="form-row">
+          <view class="form-label">柜号</view>
+          <view class="form-input">{{item.lockerNoText || '—'}}</view>
+        </view>
+        <view class="form-row">
+          <view class="form-label">运单尾号</view>
+          <view class="form-input">{{item.trackingTailText || '—'}}</view>
+        </view>
+        <view wx:if="{{item.recognitionSourceText}}" class="small">识别来源：{{item.recognitionSourceText}}</view>
+        <view wx:if="{{item.failureHint}}" class="flag-tip">识别失败已反馈开发者复核，可手填补码</view>
+        <view wx:if="{{!readonly}}" class="btn btn-ghost mini-btn" data-index="{{item.index}}" bindtap="onCorrectItemTap">改正这一件</view>
       </view>
-      <view class="form-row">
-        <view class="form-label">取件码</view>
-        <view class="form-input">{{order.pickupCodeText || '需查明'}}</view>
-      </view>
-      <view class="form-row">
-        <view class="form-label">柜号</view>
-        <view class="form-input">{{order.lockerNoText || '—'}}</view>
-      </view>
-      <view class="form-row">
-        <view class="form-label">运单尾号</view>
-        <view class="form-input">{{order.trackingTailText || '—'}}</view>
-      </view>
-      <view wx:if="{{order.needCode}}" class="flag-tip">这张单还缺取件码，先补码再取件</view>
-      <view wx:if="{{order.failureHint}}" class="flag-tip">识别失败已反馈开发者复核，可手填补码</view>
+      <view wx:if="{{order.needCode}}" class="flag-tip">这单还有件缺取件码，先补码再取件</view>
       <view wx:if="{{order.exceptionText || order.exceptionCodeText}}" class="flag-tip">
         当前异常：{{order.exceptionCodeText}}{{order.exceptionText ? ' · ' + order.exceptionText : ''}}
       </view>
       <view wx:if="{{order.hasImage}}" class="row image-row">
         <view class="btn btn-ghost mini-btn" bindtap="onViewImage">查看取件截图</view>
+        <text class="small">共 {{order.imageCount}} 张</text>
       </view>
+    </view>
+
+    <!-- 配送地址（D25：默认下单人宿舍；互送时本单收件人地址；仅本单有效） -->
+    <view class="card">
+      <view class="section-title">配送地址</view>
+      <view class="form-row">
+        <view class="form-label">地址</view>
+        <view class="form-input">{{order.deliveryText || '—'}}</view>
+      </view>
+      <view class="small">{{order.deliveryRecipientText}}<text wx:if="{{order.deliveryTailText}}"> · {{order.deliveryTailText}}</text></view>
+      <view wx:if="{{order.deliveryIsDefault}}" class="small muted">未填收件人：按本单地址（下单人宿舍）送达</view>
     </view>
 
     <!-- 服务与备注（服务类型只表达"做什么"，零费用语义） -->
@@ -152,6 +172,15 @@
     <view class="panel" catchtap="noop">
       <view class="section-title">{{correctPanel.title}}</view>
       <view wx:if="{{correctPanel.picked}}" class="small">{{correctPanel.hint}}</view>
+      <view wx:if="{{correctPanel.multi}}" class="reason-list">
+        <view
+          wx:for="{{correctPanel.items}}"
+          wx:key="index"
+          class="reason-chip {{item.index === correctItemIndex ? 'reason-chip-active' : ''}}"
+          data-index="{{item.index}}"
+          bindtap="onCorrectItemTap"
+        >{{item.indexText}}</view>
+      </view>
       <view wx:if="{{correctPanel.showStation}}" class="form-row">
         <view class="form-label">站点</view>
         <picker class="flex-1" range="{{correctPanel.stationOptions}}" range-key="name" value="{{correctPanel.stationIndex}}" bindchange="onStationChange">

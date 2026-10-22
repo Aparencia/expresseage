@@ -22,6 +22,17 @@
   background: #F0F2F5;
 }
 
+.image-picker-index {
+  position: absolute;
+  left: 0;
+  top: 0;
+  padding: 2rpx 10rpx;
+  border-radius: 12rpx 0 12rpx 0;
+  background: rgba(0, 0, 0, 0.5);
+  color: #FFFFFF;
+  font-size: 22rpx;
+}
+
 .image-picker-remove {
   position: absolute;
   right: 0;
@@ -37,6 +48,12 @@
   font-size: 26rpx;
   color: #666666;
   padding: 12rpx 0;
+}
+
+.image-picker-counter {
+  font-size: 24rpx;
+  color: #666666;
+  padding: 0 0 12rpx;
 }
 
 .image-picker-actions {
@@ -55,6 +72,11 @@
   background: #F6F7F9;
   color: #1F7A5C;
   margin: 0;
+}
+
+.image-picker-btn-disabled {
+  color: #999999;
+  background: #F0F2F5;
 }
 
 .image-picker-btn::after {

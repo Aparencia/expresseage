@@ -364,7 +364,7 @@ check(12, '集合名注册表', '云端 db.collection 字面量 ∈ shared/colle
 });
 
 // ---------------------------------------------------------------- #13
-check(13, 'action 注册表', 'shared/actions.js 覆盖 §5.3 全集 + visibility/write；api 调用 ⊆ client', () => {
+check(13, 'action 注册表', 'shared/actions.js 覆盖 §5.3 全集 + visibility/write；api 调用 ⊆ client；router 静态注册表/按域懒加载', () => {
   const reg = requireRegistry(['shared/actions.js']);
   if (!reg || reg.error) return [reg ? 'shared/actions.js 加载失败: ' + reg.error : 'shared/actions.js 缺失'];
   const map = findActionMap(reg.value);
@@ -398,6 +398,39 @@ check(13, 'action 注册表', 'shared/actions.js 覆盖 §5.3 全集 + visibilit
     let m;
     while ((m = re.exec(s))) if (P.ACTIONS[m[1]] || P.P1_ACTIONS.includes(m[1])) out.push(rel + ': 页面直拼 action ' + m[1]);
   });
+  // P0-5 补偿判据（router 按域懒加载）：静态注册表完整性在构建期兜住——
+  // ① client/放行 internal 动作前缀必须是 11 域之一；② 每域 handler 导出集 = 注册表集且都是函数；
+  // ③ 请求热路径走 getHandler（首请求只加载首用域），不再 getRouter() 全量构建。
+  const routerReg = requireRegistry(['cloudfunctions/api/router.js']);
+  if (!routerReg || routerReg.error) {
+    out.push(routerReg ? 'cloudfunctions/api/router.js 加载失败: ' + routerReg.error : 'cloudfunctions/api/router.js 缺失');
+  } else {
+    const r = routerReg.value;
+    const domains = Array.isArray(r.DOMAIN_NAMES) ? r.DOMAIN_NAMES : [];
+    if (domains.length !== 11) out.push('router DOMAIN_NAMES 应为 11 域，实际 ' + domains.length);
+    const problems = typeof r.staticRegistryProblems === 'function' ? r.staticRegistryProblems() : ['router 缺 staticRegistryProblems'];
+    problems.forEach((action) => out.push('router 静态注册表缺域: ' + action));
+    if (typeof r.loadDomain !== 'function' || typeof r.expectedActionsOf !== 'function') {
+      out.push('router 缺 loadDomain/expectedActionsOf（懒加载契约）');
+    } else {
+      domains.forEach((domain) => {
+        let actions = null;
+        try { actions = r.loadDomain(domain); } catch (e) { out.push('域加载失败 ' + domain + ': ' + e.message); return; }
+        const expected = r.expectedActionsOf(domain);
+        const got = Object.keys(actions || {}).sort();
+        expected.filter((a) => got.indexOf(a) < 0).forEach((a) => out.push(domain + ' 缺 handler: ' + a));
+        got.filter((a) => expected.indexOf(a) < 0).forEach((a) => out.push(domain + ' 多出 handler: ' + a));
+        got.forEach((a) => { if (typeof actions[a] !== 'function') out.push(domain + ': handler 不是函数 ' + a); });
+      });
+    }
+    if (typeof r.getHandler !== 'function') out.push('router 缺 getHandler（懒加载入口）');
+    else if (typeof r.getHandler('user.bootstrap') !== 'function' || r.getHandler('cleanup.orderTimeout') !== null) {
+      out.push('router.getHandler 未按域解析（user.bootstrap 应命中 / cleanup.* 应拒绝）');
+    }
+    if ((text('cloudfunctions/api/app.js') || '').indexOf('router.getHandler(') === -1) {
+      out.push('app.js 请求热路径未走 router.getHandler 懒加载');
+    }
+  }
   return out.length ? shortList(out, 12) : null;
 });
 
@@ -926,13 +959,19 @@ check(31, '测试视觉', '孤立 TEST 字面量只在 test-badge；switch-bar �
   return out.length ? shortList(out, 10) : null;
 });
 
+// ---------------------------------------------------------------- #32
+check(32, '单函数行数', '生产源码单函数 ≤50 行（全文本口径；存量基线 tools/function-length-baseline.json，超基线/新增判红）', () => {
+  const r = require('./check-functions').run();
+  return r.problems.length ? shortList(r.problems, 12) : null;
+});
+
 // ---------------------------------------------------------------- 输出
 const opts = process.argv.slice(2);
 const failOnly = opts.includes('--fail-only');
 let pass = 0;
 let failed = 0;
 let skipped = 0;
-console.log('== tools/check.js · v4 门禁（ENGINEERING §8.2 · 31 条）==');
+console.log('== tools/check.js · v4 门禁（ENGINEERING §8.2 · 32 条）==');
 for (const r of results) {
   const id = '#' + String(r.no).padStart(2, '0');
   if (r.pass) {

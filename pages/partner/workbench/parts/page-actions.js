@@ -63,6 +63,15 @@ module.exports = {
     this.setData({ 'panel.selected': event.currentTarget.dataset.code || '' });
   },
 
+  // v1.0 逐件补码：面板内切件（只重算件相关字段，不改订单/动作）
+  onPanelPiece(event) {
+    const index = Number(event.currentTarget.dataset.index);
+    if (!this.data.panel || this.data.panel.type !== 'code') {
+      return;
+    }
+    this.setData({ panel: rowActions.switchCodePanel(this.data.panel, isFinite(index) ? index : 0) });
+  },
+
   onPanelInput(event) {
     const field = event.currentTarget.dataset.field;
     if (field) {
@@ -117,7 +126,7 @@ module.exports = {
     }
     this.setData({ 'panel.error': '' });
     orderApi[write.method](write.payload, write.opts)
-      .then(() => this.afterWrite(key, row))
+      .then(() => this.afterWrite(key, row, values))
       .catch((err) => this.onWriteFail(err));
   },
 
@@ -136,10 +145,10 @@ module.exports = {
     this.load({ poll: true });
   },
 
-  afterWrite(key, row) {
+  afterWrite(key, row, values) {
     this.setData({ panel: null });
     this.load({ poll: true }).then(() => {
-      const intent = actionFlow.afterWriteIntent(key, this.data.groups, row);
+      const intent = actionFlow.afterWriteIntent(key, this.data.groups, row, values || {});
       this.toastMsg(intent.toastText);
       if (intent.panel) {
         this.setData({ panel: intent.panel });
@@ -178,8 +187,13 @@ module.exports = {
     const running = Object.assign({}, plan, { batchActionId: plan.batch ? client.createRequestId() : '' });
     this._lastBatch = { plan: running, values: values || {} };
     this.setData({ batchRunning: true });
-    batchView.run(running, (row, batchActionId) => {
-      const write = rowActions.buildWrite(running.key, row, this._lastBatch.values, batchActionId);
+    // v1.0：改站点/改码逐单逐件循环（同一 batchActionId，结果按件汇总）；其余动作仍逐单循环
+    const runner = running.key === 'correct' ? batchView.runCorrect : batchView.run;
+    runner(running, (row, batchActionId, itemIndex) => {
+      const rowValues = running.key === 'correct'
+        ? { patch: (this._lastBatch.values || {}).patch || {}, itemIndex: itemIndex }
+        : this._lastBatch.values;
+      const write = rowActions.buildWrite(running.key, row, rowValues, batchActionId);
       return orderApi[write.method](write.payload, write.opts);
     }).then((result) => {
       const intent = actionFlow.finishBatchIntent(running, this._lastBatch.values, result.results,
@@ -211,7 +225,7 @@ module.exports = {
     if (!last || !result || !result.failedOrderNos.length) {
       return;
     }
-    const retry = batchView.retryPlan(last.plan, result.failedOrderNos);
+    const retry = batchView.retryPlan(last.plan, result.failedOrderNos, result.failedPieceKeys || []);
     if (!retry.queue.length) {
       this.toastMsg('失败的单已不在当前列表，刷新后再试');
       return;

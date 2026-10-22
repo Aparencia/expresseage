@@ -5,6 +5,9 @@
 const mask = require('../../db/dto/mask');
 const enums = require('../../shared/enums');
 const { AUDIT_ACTIONS } = require('../../shared/audit-actions');
+// v1.0 订单聚合字段只读归一（新 parcels[]/images[]，历史 parcel{}/image{} 单元素回退）唯一解析口径在
+// order/_store.js（Lead 裁决：直接用后端解析接口，后台不另写一份归一）。
+const store = require('../order/_store');
 
 const LEGACY_AUDIT_PREFIX = 'VIEW' + '_' + 'AS' + '_';
 
@@ -27,6 +30,62 @@ function maskTrackingTail(value) {
     return '';
   }
   return '***' + value.slice(-2);
+}
+
+// ── 订单 v1.0 聚合字段（D23/D24/D25）─────────────────────────────────────────
+// parcels[]/images[] 的只读归一（新形态 + 历史单 parcel{}/image{} 回退）由 order/_store 提供，不在本文件重复。
+
+// 件数派生（DATA_MODEL §2.5：包裹数派生、不另存计数字段）；统计的"件数"独立指标用它。
+function parcelCountOf(order) {
+  return store.orderParcelsOf(order).length;
+}
+
+// 单件包裹脱敏投影（admin）：逐件打码，顺序=itemIndex；后台不提供"显示完整"变体。
+function parcelBrief(parcel) {
+  const doc = parcel && typeof parcel === 'object' ? parcel : {};
+  return {
+    stationId: doc.stationId || '',
+    stationName: doc.stationName || '',
+    pickupCode: mask.maskPickupCode(doc.pickupCode),
+    lockerNo: maskLockerNo(doc.lockerNo),
+    trackingTail: maskTrackingTail(doc.trackingTail),
+    codeStatus: doc.codeStatus || ''
+  };
+}
+
+// 需查明按件计数（DATA_MODEL §2.5：整单 needCode = 任一件 NEED_CODE；后台行按件呈现并标注件数）。
+function needCodeCountOf(parcels) {
+  const list = Array.isArray(parcels) ? parcels : [];
+  return list.filter((parcel) => parcel && parcel.codeStatus === enums.CODE_STATUS.NEED_CODE).length;
+}
+
+// 本单配送地址（D25）admin 脱敏投影：只到苑+楼栋。第三方地址的收件人称呼/手机尾号/房间号/房型键
+// 属于 L3，后台一律不下发（完整 L3 只在只读视角 order.get）。历史单无 delivery → null（dorm 仍脱敏展示）。
+function deliveryBrief(order) {
+  const delivery = order && order.delivery && typeof order.delivery === 'object' ? order.delivery : null;
+  if (!delivery) {
+    return null;
+  }
+  const zone = typeof delivery.zone === 'string' ? delivery.zone : '';
+  const buildingNo = Number(delivery.buildingNo);
+  const buildingText = typeof delivery.buildingText === 'string' && delivery.buildingText !== ''
+    ? delivery.buildingText
+    : zone + (Number.isFinite(buildingNo) ? String(buildingNo) : '');
+  return {
+    zone: zone,
+    buildingNo: Number.isFinite(buildingNo) ? buildingNo : 0,
+    buildingText: buildingText
+  };
+}
+
+// 截图逐张可见性摘要（DATA_MODEL §7.6：images[]{hasImage,cleaned}，永不下发 fileId）。
+function imageBriefsOf(order) {
+  return store.orderImagesOf(order).map((image) => {
+    const doc = image && typeof image === 'object' ? image : {};
+    const cleaned = !!doc.cleanedAt;
+    const hasFileId = typeof doc.fileId === 'string' && doc.fileId !== '';
+    return { hasImage: hasFileId && !cleaned, cleaned: cleaned };
+  });
 }
 
 // 历史审计兼容映射（v0.9 前旧名只读换算；新日志只写 ACCOUNT_SWITCH_*，本文件不产生旧名）
@@ -123,8 +182,11 @@ function partnerBrief(partner, options) {
 }
 
 // ── 订单 ─────────────────────────────────────────────────────────────────────
+// 列表行（脱敏）：v1.0 只出聚合件数（件数/需查明件数/无截图标记/苑+栋地址），**不出逐件码/柜号/尾号**
+// （列表是最高频出口，逐件 L3 类字段只在详情按件打码后下发，DATA_MODEL §2.5/§7.6）。
 function orderBrief(order, isTest) {
   const doc = order || {};
+  const parcels = store.orderParcelsOf(doc);
   const exception = doc.exception && typeof doc.exception === 'object'
     ? {
       code: doc.exception.code || '',
@@ -146,6 +208,11 @@ function orderBrief(order, isTest) {
     customerNo: doc.customerNo || '',
     partnerNo: doc.partnerNo || '',
     isTest: isTest === true || doc.isTest === true,
+    // v1.0（D23/D24/D25）：单量按订单计（一行=1 单），件数独立呈现；无截图手填单独标记
+    parcelCount: parcels.length,
+    needCodeCount: needCodeCountOf(parcels),
+    manualEntry: doc.manualEntry === true,
+    delivery: deliveryBrief(doc),
     exception: exception,
     statusUpdatedAt: dateValue(doc.statusUpdatedAt),
     createdAt: dateValue(doc.createdAt)
@@ -155,7 +222,7 @@ function orderBrief(order, isTest) {
 function orderDetail(order, extra) {
   const doc = order || {};
   const opts = extra || {};
-  const parcel = doc.parcel || {};
+  const parcels = store.orderParcelsOf(doc).map(parcelBrief);
   const out = orderBrief(doc, doc.isTest === true);
   out.customerDisplayName = maskedName(opts.customerDisplayName);
   out.partnerDisplayName = maskedName(opts.partnerDisplayName);
@@ -163,21 +230,17 @@ function orderDetail(order, extra) {
   out.isTest = doc.isTest === true;
   out.impersonatedBy = doc.isTest ? doc.impersonatedBy || '' : '';
   out.phoneTail = mask.maskPhoneTail(doc.phoneTail);
-  out.parcel = {
-    stationId: parcel.stationId || '',
-    stationName: parcel.stationName || '',
-    pickupCode: mask.maskPickupCode(parcel.pickupCode),
-    lockerNo: maskLockerNo(parcel.lockerNo),
-    trackingTail: maskTrackingTail(parcel.trackingTail),
-    codeStatus: parcel.codeStatus || ''
-  };
+  // v1.0：逐件包裹（顺序=itemIndex）+ parcel=首件兼容（旧后台页仍读 parcel；空单保留空结构）
+  out.parcels = parcels;
+  out.parcel = parcels[0] || parcelBrief(null);
+  out.imageUploaded = store.orderImagesOf(doc).some((image) => image && typeof image.fileId === 'string' && image.fileId !== '');
+  out.images = imageBriefsOf(doc);
   out.appoint = doc.appoint || null;
   out.note = typeof doc.note === 'string' ? doc.note : '';
   out.deliveryNote = typeof doc.deliveryNote === 'string' ? doc.deliveryNote : '';
   out.cancelReason = doc.cancelReason || '';
   out.cancelReasonText = doc.cancelReason ? enums.cancelReasonText(doc.cancelReason) : '';
   out.cancelledBy = doc.cancelledBy || '';
-  out.imageUploaded = !!(doc.image && doc.image.fileId);
   out.createdAt = dateValue(doc.createdAt);
   out.acceptedAt = dateValue(doc.acceptedAt);
   out.pickedAt = dateValue(doc.pickedAt);
@@ -298,6 +361,8 @@ function configForAdmin(config) {
     maintenance: source.maintenance || { enabled: false, text: '' },
     orderTimeoutMinutes: source.orderTimeoutMinutes,
     autoCompleteHours: source.autoCompleteHours,
+    // v1.0（D23）：合并窗口（0~60，默认 10，0=关闭）——服务端治理参数，后台配置页可读可编辑；不下发客户端
+    orderMergeWindowMinutes: source.orderMergeWindowMinutes,
     screenshotRetentionDays: source.screenshotRetentionDays,
     recognitionFailureRetentionDays: source.recognitionFailureRetentionDays,
     viewTicketTtlMinutes: source.viewTicketTtlMinutes,
@@ -315,6 +380,7 @@ module.exports = {
   maskLockerNo,
   maskTrackingTail,
   maskedName,
+  parcelCountOf,
   customerBrief,
   customerDetail,
   partnerBrief,

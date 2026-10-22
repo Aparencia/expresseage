@@ -13,6 +13,7 @@ const retention = require('./retention');
 
 const DELETION_DAYS = 30;
 const TEST_ID_PREFIX = 'TEST-';
+const MAX_BATCH_ROUNDS = 50;
 
 function unendedWhereOf(ctx, targetId) {
   const command = util.commandOf(ctx);
@@ -56,21 +57,38 @@ async function endSessionsOfTarget(ctx, targetId) {
   return ended;
 }
 
-// §10.3：顾客注销删 partnerNote（含历史已释放行；按需清空，二次运行 0 变化）
+// §10.3：顾客注销删 partnerNote（含历史已释放行）。逐批只取「partnerNote 仍非空」的行并清空：
+// 旧实现固定取 boundAt 最早 100 条，清空后仍命中查询 → 第 101 条起永远清不到（M-18）。
 async function clearPartnerNotesOfCustomer(ctx, openid) {
   const C = util.collectionsOf(ctx);
-  const rows = await ctx.dao.find(C.BINDINGS, {
-    where: { customerId: openid },
-    orderBy: [['boundAt', 'asc']],
-    limit: util.BATCH
-  });
+  const command = util.commandOf(ctx);
+  const useFilter = command && typeof command.neq === 'function';
   let changed = 0;
-  for (let i = 0; i < rows.length; i += 1) {
-    if (!rows[i].partnerNote) {
-      continue;
+  for (let round = 0; round < MAX_BATCH_ROUNDS; round += 1) {
+    const where = { customerId: openid };
+    if (useFilter) {
+      where.partnerNote = command.neq('');
     }
-    await ctx.dao.update(C.BINDINGS, rows[i]._id, { partnerNote: '', updatedAt: util.nowDateOf(ctx) });
-    changed += 1;
+    const rows = await ctx.dao.find(C.BINDINGS, {
+      where: where,
+      orderBy: [['boundAt', 'asc']],
+      limit: util.BATCH
+    });
+    if (rows.length === 0) {
+      break;
+    }
+    let mutated = 0;
+    for (let i = 0; i < rows.length; i += 1) {
+      if (!rows[i].partnerNote) {
+        continue;
+      }
+      await ctx.dao.update(C.BINDINGS, rows[i]._id, { partnerNote: '', updatedAt: util.nowDateOf(ctx) });
+      mutated += 1;
+    }
+    changed += mutated;
+    if (!useFilter || rows.length < util.BATCH || mutated === 0) {
+      break;
+    }
   }
   return changed;
 }
@@ -145,14 +163,13 @@ async function anonymizeOrdersOfCustomer(ctx, openid) {
     if (order.anonymizedAt) {
       continue;
     }
-    const image = order.image || {};
-    const cleanedAt = util.nowDateOf(ctx);
-    if (typeof image.fileId === 'string' && image.fileId !== '') {
-      await util.clearOrderImage(ctx, order);
-    }
-    await retention.anonymizeOrder(ctx, Object.assign({}, order, {
-      image: { fileId: '', cleanedAt: image.fileId ? cleanedAt : (image.cleanedAt || null) }
-    }));
+    // v1.0/D23：先按逐张清截图引用（写 cleanedAt + 引用计数删文件），再把清过的形态交给匿名化，
+    // 保证 accounts 链路不依赖 legacy image{}（历史单仍走同一入口归一）。
+    const cleared = await util.clearOrderImages(ctx, order);
+    const clearedFields = Array.isArray(order.images)
+      ? { images: cleared.images }
+      : { image: cleared.images[0] };
+    await retention.anonymizeOrder(ctx, Object.assign({}, order, clearedFields));
     changed += 1;
   }
   return changed;
@@ -249,6 +266,8 @@ async function runTestAccountsDeletion(ctx) {
           limit: util.BATCH
         });
         for (let o = 0; o < orders.length; o += 1) {
+          // v1.0/D23：删单前清逐张截图引用（历史 image{} 同入口）并按引用计数删文件，避免孤儿截图
+          await util.clearOrderImages(ctx, orders[o]);
           await util.removeOrderCascade(ctx, orders[o]);
         }
         await ctx.dao.removeWhere(C.BINDINGS, { customerId: customer._id });

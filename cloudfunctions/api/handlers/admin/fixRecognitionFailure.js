@@ -58,7 +58,35 @@ function buildResolution(scope, input, fields) {
   };
 }
 
-async function patchOrder(scope, orderId, fields) {
+// v1.0（D23 逐件）：按 failureId 命中本记录的件补录；记录带 `itemIndex†`（DATA_MODEL §2.14，未建单 -1）时
+// 一并按序号定位（两个定位任一命中即回填，兼容入队时尚未回填 failureId 的场次）。
+// 历史单（单 parcel{}）走 legacy 字段；v1.0 新单绝不写不存在的 parcel 字段。
+// 返回 null 表示订单里没有本记录的关联件 —— 不回填（避免把码写到错误的件上）。
+function patchedParcelsOf(order, record, fields) {
+  const list = Array.isArray(order.parcels) ? order.parcels : null;
+  if (!list) {
+    return null;
+  }
+  const recordId = String((record && record._id) || '');
+  const itemIndex = Number(record && record.itemIndex);
+  const hasIndex = Number.isInteger(itemIndex) && itemIndex >= 0 && itemIndex < list.length;
+  let changed = 0;
+  const next = list.map((parcel, index) => {
+    if (!parcel || typeof parcel !== 'object') {
+      return parcel;
+    }
+    const byFailure = recordId !== '' && parcel.failureId === recordId;
+    const byIndex = hasIndex && index === itemIndex;
+    if (!byFailure && !byIndex) {
+      return parcel;
+    }
+    changed += 1;
+    return Object.assign({}, parcel, fields, { recognitionSource: 'MANUAL' });
+  });
+  return changed > 0 ? next : null;
+}
+
+async function patchOrder(scope, orderId, record, fields) {
   const patched = [];
   if (!orderId) {
     return { patched: patched, orderId: '' };
@@ -68,12 +96,19 @@ async function patchOrder(scope, orderId, fields) {
     if (!order) {
       return;
     }
-    const parcel = Object.assign({}, order.parcel || {}, fields, { recognitionSource: 'MANUAL' });
-    await trx.update(COLLECTIONS.ORDERS, order._id, {
-      parcel: parcel,
+    const patch = {
       version: (Number(order.version) || 1) + 1,
       updatedAt: scope.nowDate
-    });
+    };
+    const parcels = patchedParcelsOf(order, record || {}, fields);
+    if (parcels) {
+      patch.parcels = parcels;
+    } else if (order.parcel && typeof order.parcel === 'object') {
+      patch.parcel = Object.assign({}, order.parcel, fields, { recognitionSource: 'MANUAL' });
+    } else {
+      return; // 无关联件：只更新复核记录，不回填订单
+    }
+    await trx.update(COLLECTIONS.ORDERS, order._id, patch);
     Object.keys(fields).forEach(function push(field) {
       patched.push(field);
     });
@@ -85,8 +120,21 @@ async function findRelatedOrderId(scope, record) {
   if (record.orderId) {
     return record.orderId;
   }
-  const order = await scope.dao.findOne(COLLECTIONS.ORDERS, { where: { 'image.failureId': record._id }, limit: 1 });
-  return order ? order._id : '';
+  const recordId = String(record._id || '');
+  if (!recordId) {
+    return '';
+  }
+  // 历史单单图 image.failureId；v1.0 逐件 parcels[].failureId / 逐图 images[].failureId（数组点查仅真库支持）
+  const fields = ['image.failureId', 'parcels.failureId', 'images.failureId'];
+  for (let i = 0; i < fields.length; i += 1) {
+    const where = {};
+    where[fields[i]] = recordId;
+    const order = await scope.dao.findOne(COLLECTIONS.ORDERS, { where: where, limit: 1 });
+    if (order) {
+      return order._id;
+    }
+  }
+  return '';
 }
 
 async function handler(ctx, payload) {
@@ -117,7 +165,7 @@ async function handler(ctx, payload) {
   }
   const resolution = buildResolution(scope, input, fields);
   const orderId = await findRelatedOrderId(scope, record);
-  const patched = await patchOrder(scope, orderId, fields);
+  const patched = await patchOrder(scope, orderId, record, fields);
   await scope.dao.update(COLLECTIONS.RECOGNITION_FAILURES, record._id, {
     status: enums.FAILURE_STATUS.FIXED,
     resolution: resolution,

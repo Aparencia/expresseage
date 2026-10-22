@@ -7,10 +7,13 @@ const store = require('../../../store/index');
 const orderApi = require('../../../api/modules/order');
 const route = require('../../../config/route');
 const ordersView = require('../parts/orders-view');
+const tickerPatch = require('./parts/ticker-patch');
 
 const DETAIL_PAGE = '/pkg-customer/pages/order-detail/index';
 const CREATE_PAGE = '/pkg-customer/pages/order-create/index';
 const PAGE_SIZE = 20;
+// P0-11：首屏请求 ≥300ms 才显示「加载中」，快网不闪（UX_CUSTOMER §0.3 五态模板）
+const LOADING_DELAY_MS = 300;
 
 Page({
   data: {
@@ -22,8 +25,13 @@ Page({
     cursor: null,
     hasMore: true,
     loading: false,
+    loadingVisible: false,
     error: '',
     hasPending: false
+  },
+
+  onLoad() {
+    this._loadingTimer = null;
   },
 
   onShow() {
@@ -33,10 +41,12 @@ Page({
 
   onHide() {
     this.stopTicker();
+    this.clearLoadingTimer();
   },
 
   onUnload() {
     this.stopTicker();
+    this.clearLoadingTimer();
   },
 
   guard() {
@@ -87,6 +97,7 @@ Page({
   loadPage(reset) {
     if (this.data.loading) return Promise.resolve(false);
     this.setData({ loading: true, error: '' });
+    this.scheduleLoadingVisible();
     const payload = { limit: PAGE_SIZE };
     const status = ordersView.requestStatusOf(this.activeTabKey());
     if (status) payload.status = status;
@@ -98,8 +109,10 @@ Page({
         config: this.config()
       }));
       const list = reset ? rows : this.data.list.concat(rows);
+      this.clearLoadingTimer();
       this.setData({
         loading: false,
+        loadingVisible: false,
         list: list,
         cursor: (data && data.nextCursor) || null,
         hasMore: !!(data && data.nextCursor),
@@ -110,9 +123,25 @@ Page({
       return true;
     }).catch((err) => {
       // 失败保留旧数据（已在列表里的行不清空），顶部错误条提示可重试
-      this.setData({ loading: false, error: (err && err.message) || '网络开小差了，请下拉重试' });
+      this.clearLoadingTimer();
+      this.setData({ loading: false, loadingVisible: false, error: (err && err.message) || '网络开小差了，请下拉重试' });
       return false;
     });
+  },
+
+  scheduleLoadingVisible() {
+    this.clearLoadingTimer();
+    this._loadingTimer = setTimeout(() => {
+      this._loadingTimer = null;
+      if (this.data.loading) this.setData({ loadingVisible: true });
+    }, LOADING_DELAY_MS);
+  },
+
+  clearLoadingTimer() {
+    if (this._loadingTimer) {
+      clearTimeout(this._loadingTimer);
+      this._loadingTimer = null;
+    }
   },
 
   syncTicker() {
@@ -120,7 +149,7 @@ Page({
     else this.stopTicker();
   },
 
-  // 本地秒级倒计时（不发网络请求；只更新等待接单行的时间文案）
+  // 本地秒级倒计时（不发网络请求；P0-6：只对时间文案变化的等待接单行做行级 path 补丁，不整表下发）
   startTicker() {
     if (this._ticker) return;
     this._ticker = setInterval(() => {
@@ -128,7 +157,8 @@ Page({
         this.stopTicker();
         return;
       }
-      this.setData({ list: ordersView.tickRows(this.data.list, this.nowMs(), this.config()) });
+      const patch = tickerPatch.build(this.data.list, this.nowMs(), this.config());
+      if (patch) this.setData(patch);
     }, 1000);
   },
 

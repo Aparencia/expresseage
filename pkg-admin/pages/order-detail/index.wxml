@@ -48,23 +48,51 @@
     </view>
 
     <view class="card">
-      <text class="section-title">包裹</text>
-      <view class="row between info-row">
-        <text class="muted">取件码</text>
-        <text>{{order.pickupCodeText}}</text>
+      <view class="row between">
+        <text class="section-title">包裹</text>
+        <view class="row">
+          <text class="tag" wx:if="{{order.pieceCountText}}">{{order.pieceCountText}}</text>
+          <text class="tag" wx:if="{{order.manualEntryText}}">{{order.manualEntryText}}</text>
+        </view>
       </view>
-      <view class="row between info-row">
-        <text class="muted">柜号</text>
-        <text>{{order.lockerNoText}}</text>
-      </view>
-      <view class="row between info-row">
-        <text class="muted">运单尾号</text>
-        <text>{{order.trackingTailText}}</text>
-      </view>
-      <view class="row between info-row">
-        <text class="muted">站点</text>
-        <text>{{order.stationText}}</text>
-      </view>
+      <block wx:if="{{order.multiParcel}}">
+        <view class="piece-block" wx:for="{{order.parcels}}" wx:key="indexText">
+          <view class="row between piece-head">
+            <text class="strong">{{item.indexText}}</text>
+            <text class="muted">{{item.stationText}}</text>
+          </view>
+          <view class="row between info-row">
+            <text class="muted">取件码</text>
+            <text>{{item.pickupCodeText}}</text>
+          </view>
+          <view class="row between info-row">
+            <text class="muted">柜号</text>
+            <text>{{item.lockerNoText}}</text>
+          </view>
+          <view class="row between info-row">
+            <text class="muted">运单尾号</text>
+            <text>{{item.trackingTailText}}</text>
+          </view>
+        </view>
+      </block>
+      <block wx:else>
+        <view class="row between info-row">
+          <text class="muted">取件码</text>
+          <text>{{order.pickupCodeText}}</text>
+        </view>
+        <view class="row between info-row">
+          <text class="muted">柜号</text>
+          <text>{{order.lockerNoText}}</text>
+        </view>
+        <view class="row between info-row">
+          <text class="muted">运单尾号</text>
+          <text>{{order.trackingTailText}}</text>
+        </view>
+        <view class="row between info-row">
+          <text class="muted">站点</text>
+          <text>{{order.stationText}}</text>
+        </view>
+      </block>
       <view class="small">敏感信息默认脱敏；完整值仅在真实账号只读会话中按目标身份查看。</view>
     </view>
 
@@ -77,6 +105,10 @@
       <view class="row between info-row">
         <text class="muted">预约</text>
         <text>{{order.appointText}}</text>
+      </view>
+      <view class="row between info-row" wx:if="{{order.deliveryText}}">
+        <text class="muted">配送地址</text>
+        <text>{{order.deliveryText}}</text>
       </view>
       <view class="row between info-row" wx:if="{{order.note}}">
         <text class="muted">备注</text>

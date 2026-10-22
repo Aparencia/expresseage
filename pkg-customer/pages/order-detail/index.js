@@ -9,6 +9,7 @@ const messageApi = require('../../../api/modules/message');
 const view = require('../../parts/status-view');
 const flow = require('../../parts/order-detail-flow');
 const format = require('../../parts/format');
+const parcelView = require('./parts/parcel-view');
 
 const CREATE_PAGE = '/pkg-customer/pages/order-create/index';
 const ORDERS_PAGE = '/pages/customer/orders/index';
@@ -30,6 +31,13 @@ Page({
     actions: view.actionsView(null, false),
     cancelGuide: '',
     image: { state: 'NONE', canView: false, text: '' },
+    // v1.0（D23/D24/D25）：多包裹 / 多图 / 配送地址 / 无截图标识
+    parcels: [],
+    parcelCount: 0,
+    deliveryText: '',
+    deliveryRecipient: '',
+    deliveryIsOther: false,
+    manualEntryText: '',
     events: [],
     notice: { type: '', text: '' },
     exception: null,
@@ -116,6 +124,8 @@ Page({
       lastUpdatedText: flow.lastUpdatedText(session)
     };
     if (session.view) Object.assign(payload, session.view);
+    // v1.0 订单模型：parcels[]/images[]/delivery/manualEntry 由本地纯件转视图（不改共享 parts）
+    if (payload.order) Object.assign(payload, parcelView.pageExtras(payload.order));
     this.setData(payload);
   },
 
@@ -180,20 +190,22 @@ Page({
     });
   },
 
-  onViewImage() {
+  onViewImage(e) {
     const image = this.data.image || {};
+    const index = Number(e && e.currentTarget && e.currentTarget.dataset ? e.currentTarget.dataset.index : 0) || 0;
     if (!image.canView) {
       wx.showToast({ title: image.text || '这条订单没有截图', icon: 'none' });
       return;
     }
     this.setData({ image: Object.assign({}, image, { state: 'LOADING', text: '正在加载截图…' }) });
-    orderApi.imageUrl({ orderNo: this.data.orderNo }).then((data) => {
+    orderApi.imageUrl({ orderNo: this.data.orderNo, index: index }).then((data) => {
       const url = data && data.url;
       if (!url) {
         this.showImageError('NOT_FOUND', '');
         return;
       }
-      this.setData({ image: Object.assign({}, image, { state: 'AVAILABLE', text: '查看截图' }) });
+      const next = parcelView.imagesView(this.data.order || {});
+      this.setData({ image: Object.assign({}, next, { state: 'AVAILABLE' }) });
       wx.previewImage({ urls: [url] });
     }).catch((err) => this.showImageError(err && err.code, err && err.message));
   },
@@ -261,9 +273,12 @@ Page({
 
   onConfirmDeliveryTap() {
     if (!this.data.actions.confirm) return;
+    const count = this.data.parcelCount || 1;
     wx.showModal({
       title: '确认收货',
-      content: '确认已经收到这件快递？确认后订单将完成。',
+      content: count > 1
+        ? '确认本单 ' + count + ' 件快递都已经收到？确认后整张订单将完成。'
+        : '确认已经收到这件快递？确认后订单将完成。',
       success: (res) => {
         if (!res.confirm) return;
         this.writeAction(orderApi.confirmDelivery, {}).then((ok) => {

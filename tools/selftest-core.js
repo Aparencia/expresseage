@@ -27,7 +27,7 @@ const SAMPLE_FEN = 'total' + 'Fen';
 const FEE_ACTION_RE = new RegExp(['[Ff]' + 'en', 'pri' + 'ce', 'f' + 'ee'].join('|'));
 const CLEAN_TEXT = '订单状态与取件码信息整理，本程序只做下单/接单/履约与消息通知。';
 
-const EXPECTED_ASSERTIONS = 58;
+const EXPECTED_ASSERTIONS = 57;
 
 function register(h) {
   // ---------------------------------------------------------------- §7.1 编号
@@ -70,7 +70,6 @@ function register(h) {
     t.check(!state.canTransition(state.STATUS.PICKED, state.STATUS.COMPLETED), '反例：PICKED→COMPLETED 直跳必须挡');
     t.check(!state.canTransition(state.STATUS.COMPLETED, state.STATUS.ACCEPTED), '终态不可回退');
     t.eq(state.UNDO_WINDOW_MS, 5000, 'undo 窗口 5 秒');
-    t.eq(state.MAX_CREATE_BATCH, 5, '一图多码批量上限 5');
     t.notEmpty(Object.keys(state.ACTION_RULES || {}), '动作转移表非空');
     t.check(Object.keys(state.ACTION_RULES || {}).every((a) => !FEE_ACTION_RE.test(a)),
       '动作表零费用类动作名');

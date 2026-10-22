@@ -34,12 +34,13 @@ const undoView = require(path.join(ROOT, 'pages/partner/workbench/parts/undo-vie
 const loadView = require(path.join(ROOT, 'pages/partner/workbench/parts/load-view.js'));
 const historyView = require(path.join(ROOT, 'pages/partner/workbench/parts/history-view.js'));
 const guideView = require(path.join(ROOT, 'pages/partner/workbench/parts/guide-view.js'));
+const parcelView = require(path.join(ROOT, 'pages/partner/workbench/parts/parcel-view.js'));
 const enums = require(path.join(ROOT, 'shared/enums.js'));
 const orderState = require(path.join(ROOT, 'shared/order-state.js'));
 const storage = require(path.join(ROOT, 'utils/storage.js'));
 const serverDto = require(path.join(ROOT, 'cloudfunctions/api/handlers/order/_dto.js'));
 
-const EXPECTED_ASSERTIONS = 197; // 实际断言总数（少算/多算都判红）
+const EXPECTED_ASSERTIONS = 222; // 实际断言总数（少算/多算都判红）
 
 const STATUS = orderState.STATUS;
 const STATUS_LITERALS = ['SUBMITTED', 'ACCEPTED', 'PICKED', 'DELIVERED', 'COMPLETED', 'CANCELLED', 'EXCEPTION'];
@@ -136,6 +137,29 @@ function dto(status, extra) {
     updatedAt: ISO
   };
   return Object.assign({}, sample, extra || {});
+}
+
+// v1.0 多包裹夹具（D23/D24）：parcels[] 3 件（首件 P4 已补全、第 2 件 P6 需查明+识别失败、第 3 件 P4 柜号）
+function multiDto(extra) {
+  const parcels = [
+    { stationId: 'P4', stationName: '北部菜鸟驿站', pickupCode: '27-2-7016', lockerNo: '', trackingTail: '', codeStatus: enums.CODE_STATUS.OK, codeStatusText: '已补全' },
+    { stationId: 'P6', stationName: '南苑菜鸟驿站', pickupCode: '', lockerNo: '', trackingTail: '12345', codeStatus: enums.CODE_STATUS.NEED_CODE, codeStatusText: '需查明', failureId: 'F-1' },
+    { stationId: 'P4', stationName: '北部菜鸟驿站', pickupCode: '109-2-3003', lockerNo: '3号柜', trackingTail: '', codeStatus: enums.CODE_STATUS.OK, codeStatusText: '已补全' }
+  ];
+  const base = { orderNo: 'H-1', parcels: parcels, parcel: undefined, needCode: true, manualEntry: false };
+  return dto(STATUS.ACCEPTED, Object.assign(base, extra || {}));
+}
+
+// v1.0 无截图手填夹具（D24）：images=[] + manualEntry=true + delivery
+function manualDto(extra) {
+  const base = {
+    orderNo: 'H-2',
+    parcels: [{ stationId: 'P4', stationName: '北部菜鸟驿站', pickupCode: '27-2-7016', lockerNo: '', trackingTail: '', codeStatus: enums.CODE_STATUS.OK, codeStatusText: '已补全' }],
+    parcel: undefined,
+    manualEntry: true,
+    needCode: false
+  };
+  return dto(STATUS.ACCEPTED, Object.assign(base, extra || {}));
 }
 
 function row(status, extra) {
@@ -242,8 +266,8 @@ function register(h) {
       'A07 批量键带同一 batchActionId');
     const acceptPlan = batchView.plan('accept', rowsOf(list), { batchActionId: 'BATCHID000000000000001' });
     t.eq([acceptPlan.batch, acceptPlan.batchActionId], [false, ''], 'A08 批量接单不携带 batchActionId（契约）');
-    t.check(plan.confirmText.indexOf('将 2 件') >= 0 && plan.confirmText.indexOf('已取件') >= 0,
-      'A09 确认框逐字含「改几单、改什么」（2 件标记已取件）');
+    t.check(plan.confirmText.indexOf('将 2 单（共 2 件）') >= 0 && plan.confirmText.indexOf('已取件') >= 0,
+      'A09 确认框逐字含「改几单、改什么」（2 单/2 件标记已取件）');
     t.check(plan.confirmText.indexOf('顾客') >= 0, 'A10 确认框写清顾客看到什么');
     const nonePlan = batchView.plan('pick', [delivered], {});
     t.eq([nonePlan.ok, nonePlan.message.indexOf('没有可') >= 0], [false, true],
@@ -720,6 +744,77 @@ function register(h) {
           t.notEmpty(realDtos, 'G14 真实 DTO 样本非空');
         });
       });
+    });
+  });
+
+  // ── H. v1.0 多包裹行聚合与逐件纠正（D23/D24/D25）─────────────────────────
+  h.section('H v1.0 多包裹', (t) => {
+    const multi = multiDto();
+    const pieces = parcelView.piecesOf(multi);
+    t.eq(pieces.map((item) => item.indexText), ['第 1 件', '第 2 件', '第 3 件'], 'H01 逐件视图：parcels[] 1~10 件按序展开');
+    t.eq(parcelView.tierOf(multi), 1, 'H02 四档按整单最差件：任一需查明 → 整单进需查明档');
+    t.eq(parcelView.stationKeyOf(multi), 'P4', 'H03 分组键取首件站点（跨站点单只归一组）');
+    t.eq(parcelView.stationSummaryOf(pieces).text, 'P4 / P6', 'H04 站点聚合去重展示（P4 / P6）');
+    t.eq([parcelView.countTextOf(pieces), parcelView.needCodeCountTextOf(pieces)],
+      ['3 件', '1 件需查明'], 'H05 件数聚合 + 需查明聚合（按件）');
+    t.eq(parcelView.reviewTextOf(pieces), '已反馈开发者复核', 'H06 识别失败聚合：单件失败给原文案');
+    const multiRow = groupView.toRow(multi);
+    t.eq([multiRow.parcelCount, multiRow.parcelCountText, multiRow.stationSummaryText, multiRow.needCodeCountText, multiRow.manualEntryText],
+      [3, '3 件', 'P4 / P6', '1 件需查明', ''], 'H07 行聚合字段（件数/站点/需查明/无截图）');
+    t.eq([multiRow.codeText, multiRow.parcelRows.length, multiRow.stationId],
+      ['27-2-7016', 3, 'P4'], 'H08 行首仍首件码；逐件明细下发给面板；首件站点分组');
+    t.eq(groupView.buildGroups([multi]).map((group) => group.stationId), ['P4'], 'H09 多站点订单只出现在首件站点组（不重复行）');
+    const normalRow = groupView.toRow(dto(STATUS.ACCEPTED));
+    t.eq([parcelView.piecesOf(dto(STATUS.ACCEPTED)).length, normalRow.parcelCountText, normalRow.parcelRows],
+      [1, '', null], 'H10 历史单包裹 DTO 兼容：视作 1 件、不出件数 chip、不灌 parcelRows');
+    const manualRow = groupView.toRow(manualDto());
+    t.eq([manualRow.manualEntry, manualRow.manualEntryText, manualRow.reviewText],
+      [true, '无截图·手填', ''], 'H11 无截图·手填标识（D24）：不显示识别失败提示');
+    const panel = rowActions.openPanel('correct', multiRow);
+    t.eq([panel.type, panel.items.length, panel.itemIndex, panel.code], ['code', 3, 0, '27-2-7016'],
+      'H12 补码面板带件切换器（多件单 items=3、默认第 1 件）');
+    const switched = rowActions.switchCodePanel(panel, 1);
+    t.eq([switched.itemIndex, switched.itemIndexText, switched.code, switched.trackingTail], [1, '第 2 件', '', '12345'],
+      'H13 切到第 2 件：编辑初值换成该件（含运单尾号）');
+    const writeFirst = rowActions.buildWrite('correct', multiRow, { patch: { pickupCode: '27-2-7016' }, itemIndex: 0 });
+    t.eq([writeFirst.method, writeFirst.payload.itemIndex], ['correct', undefined],
+      'H14 首件缺省 itemIndex 0 不传（兼容契约默认）');
+    const writeThird = rowActions.buildWrite('correct', multiRow, { patch: { pickupCode: '109-2-3003' }, itemIndex: 2, itemIndexText: '第 3 件' });
+    t.eq([writeThird.payload.itemIndex, writeThird.payload.patch.pickupCode], [2, '109-2-3003'],
+      'H15 第 3 件纠正带 itemIndex=2（只改该件）');
+    const batchRows = rowsOf([multi, dto(STATUS.ACCEPTED, { orderNo: 'H-3' })]);
+    const correctPlan = batchView.plan('correct', batchRows, { batchActionId: 'HID00000000000000000001' });
+    t.eq([correctPlan.ok, correctPlan.pieceCount, correctPlan.confirmText.indexOf('选中 2 单共 4 件') >= 0,
+      correctPlan.confirmText.indexOf('\n顾客端同步。') >= 0],
+      [true, 4, true, true], 'H16 批量改站点按件展开（2 单 4 件）且确认框写清单数/件数（第二行顾客端同步）');
+    const seenPieces = [];
+    return batchView.runCorrect(correctPlan, (item, batchActionId, itemIndex) => {
+      seenPieces.push([item.orderNo, itemIndex, batchActionId]);
+      if (itemIndex === 1) {
+        const err = new Error('状态已变化');
+        err.code = 'INVALID_TRANSITION';
+        return Promise.reject(err);
+      }
+      return Promise.resolve({});
+    }).then((result) => {
+      t.eq(seenPieces.length, 4, 'H17 批量改站点逐单逐件循环（4 件 4 次调用）');
+      t.eq(seenPieces.every((pair) => pair[2] === 'HID00000000000000000001'), true,
+        'H18 逐件调用共享同一 batchActionId（同批可审计）');
+      const pieceSummary = batchView.summary(correctPlan, result.results);
+      t.eq([pieceSummary.pieceMode, pieceSummary.okCount, pieceSummary.failCount],
+        [true, 3, 1], 'H19 结果按件汇总（成功 3 件 · 失败 1 件）');
+      t.check(pieceSummary.text.indexOf('3 件成功，1 件失败') >= 0 && pieceSummary.text.indexOf('第 2 件') >= 0,
+        'H20 失败件定位到「单号 第 k 件」（逐件结果如实上屏）');
+      const retry = batchView.retryPlan(correctPlan, pieceSummary.failedOrderNos, pieceSummary.failedPieceKeys);
+      t.eq([retry.queue.length, batchView.correctItemsOf(retry).length], [1, 1],
+        'H21 重试只放回失败件（不重跑已成功件）');
+      const stay = actionFlow.afterWriteIntent('correct', groupsOf([multi]), multiRow, { itemIndex: 1, itemIndexText: '第 2 件' });
+      t.check(stay.toastText.indexOf('第 2 件已更正') >= 0 && stay.panel && stay.panel.itemIndex === 1,
+        'H22 多件单改完一件停在本单同一件面板（可继续核对其他件）');
+      const singleDone = actionFlow.afterWriteIntent('correct', groupsOf([dto(STATUS.ACCEPTED)]), normalRow, { itemIndex: 0 });
+      t.eq(singleDone.panel, null, 'H23 单件单保持旧行为：补齐后不重复开面板');
+      t.eq([normalRow.needCodeCountText, normalRow.stationSummaryText], ['', ''], 'H24 单件单不出聚合 chip（保持 v0.9 视觉）');
+      t.notEmpty(pieces, 'H25 多包裹样本非空');
     });
   });
 }

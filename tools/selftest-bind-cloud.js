@@ -721,9 +721,10 @@ function register(h) {
     db.seed('bindings', [bindingDoc('binding-g-1', 'openid-g-c', 'partner-g-1')]);
     const cApi = apiOf(db, 'openid-g-c');
     const orderPayload = {
-      parcel: { stationId: 'P3', pickupCode: 'A12345', lockerNo: 'B-01', trackingTail: '12345' },
+      parcels: [{ parcel: { stationId: 'P3', pickupCode: 'A12345', lockerNo: 'B-01', trackingTail: '12345' } }],
       serviceCode: SERVICE_CODES[0],
-      note: '放门口'
+      note: '放门口',
+      manualEntry: true
     };
     const created = await cApi.call('order.create', orderPayload, { clientRequestId: 'order-g-000000000001' });
     t.check(created.ok === true, 'G1 接单中（acceptingOrders=true）顾客下单基线成功（实际 code=' + created.code + '）');

@@ -40,7 +40,7 @@ const accountSwitchVm = require(path.join(ROOT, 'pkg-admin/pages/account-switch/
 const reviewVm = require(path.join(ROOT, 'pkg-admin/pages/recognition-review/parts/view-model.js'));
 const messagesVm = require(path.join(ROOT, 'pkg-admin/pages/messages/parts/view-model.js'));
 
-const EXPECTED_ASSERTIONS = 145;
+const EXPECTED_ASSERTIONS = 154;
 
 const ADMIN_PAGES = ['overview', 'invite-codes', 'customers', 'customer-detail', 'partners', 'orders',
   'order-detail', 'config', 'account-switch', 'messages', 'recognition-review'];
@@ -340,6 +340,57 @@ function register(h) {
     ], [false, false, '重复派单'], '介入原因必填、≤200、提交前去空白');
     t.check(orderDetailVm.cancelConfirmContent({ orderNo: 'D4-1', statusText: '异常' }).indexOf('不可恢复') >= 0,
       '介入取消确认含不可恢复后果句');
+  });
+
+  // ------------------------------------------------------------------ G2. v1.0 多包裹（orders 列表 + order-detail）
+  h.section('G2 §3.6/§3.7 v1.0 多包裹：列表件数/无截图标识 + 详情逐件行/配送地址/历史单回退', (t) => {
+    const threePieces = [
+      { stationId: 'P4', stationName: '菜鸟驿站', pickupCode: '7***9', lockerNo: '*号柜', trackingTail: '***78', codeStatus: 'OK' },
+      { stationId: 'P4', stationName: '菜鸟驿站', pickupCode: '2***4', lockerNo: '', trackingTail: '***45', codeStatus: 'OK' },
+      { stationId: 'P6', stationName: '快递柜', pickupCode: '', lockerNo: '***', trackingTail: '', codeStatus: 'NEED_CODE' }
+    ];
+    const multiBuilt = orderDetailVm.buildDetailView({
+      order: {
+        orderNo: 'D4-522A-0002', status: 'ACCEPTED', statusText: '已接单', isTest: false,
+        parcels: threePieces, parcel: threePieces[0], manualEntry: true, dorm: 'D4',
+        delivery: { zone: '南苑', buildingNo: 4, buildingText: '4号楼' }
+      },
+      events: []
+    }, 'D4-522A-0002');
+    t.eq([multiBuilt.order.multiParcel, multiBuilt.order.parcels.length, multiBuilt.order.parcels[1].indexText,
+      multiBuilt.order.parcels[2].indexText], [true, 3, '第 2 件', '第 3 件'],
+    '多件单逐件行：multiParcel=true、3 行、件序号 第 2/3 件（顺序=itemIndex）');
+    t.eq([multiBuilt.order.parcels[0].stationText, multiBuilt.order.parcels[1].stationText, multiBuilt.order.parcels[2].stationText],
+      ['P4 菜鸟驿站', 'P4 菜鸟驿站', 'P6 快递柜'], '逐件行站点按件取（跨站点单不聚合）');
+    t.eq([multiBuilt.order.parcels[0].pickupCodeText, multiBuilt.order.parcels[0].lockerNoText,
+      multiBuilt.order.parcels[0].trackingTailText], ['7***9', '*号柜', '***78'],
+    '逐件行码/柜号/尾号用 DTO 打码值原样展示（不还原、不加工）');
+    t.eq([multiBuilt.order.manualEntryText, multiBuilt.order.pieceCountText, multiBuilt.order.deliveryText],
+      ['无截图·手填', '共 3 件', '南苑 · 4号楼'], '无截图·手填标识 + 件数 + 配送地址（只苑+楼栋）');
+    const legacyBuilt = orderDetailVm.buildDetailView({
+      order: {
+        orderNo: 'D4-522A-0003', status: 'ACCEPTED', statusText: '已接单', dorm: 'D4',
+        parcel: { stationId: 'P4', stationName: '菜鸟驿站', pickupCode: '7***9', lockerNo: '***', trackingTail: '***78' }
+      }, events: []
+    }, 'D4-522A-0003');
+    t.eq([legacyBuilt.order.multiParcel, legacyBuilt.order.parcels.length, legacyBuilt.order.parcels[0].stationText,
+      legacyBuilt.order.deliveryText], [false, 1, 'P4 菜鸟驿站', 'D4'],
+    '历史单无 parcels[] → 回退 parcel 单件视图；delivery 缺失回退脱敏 dorm');
+    const rawBuilt = JSON.stringify(multiBuilt.order);
+    t.check(rawBuilt.indexOf('recipientName') < 0 && rawBuilt.indexOf('dormKey') < 0
+      && rawBuilt.indexOf('fileId') < 0 && rawBuilt.indexOf('imageUrl') < 0,
+    '详情视图不输出收件人称呼/房型键/截图 fileId（admin 默认脱敏，无"显示完整"）');
+    const listChips = ordersVm.decorateRow({ orderNo: 'D4-1', status: 'SUBMITTED', parcelCount: 3, manualEntry: true });
+    t.eq([listChips.parcelCountText, listChips.manualEntryText], ['3 件', '无截图'],
+      '列表行：N>1 件数 chip + 无截图标识');
+    const singleChips = ordersVm.decorateRow({ orderNo: 'D4-2', parcelCount: 1, manualEntry: false });
+    t.eq([singleChips.parcelCountText, singleChips.manualEntryText], ['', ''],
+      '列表行：单件不显示件数 chip、有截图不显示无截图标识');
+    const detailSource = textOf('pkg-admin/pages/order-detail/index.js');
+    const detailWxml = textOf('pkg-admin/pages/order-detail/index.wxml');
+    t.check(detailSource.indexOf('viewContext') < 0 && detailWxml.indexOf('imageUrl') < 0
+      && detailWxml.indexOf('显示完整') < 0,
+    '后台订单页不接只读视角/截图入口（完整 L3 只在只读视角 order.get）');
   });
 
   // ------------------------------------------------------------------ H. 全局配置

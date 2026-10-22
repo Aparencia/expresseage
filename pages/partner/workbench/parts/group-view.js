@@ -13,6 +13,7 @@ const enums = require('../../../../shared/enums');
 const roomTag = require('../../../../utils/room-tag');
 const filterView = require('./filter-view');
 const rowActions = require('./row-actions');
+const parcelView = require('./parcel-view');
 
 const FALLBACK_GROUP_NAME = '全部待处理';
 const UNKNOWN_STATION_RANK = 999;
@@ -69,51 +70,67 @@ function actionsOf(item) {
   return out;
 }
 
-// DTO 行（order/_dto.buildOrderDto）；raw 文档兜底只为旧 response 形状，页面不依赖未下发字段
-function toRow(order) {
-  const item = order || {};
-  const parcel = item.parcel || {};
+// 顾客锚+键（行第二行）：头像/昵称不在行内出现，锚 = dormKey+roomTag
+function identityOf(item) {
   const dorm = item.dorm || {};
   const guest = item.guest || item.guestSnapshot || {};
   const counterpart = item.counterpart || {};
-  const exception = item.exception || {};
-  const status = textOf(item.status);
   const name = textOf(counterpart.displayName) || textOf(guest.displayName) || textOf(item.customerDisplayName);
   const dormKey = textOf(dorm.dormKey) || textOf(item.dormKey) || textOf(guest.dormKey);
   const tag = textOf(dorm.roomTag) || textOf(item.roomTag) || textOf(guest.roomTag);
   const anchor = anchorTextOf(dormKey, tag);
-  const tail = tailText(item.phoneTail || guest.phoneTail);
-  const keyText = [tail, name].filter(Boolean).join(' · ');
-  const pickupCode = textOf(parcel.pickupCode) || textOf(item.pickupCode);
-  const trackingTail = textOf(parcel.trackingTail) || textOf(item.trackingTail);
-  const bucket = textOf(item.bucket) || orderView.bucketOf(status);
-  const rows = [];
+  const keyText = [tailText(item.phoneTail || guest.phoneTail), name].filter(Boolean).join(' · ');
+  const parts = [];
   if (anchor) {
-    rows.push(anchor);
+    parts.push(anchor);
   }
   if (keyText) {
-    rows.push(keyText);
+    parts.push(keyText);
   }
-  const tier = orderView.pickupTier(item);
-  const actions = actionsOf(item);
-  const row = {
+  return { anchor: anchor, keyText: keyText, anchorKeyText: parts.join(' · '), senderText: anchor && keyText ? '' : keyText };
+}
+
+// v1.0 包裹聚合（UX §4.16）：首件码留在行首，件数/站点聚合/无截图在行内；逐件明细仅多件单下发
+function parcelFieldsOf(item) {
+  const pieces = parcelView.piecesOf(item);
+  const primary = pieces[0] || parcelView.pieceOf({}, 0);
+  const stationSummary = parcelView.stationSummaryOf(pieces);
+  return {
+    pieces: pieces,
+    primary: primary,
+    pickupCode: primary.pickupCode || textOf(item.pickupCode),
+    trackingTail: primary.trackingTail || textOf(item.trackingTail),
+    stationSummaryText: stationSummary.text,
+    manualEntry: parcelView.manualEntryOf(item),
+    manualEntryText: parcelView.manualEntryTextOf(item),
+    parcelRows: pieces.length > 1 ? pieces : null
+  };
+}
+
+// 行字段表：页面/wxml 只消费这些稳定键（不直读服务端嵌套结构）
+function rowFieldsOf(item, identity, parcels) {
+  const primary = parcels.primary;
+  const exception = item.exception || {};
+  const status = textOf(item.status);
+  const bucket = textOf(item.bucket) || orderView.bucketOf(status);
+  return {
     orderNo: textOf(item.orderNo),
     status: status,
     statusText: textOf(item.statusText) || orderState.statusText(status),
     bucket: bucket,
-    tierText: orderView.pickupTierText(tier),
-    codeText: pickupCode || (trackingTail ? '尾号' + trackingTail : '待补码'),
-    lockerText: textOf(parcel.lockerNo) || textOf(item.lockerNo),
-    pickupCode: pickupCode,
-    trackingTail: trackingTail,
-    anchorText: anchor,
-    keyText: keyText,
-    anchorKeyText: rows.join(' · '),
-    senderText: anchor && keyText ? '' : keyText,
-    needCode: item.needCode === true,
+    tierText: parcelView.tierTextOf(parcelView.tierOf(item)),
+    codeText: parcels.pickupCode || (parcels.trackingTail ? '尾号' + parcels.trackingTail : '待补码'),
+    lockerText: primary.lockerNo,
+    pickupCode: parcels.pickupCode,
+    trackingTail: parcels.trackingTail,
+    anchorText: identity.anchor,
+    keyText: identity.keyText,
+    anchorKeyText: identity.anchorKeyText,
+    senderText: identity.senderText,
+    needCode: parcelView.needCodeOf(item),
     isGuest: textOf(item.source) === enums.ORDER_SOURCE.PARTNER,
     exceptionText: textOf(exception.text) || textOf(exception.codeText) || textOf(item.exceptionText),
-    reviewText: item.failureHint === true ? '已反馈开发者复核' : '',
+    reviewText: parcelView.reviewTextOf(parcels.pieces) || (item.failureHint === true ? '已反馈开发者复核' : ''),
     cancelReasonText: textOf(item.cancelReasonText) || textOf(item.cancelReason),
     deliveryNote: textOf(item.deliveryNote),
     actions: actionsOf(item),
@@ -121,17 +138,53 @@ function toRow(order) {
     timeText: timeTextOf(item.statusUpdatedAt) || timeTextOf(item.updatedAt) || textOf(item.updatedAtText),
     selectable: filterView.canSelect({ orderNo: item.orderNo, bucket }),
     selected: false,
-    stationId: textOf(parcel.stationId),
-    stationName: textOf(parcel.stationName)
+    stationId: primary.stationId,
+    stationName: primary.stationName,
+    parcelCount: parcels.pieces.length,
+    parcelCountText: parcelView.countTextOf(parcels.pieces),
+    stationSummaryText: parcels.stationSummaryText,
+    needCodeCountText: parcelView.needCodeCountTextOf(parcels.pieces),
+    manualEntry: parcels.manualEntry,
+    manualEntryText: parcels.manualEntryText,
+    parcelRows: parcels.parcelRows
   };
+}
+
+// DTO 行（order/_dto.buildOrderDto）；raw 文档兜底只为旧 response 形状，页面不依赖未下发字段
+function toRow(order) {
+  const item = order || {};
+  const row = rowFieldsOf(item, identityOf(item), parcelFieldsOf(item));
   // 行工具条也进行视图：服务端 actions 变化时随行级补丁一起更新（只消费 actions[]，不判状态）
   row.toolbar = rowActions.buildToolbar(row, {});
   return row;
 }
 
-// 四档动线排序：吃服务端过滤后的 list，不改变分组与过滤结果（同档按码中数字升序→orderNo）
+// 四档动线排序：吃服务端过滤后的 list（v1.0 按整单最差件定档/排序键），同档按码数字→orderNo
+function sortForRoute(list) {
+  const source = Array.isArray(list) ? list : [];
+  return source
+    .map((order, index) => ({ order, index }))
+    .sort((left, right) => {
+      const tierDelta = parcelView.tierOf(left.order) - parcelView.tierOf(right.order);
+      if (tierDelta !== 0) {
+        return tierDelta;
+      }
+      const numberDelta = parcelView.routeNumberOf(left.order) - parcelView.routeNumberOf(right.order);
+      if (numberDelta !== 0) {
+        return numberDelta;
+      }
+      const leftNo = textOf(left.order && left.order.orderNo);
+      const rightNo = textOf(right.order && right.order.orderNo);
+      if (leftNo === rightNo) {
+        return left.index - right.index;
+      }
+      return leftNo < rightNo ? -1 : 1;
+    })
+    .map((entry) => entry.order);
+}
+
 function toRows(orders) {
-  return orderView.sortByPickupRoute(Array.isArray(orders) ? orders : []).map(toRow);
+  return sortForRoute(orders).map(toRow);
 }
 
 function stationRankOf(stationId) {
@@ -158,20 +211,20 @@ function groupOf(stationId, stationName, orders) {
   };
 }
 
-// 服务端 list（DTO）按站点分区：站点名/ID 来自 parcel 字段，顺序按 P1~P8 + 未指定站点兜底
+// 服务端 list（DTO）按站点分区：站点取首件包裹（v1.0 跨站点单只归一组，行内聚合全部站点），
+// 顺序按 P1~P8 + 未指定站点兜底
 function buildGroupsFromList(list) {
   const map = {};
   const keys = [];
   list.forEach((order) => {
-    const parcel = (order && order.parcel) || {};
-    const stationId = textOf(parcel.stationId);
+    const stationId = parcelView.stationKeyOf(order);
     const key = stationId || '__NONE__';
     if (!map[key]) {
-      map[key] = { stationId: stationId, stationName: textOf(parcel.stationName), orders: [] };
+      map[key] = { stationId: stationId, stationName: parcelView.primaryStationNameOf(order), orders: [] };
       keys.push(key);
     }
     if (!map[key].stationName) {
-      map[key].stationName = textOf(parcel.stationName);
+      map[key].stationName = parcelView.primaryStationNameOf(order);
     }
     map[key].orders.push(order);
   });
@@ -357,6 +410,7 @@ module.exports = {
   toRow,
   toRows,
   toGroups,
+  sortForRoute,
   buildGroups: buildGroupsFromList,
   filterRows,
   flattenRows,

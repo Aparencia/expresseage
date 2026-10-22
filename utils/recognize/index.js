@@ -2,11 +2,18 @@
 // 页面只消费本模块输出；失败不阻断手填（NEED_CODE 允许提交）。
 // 三处口径（task-45）：①自动填只认服务端同款紧凑码（4~12），超长候选标"认出但不像"不填；
 // ②柜号先判原长 ≤10 再归一（不截断放行）；③站点归一单源 = shared/stations（本层不复制站点表）。
+// v1.0（D23）：一单多包裹（≤10 件）+ 多图（≤5 张）——多图识别结果由 mergeParcels 汇总去重后交给页面。
 'use strict';
 
+const orderState = require('../../shared/order-state');
 const text = require('./text');
 const codes = require('./codes');
 const station = require('./station');
+
+// 一单上限（CONTRACT §5.2/D23）。task-21 落地 MAX_PARCELS_PER_ORDER/MAX_IMAGES_PER_ORDER 后自动取共享常量，
+// 未落地前按 CONTRACT 定值兜底（测试断言锁定 CONTRACT 值 10/5，不抄现状）。
+const MAX_PARCELS_PER_ORDER = orderState.MAX_PARCELS_PER_ORDER || 10;
+const MAX_IMAGES_PER_ORDER = orderState.MAX_IMAGES_PER_ORDER || 5;
 
 const FORM_ERROR = {
   station: '请选择去哪取（按驿站站点）',
@@ -189,6 +196,52 @@ function applyAiSuggestion(parcel, suggestion) {
   return { parcel: target, changed: changed };
 }
 
+// ── 多图汇总（v1.0 D23，纯函数）──────────────────────────────────────────────
+/** 件的去重键：站点+码+柜+尾号（同一张图重复选择/一图多码跨图重复时只留一件） */
+function parcelKey(parcel) {
+  const value = parcel || {};
+  return [
+    value.stationId || '',
+    value.pickupCode || '',
+    value.lockerNo || '',
+    value.trackingTail || ''
+  ].join('\u0001');
+}
+
+/**
+ * 多图识别结果汇总：按图顺序收集件、去重、截断到一单上限。
+ * @param {object[][]} itemLists 每张图解析出的件数组（按图顺序）
+ * @param {{max?:number}} [options]
+ * @returns {{items:object[], duplicated:number, dropped:number, truncated:boolean}}
+ */
+function mergeParcels(itemLists, options) {
+  const max = (options && options.max) || MAX_PARCELS_PER_ORDER;
+  const lists = Array.isArray(itemLists) ? itemLists : [];
+  const out = [];
+  const seen = {};
+  let duplicated = 0;
+  let dropped = 0;
+  lists.forEach(function each(list) {
+    (Array.isArray(list) ? list : []).forEach(function take(item) {
+      if (!item || typeof item !== 'object') {
+        return;
+      }
+      const key = parcelKey(item);
+      if (seen[key]) {
+        duplicated += 1;
+        return;
+      }
+      if (out.length >= max) {
+        dropped += 1;
+        return;
+      }
+      seen[key] = true;
+      out.push(item);
+    });
+  });
+  return { items: out, duplicated: duplicated, dropped: dropped, truncated: dropped > 0 };
+}
+
 /** 外发给 AI 的去敏文本（≤2000 字；不含原图/openid/联系方式） */
 function maskForAi(rawText) {
   return text.maskSensitive(rawText, 2000);
@@ -208,6 +261,8 @@ function summarizeParcel(parcel) {
 
 module.exports = {
   FORM_ERROR,
+  MAX_PARCELS_PER_ORDER,
+  MAX_IMAGES_PER_ORDER,
   makeEmptyParcel,
   validateParcel,
   parseOcrText,
@@ -215,6 +270,8 @@ module.exports = {
   maskForAi,
   summarizeParcel,
   pickLocker,
+  parcelKey,
+  mergeParcels,
   station,
   codes,
   text

@@ -44,11 +44,13 @@ const TEMP_URL = 'https://tmp.example/b6';
 const CODE_FILLED_NOTE = '兼职已补齐取件码';
 const COUNTS_KEYS = ['submitted', 'accepted', 'picked', 'delivered', 'exception', 'todayCompleted'];
 // listPartner 行 DTO 允许的顶层键（白名单：多一个=可能泄漏 raw 文档字段）
+// v1.0 一单多包裹（D23/D24/D25）：新增 parcels/images/delivery/manualEntry；parcel/image 为历史单兼容键。
 const DTO_ROW_KEYS = [
   'orderNo', 'status', 'statusText', 'bucket', 'progressIndex', 'needCode', 'failureHint', 'source',
-  'service', 'appoint', 'parcel', 'note', 'phoneTail', 'dorm', 'guest', 'exception', 'deliveryNote',
+  'service', 'appoint', 'parcel', 'parcels', 'note', 'phoneTail', 'dorm', 'delivery', 'manualEntry',
+  'guest', 'exception', 'deliveryNote',
   'cancelReason', 'cancelReasonText', 'cancelledBy', 'cancelledByText', 'customerNo', 'partnerNo',
-  'image', 'counterpart', 'actions', 'version', 'statusUpdatedAt', 'createdAt', 'updatedAt', 'acceptedAt',
+  'image', 'images', 'counterpart', 'actions', 'version', 'statusUpdatedAt', 'createdAt', 'updatedAt', 'acceptedAt',
   'pickedAt', 'deliveredAt', 'completedAt', 'cancelledAt', 'deletedByCustomerAt'
 ];
 // 列表/详情 DTO 不得出现的内部键（`fileId` 只能经 order.imageUrl 另签；openid/主键/幂等键一律不出）

@@ -682,8 +682,8 @@ async function sectionF(h) {
     [true, ['stationId', 'pickupCode'], SUBMITTED, 'P4', 'B67890', CODE_STATUS.OK, 'MANUAL', '', 4],
     'F1 correct 全字段（站点+码）落库：recognitionSource=MANUAL、confidence 清空、状态不变、version+1');
     t.eq([correctEvent.type, Object.keys(correctEvent.payload || {}).sort(), correctEvent.note],
-      ['ORDER_CORRECTED', ['after', 'before'], ''],
-    'F2 ORDER_CORRECTED 事件 payload 含 before/after、非补码 note 为空');
+      ['ORDER_CORRECTED', ['after', 'before', 'itemIndex'], ''],
+    'F2 ORDER_CORRECTED 事件 payload 含 before/after/itemIndex（v1.0 逐件定位）、非补码 note 为空');
 
     const filled = await pApi.call('order.correct', { orderNo: '20261022-0502', patch: { pickupCode: 'C12345' } },
       { clientRequestId: nextCrid('correct-fill') });

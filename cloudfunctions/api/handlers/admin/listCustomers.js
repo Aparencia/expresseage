@@ -1,45 +1,35 @@
-// handlers/admin/listCustomers.js · admin.listCustomers（默认脱敏 + 默认排除测试账号；关键词=编号前缀/苑+楼栋/昵称精确）
+// handlers/admin/listCustomers.js · admin.listCustomers（默认脱敏 + 默认排除测试账号）
+// 口径：DATA_MODEL §5.2「admin 顾客列表：customerNo/dormKey 精确、displayName 前缀（idx_display_name）」、
+//       §5.3「游标分页、禁 skip/全表扫描/客户端过滤」；默认排除测试账号按页批量取 users 判 isTestAccount。
+// 分页：(createdAt desc, customerNo) 游标；关键词三路均下推到服务端：编号前缀/苑+楼栋/昵称前缀。
 'use strict';
 
 const { COLLECTIONS } = require('../../shared/collections');
 const {
   enums,
-  sharedValidate,
   createAdminScope,
-  readTrimmedText,
-  parsePage,
-  findPage,
-  loadTestFlags,
-  MAX_SCAN
+  readTrimmedText
 } = require('./_common');
 const dto = require('./_dto');
+const paging = require('./_paging');
 
 const DORM_KEYWORD = /^([DXNBC])(\d{1,2})$/i;
 
-function buildMatcher(rawKeyword) {
+// 关键词分派：C 开头=顾客编号前缀；苑+楼栋=精确条件；其余=昵称前缀（服务端 gte 前缀范围）。
+function queryOf(rawKeyword) {
   const keyword = readTrimmedText(rawKeyword, 32);
   if (!keyword) {
-    return function matchAll() {
-      return true;
-    };
+    return null;
   }
-  const noCheck = sharedValidate.validateCustomerNo(keyword);
-  if (noCheck.ok) {
-    return function matchNo(row) {
-      return typeof row.customerNo === 'string' && row.customerNo.indexOf(noCheck.canonical) === 0;
-    };
+  const compact = paging.prefixOf(keyword);
+  if (compact.length >= 2 && /^C[A-Z2-9]*$/.test(compact)) {
+    return { kind: 'prefix', field: 'customerNo', prefix: compact };
   }
   const dorm = DORM_KEYWORD.exec(keyword);
   if (dorm) {
-    const zone = dorm[1].toUpperCase();
-    const buildingNo = Number(dorm[2]);
-    return function matchDorm(row) {
-      return row.zone === zone && Number(row.buildingNo) === buildingNo;
-    };
+    return { kind: 'dorm', where: { zone: dorm[1].toUpperCase(), buildingNo: Number(dorm[2]) } };
   }
-  return function matchName(row) {
-    return typeof row.displayName === 'string' && row.displayName === keyword;
-  };
+  return { kind: 'prefix', field: 'displayName', prefix: keyword };
 }
 
 async function decorate(scope, customer) {
@@ -57,36 +47,34 @@ async function decorate(scope, customer) {
 async function handler(ctx, payload) {
   const scope = await createAdminScope(ctx);
   const input = payload || {};
-  const page = parsePage(input);
+  const query = paging.parseQuery(input);
   const includeTest = input.includeTest === true;
-  const match = buildMatcher(input.keyword);
-  const rows = [];
-  let scanned = 0;
-  while (rows.length < page.limit && scanned < MAX_SCAN) {
-    const size = Math.min(Math.max(page.limit - rows.length + 10, 20), 100);
-    const batch = await findPage(scope, COLLECTIONS.CUSTOMERS, {}, [['createdAt', 'desc']], page.offset + scanned, size);
-    if (batch.length === 0) {
-      break;
-    }
-    const flags = await loadTestFlags(scope, batch.map((row) => row._id));
-    for (let i = 0; i < batch.length && rows.length < page.limit; i += 1) {
-      const row = batch[i];
-      if (!includeTest && flags.get(row._id) === true) {
-        continue;
-      }
-      if (!match(row)) {
-        continue;
-      }
-      rows.push(row);
-    }
-    scanned += batch.length;
-    if (batch.length < size) {
-      break;
-    }
+  const keyword = queryOf(input.keyword);
+  const accept = includeTest ? null : (row) => scope.isTestAccount(row._id).then((isTest) => isTest !== true);
+  let result = null;
+  if (keyword && keyword.kind === 'prefix') {
+    result = await paging.pagedCollect(scope, paging.fetchPrefixPage, {
+      collection: COLLECTIONS.CUSTOMERS,
+      where: {},
+      field: keyword.field,
+      prefix: keyword.prefix,
+      limit: query.limit,
+      cursor: query.cursor
+    }, accept);
+  } else {
+    result = await paging.pagedCollect(scope, paging.fetchOrderedPage, {
+      collection: COLLECTIONS.CUSTOMERS,
+      where: keyword && keyword.kind === 'dorm' ? keyword.where : {},
+      sortField: 'createdAt',
+      idField: 'customerNo',
+      order: 'desc',
+      idOrder: 'asc',
+      limit: query.limit,
+      cursor: query.cursor
+    }, accept);
   }
-  const list = await Promise.all(rows.map((row) => decorate(scope, row)));
-  const nextCursor = rows.length >= page.limit ? { offset: page.offset + scanned } : null;
-  return { list: list, nextCursor: nextCursor, includeTest: includeTest };
+  const list = await Promise.all(result.list.map((row) => decorate(scope, row)));
+  return { list: list, nextCursor: result.nextCursor, includeTest: includeTest };
 }
 
 module.exports = handler;

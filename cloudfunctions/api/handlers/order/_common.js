@@ -91,7 +91,8 @@ async function runOrderAction(ctx, payload, spec) {
   if (!rule) {
     throw errors.internalError('订单动作未登记');
   }
-  const actorRole = side === 'ADMIN' ? enums.CANCELLED_BY.ADMIN : scope.role;
+  // actorRole 取订单侧别（由归属判定，双角色不依赖 identity.role）；ADMIN 分支保持只读介入语义。
+  const actorRole = side === 'ADMIN' ? enums.CANCELLED_BY.ADMIN : side;
   if (rule.roles.indexOf(actorRole) < 0) {
     throw errors.forbidden('当前身份不能执行该操作');
   }

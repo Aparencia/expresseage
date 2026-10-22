@@ -1,0 +1,65 @@
+.pickup-group {
+  padding-bottom: 8rpx;
+}
+
+.group-head {
+  padding-bottom: 8rpx;
+}
+
+.group-check {
+  padding-bottom: 8rpx;
+  border-bottom: 1rpx solid #F0F2F5;
+}
+
+.summary-row {
+  margin-top: 12rpx;
+  justify-content: space-between;
+}
+
+.pickup-row {
+  align-items: center;
+  padding: 16rpx 0;
+  border-bottom: 1rpx solid #F7F8FA;
+}
+
+.pickup-row:last-child {
+  border-bottom: none;
+}
+
+.check-row {
+  flex: 1;
+  align-items: center;
+}
+
+.pickup-meta {
+  margin-left: 16rpx;
+}
+
+.pickup-station {
+  font-size: 28rpx;
+}
+
+.pickup-code {
+  margin-top: 4rpx;
+  font-size: 34rpx;
+  font-weight: 600;
+  letter-spacing: 1rpx;
+  color: var(--v4-brand);
+}
+
+.pickup-actions {
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8rpx;
+}
+
+.pickup-actions .link-text {
+  min-height: 48rpx;
+}
+
+.btn-small {
+  min-height: 64rpx;
+  line-height: 64rpx;
+  font-size: 26rpx;
+  padding: 0 24rpx;
+}

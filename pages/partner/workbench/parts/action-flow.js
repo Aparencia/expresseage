@@ -12,6 +12,10 @@ const historyView = require('./history-view');
 
 const READONLY_COPY = '开发者只读视角不能操作';
 
+function textOf(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
 // 行级动作点击 → 意图：navigate / toast / panel / confirm
 function rowActionIntent(key, orderNo, groups, readonly) {
   const found = groupView.findRow(groups, orderNo);
@@ -81,13 +85,43 @@ function panelSubmitIntent(panel, groups) {
   if (!found) {
     return { kind: 'toast', message: '订单已不在当前列表，刷新后再看' };
   }
-  return { kind: 'write', key: panel.actionKey, row: found.row, values: checked.values };
+  // v1.0 逐件纠正：把件号带进写请求（补码面板切件后保存的是当前件）
+  const values = Object.assign({}, checked.values, {
+    itemIndex: typeof panel.itemIndex === 'number' ? panel.itemIndex : 0,
+    itemIndexText: textOf(panel.itemIndexText)
+  });
+  return { kind: 'write', key: panel.actionKey, row: found.row, values: values };
+}
+
+// 整屏剩余需查明件数（v1.0：多件单按件计；单件单 1 行算 1 件）
+function needCodePieceCount(groups) {
+  let count = 0;
+  groupView.flattenRows(groups).forEach((row) => {
+    if (Array.isArray(row.parcelRows)) {
+      count += row.parcelRows.filter((piece) => piece.needCode === true).length;
+    } else if (row.needCode === true) {
+      count += 1;
+    }
+  });
+  return count;
 }
 
 // 单件写成功之后：补码场景滚动到/展开下一条需查明并给逐句提示
-function afterWriteIntent(key, groups, row) {
+// v1.0：多件单改完一件后停在本单同一件面板（可继续核对其他件），不跳单
+function afterWriteIntent(key, groups, row, values) {
   if (key !== 'correct') {
     return { toastText: '已更新', panel: null };
+  }
+  const valuesIn = values || {};
+  const remaining = needCodePieceCount(groups);
+  const fresh = groupView.findRow(groups, row.orderNo);
+  const itemIndex = typeof valuesIn.itemIndex === 'number' ? valuesIn.itemIndex : 0;
+  const multi = !!(fresh && fresh.row && fresh.row.parcelCount > 1);
+  if (multi && rowActions.knownActions(fresh.row).some((item) => item.key === 'correct')) {
+    return {
+      toastText: rowActions.parcelCorrectToast({ indexText: textOf(valuesIn.itemIndexText), remaining: remaining }),
+      panel: rowActions.openPanel('correct', fresh.row, itemIndex)
+    };
   }
   const next = rowActions.nextNeedCodeAfter(groups, row.orderNo);
   return {

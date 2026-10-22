@@ -17,10 +17,12 @@ function orderNoOf(options) {
   return textOf(value);
 }
 
-/** 老订单 DTO → 预填快照（只有三个字段；任何 L3 字段都不带） */
+/** 老订单 DTO → 预填快照（只有三个字段；任何 L3 字段都不带）
+ * v1.0（D23）：订单 DTO 从单 parcel 改 parcels[]，这里取第一件做站点预填；兼容旧单图字段。 */
 function prefillFromOrder(order) {
   if (!order) return null;
-  const parcel = order.parcel || {};
+  const parcels = Array.isArray(order.parcels) ? order.parcels : [];
+  const parcel = parcels.length > 0 ? (parcels[0] && parcels[0].parcel) || parcels[0] || {} : (order.parcel || {});
   const service = order.service || {};
   return {
     serviceCode: textOf(service.code),

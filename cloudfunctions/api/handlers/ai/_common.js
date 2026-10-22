@@ -17,10 +17,30 @@ const CONFLICT_CODE_CONFLICT = 'CODE_CONFLICT';
 const DEFAULT_RETENTION_DAYS = 30;
 const CODE_CANDIDATE_RE = /[0-9A-Za-z]{4,12}/g;
 
+// identity.roles = auth 按 users.roles 归一出的业务角色集（双角色 [CUSTOMER,PARTNER]）；
+// 切换会话/手工注入 ctx 只有 role 时回落单元素集，保持单角色语义不变。
+function rolesOfIdentity(identity) {
+  const source = identity || {};
+  const raw = Array.isArray(source.roles) ? source.roles : [];
+  const roles = [];
+  if (raw.indexOf(enums.ROLES.CUSTOMER) >= 0) {
+    roles.push(enums.ROLES.CUSTOMER);
+  }
+  if (raw.indexOf(enums.ROLES.PARTNER) >= 0) {
+    roles.push(enums.ROLES.PARTNER);
+  }
+  if (roles.length === 0
+    && (source.role === enums.ROLES.CUSTOMER || source.role === enums.ROLES.PARTNER)) {
+    roles.push(source.role);
+  }
+  return roles;
+}
+
 function scopeOf(ctx) {
   const identity = (ctx && ctx.identity) || {};
   return {
     role: identity.role || '',
+    roles: rolesOfIdentity(identity),
     openid: identity.effectiveOpenid || (ctx && ctx.openid) || '',
     viewMode: identity.viewMode || ''
   };
@@ -28,7 +48,7 @@ function scopeOf(ctx) {
 
 function assertBusinessRole(ctx) {
   const scope = scopeOf(ctx);
-  if (scope.role !== enums.ROLES.CUSTOMER && scope.role !== enums.ROLES.PARTNER) {
+  if (scope.roles.length === 0) {
     throw errors.forbidden('请先完成登录并选择顾客或兼职身份');
   }
   if (scope.viewMode) {
@@ -70,7 +90,9 @@ function normalizePayload(payload, scope) {
   if (enums.ROLE_LIST.indexOf(role) < 0) {
     throw errors.forbidden('请先选择顾客或兼职身份后再使用识别兜底');
   }
-  if (role !== scope.role) {
+  // users.roles 成员制：双角色按入参 role 选定本次动作域角色（identity.role 已由 auth 同口径解析），
+  // 单角色仍要求与其唯一业务角色一致（与旧行为等价）。
+  if (scope.roles.indexOf(role) < 0) {
     throw errors.validation('role', '识别角色与当前身份不一致，请重新进入下单页');
   }
   // 票据归属/有效期校验失败不拒绝（记 ruleResult.ticketInvalid=true 供后台排查），只要求是字符串

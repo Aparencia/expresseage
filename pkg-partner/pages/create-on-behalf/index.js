@@ -8,6 +8,8 @@ const client = require('../../../api/client');
 const store = require('../../../store/index');
 const modeGuard = require('../../../api/mode-guard');
 const formModel = require('./parts/form-model');
+const payloadModel = require('./parts/payload-model');
+const presetModel = require('./parts/preset-model');
 const resultModel = require('./parts/result-model');
 
 const BINDING_OPTIONS_LIMIT = 50;
@@ -18,6 +20,12 @@ function textOf(value) {
 
 function clone(value) {
   return value === undefined ? value : JSON.parse(JSON.stringify(value));
+}
+
+// 服务端时间基准：store.serverTimeSkew = 本机时刻 - 服务端时刻（api/client 校时后写入）
+function serverNowMs() {
+  const skew = store.get('serverTimeSkew');
+  return Date.now() - (typeof skew === 'number' && isFinite(skew) ? skew : 0);
 }
 
 Page({
@@ -45,6 +53,7 @@ Page({
     appointOptions: [],
     appointIndex: 0,
     appointLabel: '',
+    appointNotice: '',
     note: '',
     noteMax: formModel.NOTE_MAX,
     pickupCodeMax: formModel.PICKUP_CODE_MAX,
@@ -53,8 +62,10 @@ Page({
     displayNameMax: formModel.DISPLAY_NAME_MAX,
     imageFileId: '',
     imageTicketId: '',
+    noImage: true,
     reviewText: '',
     recognizing: false,
+    presetMiss: false,
     submitting: false,
     readonly: false,
     errorText: '',
@@ -83,32 +94,17 @@ Page({
         const config = results[0] || {};
         const bindings = results[1] || {};
         const partner = store.get('partner') || {};
-        this.state = formModel.createInitialState({
+        this.state = presetModel.applyPresetBinding(formModel.createInitialState({
           config: config,
           partner: partner,
           bindingList: bindings.list,
-          nowMs: Date.now()
-        });
-        this.applyPresetBinding(textOf(presetBindingId));
+          nowMs: serverNowMs()
+        }), textOf(presetBindingId));
         this.render();
       })
       .catch((err) => {
         this.setData({ errorText: (err && err.message) || '页面没加载出来，检查网络后重试' });
       });
-  },
-
-  // 从客户列表「代客下单」带 bindingId 进来：定位到该档案（找不到不猜，留给用户手选/新顾客）
-  applyPresetBinding(bindingId) {
-    if (!bindingId || !this.state) {
-      return;
-    }
-    const options = this.state.bindingOptions;
-    for (let index = 0; index < options.length; index += 1) {
-      if (options[index].bindingId === bindingId) {
-        this.state = Object.assign({}, this.state, { customerMode: 'BOUND', bindingIndex: index });
-        return;
-      }
-    }
   },
 
   render() {
@@ -146,10 +142,13 @@ Page({
       appointOptions: state.appointOptions,
       appointIndex: state.appointIndex,
       appointLabel: appoint.label || '',
+      appointNotice: state.appointNotice || '',
       note: state.note,
       imageFileId: state.imageFileId,
       imageTicketId: state.imageTicketId,
-      reviewText: state.reviewText,
+      noImage: !state.imageFileId,
+      reviewText: state.reviewText || '',
+      presetMiss: state.presetMiss === true,
       customerSummary: state.customerMode === 'BOUND' ? '已绑定：' + (binding ? binding.label : '未选择')
         : '新顾客（代客单）：' + guestName + (textOf(guest.phoneTail) ? ' · 尾号' + textOf(guest.phoneTail) : ''),
       result: this.result
@@ -181,7 +180,7 @@ Page({
   },
 
   onBindingPick(event) {
-    this.update({ bindingIndex: Number(event.detail.value) });
+    this.update({ bindingIndex: Number(event.detail.value), presetMiss: false });
   },
 
   onGuestInput(event) {
@@ -260,7 +259,8 @@ Page({
     this.update({
       imageFileId: uploaded.fileId || '',
       imageTicketId: uploaded.uploadTicketId || '',
-      reviewText: ''
+      reviewText: '',
+      recognitionFailureId: ''
     });
   },
 
@@ -269,6 +269,7 @@ Page({
     this.setData({ errorText: detail.message || '截图上传失败，请重试或手填' });
   },
 
+  // 识别失败兜底（D23/C2 口径：NO_TEXT 时服务端不外呼但必须入复核队列并给手填引导；无截图单不进识别链路）
   onRecognizeTap() {
     if (this.data.readonly) {
       wx.showToast({ title: '开发者只读视角不能操作', icon: 'none' });
@@ -278,7 +279,7 @@ Page({
       return;
     }
     if (!this.state.imageTicketId) {
-      wx.showToast({ title: '先选一张取件截图，或直接手填', icon: 'none' });
+      wx.showToast({ title: '先选一张取件截图，或直接手填（无截图·手填）', icon: 'none' });
       return;
     }
     this.setData({ recognizing: true, errorText: '' });
@@ -294,7 +295,7 @@ Page({
       })
       .catch((err) => {
         this.setData({ recognizing: false });
-        this.update({ reviewText: '识别没完成，可以直接手填' });
+        this.update({ reviewText: '识别没完成，可以直接手填；提交后也可在订单详情里补码' });
         if (err && err.code === 'VIEW_TICKET_EXPIRED') {
           store.clearViewContext();
           wx.reLaunch({ url: '/pkg-admin/pages/account-switch/index' });
@@ -310,19 +311,19 @@ Page({
     if (this.data.submitting) {
       return;
     }
-    const built = formModel.buildPayload(this.state);
+    const built = payloadModel.buildPayload(this.state);
     if (!built.ok) {
       this.setData({ errorText: built.message, step: 1 });
       return;
     }
-    const signature = formModel.contentSignature(this.state);
+    const signature = payloadModel.contentSignature(this.state);
     this.requestKey = formModel.ensureRequestKey(this.requestKey, signature, {
       makeId: client.createRequestId,
       isValid: client.isValidClientRequestId
     });
     this.setData({ submitting: true, errorText: '' });
-    const apiCall = built.batch ? orderApi.createBatch : orderApi.create;
-    apiCall(built.data, { clientRequestId: this.requestKey.clientRequestId })
+    // v1.0 单入口：多件包裹走同一 order.create（createBatch 已移除）
+    orderApi.create(built.data, { clientRequestId: this.requestKey.clientRequestId })
       .then((result) => {
         this.result = resultModel.buildResult(result || {}, { customerMode: this.state.customerMode });
         if (modeGuard.isTestWrite() && this.result.visible) {

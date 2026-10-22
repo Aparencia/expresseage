@@ -21,6 +21,7 @@ const EVENT_LABELS = {
   EXCEPTION_REPORTED: '异常上报',
   EXCEPTION_RESOLVED: '异常已解除',
   ORDER_CORRECTED: '更正取件信息',
+  PARCELS_APPENDED: '并入新包裹',
   DELETED_BY_CUSTOMER: '顾客删除记录',
   TIMEOUT_CANCELLED: '超时未接单，系统取消',
   AUTO_COMPLETED: '系统自动完成',

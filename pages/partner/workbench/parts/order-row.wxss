@@ -1,0 +1,168 @@
+.station-card {
+  padding: 0 24rpx 8rpx;
+}
+
+.station-head {
+  padding: 24rpx 0 12rpx;
+}
+
+.order-line {
+  display: flex;
+  align-items: flex-start;
+  padding: 20rpx 0;
+  border-bottom: 1rpx solid #EEEEEE;
+}
+
+.order-line-active {
+  background: #F3F7FF;
+}
+
+.check-dot {
+  width: 40rpx;
+  height: 40rpx;
+  border-radius: 20rpx;
+  border: 2rpx solid #D9DEE5;
+  margin: 6rpx 16rpx 0 0;
+  flex-shrink: 0;
+}
+
+.check-dot-on {
+  background: #2B6DE5;
+  border-color: #2B6DE5;
+}
+
+.check-dot-disabled {
+  background: #F0F2F5;
+  border-color: #E5E8EC;
+}
+
+.line-main {
+  min-width: 0;
+}
+
+.line-title {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.code-text {
+  font-size: 32rpx;
+  font-weight: 600;
+  margin: 0 12rpx;
+}
+
+.code-locker {
+  margin-right: 12rpx;
+}
+
+.guest-tag {
+  background: #E8F0FF;
+  color: #2B6DE5;
+}
+
+/* v1.0 多包裹行聚合（D23/D24）：件数/站点聚合/无截图·手填 */
+.parcel-tag {
+  background: #EAF4F0;
+  color: #1F7A5C;
+}
+
+.manual-tag {
+  background: #F0F2F5;
+  color: #4A4A4A;
+}
+
+.station-summary {
+  margin: 0 12rpx;
+  color: #666666;
+}
+
+.parcel-need-tag {
+  padding: 4rpx 12rpx;
+  border-radius: 8rpx;
+  background: #FFF4CE;
+  color: #8A6D00;
+  font-size: 22rpx;
+  margin: 8rpx 12rpx 0 0;
+}
+
+/* 补码面板逐件切换器（v1.0）：件状态 chip 横排 */
+.panel-pieces {
+  flex-wrap: wrap;
+  margin-bottom: 8rpx;
+}
+
+.panel-piece-hint {
+  margin-bottom: 12rpx;
+  color: #666666;
+}
+
+.line-foot {
+  margin-top: 6rpx;
+}
+
+.line-tags {
+  flex-wrap: wrap;
+}
+
+.need-code-tag {
+  padding: 4rpx 12rpx;
+  border-radius: 8rpx;
+  background: #FFF4CE;
+  color: #8A6D00;
+  font-size: 22rpx;
+  margin: 8rpx 12rpx 0 0;
+}
+
+.review-tag {
+  padding: 4rpx 12rpx;
+  border-radius: 8rpx;
+  background: #F0F2F5;
+  color: #666666;
+  font-size: 22rpx;
+  margin: 8rpx 12rpx 0 0;
+}
+
+.exception-text {
+  margin-top: 6rpx;
+  font-size: 24rpx;
+  color: #E54D42;
+}
+
+/* 行工具条：动作键全部来自服务端 actions[] */
+.row-tools {
+  flex-wrap: wrap;
+  margin-top: 12rpx;
+}
+
+.tool-btn {
+  min-height: 64rpx;
+  line-height: 64rpx;
+  padding: 0 20rpx;
+  margin: 8rpx 16rpx 0 0;
+  border-radius: 10rpx;
+  border: 2rpx solid #D9DEE5;
+  font-size: 24rpx;
+  color: #333333;
+}
+
+.tool-primary {
+  border-color: #2B6DE5;
+  color: #2B6DE5;
+  font-weight: 600;
+}
+
+.tool-danger {
+  border-color: #E54D42;
+  color: #E54D42;
+}
+
+.tool-detail {
+  border-color: transparent;
+  color: #999999;
+}
+
+.line-readonly {
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  color: #999999;
+}

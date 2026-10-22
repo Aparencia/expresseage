@@ -1,19 +1,17 @@
 // handlers/admin/listPartners.js · admin.listPartners（默认脱敏 + 默认排除测试账号；单量取可重算缓存）
+// 口径：DATA_MODEL §5.2「admin 兼职列表：partnerNo 精确 / status + updatedAt desc」、§5.3 游标分页。
+// 关键词=兼职编号前缀（完整/前缀均可）或昵称前缀，均为服务端 gte 范围查询；默认排除测试账号按页判定。
 'use strict';
 
 const { COLLECTIONS } = require('../../shared/collections');
 const {
   enums,
   errors,
-  sharedValidate,
   createAdminScope,
-  readTrimmedText,
-  parsePage,
-  findPage,
-  loadTestFlags,
-  MAX_SCAN
+  readTrimmedText
 } = require('./_common');
 const dto = require('./_dto');
+const paging = require('./_paging');
 
 const STATUS_LIST = enums.PARTNER_STATUS_LIST;
 
@@ -27,57 +25,51 @@ function normalizeStatus(value) {
   return value;
 }
 
-function buildMatcher(rawKeyword) {
+// 关键词分派：P 开头=兼职编号前缀；其余=昵称前缀（服务端前缀匹配，列表仍脱敏）。
+function queryOf(rawKeyword) {
   const keyword = readTrimmedText(rawKeyword, 32);
   if (!keyword) {
-    return function matchAll() {
-      return true;
-    };
+    return null;
   }
-  const noCheck = sharedValidate.validatePartnerNo(keyword);
-  if (noCheck.ok) {
-    return function matchNo(row) {
-      return typeof row.partnerNo === 'string' && row.partnerNo.indexOf(noCheck.canonical) === 0;
-    };
+  const compact = paging.prefixOf(keyword);
+  if (/^P[A-Z2-9]*$/.test(compact)) {
+    return { field: 'partnerNo', prefix: compact };
   }
-  return function matchName(row) {
-    return typeof row.displayName === 'string' && row.displayName === keyword;
-  };
+  return { field: 'displayName', prefix: keyword };
 }
 
 async function handler(ctx, payload) {
   const scope = await createAdminScope(ctx);
   const input = payload || {};
-  const page = parsePage(input);
+  const query = paging.parseQuery(input);
   const status = normalizeStatus(input.status);
   const includeTest = input.includeTest === true;
-  const match = buildMatcher(input.keyword);
+  const keyword = queryOf(input.keyword);
   const where = status ? { status: status } : {};
-  const rows = [];
-  let scanned = 0;
-  while (rows.length < page.limit && scanned < MAX_SCAN) {
-    const size = Math.min(Math.max(page.limit - rows.length + 10, 20), 100);
-    const batch = await findPage(scope, COLLECTIONS.PARTNERS, where, [['createdAt', 'desc']], page.offset + scanned, size);
-    if (batch.length === 0) {
-      break;
-    }
-    const flags = await loadTestFlags(scope, batch.map((row) => row.openid));
-    for (let i = 0; i < batch.length && rows.length < page.limit; i += 1) {
-      const row = batch[i];
-      if (!includeTest && flags.get(row.openid) === true) {
-        continue;
-      }
-      if (!match(row)) {
-        continue;
-      }
-      rows.push(row);
-    }
-    scanned += batch.length;
-    if (batch.length < size) {
-      break;
-    }
+  const accept = includeTest ? null : (row) => scope.isTestAccount(row.openid).then((isTest) => isTest !== true);
+  let result = null;
+  if (keyword) {
+    result = await paging.pagedCollect(scope, paging.fetchPrefixPage, {
+      collection: COLLECTIONS.PARTNERS,
+      where: where,
+      field: keyword.field,
+      prefix: keyword.prefix,
+      limit: query.limit,
+      cursor: query.cursor
+    }, accept);
+  } else {
+    result = await paging.pagedCollect(scope, paging.fetchOrderedPage, {
+      collection: COLLECTIONS.PARTNERS,
+      where: where,
+      sortField: 'createdAt',
+      idField: 'partnerNo',
+      order: 'desc',
+      idOrder: 'asc',
+      limit: query.limit,
+      cursor: query.cursor
+    }, accept);
   }
-  const list = await Promise.all(rows.map(async (row) => {
+  const list = await Promise.all(result.list.map(async (row) => {
     const bindings = await scope.dao.count(COLLECTIONS.BINDINGS, {
       where: { partnerId: row._id, status: enums.BINDING_STATUS.ACTIVE }
     });
@@ -86,8 +78,7 @@ async function handler(ctx, payload) {
       isTest: await scope.isTestAccount(row.openid)
     });
   }));
-  const nextCursor = rows.length >= page.limit ? { offset: page.offset + scanned } : null;
-  return { list: list, nextCursor: nextCursor, includeTest: includeTest };
+  return { list: list, nextCursor: result.nextCursor, includeTest: includeTest };
 }
 
 module.exports = handler;

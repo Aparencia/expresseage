@@ -5,7 +5,7 @@
  * 职责边界（AGENTS §7）：**不连真实云环境、不写库、不改控制台**。本脚本只做：
  *   1) 环境断言（node 版本、config/env.js 环境 ID 状态、git 身份、关键文件存在）；
  *   2) 生成可执行的初始化计划（集合注册表、索引清单、config 全局文档、counters、测试账号，
- *      对齐 DATA_MODEL §9 与 ENGINEERING §4.6/§4.11）；
+ *      对齐 DATA_MODEL §5.1（索引权威节）与 ENGINEERING §4.6/§4.11）；
  *   3) dry-run 输出（默认）；`--apply` 仅提示"由用户在云控制台/部署机执行"，不代做。
  *
  * 用法：
@@ -76,22 +76,31 @@ function buildPlan() {
   const plan = [];
   // 1) 集合（14 个）
   P.COLLECTIONS.forEach((name) => plan.push({ kind: 'collection', target: name, action: 'ensure-collection', note: '空集合起（D11 不迁移 v3 数据）' }));
-  // 2) 唯一索引（DATA_MODEL §9；列名对齐集合字段）
-  const indexSpec = {
-    customers: [['customerNo', true]],
-    partners: [['openid', true], ['partnerNo', true]],
-    bindings: [['activeKey', true]],
-    orders: [['orderNo', true], ['requestKey', true]],
-    order_events: [['requestKey', true]],
-    invitation_codes: [['code', true]],
-    admin_view_sessions: [['_id', true]],
-    counters: [['key', true]],
-    upload_tickets: [['ticket', true]],
-    recognition_failures: [['failureNo', true], ['requestKey', true]],
-  };
-  Object.keys(indexSpec).forEach((coll) => {
-    indexSpec[coll].forEach((pair) => {
-      plan.push({ kind: 'index', target: coll + '.' + pair[0], action: 'ensure-unique-index', note: '唯一索引：冲突路径由 handler 重试 ≤5 次' });
+  // 2) 唯一索引（权威：docs/V4_DATA_MODEL.md §5.1；与 cloudfunctions/api/handlers/admin/bootstrap.js
+  //    的 INDEX_SPECS、selftest-cloud 的 15 项部署清单断言同源。列名对齐集合字段）
+  const indexSpec = [
+    ['customers', 'uk_customer_no', 'customerNo'],
+    ['partners', 'uk_openid', 'openid'],
+    ['partners', 'uk_partner_no', 'partnerNo'],
+    ['bindings', 'uk_active_key', 'activeKey'],
+    ['bindings', 'uk_tag_key', 'tagKey'], // roomTag 并发第二道闸（(partnerId,dormKey,roomTag) 唯一）
+    ['orders', 'uk_order_no', 'orderNo'],
+    ['orders', 'uk_request_key', 'requestKey'],
+    ['order_events', 'uk_request_key', 'requestKey'],
+    ['invitation_codes', 'uk_code', 'code'],
+    ['admin_view_sessions', 'uk_request_key', 'requestKey'],
+    ['counters', 'uk_key', 'key'],
+    ['admin_audit', 'uk_request_key', 'requestKey'],
+    ['upload_tickets', 'uk_ticket', 'ticket'],
+    ['recognition_failures', 'uk_failure_no', 'failureNo'],
+    ['recognition_failures', 'uk_request_key', 'requestKey'],
+  ];
+  indexSpec.forEach((spec) => {
+    plan.push({
+      kind: 'index',
+      target: spec[0] + '.' + spec[2],
+      action: 'ensure-unique-index',
+      note: '唯一索引 ' + spec[1] + '（' + spec[0] + '.' + spec[2] + '）；冲突路径由 handler 重试 ≤5 次',
     });
   });
   // 3) config 全局文档（无费用项；字段以 CONTRACT §4 与 defaults 为准）
@@ -143,8 +152,10 @@ function main() {
   }
   const envFail = checks.filter((c) => !c.ok && !c.warn).length;
   const envWarn = checks.filter((c) => c.warn).length;
-  console.log('seed-dev：计划 ' + plan.length + ' 项；环境断言通过 ' + (checks.length - envFail - envWarn) + ' 项/告警 '
-    + envWarn + ' 项/失败 ' + envFail + ' 项；dry-run 未写任何数据');
+  const summary = 'seed-dev：计划 ' + plan.length + ' 项；环境断言通过 ' + (checks.length - envFail - envWarn) + ' 项/告警 '
+    + envWarn + ' 项/失败 ' + envFail + ' 项；dry-run 未写任何数据';
+  // --json 时汇总行走 stderr，保证 stdout 是纯 JSON（机器可读口径；selftest-tools 依赖）
+  if (jsonOut) { console.error(summary); } else { console.log(summary); }
   return envFail === 0 ? 0 : 1;
 }
 

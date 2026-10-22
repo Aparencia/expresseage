@@ -114,7 +114,7 @@ const base = {
 
   onHide() {
     this.stopPolling();
-    this.clearUndoTimer();
+    this.clearUndoTimer(); this.clearSearchTimer();
     if (this.data.undo.visible) {
       this.setData({ undo: actionFlow.closedUndo() });
     }
@@ -122,7 +122,7 @@ const base = {
 
   onUnload() {
     this.stopPolling();
-    this.clearUndoTimer();
+    this.clearUndoTimer(); this.clearSearchTimer();
     if (this.offStore) {
       this.offStore();
       this.offStore = null;
@@ -219,6 +219,9 @@ const base = {
     }
   },
 
+  // P0-11：onHide/onUnload 清理防抖定时器（切走瞬间输入不再触发卸载后请求）
+  clearSearchTimer() { if (this.searchTimer) { clearTimeout(this.searchTimer); this.searchTimer = null; } },
+
   load(options) {
     const opts = options || {};
     if (!opts.poll && this.data.stage !== 'ready') {
@@ -308,8 +311,12 @@ const base = {
     setTimeout(() => step(chunks), CHUNK_DELAY_MS);
   },
 
+  // P0-6：先判等再 store.patch（轮询无变化时零通知，隐藏页/其他订阅者不再重算）
   syncBadge(counts) {
-    store.patch({ badges: loadView.badgePatch(counts, store.get('badges') || {}) });
+    const current = store.get('badges') || {};
+    const next = loadView.badgePatch(counts, current);
+    if (next.workbenchPending === current.workbenchPending && next.messages === current.messages) return;
+    store.patch({ badges: next });
   },
 
   syncBanner(counts) {
@@ -394,9 +401,7 @@ const base = {
   onKeywordInput(event) {
     const keyword = (event.detail && event.detail.value) || '';
     this.setData({ keyword: keyword });
-    if (this.searchTimer) {
-      clearTimeout(this.searchTimer);
-    }
+    this.clearSearchTimer();
     this.searchTimer = setTimeout(() => {
       this._list = [];
       this._page1Keys = [];

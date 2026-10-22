@@ -1,4 +1,5 @@
-// api/modules/order.js · order 域（19 动作；批量由客户端循环 + 同一 batchActionId）
+// api/modules/order.js · order 域（18 动作；批量由客户端循环 + 同一 batchActionId）
+// v1.0：下单单入口 order.create（一单多包裹/多图/无截图手填/合并窗口）；order.createBatch 已移除。
 // 幂等：写动作 opts.clientRequestId 透传（页面重试复用同一键，防重复写；UX §4.8）；
 // 乐观锁：写动作 opts.expectedVersion 透传 DTO.version（服务端 CONFLICT → 人话"请刷新后重试"）。
 const client = require('../client');
@@ -11,9 +12,6 @@ module.exports = {
   // 建单幂等：opts.clientRequestId 由页面在进入 Step4 生成，失败重试沿用（内容变更后重生成）
   create(payload, opts) {
     return call('order.create', payload, opts);
-  },
-  createBatch(payload, opts) {
-    return call('order.createBatch', payload, opts);
   },
   get(payload) {
     return client.call('order.get', payload || {}, { retry: true });

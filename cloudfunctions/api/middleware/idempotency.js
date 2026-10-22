@@ -5,7 +5,7 @@
 const { COLLECTIONS } = require('../db/collections');
 const errors = require('../lib/errors');
 
-// order.create：{customerId|partnerId}:{clientRequestId}；createBatch 追加 :{itemIndex}
+// order.create：{customerId|partnerId}:{clientRequestId}（v1.0 一单多包裹单入口，无 itemIndex 追加位）
 function orderRequestKey(ctx, itemIndex) {
   const base = String(ctx.identity.effectiveOpenid || '') + ':' + String(ctx.clientRequestId || '');
   return itemIndex === undefined || itemIndex === null ? base : base + ':' + itemIndex;

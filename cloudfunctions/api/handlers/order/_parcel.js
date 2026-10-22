@@ -207,6 +207,24 @@ function hasGuestField(input) {
   return !!(input && typeof input === 'object' && input.guest !== undefined && input.guest !== null);
 }
 
+// 双角色下单的「动作域角色」：带 guest/bindingId → 兼职代客（PARTNER）；否则按顾客本人（CUSTOMER）。
+// 单角色直接取 identity.role（保持原语义）。bindingId 只解释为兼职代客选择器——顾客本人下单不得携带
+// （assertCreateSelector 同口径拒绝），故「带 bindingId 但想以顾客身份下单」没有可达路径：按代客单处理并拒绝。
+function resolveCreateRole(scope, bindingId, guestGiven) {
+  const value = scope || {};
+  if (value.role) {
+    return value.role;
+  }
+  const roles = Array.isArray(value.roles) ? value.roles : [];
+  if (roles.indexOf(enums.ROLES.PARTNER) >= 0 && (bindingId || guestGiven)) {
+    return enums.ROLES.PARTNER;
+  }
+  if (roles.indexOf(enums.ROLES.CUSTOMER) >= 0) {
+    return enums.ROLES.CUSTOMER;
+  }
+  return roles.indexOf(enums.ROLES.PARTNER) >= 0 ? enums.ROLES.PARTNER : '';
+}
+
 // 单笔下单二选一：顾客单不得带 bindingId/guest（服务端拒绝，不静默忽略）；兼职单不得两者同时给。
 // 兼职单「都不给」不在这里抛：留给 guest 必填闸报 data.field='guest'（缺 guest 的唯一入口）。
 function assertCreateSelector(role, bindingId, guestGiven) {
@@ -228,20 +246,7 @@ function assertCreateSelector(role, bindingId, guestGiven) {
   return bindingId ? 'BOUND' : 'GUEST';
 }
 
-// 批量条目级二选一：顾客单逐条不得带 guest；绑定顾客批量时 items[i] 不得再给 guest（整批不建）。
-function assertBatchGuestFields(context, items) {
-  items.forEach((item, index) => {
-    if (!hasGuestField(item)) {
-      return;
-    }
-    if (context.mode === 'CUSTOMER') {
-      throw errors.validation('guest', '顾客下单不能填写代客信息，请刷新页面后重试');
-    }
-    if (context.customerMode === 'BOUND') {
-      throw errors.validation('guest', '已选择绑定顾客，第 ' + (index + 1) + ' 条不能再填写代客信息');
-    }
-  });
-}
+// 批量条目级二选一（v1.0 已并入单入口 order.create：guest 为整单一份，由 assertCreateSelector 兜住）。
 
 // 绑定顾客代客单的订单上下文：身份取绑定、地址取顾客当前资料 + 绑定当前 roomTag（不抄 dormSnapshot）。
 function boundCustomerContext(bound, partnerIsTest) {
@@ -284,11 +289,6 @@ function normalizeOrderNote(value) {
   return result.value;
 }
 
-// 代客单展示名不允许写进订单快照的口径从这里收口（订单只存 guest/编号快照）
-function guestPhoneTail(guest) {
-  return guest && typeof guest.phoneTail === 'string' ? guest.phoneTail : '';
-}
-
 // recognition.source（AI 兜底被采纳时 DEEPSEEK）：只接受 RECOGNITION_SOURCES 值；非法/缺失回 ''（不猜）
 function normalizeRecognitionSource(value) {
   if (typeof value !== 'string' || RECOGNITION_SOURCES.indexOf(value) < 0) {
@@ -309,12 +309,11 @@ module.exports = {
   customerDorm,
   readBindingId,
   hasGuestField,
+  resolveCreateRole,
   assertCreateSelector,
-  assertBatchGuestFields,
   boundCustomerContext,
   normalizeGuest,
   normalizeOrderNote,
-  guestPhoneTail,
   parseSlotTime,
   time
 };

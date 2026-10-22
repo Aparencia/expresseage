@@ -24,12 +24,15 @@ function normalizeFailureNo(value) {
   return text;
 }
 
+// 原图临时 URL 显式 5 分钟（D17/§11.3/AC-D-25；与 order/imageUrl 的 maxAge=300 同口径，M-47）。
 async function issueImageUrl(ctx, fileId) {
   const cloud = ctx && ctx.cloud;
   if (!fileId || !cloud || typeof cloud.getTempFileURL !== 'function') {
     return null;
   }
-  const result = await cloud.getTempFileURL({ fileList: [fileId] });
+  const result = await cloud.getTempFileURL({
+    fileList: [{ fileID: fileId, maxAge: IMAGE_URL_TTL_MINUTES * 60 }]
+  });
   const first = result && Array.isArray(result.fileList) ? result.fileList[0] : null;
   const url = first && first.tempFileURL ? first.tempFileURL : '';
   if (!url) {

@@ -159,3 +159,12 @@
 .result-tip {
   margin-top: 12rpx;
 }
+
+.flag-tip {
+  margin-top: 12rpx;
+  padding: 12rpx 16rpx;
+  border-radius: 12rpx;
+  background: #FFF4CE;
+  color: #8A6D00;
+  font-size: 26rpx;
+}

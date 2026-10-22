@@ -32,6 +32,40 @@ function textOf(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+// v1.0 一单多包裹：逐件纠正（order.correct 带 itemIndex）；兼容历史单包裹 parcel{}
+function parcelListOf(order) {
+  const list = order && Array.isArray(order.parcels) ? order.parcels : [];
+  if (list.length) {
+    return list;
+  }
+  return order && order.parcel ? [order.parcel] : [];
+}
+
+function parcelAtOf(order, itemIndex) {
+  const list = parcelListOf(order);
+  const index = typeof itemIndex === 'number' && itemIndex >= 0 ? itemIndex : 0;
+  return list[index] || list[0] || {};
+}
+
+function indexTextOf(index) {
+  return '第 ' + (index + 1) + ' 件';
+}
+
+function panelItemsOf(order) {
+  return parcelListOf(order).map((parcel, index) => {
+    const row = parcel || {};
+    return {
+      index: index,
+      indexText: indexTextOf(index),
+      stationText: textOf(row.stationName) || '还未指定站点',
+      pickupCodeText: textOf(row.pickupCode),
+      lockerNoText: textOf(row.lockerNo),
+      trackingTailText: textOf(row.trackingTail),
+      codeStatusText: textOf(row.codeStatusText)
+    };
+  });
+}
+
 function statusOf(order) {
   return textOf(order && order.status);
 }
@@ -42,12 +76,14 @@ function isBlocked(order) {
   return status === STATUS.DELIVERED || status === STATUS.COMPLETED || status === STATUS.CANCELLED;
 }
 
-// 字段域按 DTO 状态收窄：PICKED 只留柜号/运单尾号；DELIVERED 及之后整块隐藏
+// 字段域按 DTO 状态收窄：PICKED 只留柜号/运单尾号；DELIVERED 及之后整块隐藏；items 供多包裹逐件选目标
 function buildPanel(order) {
   const blocked = isBlocked(order);
   const fields = blocked ? [] : (statusOf(order) === STATUS.PICKED ? PICKED_FIELDS.slice() : FULL_FIELDS.slice());
   const options = stations.listStations().map((item) => ({ id: item.id, name: item.name }));
-  const stationIndex = stationIndexOf(order, options);
+  const items = panelItemsOf(order);
+  const parcel = parcelAtOf(order, 0);
+  const stationIndex = stationIndexOf(parcel, options);
   return {
     visible: !blocked,
     blocked: blocked,
@@ -64,7 +100,10 @@ function buildPanel(order) {
     stationOptions: options,
     stationIndex: stationIndex,
     stationText: stationIndex >= 0 ? options[stationIndex].name : '请选择站点',
-    codeStatusText: textOf(order && order.parcel && order.parcel.codeStatusText),
+    codeStatusText: textOf(parcel.codeStatusText),
+    items: items,
+    multi: items.length > 1,
+    itemIndex: 0,
     saveCopy: COPY.save,
     successCopy: COPY.success,
     pickupCodeMax: orderEdit.PICKUP_CODE_MAX,
@@ -73,8 +112,8 @@ function buildPanel(order) {
   };
 }
 
-function stationIndexOf(order, options) {
-  const stationId = textOf(order && order.parcel && order.parcel.stationId);
+function stationIndexOf(parcel, options) {
+  const stationId = textOf(parcel && parcel.stationId);
   for (let i = 0; i < options.length; i += 1) {
     if (options[i].id === stationId) {
       return i;
@@ -84,8 +123,8 @@ function stationIndexOf(order, options) {
 }
 
 // 打开面板时的编辑初值 = 服务端当前值（L3 只在原位展示，不跨页不落盘）
-function buildEditor(order) {
-  const parcel = (order && order.parcel) || {};
+function buildEditor(order, itemIndex) {
+  const parcel = parcelAtOf(order, itemIndex);
   return {
     stationId: textOf(parcel.stationId),
     pickupCode: textOf(parcel.pickupCode),
@@ -95,9 +134,9 @@ function buildEditor(order) {
 }
 
 // 差异提交：只带"确实变化"的字段（未变化字段带上会被判非法字段）
-function diffPatch(editor, order) {
+function diffPatch(editor, order, itemIndex) {
   const next = editor || {};
-  const parcel = (order && order.parcel) || {};
+  const parcel = parcelAtOf(order, itemIndex);
   const patch = {};
   FULL_FIELDS.forEach((field) => {
     const after = textOf(next[field]);
@@ -110,11 +149,11 @@ function diffPatch(editor, order) {
 }
 
 // 校验：状态收窄 → 差异 → 形态（站点 P1~P8 / 取件码 ≤40 / 柜号 ≤10 / 尾号恰 5 位数字）
-function validateSave(editor, order) {
+function validateSave(editor, order, itemIndex) {
   if (isBlocked(order)) {
     return { ok: false, field: '', message: COPY.blocked, patch: {} };
   }
-  const patch = diffPatch(editor, order);
+  const patch = diffPatch(editor, order, itemIndex);
   if (!Object.keys(patch).length) {
     return { ok: false, field: '', message: COPY.nothing, patch: {} };
   }
@@ -137,14 +176,18 @@ function stationMessageOf(patch) {
   return checked.ok ? '' : COPY.stationOnly;
 }
 
-// 提交装配：data 只放契约字段（page → api/modules/order.correct）；expectedVersion 走 api 包络（乐观锁）。
+// 提交装配：data 只放契约字段（page → api/modules/order.correct；v1.0 逐件带 itemIndex，缺省 0 不传）。
 // 服务端 data 层"未登记字段拒绝"，所以 version 绝不能混进 patch/data。
-function buildSubmit(order, patch) {
+function buildSubmit(order, patch, itemIndex) {
+  const data = {
+    orderNo: textOf(order && order.orderNo),
+    patch: patch || {}
+  };
+  if (typeof itemIndex === 'number' && itemIndex > 0) {
+    data.itemIndex = itemIndex;
+  }
   return {
-    data: {
-      orderNo: textOf(order && order.orderNo),
-      patch: patch || {}
-    },
+    data: data,
     opts: {
       expectedVersion: order && typeof order.version === 'number' ? order.version : undefined
     }
@@ -159,8 +202,8 @@ function savedCopy(panel) {
 
 // 需查明单补上码后的下一次刷新提示（服务端事件 note 由 _dto 下发，页面只展示）
 function stillNeedCodeText(order) {
-  const parcel = (order && order.parcel) || {};
-  return parcel.codeStatus === enums.CODE_STATUS.NEED_CODE ? COPY.screenOnly : '';
+  const parcel = parcelAtOf(order, 0);
+  return textOf(parcel.codeStatus) === enums.CODE_STATUS.NEED_CODE ? COPY.screenOnly : '';
 }
 
 module.exports = {
@@ -176,5 +219,9 @@ module.exports = {
   buildSubmit,
   savedCopy,
   stillNeedCodeText,
-  stationIndexOf
+  stationIndexOf,
+  parcelListOf,
+  parcelAtOf,
+  panelItemsOf,
+  indexTextOf
 };

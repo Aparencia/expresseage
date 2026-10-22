@@ -13,6 +13,15 @@ async function getPublic(force) {
   return data;
 }
 
+/** 启动预热（P0-2）：bootstrap 已回 configPublic 时灌入缓存，本次会话首次 getPublic 零云调用；TTL 语义不变。 */
+function prime(data) {
+  if (!data || typeof data !== 'object') {
+    return false;
+  }
+  cache = { at: Date.now(), data };
+  return true;
+}
+
 function getCachedPublic() {
   return cache.data;
 }
@@ -23,6 +32,7 @@ function clearCache() {
 
 module.exports = {
   getPublic,
+  prime,
   getCachedPublic,
   clearCache,
   CACHE_TTL_MS

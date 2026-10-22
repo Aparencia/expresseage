@@ -1,8 +1,10 @@
 // handlers/admin/updateConfig.js · admin.updateConfig（白名单键 + 范围校验；aiFallback 不在白名单）
-// 白名单唯一口径 = DATA_MODEL §7.6（行 711）与 CONTRACT §1.1 第 4 条：
+// 白名单唯一口径 = DATA_MODEL §7.6（行 750）与 CONTRACT §1.1 第 4 条：
 //   · 可写：orderTimeoutMinutes/autoCompleteHours/screenshotRetentionDays/recognitionFailureRetentionDays/
 //     viewTicketTtlMinutes/avatarMaxBytes/testAccountMaxPerRole/testDataRetentionDays/privacyVersion +
 //     zoneLabels/serviceCatalog/announcement/maintenance；
+//   · v1.0（D23）：orderMergeWindowMinutes 合并窗口 0~60（整数，默认 10，0=关闭；DATA_MODEL §2.10），
+//     仅服务端判定、不进 config.getPublic 公开子集；
 //   · avatarMaxBytes 上限 = 200KB（DATA_MODEL §2.10「默认 200KB；102400~204800」，隐私承诺不得放宽）；
 //   · privacyVersion 是文本键（非空 ≤32 字，隐私文本定稿流程用，审计 CONFIG_UPDATE）；
 //   · 仅 aiFallback 不在白名单（只读展示；写入走部署配置脚本/控制台，DATA_MODEL §2.10）。
@@ -17,7 +19,8 @@ const {
   createAdminScope,
   requireClientRequestId,
   auditKeyOf,
-  assertValid
+  assertValid,
+  truncateDetail
 } = require('./_common');
 const { DEFAULT_CONFIG, cloneDefault } = require('../../db/config');
 const dto = require('./_dto');
@@ -30,7 +33,9 @@ const NUMBER_RULES = {
   viewTicketTtlMinutes: { min: 5, max: 60 },
   avatarMaxBytes: { min: 102400, max: 200 * 1024 },
   testAccountMaxPerRole: { min: 1, max: 3 },
-  testDataRetentionDays: { min: 7, max: 90 }
+  testDataRetentionDays: { min: 7, max: 90 },
+  // v1.0（D23/CONTRACT §4 config 行）：合并窗口 0~60 分钟，0=关闭合并；整数（normalizeNumber 已禁小数）
+  orderMergeWindowMinutes: { min: 0, max: 60 }
 };
 const TEXT_KEYS = ['privacyVersion'];
 const OBJECT_KEYS = ['zoneLabels', 'serviceCatalog', 'announcement', 'maintenance'];
@@ -157,6 +162,21 @@ function normalizePatch(input) {
   return patch;
 }
 
+// DATA_MODEL §2.11：CONFIG_UPDATE 的 detail 必须可追溯「变更前后关键字段」。
+// 数值/布尔原值记录；文本与对象序列化后按审计 detail 上限 120 字截断（长公告不落全量到审计）。
+function summarizeValue(value) {
+  if (value === undefined || value === null) {
+    return '';
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value === 'string') {
+    return truncateDetail(value);
+  }
+  return truncateDetail(JSON.stringify(value));
+}
+
 async function handler(ctx, payload) {
   const scope = await createAdminScope(ctx);
   requireClientRequestId(ctx);
@@ -173,7 +193,7 @@ async function handler(ctx, payload) {
     if (key === 'updatedAt') {
       return;
     }
-    changes[key] = { changed: true };
+    changes[key] = { before: summarizeValue(scope.config[key]), after: summarizeValue(patch[key]) };
   });
   if (scope.configSeeded) {
     await scope.dao.update(COLLECTIONS.CONFIG, CONFIG_DOC_ID, patch);

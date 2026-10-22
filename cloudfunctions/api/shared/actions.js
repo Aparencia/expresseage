@@ -41,7 +41,6 @@ const CLIENT_RULES = defineRules('client', [
   ['bind.claimGuestOrder', true],
   // order
   ['order.create', true],
-  ['order.createBatch', true],
   ['order.get', false],
   ['order.listCustomer', false],
   ['order.listPartner', false],

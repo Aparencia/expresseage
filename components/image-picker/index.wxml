@@ -2,13 +2,15 @@
   <view wx:if="{{files.length}}" class="image-picker-previews">
     <view wx:for="{{files}}" wx:key="index" class="image-picker-item">
       <image class="image-picker-thumb" src="{{item.localPath}}" mode="aspectFill" data-index="{{index}}" bindtap="onPreview" />
+      <text class="image-picker-index">{{index + 1}}</text>
       <text class="image-picker-remove" data-index="{{index}}" bindtap="onRemove">删除</text>
     </view>
   </view>
   <view wx:if="{{uploading}}" class="image-picker-progress">{{progressText}}</view>
+  <view wx:if="{{maxCount > 1}}" class="image-picker-counter">已添加 {{files.length}}/{{maxCount}} 张{{maxReached ? '（已达上限，先删除再添加）' : ''}}</view>
   <view class="image-picker-actions">
-    <button class="image-picker-btn" bindtap="onChooseAlbum">从相册选择</button>
-    <button class="image-picker-btn" bindtap="onChooseCamera">拍照</button>
-    <button class="image-picker-btn" bindtap="onChooseChat">从聊天选择</button>
+    <button class="image-picker-btn {{disabled || uploading ? 'image-picker-btn-disabled' : ''}}" bindtap="onChooseAlbum">从相册选择</button>
+    <button class="image-picker-btn {{disabled || uploading ? 'image-picker-btn-disabled' : ''}}" bindtap="onChooseCamera">拍照</button>
+    <button class="image-picker-btn {{disabled || uploading ? 'image-picker-btn-disabled' : ''}}" bindtap="onChooseChat">从聊天选择</button>
   </view>
 </view>

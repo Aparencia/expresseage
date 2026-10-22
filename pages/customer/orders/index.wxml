@@ -40,6 +40,6 @@
     bind:action="onEmptyAction"
   />
 
-  <view class="empty-text" wx:if="{{loading}}">加载中…</view>
+  <view class="empty-text" wx:if="{{loadingVisible}}">加载中…</view>
   <view class="empty-text" wx:if="{{!loading && list.length > 0 && !hasMore}}">没有更多了</view>
 </view>

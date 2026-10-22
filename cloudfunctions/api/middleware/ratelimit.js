@@ -16,7 +16,6 @@ const RATE_RULES = Object.freeze([
   { action: 'partner.getPublic', scope: 'partnerPublic', limit: 5, subject: SUBJECT_IDENTITY },
   { action: 'partner.activate', scope: 'activate', limit: 5, subject: SUBJECT_IDENTITY, refundOnSuccess: true },
   { action: 'order.create', scope: 'order', limit: 20, subject: SUBJECT_IDENTITY },
-  { action: 'order.createBatch', scope: 'order', limit: 20, subject: SUBJECT_IDENTITY, perItem: true },
   { action: 'message.send', scope: 'message', limit: 30, subject: SUBJECT_ORDER },
   { action: 'order.correct', scope: 'orderCorrect', limit: 20, subject: SUBJECT_ORDER },
   { action: 'upload.prepare', scope: 'upload', limit: 30, subject: SUBJECT_IDENTITY, purpose: 'TICKET' },

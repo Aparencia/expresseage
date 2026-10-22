@@ -20,6 +20,16 @@
   border-bottom: 1rpx solid var(--v4-line);
 }
 
+/* v1.0 多包裹：逐件行（单件单不渲染，保持既有视觉） */
+.piece-block {
+  padding: 12rpx 0;
+  border-top: 1rpx solid var(--v4-line);
+}
+
+.piece-head {
+  margin-bottom: 4rpx;
+}
+
 .link {
   color: var(--v4-brand);
 }

@@ -1,0 +1,181 @@
+/* 行内浮层（补码/原因/异常/送达备注/批量改站点） */
+.panel-card {
+  margin-top: 16rpx;
+  padding: 20rpx;
+  border-radius: 14rpx;
+  background: #F8FAFD;
+  border: 1rpx solid #E1E7F0;
+}
+
+.panel-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  margin-bottom: 12rpx;
+}
+
+.panel-options {
+  flex-wrap: wrap;
+  margin-bottom: 12rpx;
+}
+
+.form-textarea {
+  width: 100%;
+  min-height: 120rpx;
+  padding: 16rpx;
+  box-sizing: border-box;
+  border-radius: 10rpx;
+  background: #FFFFFF;
+  font-size: 26rpx;
+}
+
+.panel-error {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  color: #E54D42;
+}
+
+.panel-actions {
+  margin-top: 16rpx;
+  justify-content: flex-end;
+}
+
+/* 批量改站点浮层挂在页级（不属于某一行） */
+.panel-page-card {
+  padding: 20rpx 24rpx;
+  border: 1rpx solid #E1E7F0;
+  background: #F8FAFD;
+}
+
+/* 已完结自然日分区 */
+.completed-fold {
+  padding: 24rpx;
+  color: #2B6DE5;
+  font-size: 28rpx;
+}
+
+.completed-card {
+  padding: 20rpx 24rpx 24rpx;
+}
+
+.completed-head {
+  padding-bottom: 12rpx;
+}
+
+.section-label {
+  padding: 16rpx 0 8rpx;
+  font-size: 24rpx;
+  color: #999999;
+}
+
+.history-line {
+  padding: 16rpx 0;
+  border-bottom: 1rpx solid #EEEEEE;
+}
+
+.history-muted {
+  opacity: 0.72;
+}
+
+.cancel-text {
+  margin-top: 6rpx;
+  color: #E54D42;
+}
+
+.more-btn {
+  padding: 20rpx 0 8rpx;
+  text-align: center;
+  font-size: 26rpx;
+  color: #2B6DE5;
+}
+
+.bottom-safe {
+  height: 120rpx;
+}
+
+/* 批量操作条 */
+.batch-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 12rpx 24rpx calc(12rpx + env(safe-area-inset-bottom));
+  background: #FFFFFF;
+  box-shadow: 0 -2rpx 12rpx rgba(0, 0, 0, 0.06);
+}
+
+.batch-head {
+  flex-wrap: wrap;
+  padding-bottom: 8rpx;
+}
+
+.batch-actions {
+  flex-wrap: wrap;
+}
+
+.batch-btn {
+  flex: 1;
+  min-width: 140rpx;
+  margin: 0 8rpx 8rpx 0;
+}
+
+/* 撤销条：浮在 tabBar 上方，不遮挡底部操作 */
+.undo-bar {
+  position: fixed;
+  left: 24rpx;
+  right: 24rpx;
+  bottom: 160rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16rpx 24rpx;
+  border-radius: 16rpx;
+  background: #1A1A1A;
+  color: #FFFFFF;
+  font-size: 26rpx;
+}
+
+.undo-btn {
+  background: #FFFFFF;
+  color: #1A1A1A;
+  border-color: #FFFFFF;
+}
+
+/* 首用引导 */
+.guide-mask {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 30;
+}
+
+.guide-box {
+  width: 600rpx;
+  padding: 32rpx;
+  border-radius: 20rpx;
+  background: #FFFFFF;
+}
+
+.guide-text {
+  margin: 16rpx 0 20rpx;
+  font-size: 28rpx;
+  color: #666666;
+}
+
+.guide-partner {
+  margin-bottom: 20rpx;
+  padding: 14rpx 16rpx;
+  border-radius: 10rpx;
+  background: #F3F7FF;
+  font-size: 24rpx;
+  color: #2B6DE5;
+}
+
+.guide-actions {
+  justify-content: flex-end;
+}

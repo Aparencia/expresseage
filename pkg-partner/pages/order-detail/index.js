@@ -54,6 +54,7 @@ Page({
     undoBar: { visible: false, kind: '', remaining: 0, label: '', undoLabel: '撤销' },
     panel: '',
     correctEditor: { stationId: '', pickupCode: '', lockerNo: '', trackingTail: '' },
+    correctItemIndex: 0,
     correctError: '',
     exceptionIndex: 0,
     exceptionNote: '',
@@ -203,7 +204,7 @@ Page({
     });
   },
   onViewImage() {
-    orderApi.imageUrl({ orderNo: this.data.orderNo })
+    orderApi.imageUrl({ orderNo: this.data.orderNo, index: 0 })
       .then((data) => {
         const url = data && data.url;
         if (!url) {
@@ -225,7 +226,7 @@ Page({
       return;
     }
     if (key === 'correct') {
-      this.openCorrectPanel();
+      this.openCorrectPanel(0);
       return;
     }
     if (key === 'deliver') {
@@ -313,14 +314,24 @@ Page({
       });
   },
 
-  // ---------- 补码/改站点面板 ----------
-  openCorrectPanel() {
+  // ---------- 补码/改站点面板（v1.0 一单多包裹：逐件 itemIndex 纠正，订单级动作不变） ----------
+  openCorrectPanel(itemIndex) {
     const panel = this.data.correctPanel || {};
     if (!panel.visible) {
       wx.showToast({ title: panel.blockedCopy || '当前状态不能改取件码', icon: 'none' });
       return;
     }
-    this.setData({ panel: 'correct', correctEditor: correctPanel.buildEditor(this.data.order), correctError: '' });
+    const index = typeof itemIndex === 'number' && itemIndex >= 0 ? itemIndex : 0;
+    this.setData({
+      panel: 'correct',
+      correctItemIndex: index,
+      correctEditor: correctPanel.buildEditor(this.data.order, index),
+      correctError: ''
+    });
+  },
+  // 多包裹时逐件切换纠正目标（只换编辑对象，不提交）
+  onCorrectItemTap(event) {
+    this.openCorrectPanel(Number(event.currentTarget.dataset.index));
   },
   onCorrectInput(event) {
     const field = event.currentTarget.dataset.field;
@@ -334,12 +345,13 @@ Page({
     }
   },
   onCorrectSave() {
-    const checked = correctPanel.validateSave(this.data.correctEditor, this.data.order);
+    const itemIndex = this.data.correctItemIndex || 0;
+    const checked = correctPanel.validateSave(this.data.correctEditor, this.data.order, itemIndex);
     if (!checked.ok) {
       this.setData({ correctError: checked.message });
       return;
     }
-    const submit = correctPanel.buildSubmit(this.data.order, checked.patch);
+    const submit = correctPanel.buildSubmit(this.data.order, checked.patch, itemIndex);
     this.submitWrite(() => orderApi.correct(submit.data, submit.opts),
       correctPanel.savedCopy(this.data.correctPanel), 'correct');
   },

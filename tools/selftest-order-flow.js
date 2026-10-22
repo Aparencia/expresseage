@@ -41,6 +41,7 @@ const client = require(path.join(ROOT, 'api/client.js'));
 const orderApi = require(path.join(ROOT, 'api/modules/order.js'));
 const aiApi = require(path.join(ROOT, 'api/modules/ai.js'));
 const zeroMoney = require(path.join(ROOT, 'tools/zero-money-scan.js'));
+const avatar = require(path.join(ROOT, 'utils/avatar.js'));
 const { createFakeDb } = require('./fake-db');
 
 const CLOUD_API = path.join(ROOT, 'cloudfunctions/api');
@@ -48,7 +49,7 @@ const app = require(path.join(CLOUD_API, 'app.js'));
 const { COLLECTIONS } = require(path.join(CLOUD_API, 'shared/collections.js'));
 const serverEnums = require(path.join(CLOUD_API, 'shared/enums.js'));
 
-const EXPECTED_ASSERTIONS = 135; // 实际断言总数（少算/多算都判红）
+const EXPECTED_ASSERTIONS = 158; // 实际断言总数（少算/多算都判红）
 
 const ORDER_CREATE_PAGE = 'pkg-customer/pages/order-create/index.js';
 const ORDER_CREATE_WXML = 'pkg-customer/pages/order-create/index.wxml';
@@ -90,8 +91,25 @@ function stationItem(extra) {
   });
 }
 
-function payloadOf(items, recognition) {
-  return model.buildPayload(items, TICKET, IMAGE, recognition || {});
+// v1.0（D23）：order.create 单入口载荷：{parcels[], images[], tickets[], serviceCode, appoint, note, delivery?, manualEntry}
+function payloadOf(items, options) {
+  const opt = options || {};
+  const images = opt.images === undefined ? [IMAGE] : opt.images;
+  const tickets = opt.tickets === undefined ? (images.length ? [TICKET] : []) : opt.tickets;
+  return model.buildPayload({
+    items: items,
+    images: images,
+    tickets: tickets,
+    serviceCode: opt.serviceCode === undefined ? enums.SERVICE_CODES[0] : opt.serviceCode,
+    appoint: opt.appoint || { type: 'ASAP' },
+    note: opt.note || '',
+    delivery: opt.delivery || null
+  });
+}
+
+// 页面层全文（页面 + parts）：v1.0 逻辑已拆到 parts/，静态断言需扫整条下单链路
+function orderFlowSource() {
+  return listJs(PAGE_SCOPE).map((rel) => textOf(rel)).join('\n');
 }
 
 // ── I 组联调夹具：fake DB + 真实 order handler（不连真云、不 mock wx）────────────
@@ -239,19 +257,19 @@ function register(h) {
   });
 
   // ---------------------------------------------------------------- C canSubmit 五态与上界
-  h.section('C. canSubmit 五态与上界（空选/超 5 件/缺站点/无码无尾号/形态闸/恰好 5 件）', (t) => {
+  h.section('C. canSubmit 五态与上界（空选/超 10 件/缺站点/无码无尾号/形态闸/恰好 10 件）', (t) => {
     const empty = model.canSubmit([]);
     t.check(empty.ok === false && empty.reason.indexOf('至少选择一件') === 0,
       'C1 空选 → 拒绝（至少选择一件再提交）');
     const unchecked = model.canSubmit([Object.assign(stationItem({}), { checked: false })]);
     t.check(unchecked.ok === false && unchecked.reason.indexOf('至少选择一件') === 0,
       'C2 全部取消勾选 → 拒绝（勾选件才是提交集）');
-    const tooMany = model.canSubmit(new Array(orderState.MAX_CREATE_BATCH + 1).fill(0)
+    const tooMany = model.canSubmit(new Array(model.MAX_PARCELS + 1).fill(0)
       .map(() => stationItem({})));
-    t.check(tooMany.ok === false && tooMany.reason.indexOf('一图最多拆 5 件') >= 0,
-      'C3 超过上界（MAX_CREATE_BATCH+1）→ 拒绝且文案带上界');
-    t.eq(orderState.MAX_CREATE_BATCH, model.MAX_BATCH,
-      'C4 页面上界与服务端 MAX_CREATE_BATCH 同源（不写死两份数字）');
+    t.check(tooMany.ok === false && tooMany.reason.indexOf('一单最多 10 件') >= 0,
+      'C3 超过上界（MAX_PARCELS+1=11）→ 拒绝且文案带上界 10');
+    t.check(model.MAX_PARCELS === 10 && model.MAX_IMAGES === 5,
+      'C4 页面上界与 CONTRACT §5.2/D23 同值（包裹 ≤10、截图 ≤5）');
     const missingStation = model.canSubmit([stationItem({ stationId: '', stationName: '' })]);
     t.check(missingStation.ok === false && missingStation.reason.indexOf('站点') >= 0 && missingStation.index === 0,
       'C5 缺站点 → 拒绝并给件序号（页面可定位到那一件）');
@@ -267,100 +285,110 @@ function register(h) {
     const badLocker = model.canSubmit([stationItem({ lockerNo: '12345678901' })]);
     t.check(badLocker.ok === false && badLocker.reason.indexOf('柜号') >= 0,
       'C9 柜号 >10 字 → 形态闸拒绝（不静默截断）');
-    const exactlyMax = model.canSubmit(new Array(orderState.MAX_CREATE_BATCH).fill(0)
-      .map(() => stationItem({})));
-    t.check(exactlyMax.ok === true && exactlyMax.items.length === orderState.MAX_CREATE_BATCH,
-      'C10 恰好 MAX_CREATE_BATCH 件 → 可提交（上界含等于）');
-    t.eq([exactlyMax.items.length, model.MAX_BATCH], [5, 5], 'C11 上界取真实常量 5（CONTRACT §5.3）');
+    const exactlyMax = model.canSubmit(new Array(model.MAX_PARCELS).fill(0)
+      .map((unused, index) => stationItem({ pickupCode: 'A' + (12340 + index) })));
+    t.check(exactlyMax.ok === true && exactlyMax.items.length === model.MAX_PARCELS,
+      'C10 恰好 MAX_PARCELS=10 件 → 可提交（上界含等于）');
+    t.eq([exactlyMax.items.length, model.MAX_PARCELS], [10, 10], 'C11 上界取 CONTRACT 常量 10（不写死两份数字）');
     t.notEmpty(exactlyMax.items, 'C 组样本非空');
   });
 
   // ---------------------------------------------------------------- D buildPayload 形状
-  h.section('D. buildPayload：单件/拆单/共享 image/failureId/recognitionSource/confidence', (t) => {
+  h.section('D. buildPayload：parcels[]/images[]/tickets[] 单入口 + 包裹级 failureId + 整单服务/预约/备注', (t) => {
     const manual = stationItem({});
     const single = payloadOf([manual]);
-    t.check(single.single === true && single.batch === false && single.items.length === 1,
-      'D1 单件 → single:true（页面据此走 order.create）');
-    t.eq(Object.keys(single.items[0].parcel).sort(),
-      ['codeStatus', 'lockerNo', 'pickupCode', 'stationId', 'stationName', 'trackingTail'].sort(),
-      'D2 单件 parcel 字段集与服务端 _parcel.normalizeParcel 入参一致（识别来源走 recognition，不塞 parcel）');
-    t.eq([single.recognition, single.items[0].parcel.confidence],
-      [{ source: 'MANUAL' }, undefined],
-      'D3 手填件 recognition.source=MANUAL；无置信度时不带 confidence（空则不带）');
-    t.check(single.ticket === TICKET && single.image === IMAGE,
-      'D4 ticket/image 原样进 payload（服务端按票据校验归属）');
-    t.eq([single.items[0].recognition, single.recognition.failureId], [undefined, undefined],
-      'D5 单件件级不重复带 recognition；无失败记录时顶层不带 failureId（不发明）');
+    t.check(single.parcels.length === 1 && single.images.length === 1 && single.tickets.length === 1,
+      'D1 单件 → 1 个包裹 + 1 张图/1 张票据（v1.0 一单多包裹，单入口 order.create）');
+    t.eq(Object.keys(single.parcels[0].parcel).sort(),
+      ['codeStatus', 'lockerNo', 'pickupCode', 'stationId', 'stationName', 'trackingTail', 'recognitionSource'].sort(),
+      'D2 包裹 parcel 字段集与服务端 normalizeParcel 入参对齐（识别来源在 parcel 内，不再是顶层 recognition）');
+    t.eq([single.parcels[0].parcel.recognitionSource, single.parcels[0].parcel.confidence],
+      ['MANUAL', undefined],
+      'D3 手填件 recognitionSource=MANUAL；无置信度时不带 confidence（空则不带）');
+    t.eq([single.images[0].fileId, single.tickets[0]], [IMAGE.fileId, TICKET],
+      'D4 images[i] ↔ tickets[i] 同序一一对应（fileId 与票据原样进 payload）');
+    t.eq(single.parcels[0].failureId, undefined, 'D5 无失败记录时包裹不带 failureId（不发明记录号）');
 
     const ocrItem = stationItem({ source: enums.RECOGNITION_SOURCE.RULE, confidence: 'MEDIUM' });
     const ocrBuilt = payloadOf([ocrItem]);
-    t.eq([ocrBuilt.recognition.source, ocrBuilt.items[0].parcel.confidence], ['RULE', 'MEDIUM'],
-      'D6 截图识别件 recognition.source=RULE + confidence=MEDIUM（识别来源快照不丢）');
+    t.eq([ocrBuilt.parcels[0].parcel.recognitionSource, ocrBuilt.parcels[0].parcel.confidence], ['RULE', 'MEDIUM'],
+      'D6 截图识别件 recognitionSource=RULE + confidence=MEDIUM（识别来源快照不丢）');
 
     // AI 兜底来源标识来自服务端建议（端侧不硬编码第三方名）：aiApplied 时原样透传，服务端校验值域
-    const aiParcel = { stationId: 'P3', pickupCode: 'B23456', source: 'DEEPSEEK', confidence: 'HIGH', aiApplied: true };
-    const aiItem = model.makeItem(aiParcel, { serviceCode: enums.SERVICE_CODES[0] });
+    const aiItem = model.makeItem(
+      { stationId: 'P3', pickupCode: 'B23456', source: 'DEEPSEEK', confidence: 'HIGH', aiApplied: true },
+      { serviceCode: enums.SERVICE_CODES[0] });
     const aiBuilt = payloadOf([aiItem]);
-    t.eq([aiBuilt.recognition.source, aiBuilt.items[0].parcel.confidence], ['DEEPSEEK', 'HIGH'],
-      'D7 AI 兜底件来源原样透传（recognition.source=DEEPSEEK，与服务端 RECOGNITION_SOURCES 一致）');
-    t.check(RECOGNITION_SOURCES.indexOf(aiBuilt.recognition.source) >= 0
-      && CONFIDENCE_VALUES.indexOf(aiBuilt.items[0].parcel.confidence) >= 0,
+    t.eq([aiBuilt.parcels[0].parcel.recognitionSource, aiBuilt.parcels[0].parcel.confidence], ['DEEPSEEK', 'HIGH'],
+      'D7 AI 兜底件来源原样透传（包裹级 recognitionSource=DEEPSEEK，与服务端 RECOGNITION_SOURCES 一致）');
+    t.check(RECOGNITION_SOURCES.indexOf(aiBuilt.parcels[0].parcel.recognitionSource) >= 0
+      && CONFIDENCE_VALUES.indexOf(aiBuilt.parcels[0].parcel.confidence) >= 0,
     'D8 透传值落在服务端值域内（RECOGNITION_SOURCES / CONFIDENCE_LEVEL_LIST）');
-    const unapplied = stationItem({ source: 'DEEPSEEK', confidence: 'NONE' });
-    const unappliedBuilt = payloadOf([unapplied]);
-    t.eq([unappliedBuilt.recognition.source, unappliedBuilt.items[0].parcel.confidence], ['MANUAL', undefined],
+    const unappliedBuilt = payloadOf([stationItem({ source: 'DEEPSEEK', confidence: 'NONE' })]);
+    t.eq([unappliedBuilt.parcels[0].parcel.recognitionSource, unappliedBuilt.parcels[0].parcel.confidence],
+      ['MANUAL', undefined],
       'D9 未真正应用 AI（aiApplied!==true）或非法置信度 → 回退 MANUAL/不带（不把未知值塞给服务端）');
 
     const batchItems = [stationItem({ pickupCode: 'A12345' }), stationItem({ pickupCode: 'B23456' }),
       stationItem({ pickupCode: 'C34567' })];
     const batch = payloadOf(batchItems);
-    t.check(batch.batch === true && batch.single === false && batch.items.length === 3,
-      'D10 多码拆单 → batch:true（页面据此走 order.createBatch）');
-    t.check(batch.items.every((item) => item.parcel.stationId === 'P3' && item.parcel.pickupCode.length >= 5),
-      'D11 拆单每件独立 parcel（不串件，逐件站点/取件码保留）');
-    t.check(batch.image === IMAGE && batch.ticket === TICKET,
-      'D12 拆单共享同一 image/ticket（一图多件不重复上传）');
-    // 每件独立预约/备注（UX §3.7/§4.4：不再用页面级统一值）
-    const slotItem = Object.assign(stationItem({ pickupCode: 'A12345' }), {
-      appointType: 'SLOT', startAt: '2026-10-22T08:00:00+08:00', endAt: '2026-10-22T12:00:00+08:00'
+    t.check(batch.parcels.length === 3 && batch.single === undefined && batch.batch === undefined,
+      'D10 多件 → 3 个包裹走同一单入口（v1.0 不再有 single/batch 两种载荷）');
+    t.check(batch.parcels.every((row) => row.parcel.stationId === 'P3' && row.parcel.pickupCode.length >= 5),
+      'D11 每件独立 parcel（不串件，逐件站点/取件码保留）');
+    t.check(batch.images.length === 1 && batch.tickets.length === 1,
+      'D12 同图多件共享同一 images[0]/tickets[0]（一图多件不重复上传）');
+    const slotPayload = payloadOf([stationItem({})], {
+      appoint: { type: 'SLOT', startAt: '2026-10-22T08:00:00+08:00', endAt: '2026-10-22T12:00:00+08:00' }
     });
-    const noteItem = Object.assign(stationItem({ pickupCode: 'B23456' }), { note: '放门口' });
-    const perItem = payloadOf([slotItem, noteItem]);
-    t.eq(perItem.items.map((row) => row.appoint),
-      [{ type: 'SLOT', startAt: '2026-10-22T08:00:00+08:00', endAt: '2026-10-22T12:00:00+08:00' },
-        { type: 'ASAP' }], 'D13 拆单每件独立预约（一件 SLOT 一件 ASAP，页面级统一值已删除）');
-    t.eq(perItem.items.map((row) => row.note), ['', '放门口'], 'D14 拆单每件独立备注（不串件）');
+    t.eq(slotPayload.appoint,
+      { type: 'SLOT', startAt: '2026-10-22T08:00:00+08:00', endAt: '2026-10-22T12:00:00+08:00' },
+      'D13 预约是整单一份（订单级字段，不再逐件）');
+    t.eq(payloadOf([stationItem({})], { note: '放门口' }).note, '放门口',
+      'D14 备注是整单一份（订单级字段，不再逐件）');
     const uncheckedThird = [stationItem({}), stationItem({}),
       Object.assign(stationItem({}), { checked: false })];
-    t.eq(payloadOf(uncheckedThird).items.length, 2, 'D15 未勾选件不进 items（取消勾选不进单）');
-    // 逐件 failureId/source：单件顶层、拆单件级（DATA_MODEL §4.9「订单 × 截图一条记录」）
+    t.eq(payloadOf(uncheckedThird).parcels.length, 2, 'D15 未勾选件不进 parcels（取消勾选不进单）');
     const failSingle = payloadOf([Object.assign(stationItem({}), { failureId: 'F-20261022-0001' })]);
-    t.eq([failSingle.recognition, failSingle.items[0].recognition],
-      [{ source: 'MANUAL', failureId: 'F-20261022-0001' }, undefined],
-      'D16 单件：recognition 在顶层（含 source+failureId），件级不重复带');
+    t.eq(failSingle.parcels[0].failureId, 'F-20261022-0001',
+      'D16 失败记录号只放包裹级 parcels[i].failureId（契约 §4.3 v1.0）');
     const failBatch = payloadOf([
       Object.assign(stationItem({ pickupCode: 'A12345' }), { failureId: 'F-20261022-0001' }),
       Object.assign(stationItem({ pickupCode: 'B23456' }), { failureId: 'F-20261022-0002' })
     ]);
-    t.eq(failBatch.items.map((row) => (row.recognition || {}).failureId),
-      ['F-20261022-0001', 'F-20261022-0002'],
-      'D17 拆单每项各自 recognition.failureId（同图多单独立关联，不套同一记录）');
-    t.eq(failBatch.recognition, null, 'D18 拆单不带顶层 recognition（逐单关联优先，避免串单）');
-    const noFailBatch = payloadOf([stationItem({}), stationItem({})]);
-    t.eq(noFailBatch.items.map((row) => row.recognition.failureId), [undefined, undefined],
-      'D19 无失败记录的件 recognition 只带 source、不带 failureId（不发明记录号）');
-    t.eq(payloadOf([stationItem({ codeStatus: 'NEED_CODE' })]).items[0].parcel.codeStatus,
-      enums.CODE_STATUS.OK, 'D20 codeStatus 由形态闸重新派生（不信任页面残留旧值：有码即 OK）');
-    // 严格白名单：视图态字段（key/serviceIndex/formErrors/checked 等）绝不进 payload（DATA_MODEL §12 #12）
-    const singleRequest = Object.assign({}, single.items[0], { ticket: single.ticket, image: single.image });
-    if (single.recognition) singleRequest.recognition = single.recognition;
-    t.eq(Object.keys(singleRequest).sort(),
-      ['appoint', 'image', 'note', 'parcel', 'recognition', 'serviceCode', 'ticket'].sort(),
-      'D21 单件请求顶层键恰在服务端白名单内（未知键会 VALIDATION_FAILED）');
-    t.eq(Object.keys(failBatch.items[0]).sort(),
-      ['appoint', 'note', 'parcel', 'recognition', 'serviceCode'].sort(),
-      'D22 拆单项键恰在 items[i] 白名单内（视图态字段已剥掉）');
-    t.notEmpty(batch.items, 'D 组样本非空');
+    t.eq(failBatch.parcels.map((row) => row.failureId), ['F-20261022-0001', 'F-20261022-0002'],
+      'D17 多件各自包裹级 failureId（逐件独立关联，不套同一记录）');
+    t.check(failBatch.images[0].failureId === undefined,
+      'D18 images[] 不带 failureId（权威口径：失败记录按包裹关联，图片只做 fileId 快照）');
+    const manualOnly = payloadOf([stationItem({})], { images: [], tickets: [] });
+    t.check(manualOnly.images.length === 0 && manualOnly.tickets.length === 0 && manualOnly.manualEntry === true,
+      'D19 无截图手填：images=[]/tickets=[] 且 manualEntry=true（D24）');
+    t.eq(payloadOf([stationItem({})]).manualEntry, false, 'D20 有图时 manualEntry=false（识别链路标记）');
+    const withDelivery = payloadOf([stationItem({})], {
+      delivery: { zone: 'X', buildingNo: 6, room: '302', recipientName: '小王' }
+    });
+    t.eq(withDelivery.delivery, { zone: 'X', buildingNo: 6, room: '302', recipientName: '小王' },
+      'D21 配送地址随单上送（D25，最小字段：苑/楼栋/宿舍 + 收件人称呼）');
+    t.check(payloadOf([stationItem({})]).delivery === undefined,
+      'D22 本人宿舍不传 delivery（服务端按资料默认，避免制造第二真相）');
+    t.eq(Object.keys(withDelivery).sort(),
+      ['appoint', 'delivery', 'images', 'manualEntry', 'note', 'parcels', 'serviceCode', 'tickets'].sort(),
+      'D23 请求顶层键恰在 CONTRACT §5.3 v1.0 白名单内（未知键服务端 VALIDATION_FAILED）');
+    t.eq(Object.keys(failBatch.parcels[0]).sort(), ['failureId', 'imageIndex', 'parcel'].sort(),
+      'D24 包裹项键 = {parcel, imageIndex, failureId?}（视图态字段已剥掉）');
+    t.eq(payloadOf([stationItem({})]).parcels[0].imageIndex, 0,
+      'D25 截图来源件带 imageIndex 指向来源图（缺省 0，多图时逐件映射）');
+    // DATA_MODEL §2.5 / CONTRACT §4.2 v1.0：手填件/无截图件必须省略 imageIndex（不许用 0 冒充来自第 1 张图）
+    const manualRow = payloadOf([model.makeItem({ stationId: 'P3', pickupCode: 'A12345', manual: true }, {})])
+      .parcels[0];
+    t.check(Object.prototype.hasOwnProperty.call(manualRow, 'imageIndex') === false,
+      'D25b 手填件（manual=true）载荷省略 imageIndex 键（不写 0 冒充来源图）');
+    const secondImage = payloadOf([stationItem({ imageIndex: 1 })], {
+      images: [IMAGE, IT_IMAGE_BATCH], tickets: [TICKET, IT_TICKET_BATCH]
+    });
+    t.eq(secondImage.parcels[0].imageIndex, 1,
+      'D25c 有来源图的件写实际下标（imageIndex=1 → images[1]，不归零）');
+    t.notEmpty(batch.parcels, 'D 组样本非空');
   });
 
   // ---------------------------------------------------------------- E submission id 生命周期
@@ -384,15 +412,26 @@ function register(h) {
       model.submissionFingerprint([stationItem({ pickupCode: 'A99999' })]), () => 0.75);
     t.check(edited.id !== first.id,
       'E5 取件码变更 → 重新生成（内容修改后换键，避免旧幂等命中返回旧单）');
-    const noteChanged = model.ensureSubmission(first, model.submissionFingerprint(
-      [Object.assign(stationItem({ pickupCode: 'A12345' }), { note: '换备注' })]), () => 0.9);
-    t.check(noteChanged.id !== first.id, 'E6 件级备注变更 → 重新生成');
-    const slotChanged = model.ensureSubmission(first, model.submissionFingerprint([
-      Object.assign(stationItem({ pickupCode: 'A12345' }), {
-        appointType: 'SLOT', startAt: '2026-10-22T08:00:00+08:00', endAt: '2026-10-22T12:00:00+08:00'
-      })
-    ]), () => 0.9);
-    t.check(slotChanged.id !== first.id, 'E7 件级预约变更 → 重新生成');
+    const noteChanged = model.ensureSubmission(first, model.submissionFingerprint(items, {
+      note: '换备注'
+    }), () => 0.9);
+    t.check(noteChanged.id !== first.id, 'E6 整单备注变更 → 重新生成');
+    const slotChanged = model.ensureSubmission(first, model.submissionFingerprint(items, {
+      appointType: 'SLOT', startAt: '2026-10-22T08:00:00+08:00', endAt: '2026-10-22T12:00:00+08:00'
+    }), () => 0.9);
+    t.check(slotChanged.id !== first.id, 'E7 整单预约变更 → 重新生成');
+    const imageChanged = model.ensureSubmission(first, model.submissionFingerprint(items, {
+      images: [{ fileId: 'cloud://test.env/orders/TKT/image2.jpg' }], tickets: ['TK-ORDER-FLOW-0002']
+    }), () => 0.9);
+    t.check(imageChanged.id !== first.id, 'E7b 图片/票据变更 → 重新生成（多图指纹进幂等键）');
+    const deliveryChanged = model.ensureSubmission(first, model.submissionFingerprint(items, {
+      deliveryFingerprint: 'OTHER|X|6|302|小王'
+    }), () => 0.9);
+    t.check(deliveryChanged.id !== first.id, 'E7c 配送地址变更 → 重新生成（D25）');
+    const manualChanged = model.ensureSubmission(first, model.submissionFingerprint(items, {
+      manualEntry: true
+    }), () => 0.9);
+    t.check(manualChanged.id !== first.id, 'E7d 有图↔无截图切换 → 重新生成（D24）');
     const uncheckedChanged = model.ensureSubmission(first, model.submissionFingerprint(
       items.concat([Object.assign(stationItem({}), { checked: false })])), () => 0.3);
     t.check(uncheckedChanged.id === first.id, 'E8 未勾选件变化不影响指纹（不进单的件不算内容变更）');
@@ -423,10 +462,37 @@ function register(h) {
       t.eq(seen[0] && seen[0].clientRequestId, explicit,
         'F2 显式 clientRequestId 原样进包络（页面重试复用同一键，不再每次现生成）');
       t.check(created && created.orderNo === '20261022-0001', 'F3 成功响应只返回 result.data');
-      const explicitBatch = 'K'.repeat(20);
-      await orderApi.createBatch({ items: [{ parcel: { stationId: 'P3' } }] }, { clientRequestId: explicitBatch });
-      t.eq(seen[seen.length - 1].clientRequestId, explicitBatch,
-        'F4 createBatch 同样透传显式幂等键（拆单原子创建可重试）');
+      // F4（v1.0 收口）：order.createBatch 已从服务端移除 → 等价幂等改测单入口 order.create
+      // （真实 handler + fake DB）：同一 clientRequestId 重放命中同单（duplicated=true）；
+      // 不同 clientRequestId 且内容不同（备注不同，避开合并窗口）→ 新单。
+      const idemDb = createOrderDb();
+      const idemApi = orderApiOf(idemDb);
+      const idemKey = 'idem' + 'E'.repeat(20);
+      const idemBody = {
+        parcels: [
+          { parcel: { stationId: 'P3', pickupCode: 'A12345' } },
+          { parcel: { stationId: 'P4', pickupCode: 'B23456' } }
+        ],
+        images: [IT_IMAGE],
+        tickets: [IT_TICKET],
+        serviceCode: enums.SERVICE_CODES[0],
+        appoint: { type: 'ASAP' },
+        note: '',
+        manualEntry: false
+      };
+      const idemFirst = await idemApi.call('order.create', idemBody, { clientRequestId: idemKey });
+      t.check(idemFirst.ok === true && !idemFirst.data.duplicated && !!idemFirst.data.orderNo,
+        'F4 单入口 order.create 基线建单成功（一单多包裹；createBatch 已移除，等价幂等改测单入口）');
+      const idemReplay = await idemApi.call('order.create', idemBody, { clientRequestId: idemKey });
+      t.eq([idemReplay.data.duplicated, idemReplay.data.orderNo], [true, idemFirst.data.orderNo],
+        'F4b 同 clientRequestId 重放 → duplicated=true 且 orderNo 相同（服务端幂等，不重复建单）');
+      const idemOther = await idemApi.call('order.create', Object.assign({}, idemBody, {
+        note: '另一张单',
+        images: [IT_IMAGE_BATCH],
+        tickets: [IT_TICKET_BATCH]
+      }), { clientRequestId: 'idem' + 'F'.repeat(20) });
+      t.check(idemOther.ok === true && idemOther.data.orderNo !== idemFirst.data.orderNo,
+        'F4c 不同 clientRequestId（备注不同，避开合并窗口）→ 新订单，不复用旧单');
 
       client.setTransport((payload) => {
         seen.push(payload);
@@ -522,6 +588,35 @@ function register(h) {
       }
       t.check(aiAttempts === 1 && !!aiError && aiError.code === 'DEPENDENCY_FAILED',
         'F15 AI 兜底页也不自动重试（attempts=1，避免重复外呼）');
+
+      // v1.0（D23）order.create 载荷契约：单入口 + 多包裹同请求 + clientRequestId 进包络
+      // （异步节并发执行，全局 transport 只能由本组独占；服务端 fake-DB 联调由 task-21 的 selftest-order.js 覆盖）
+      const createSeen = [];
+      client.setTransport((payload) => {
+        createSeen.push(payload);
+        return Promise.resolve(okResult({ order: { orderNo: '20261022-0003' }, merged: false }));
+      });
+      const v1Payload = payloadOf([stationItem({ pickupCode: 'A12345' }), stationItem({ pickupCode: 'B23456' })]);
+      const createdV1 = await orderApi.create(v1Payload, { clientRequestId: 'ito' + 'E'.repeat(21) });
+      t.check(!!createdV1 && !!createdV1.order && createdV1.order.orderNo === '20261022-0003',
+        'F16 返回值透传 order（页面据此展示订单号/跳详情）');
+      t.eq(createSeen.length, 1, 'F17 一次提交只发一次 order.create（失败重试由页面复用同一键）');
+      const env = createSeen[0] || {};
+      t.eq(env.action, 'order.create', 'F18 action 经 api/modules/order.create（页面零自拼 action 字面量）');
+      t.check(typeof env.clientRequestId === 'string' && env.clientRequestId.length >= 16,
+        'F19 clientRequestId 进调用包络（服务端幂等键，重试不重复建单）');
+      const body = env.data || {};
+      t.eq(Object.keys(body).sort(),
+        ['appoint', 'images', 'manualEntry', 'note', 'parcels', 'serviceCode', 'tickets'].sort(),
+        'F20 请求体顶层键恰为 CONTRACT §5.3 v1.0 白名单');
+      t.eq(body.parcels.length, 2, 'F21 多件在同一请求内提交（多图/多件合成一张订单）');
+      t.check(body.images.length === body.tickets.length && body.manualEntry === false,
+        'F22 images[i] ↔ tickets[i] 等长；有图时 manualEntry=false');
+      const manualPayload = payloadOf([stationItem({})], { images: [], tickets: [] });
+      await orderApi.create(manualPayload, { clientRequestId: 'itman' + 'E'.repeat(20) });
+      const manualBody = (createSeen[createSeen.length - 1] || {}).data || {};
+      t.check((manualBody.images || []).length === 0 && manualBody.manualEntry === true,
+        'F23 无截图手填载荷可上送（images=[] + manualEntry=true，D24）');
       t.notEmpty(seen, 'F 组样本非空');
     } finally {
       client.restoreTransport();
@@ -549,34 +644,38 @@ function register(h) {
     });
     t.eq(realHits, [], 'G4 下单页 JS 零 wx.cloud.*/零七状态字面量/零 random/零自拼 order.create 字面量');
     const page = textOf(ORDER_CREATE_PAGE);
+    const flowSource = orderFlowSource();
     t.check(page.indexOf("require('../../../api/modules/order')") >= 0,
       'G5 页面只经 api/modules/order 出入（action 字符串只在 api/）');
-    t.check(/ensureSubmission\(/.test(page) && /clearSubmission\(/.test(page),
-      'G6 页面接线：进入 Step4 生成/提交前确认幂等键，成功后清空');
-    t.check(/model\.submissionFingerprint\(/.test(page), 'G7 页面接线：内容指纹用于"变更后重新生成"');
-    t.check(/clientRequestId:\s*submission\.id/.test(page),
-      'G8 页面接线：create/createBatch 都带 clientRequestId（拆单同一键）');
-    t.check(/create\(singlePayload,\s*submitOptions\)/.test(page)
-      && /createBatch\(batchPayload,\s*submitOptions\)/.test(page),
-    'G9 单件走 order.create、拆单走 order.createBatch（同一 submitOptions）');
+    t.check(/ensureSubmission\(/.test(flowSource) && /clearSubmission\(/.test(page),
+      'G6 下单链路：进入 Step4 生成/提交前确认幂等键，成功后清空（v1.0 拆到 parts 仍可静态追踪）');
+    t.check(/submissionFingerprint\(/.test(flowSource), 'G7 下单链路：内容指纹用于"变更后重新生成"');
+    t.check(/clientRequestId:\s*submission\.id/.test(flowSource),
+      'G8 提交带 clientRequestId（多件/合并同一键，服务端幂等）');
+    t.check(/orderApi\.create\(payload,\s*\{\s*clientRequestId:\s*submission\.id/.test(flowSource)
+      && !/createBatch/.test(flowSource),
+    'G9 单入口 order.create（v1.0 移除 createBatch），同一 clientRequestId 贯穿整单');
+    t.check(!/\bcreateBatch\b/.test(fsutil.stripComments(textOf('api/modules/order.js'))),
+      'G9b api/modules/order.js 无 createBatch 导出（过渡动作已随服务端移除，客户端不再有调用入口）');
     t.check(/onManualTap/.test(textOf(ORDER_CREATE_WXML)) && /ocrState === 'ai'/.test(textOf(ORDER_CREATE_WXML)),
       'G10 识别/兜底进行中有「先手动填写」入口（§4.3.1 ③ 不阻塞手填）');
-    t.check(/manualPicked/.test(page), 'G11 手填优先：迟到的识别结果不覆盖已手填内容');
-    t.check(/recognitionOfItem/.test(model.buildPayload.toString())
-      && /recognitionSourceOf\(item\)/.test(textOf(ORDER_MODEL)),
-    'G12 buildPayload 源文本确实经 recognitionOfItem 发 recognition.source（不是只在测试里断言）');
+    t.check(/manualPicked/.test(flowSource), 'G11 手填优先：迟到的识别结果不覆盖已手填内容');
+    t.check(/recognitionSourceOf\(item\)/.test(textOf(ORDER_MODEL))
+      && /recognitionSource/.test(model.buildPayload.toString()),
+    'G12 buildPayload 源文本确实把 recognitionSource 写进包裹（不是只在测试里断言）');
     const modelSource = textOf(ORDER_MODEL);
     t.check(/createRequestId\(\)/.test(modelSource),
       'G13 幂等键默认复用 api/client 的唯一随机源（views/页面零 random）');
     t.check(/onRetrySubmit\(\)\s*\{\s*this\.onSubmit\(\)/.test(page),
       'G14 结果块「重试」复用同一提交流程（不再现生成键）');
     const pageXml = textOf(ORDER_CREATE_WXML);
-    t.check(/onItemAppointType/.test(pageXml) && /onItemSlotChange/.test(pageXml)
-      && /onItemNoteInput/.test(pageXml),
-    'G15 Step3 每件独立预约/备注控件（UX §3.7/§4.4：不再用页面级统一值）');
-    t.check(/this\.data\.appointType/.test(page) === false && /this\.data\.note/.test(page) === false,
-      'G16 页面无页面级 appointType/note 残留（逐件字段才是唯一来源）');
-    t.check(/services\[item\.serviceIndex \|\| 0\]\.desc/.test(pageXml),
+    t.check(/onAppointType/.test(pageXml) && /onSlotChange/.test(pageXml)
+      && /onNoteInput/.test(pageXml),
+    'G15 Step3 整单预约/备注控件（v1.0：服务/预约/备注每单一份）');
+    t.check(/item\.appointType/.test(pageXml) === false && /item\.note/.test(pageXml) === false
+      && /data\.appointType/.test(flowSource),
+    'G16 无逐件预约/备注残留（提交读整单 data.appointType/note）');
+    t.check(/services\[serviceIndex\]\.desc/.test(pageXml),
       'G17 服务类型渲染名称+说明（D6：说明来自 model.serviceOptions 的 desc）');
     t.check(/wx\.previewImage/.test(page) && /onPreviewImage/.test(pageXml),
       'G18 「点击查看截图」入口存在且走本地预览（仍零 wx.cloud.*）');
@@ -597,6 +696,11 @@ function register(h) {
       'G23 兜底成功态「智能识别建议，请核对」（§4.3.1 ④ 仍需人核对）');
     t.check(/aiHint/.test(page) && /item\.aiHint/.test(pageXml),
       'G24 逐件降级说明渲染（某件失败只降级该件，§4.3.1 ⑤）');
+    // 合并窗口 orderMergeWindowMinutes 是服务端治理参数、不下发客户端：结果区文案不得写死分钟数（UX §4.11）
+    t.check(/\d+\s*分钟/.test(pageXml) === false,
+      'G25 合并结果说明不写死窗口分钟数（治理参数不下发客户端）');
+    t.check(/wx:if="\{\{resultMerged\}\}"[^>]*>[^<]*自动并入/.test(pageXml),
+      'G26 合并结果说明用不含量化时间的表述（「短时间内再次下单会自动并入同一订单」）');
     t.notEmpty(pageFiles, 'G 组样本非空');
   });
 
@@ -638,7 +742,7 @@ function register(h) {
     };
     const complete = model.makeItem({ stationId: 'P3', pickupCode: 'A12345' }, { serviceCode: serviceCode });
     const full = await model.applyAiFallbacks([complete], ctx, stub2);
-    t.eq([full.called, calls2.length, full.items[0].failureId], [0, 0, undefined],
+    t.eq([full.called, calls2.length, !!full.items[0].failureId], [0, 0, false],
       'H7 已有站点+取件码的件不外呼、不带 failureId（规则优先，不浪费配额）');
     const mixed = await model.applyAiFallbacks([complete, needStation], ctx, stub2);
     t.eq([mixed.called, calls2.length], [1, 1], 'H8 混合批次只对缺字段的那件外呼 1 次');
@@ -689,8 +793,8 @@ function register(h) {
     t.eq([model.recognitionSourceOf(manualItem), model.recognitionSourceOf(aiItem),
       model.recognitionSourceOf(ruleItem)], ['MANUAL', 'DEEPSEEK', 'RULE'],
     'H15 recognitionSource 优先级 MANUAL > AI 来源 > RULE（手改覆盖 AI/RULE）');
-    t.eq(payloadOf([manualItem, aiItem, ruleItem]).items.map((row) => row.recognition.source),
-      ['MANUAL', 'DEEPSEEK', 'RULE'], 'H16 三件同批进 payload 时 recognition.source 互不干扰');
+    t.eq(payloadOf([manualItem, aiItem, ruleItem]).parcels.map((row) => row.parcel.recognitionSource),
+      ['MANUAL', 'DEEPSEEK', 'RULE'], 'H16 三件同批进 payload 时包裹级 recognitionSource 互不干扰');
     t.eq(model.withManualEdit(aiItem, { serviceCode: enums.SERVICE_CODES[1] }).source, 'DEEPSEEK',
       'H17 手改非识别字段（服务类型）不降级来源');
     const shell = await model.applyAiFallbacks(
@@ -700,53 +804,47 @@ function register(h) {
     t.notEmpty(two.items, 'H 组样本非空');
   });
 
-  // ---------------------------------------------------------------- I 服务端契约联调（fake DB）
-  h.section('I. 服务端契约联调（fake DB）：严格白名单 + recognition.source 落库 + 逐单不串', async (t) => {
-    const db = createOrderDb();
-    const api = orderApiOf(db);
-    // 单件：buildPayload 输出原样提交
-    const single = model.buildPayload(
-      [stationItem({ pickupCode: 'A12345', source: enums.RECOGNITION_SOURCE.RULE, confidence: 'MEDIUM' })],
-      IT_TICKET, IT_IMAGE, {});
-    const singleRequest = Object.assign({}, single.items[0], {
-      ticket: IT_TICKET, image: IT_IMAGE, recognition: single.recognition
-    });
-    const created = await api.call('order.create', singleRequest, { clientRequestId: 'itest-single-00000001' });
-    t.check(created.ok === true && !!created.data.order, 'I1 客户端单件形状被服务端接受（含 recognition.source，严格白名单不拒）');
-    t.eq(created.data.order.parcel.recognitionSource, 'RULE',
-      'I2 顶层 recognition.source 落库为订单 parcel.recognitionSource（来源快照真的存住了）');
-    t.check(serverEnums.ORDER_NO_PATTERN.test(created.data.order.orderNo),
-      'I3 返回 orderNo 可直接用于 redirectTo 详情页');
-    // 负控：视图态字段混进请求 → 严格白名单 VALIDATION_FAILED（说明 D21/D22 断言有牙）
-    const badSingle = Object.assign({}, singleRequest, { checked: true });
-    const bad = await api.call('order.create', badSingle, { clientRequestId: 'itest-bad-000000001' });
-    t.check(bad.code === 'VALIDATION_FAILED' && bad.data && bad.data.field === 'checked',
-      'I4 视图态字段 checked 进顶层 → VALIDATION_FAILED（未知键不静默忽略）');
-    t.eq(db.dump('orders').length, 1, 'I5 白名单拒绝零写入（仍 1 单）');
-    // 拆单：逐单 recognition.source 各自落库（item0 不被顶层覆盖，也不串单）
-    const batch = model.buildPayload([
-      stationItem({ pickupCode: 'C34567', source: enums.RECOGNITION_SOURCE.RULE }),
-      Object.assign(stationItem({ pickupCode: 'D45678' }), {
-        source: serverEnums.RECOGNITION_SOURCE.MANUAL, aiApplied: false
-      })
-    ], IT_TICKET_BATCH, IT_IMAGE_BATCH, {});
-    const batchCreated = await api.call('order.createBatch',
-      { items: batch.items, ticket: IT_TICKET_BATCH, image: IT_IMAGE_BATCH },
-      { clientRequestId: 'itest-batch-00000001' });
-    t.check(batchCreated.ok === true && batchCreated.data.orders.length === 2,
-      'I6 拆单 items[i].recognition 形状被接受，原子创建 2 单');
-    t.eq(batchCreated.data.orders.map((order) => order.parcel.recognitionSource), ['RULE', 'MANUAL'],
-      'I7 逐单 recognition.source 各自落库（手填件的 MANUAL 不与识别件的 RULE 串单）');
-    const badBatch = await api.call('order.createBatch',
-      { items: [Object.assign({}, batch.items[0], { codeStatus: serverEnums.CODE_STATUS.OK })] },
-      { clientRequestId: 'itest-bad-000000002' });
-    t.check(badBatch.code === 'VALIDATION_FAILED' && badBatch.data && badBatch.data.field === 'codeStatus',
-      'I8 items[i] 视图态字段 codeStatus → VALIDATION_FAILED（逐项白名单同样有牙）');
-    t.eq(db.dump('orders').length, 3, 'I9 拒绝后订单数不变（仍 3 单：1 单件 + 2 拆单）');
-    t.eq(db.dump('order_events').filter((row) => row.requestKey.indexOf('order.create:') > 0).length >= 3, true,
-      'I10 三单都写了 ORDER_CREATED 事件（幂等键含 clientRequestId）');
-    t.notEmpty(db.dump('orders'), 'I 组样本非空');
+  // ---------------------------------------------------------------- J ocr-flow 纯件（P0-10 / C2 / 多图增量）
+  h.section('J. ocr-flow 纯件：帧降采样 ≤1440 / 失败不谎报 / 多图增量合并', (t) => {
+    const big = ocrFlow.frameSizeOf({ width: 4000, height: 3000 });
+    t.check(big.ok === true && Math.max(big.width, big.height) <= ocrFlow.VISION_MAX_EDGE,
+      'J1 大图 OCR 帧按长边 ≤1440 降采样（P0-10，不按原尺寸建画布）');
+    t.eq([big.width, big.height], [1440, 1080], 'J2 降采样保持比例（4000×3000 → 1440×1080）');
+    const small = ocrFlow.frameSizeOf({ width: 720, height: 1280 });
+    t.eq([small.width, small.height], [720, 1280], 'J3 小图不放大（scale≤1）');
+    t.check(ocrFlow.frameSizeOf({ width: 0, height: 0 }).ok === false, 'J4 非法尺寸 → 失败（不建画布）');
+    const noQueue = ocrFlow.failureCopyFor('NO_TEXT', {});
+    t.check(noQueue.text.indexOf('已反馈') < 0,
+      'J5 未入队（无 failureId）不谎称"已反馈开发者复核"（C2 说真话）');
+    const queued = ocrFlow.failureCopyFor('NO_TEXT', { failureId: 'F-20261022-0001', aiState: 'CLOSED' });
+    t.check(queued.next.indexOf('已反馈') >= 0,
+      'J6 已入队（有 failureId）才提示已反馈开发者复核 + 手填引导（C2）');
+    const base = [model.makeItem({ stationId: 'P3', pickupCode: 'A12345', imageIndex: 0 }, {})];
+    const perImage = [{ imageIndex: 0, ticket: TICKET, image: IMAGE }];
+    const result = {
+      perImage: [{ imageIndex: 0, ticket: 'TK-ORDER-FLOW-0002',
+        image: { fileId: 'cloud://test.env/orders/TKT/image2.jpg', width: 1, height: 1 } }],
+      items: [model.makeItem({ stationId: 'P4', pickupCode: 'B23456' }, {})]
+    };
+    const merged = ocrFlow.mergeItems(base, perImage, result);
+    t.eq([merged.items.length, merged.perImage.length], [2, 2], 'J7 新增图的件追加到同一单（不覆盖已有件）');
+    t.eq(merged.items.map((item) => item.imageIndex), [0, 1], 'J8 每件 imageIndex 指向来源图（新增图顺延）');
+    const dupMerged = ocrFlow.mergeItems(base, perImage, { perImage: [], items: [base[0]] });
+    t.eq([dupMerged.items.length, dupMerged.duplicated], [1, 1], 'J9 重复件去重（同站点+码只留一件）');
+    // P0-10 截图上传压缩计划（纯件；真机画布/压缩能力只列 QA 点检，不在单测代宣布）
+    const ticketPlan = avatar.planTicketCompression({ width: 4000, height: 3000, size: 900 * 1024 }, 500 * 1024);
+    t.check(ticketPlan.required === true && ticketPlan.needResize === true
+      && ticketPlan.targetLongSide === 1440 && Math.max(ticketPlan.targetWidth, ticketPlan.targetHeight) === 1440,
+    'J10 超 500KB 大图压缩计划：长边目标 ≤1440（P0-10）');
+    t.check(ticketPlan.qualities.length > 0 && ticketPlan.qualities.length <= 3,
+      'J11 质量阶梯 ≤3 档（≤3 次仍超限才拒绝）');
+    const smallPlan = avatar.planTicketCompression({ width: 720, height: 1280, size: 100 * 1024 }, 500 * 1024);
+    t.check(smallPlan.required === false && smallPlan.needResize === false,
+      'J12 已合规截图不压缩（不无谓重编码，避免伤识别质量）');
+    t.eq(avatar.planTicketCompression({ width: 0, height: 0, size: 1 }, 500 * 1024).reason, 'UNREADABLE',
+      'J13 尺寸读不到 → UNREADABLE（由 api/upload 说真话拒绝，不静默丢图）');
   });
+
 }
 
 module.exports = { EXPECTED_ASSERTIONS, register };

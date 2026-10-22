@@ -59,19 +59,39 @@ function canReorder(order) {
   return !!order && state.isTerminal(order.status);
 }
 
+/** v1.0（D23）：orders.parcels[] 为多包裹；切换期兼容旧单 parcel */
+function parcelsOf(order) {
+  const list = order && Array.isArray(order.parcels) ? order.parcels : [];
+  if (list.length > 0) {
+    return list.map(function map(entry) {
+      return entry && entry.parcel ? entry.parcel : entry || {};
+    });
+  }
+  return order && order.parcel ? [order.parcel] : [];
+}
+
 function codeTextOf(order) {
-  const parcel = (order && order.parcel) || {};
+  const parcels = parcelsOf(order);
+  if (parcels.length > 1) return '共 ' + parcels.length + ' 件';
+  const parcel = parcels[0] || {};
   if (parcel.codeStatus === enums.CODE_STATUS.NEED_CODE) return '需查明';
   if (typeof parcel.pickupCode === 'string' && parcel.pickupCode) return parcel.pickupCode;
   if (typeof parcel.trackingTail === 'string' && parcel.trackingTail) return '尾号 ' + parcel.trackingTail;
   return '—';
 }
 
+/** 行副标题：站点聚合（去重，最多 2 个 + 等）+ 宿舍键 */
 function customerLineOf(order) {
   const parts = [];
-  const parcel = (order && order.parcel) || {};
+  const stations = [];
+  parcelsOf(order).forEach(function each(parcel) {
+    const name = parcel && parcel.stationName ? String(parcel.stationName) : '';
+    if (name && stations.indexOf(name) < 0) stations.push(name);
+  });
+  if (stations.length > 0) {
+    parts.push(stations.slice(0, 2).join(' / ') + (stations.length > 2 ? ' 等' : ''));
+  }
   const dorm = (order && order.dorm) || {};
-  if (parcel.stationName) parts.push(parcel.stationName);
   if (dorm.dormKey) parts.push(dorm.dormKey);
   return parts.join(' · ');
 }
@@ -148,6 +168,7 @@ module.exports = {
   requestStatusOf,
   emptyStateOf,
   canReorder,
+  parcelsOf,
   codeTextOf,
   customerLineOf,
   waitingTextOf,

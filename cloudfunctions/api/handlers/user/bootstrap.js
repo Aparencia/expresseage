@@ -80,14 +80,17 @@ async function handler(ctx) {
   const scope = identity.scopeOf(ctx);
   const nowMs = identity.nowMs(ctx);
   const nowDate = identity.nowDate(ctx);
-  const viewSession = await identity.loadViewSession(ctx);
+  // P0-4：会话/用户/顾客/兼职/绑定五读互不依赖 → 一次 Promise.all 并行（少 4 个串行 DB RTT）；
+  // boundPartner 依赖 binding 结果仍在之后取；任一读失败与旧实现同路径抛错（不新增降级分支）。
+  const [viewSession, user, customer, partner, binding] = await Promise.all([
+    identity.loadViewSession(ctx),
+    identity.loadUser(ctx, scope.openid),
+    identity.loadCustomer(ctx, scope.openid),
+    identity.loadPartnerByOpenid(ctx, scope.openid),
+    identity.getActiveBinding(ctx, scope.openid)
+  ]);
   const viewContext = identity.buildViewContext(viewSession);
   const isSwitchView = viewContext !== null;
-
-  const user = await identity.loadUser(ctx, scope.openid);
-  const customer = await identity.loadCustomer(ctx, scope.openid);
-  const partner = await identity.loadPartnerByOpenid(ctx, scope.openid);
-  const binding = await identity.getActiveBinding(ctx, scope.openid);
   const boundPartner = binding && binding.partnerId ? await identity.loadPartnerById(ctx, binding.partnerId) : null;
 
   let roles = [];

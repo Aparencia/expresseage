@@ -1,5 +1,5 @@
 // shared/order-state.js · 订单七状态机 + 动作规则（唯一口径）
-// 契约：docs/V4_CONTRACT.md v0.9 §5/§5.1/§5.3；docs/V4_DATA_MODEL.md §8.1~§8.5。
+// 契约：docs/V4_CONTRACT.md v1.0 §4/§4.1/§5/§5.1/§5.2/§5.3（D23 一单多包裹/合并窗口）。
 // 用途：云函数状态动作守卫（非法流转 → INVALID_TRANSITION）、事件类型落库、顾客进度条、
 //       兼职工作台状态桶；本文件不写库、不含任何交易语义。
 'use strict';
@@ -29,9 +29,6 @@ const TRANSITIONS = {
 // to 取值：具体状态 | 'SAME'（不改状态）| 'UNDO'（按 UNDO_TARGETS 回退）| 'FROM_STATUS'（异常恢复）
 const ACTION_RULES = {
   'order.create': {
-    from: [], to: STATUS.SUBMITTED, event: 'ORDER_CREATED', roles: [enums.ROLES.CUSTOMER, enums.ROLES.PARTNER], changesStatus: true
-  },
-  'order.createBatch': {
     from: [], to: STATUS.SUBMITTED, event: 'ORDER_CREATED', roles: [enums.ROLES.CUSTOMER, enums.ROLES.PARTNER], changesStatus: true
   },
   'order.accept': {
@@ -96,8 +93,12 @@ const UNDO_WINDOW_MS = 5000;
 const RESOLVE_ALLOWED_FROM = [STATUS.ACCEPTED, STATUS.PICKED, STATUS.DELIVERED];
 const RESOLVE_FALLBACK_STATUS = STATUS.ACCEPTED;
 
-// 一图多码拆单上限（CONTRACT §5.3 order.createBatch：≤5 单、单事务原子创建）
-const MAX_CREATE_BATCH = 5;
+// ── v1.0 一单多包裹（D23/D24）────────────────────────────────────────────────
+// 一个订单 = 1~10 件包裹；0~5 张截图（一张截图一个 ticket，一图多码拆成多件）；0 张截图 = 无截图手填。
+const MAX_PARCELS_PER_ORDER = 10;
+const MAX_IMAGES_PER_ORDER = 5;
+// 合并窗口追加包裹事件（D23；枚举单源 = shared/enums.js ORDER_EVENTS，本常量供 order 域引用）
+const EVENT_PARCELS_APPENDED = 'PARCELS_APPENDED';
 
 function actionRule(action) {
   return ACTION_RULES[action] || null;
@@ -212,7 +213,9 @@ module.exports = {
   UNDO_WINDOW_MS,
   RESOLVE_ALLOWED_FROM,
   RESOLVE_FALLBACK_STATUS,
-  MAX_CREATE_BATCH,
+  MAX_PARCELS_PER_ORDER,
+  MAX_IMAGES_PER_ORDER,
+  EVENT_PARCELS_APPENDED,
   actionRule,
   isOrderStatus,
   isTerminal,

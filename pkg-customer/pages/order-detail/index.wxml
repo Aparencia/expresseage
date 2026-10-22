@@ -53,21 +53,24 @@
 
     <view class="card order-section">
       <view class="row between">
-        <view class="section-title">取件信息</view>
-        <view class="small" wx:if="{{image.canView}}" bindtap="onViewImage">{{image.text}}</view>
+        <view class="section-title">取件信息{{parcelCount > 1 ? '（' + parcelCount + ' 件）' : ''}}</view>
+        <view class="small" wx:if="{{image.canView && image.list.length === 1}}" data-index="{{image.list[0].index}}" bindtap="onViewImage">{{image.text}}</view>
         <view class="small image-note" wx:else>{{image.text}}</view>
       </view>
-      <view class="row between line">
-        <view class="muted">站点</view>
-        <view class="flex-1 right">{{order.parcel.stationName || '未识别'}}</view>
-      </view>
-      <view class="row between line">
-        <view class="muted">取件码</view>
-        <view class="flex-1 right">{{pickupCodeText}}</view>
-      </view>
-      <view class="row between line">
-        <view class="muted">柜号 / 尾号</view>
-        <view class="flex-1 right">{{order.parcel.lockerNo || '—'}} / {{order.parcel.trackingTail || '—'}}</view>
+      <view class="small manual-badge" wx:if="{{manualEntryText}}">{{manualEntryText}}：本单没有上传截图，信息由顾客手动填写</view>
+      <view class="parcel-block" wx:for="{{parcels}}" wx:key="no">
+        <view class="row between line">
+          <view class="muted">第 {{item.no}} 件 · 站点</view>
+          <view class="flex-1 right">{{item.stationName}}</view>
+        </view>
+        <view class="row between line">
+          <view class="muted">取件码</view>
+          <view class="flex-1 right">{{item.codeText}}</view>
+        </view>
+        <view class="row between line">
+          <view class="muted">柜号 / 尾号</view>
+          <view class="flex-1 right">{{item.lockerNo || '—'}} / {{item.trackingTail || '—'}}</view>
+        </view>
       </view>
       <view class="row between line">
         <view class="muted">服务类型</view>
@@ -75,9 +78,9 @@
       </view>
       <view class="row between line">
         <view class="muted">送达地址</view>
-        <view class="flex-1 right">{{order.dorm.buildingText || ''}} {{order.dorm.room || ''}}</view>
+        <view class="flex-1 right">{{deliveryText}}{{deliveryRecipient ? '（收件人：' + deliveryRecipient + '）' : ''}}</view>
       </view>
-      <view class="row between line" wx:if="{{order.dorm.roomTag}}">
+      <view class="row between line" wx:if="{{order.dorm.roomTag && !deliveryIsOther}}">
         <view class="muted">同寝室标识</view>
         <room-tag-text dorm-key="{{order.dorm.dormKey}}" tag="{{order.dorm.roomTag}}" />
       </view>
@@ -92,6 +95,9 @@
       <view class="row between line" wx:if="{{order.deliveryNote}}">
         <view class="muted">送达备注</view>
         <view class="flex-1 right">{{order.deliveryNote}}</view>
+      </view>
+      <view class="row image-actions" wx:if="{{image.canView && image.list.length > 1}}">
+        <view class="small link-text image-link" wx:for="{{image.list}}" wx:key="index" data-index="{{item.index}}" bindtap="onViewImage">{{item.label}}</view>
       </view>
     </view>
 

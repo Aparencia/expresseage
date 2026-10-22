@@ -1,6 +1,6 @@
 # expressage_college_v4 · 校园快递代取（第四次重建 · 面向客户）
 
-> **当前阶段：批 9 工程侧完成（2026-10-22 收口）· D1~D22 已全部裁决（D2 沿用 v3 appid `wxcb7e5b41b89bc806`；D8 五苑=东/西/南/北/翠苑；D13 个人主体+工具类目；D22=A）· 工程骨架 + 两个云函数 + 30 页面 + 组件/工具链齐备，`check.ps1` 全绿（4 步、退出码 0；`check.js` 31/31、`check-docs` 10/10、零金额 0 命中、selftest 28 套 4,151 断言）· 待你创建云环境/部署冒烟、真机点检、隐私 13 项与微信后台声明、审核提审、灰度演练**
+> **当前阶段：批 10 C 批工程侧完成（2026-10-23 收口；v1.0 一单多包裹 D23~D26）· D1~D29 已裁决（D2 沿用 v3 appid `wxcb7e5b41b89bc806`；D8 五苑=东/西/南/北/翠苑；D13 个人主体+工具类目；D22 改判 B/落地 D24；D27 待裁决；D28/D29 已采纳待实现）· 工程骨架 + 两个云函数 + 31 页面（含顾客取件清单）+ 组件/工具链齐备，`check.ps1` 全绿（4 步、退出码 0；`check.js` 32/32、`check-docs` 10/10、零金额 0 命中、selftest 31 套 4,566 断言、gate 红 0/黄 0）· 待你部署冒烟、C 批真机点检、隐私 13 项与微信后台声明、审核提审、灰度演练**
 > 本目录从微信小程序默认模板重建；v1 / v2 / v3 已冻结为只读参照：
 > `D:\Code\expresseage\expresseage_college\`（v1）、`D:\Code\expresseage\expresseage_college_v2\`（v2）、`D:\Code\expresseage_college_v3\`（v3）。
 
@@ -23,7 +23,7 @@ v4 把 v3 的「兼职单人台账」升级为 **顾客下单 + 兼职接单履�
 | 0 | [`docs/V4_INTERIM_OVERVIEW.md`](docs/V4_INTERIM_OVERVIEW.md) | **临时总体说明（先读）**：30 秒结论/进度台账/系统全貌/门禁真实读数/文档地图/裁决与欠账/用户下一步/自证命令；状态仍以 `STATE.md` 为准、口径以 CONTRACT 为准 |
 | 1 | [`docs/V4_CONTRACT.md`](docs/V4_CONTRACT.md) | **唯一口径卡 v0.9**：角色/术语/编号规格/集合/状态机/页面地图/隐私/账号切换/裁决索引；文档冲突以它为准 |
 | 2 | [`V4_REBUILD_SPEC.md`](V4_REBUILD_SPEC.md) | 主规格书：产品/架构/权限/流程/批次/验收/风险/裁决 |
-| 3 | [`docs/V4_DECISIONS.md`](docs/V4_DECISIONS.md) | **D1~D22 裁决清单**（2026-10-22 **已全部闭环**；含用户原文留痕、推荐与被否方案、代价与落点） |
+| 3 | [`docs/V4_DECISIONS.md`](docs/V4_DECISIONS.md) | **D1~D29 裁决清单**（D1~D26 与 D28/D29 已裁决；**D27 楼栋级位置待用户裁决**；含原文留痕、推荐与被否方案、代价与落点） |
 | 4 | [`docs/V4_DATA_MODEL.md`](docs/V4_DATA_MODEL.md) | 集合/字段/索引/云函数 API 契约/编号规则/roomTag/头像/测试账号/识别失败队列/安全规则/越权测试 |
 | 5 | [`docs/V4_UX_CUSTOMER.md`](docs/V4_UX_CUSTOMER.md) | 顾客端逐页交互、下单四步、头像昵称采集、AI 兜底态、进度矩阵、异常与验收 |
 | 6 | [`docs/V4_UX_PARTNER.md`](docs/V4_UX_PARTNER.md) | 兼职端逐页交互、工作台（取件清单）体验补全、绑定单向/顾客档案头像、代客单 AI 兜底、v3→v4 对照 |
@@ -37,14 +37,14 @@ v4 把 v3 的「兼职单人台账」升级为 **顾客下单 + 兼职接单履�
 
 ## 裁决状态（2026-10-22 已全部闭环）
 
-用户于 2026-10-22 回复，D1~D22 全部锁定（原文留痕见 [`docs/V4_DECISIONS.md`](docs/V4_DECISIONS.md) §0.1）：
+用户于 2026-10-22 回复，D1~D22 全部锁定；同日批 10 新增 D23~D29（D27 待裁决；D28/D29 按推荐采纳）。原文留痕见 [`docs/V4_DECISIONS.md`](docs/V4_DECISIONS.md) §0.1：
 
 - **D1 = A**：后端 = 微信云开发。**同日修订（执行方式）**：账号只能开通 1 个云环境 ⇒ **单环境方案**（develop/trial/release 三档同 envId；测试数据靠测试账号/`isTest` 标记隔离，上线前 `purgeTestData` 清零；见 DECISIONS D1 修订留痕）。
 - **D2 = 沿用 v3 appid `wxcb7e5b41b89bc806`**（非推荐 A）：同一 storage 命名空间（v4 只读写自己的 `ex_college_v4.store`，不碰 v1/v2/v3 的键）；**发布 v4 即替代 v3**；隐私/类目在同一 appid 上重新提交。
 - **D3 = A**：兼职准入 = 邀请码。
 - **D8 = 东苑 / 西苑 / 南苑 / 北苑 / 翠苑**（D/X/N/B/C；C=翠苑）：默认值已进 `shared/zones.js`，`config.zoneLabels` 仍可由后台覆盖。
 - **D13 = 个人主体 + 工具类目**：提审材料按"校园快递代取的信息与履约工具"表述；类目可选性仍需在微信后台确认（提审风险，见 DECISIONS D13 留痕）。
-- **D22 = A**：截图上传失败后**不允许**无截图手填提交（必须先有截图；OCR/阅读失败仍可手填 `NEED_CODE`）。
+- **D22 = A → 同日改判 B（D24）**：截图上传失败后**允许**无截图手填提交（`images=[]`+`manualEntry=true`；每件仍需站点+取件码或运单尾号；无截图单不进入识别链路；兼职端/后台显示「无截图·手填」标识）。截图仍为推荐路径。
 - 其余 12 条（D4/D7/D9/D10/D11/D12/D14/D15/D16/D17/D18/D19）**按推荐确认**；D5/D6/D20/D21 早前已定。
 - 你接下来只需做**工程侧之外**的事：建云环境 → 真机点检 → 隐私与提审 → 灰度演练（清单见 [`docs/V4_INTERIM_OVERVIEW.md`](docs/V4_INTERIM_OVERVIEW.md) §7 与 [`STATE.md`](STATE.md) §4）。
 
@@ -61,9 +61,9 @@ v4 把 v3 的「兼职单人台账」升级为 **顾客下单 + 兼职接单履�
 
 ## 工程现状（批 1 收口 + 批 2~批 9 工程侧收口，2026-10-22）
 
-- **代码**：564 个文件（`git ls-files` 计数，以实际输出为准）；小程序端 30 页（主包 7 + `pkg-customer` 5 + `pkg-partner` 7 + `pkg-admin` 11）四件套齐全；`components/` 16 套（含维护遮罩 `maintenance-mask`）+ `custom-tab-bar/`（根目录）+ tabbar 资产；`api/`（client 唯一出口 + 10 个域模块 + upload/privacy/mode-guard）、`store/`、`shared/` 13 件口径纯件 + `utils/` 9 件纯件（含批 8 `maintenance.js`、`pkg-customer/parts/privacy-text.js` 端内隐私全文单源）。
+- **代码**：564 个文件（`git ls-files` 计数，以实际输出为准）；小程序端 31 页（主包 7 + `pkg-customer` 6（含取件清单）+ `pkg-partner` 7 + `pkg-admin` 11）四件套齐全；`components/` 16 套（含维护遮罩 `maintenance-mask`）+ `custom-tab-bar/`（根目录）+ tabbar 资产；`api/`（client 唯一出口 + 10 个域模块 + upload/privacy/mode-guard）、`store/`、`shared/` 13 件口径纯件 + `utils/` 9 件纯件（含批 8 `maintenance.js`、`pkg-customer/parts/privacy-text.js` 端内隐私全文单源）。
 - **云端**：`cloudfunctions/api`（index/router/app + 7 中间件 + db/dao + lib + 11 域 handlers，含 admin 23 动作全量与 message/order/partner 域加固）与 `cloudfunctions/cleanup`（13 个幂等 sweep + 独立 dao + 批 8 新增可注入执行器 `run.js` 与 `db/collections.js`），依赖只 `wx-server-sdk`；14 集合/13 错误码/审计枚举三端一致。
-- **门禁**（真实输出）：`check.ps1` 4 步全 PASS（退出码 0）——`check.js` 31/31、`check-docs.js --batch 1` 10/10、零金额扫描 0 命中、`selftest.js` **28 套 4,151 条断言**全 PASS（core 58 / state 341 / recognize 187 / cloud 168 / ai 197 / bind 79 / bind-cloud 108 / order 126 / order-flow 135 / order-lifecycle 98 / order-customer 190 / order-partner 127 / order-workbench 197 / order-detail-partner 153 / partner-customers 120 / partner-orders 89 / partner-pages 156 / partner-stats 203 / **admin 220** / **messages 89** / **cleanup 183** / **admin-pages 145** / **message-pages 138** / **privacy-text 164**（批 8 新增 6 套）/ **deletion 89**（批 9 新增：注销/数据删除端到端）/ profile 98 / switch 140 / testaccount 153）；另有 `tools/mutation.ps1` 变异电池（#28/#29/#30/#31 安全判据均有首红证据；批 6/7/8/9 新判据分别另有变异首红，批 9 deletion 3 组）。
+- **门禁**（真实输出）：`check.ps1` 4 步全 PASS（退出码 0）——`check.js` 32/32、`check-docs.js --batch 1` 10/10、零金额扫描 0 命中、`selftest.js` **31 套 4,566 条断言**全 PASS（core 58 / state 341 / recognize 187 / cloud 168 / ai 197 / bind 79 / bind-cloud 108 / order 126 / order-flow 135 / order-lifecycle 98 / order-customer 190 / order-partner 127 / order-workbench 197 / order-detail-partner 153 / partner-customers 120 / partner-orders 89 / partner-pages 156 / partner-stats 203 / **admin 220** / **messages 89** / **cleanup 183** / **admin-pages 145** / **message-pages 138** / **privacy-text 164**（批 8 新增 6 套）/ **deletion 89**（批 9 新增：注销/数据删除端到端）/ profile 98 / switch 140 / testaccount 153）；另有 `tools/mutation.ps1` 变异电池（#28/#29/#30/#31 安全判据均有首红证据；批 6/7/8/9 新判据分别另有变异首红，批 9 deletion 3 组）。
 - **批 2 离线收口**（提交 `619f39a`/`d79963d`）：账号入口（launch 隐私闸/角色分流/`lastRole` 建议/头像昵称采集/邀请码激活/开发者分流）、切换会话与测试账号（真实只读 + 测试可写 + 四动作 + dryRun 级联 + 审计）、头像上传服务端 size/类型闸（`api/upload` 顺序修正）、`lib/time.isPast` Date 归一；期间修复 2 个真虫（过期邀请码可激活、退出会话必失败）与兼职 READONLY targetId 口径等 10 项缺口。真机项（E12/切换条/测试账号单机双端）待用户点检。
 - **批 3 离线收口**：绑定方向固化全链（PARTNER 调用 `FORBIDDEN`/自绑拒绝/真实×测试拒绝/编号归一+错前缀同源提示/roomTag 大写事务分配+并发冲突有界重试/换绑与换宿舍=旧绑定释放+新建/解绑即失联/getPublic 绑定前不回头像/接单开关 `PARTNER_CLOSED`）；绑定卡分享 path 单一来源（`pages/profile/parts/share-card.js`）；新建第 10 套断言套件（`tools/selftest-bind-cloud.js`，拆掉 TD-029 行数红线）；`check.js` #28 改为去注释三条同时命中 + 变异首红（TD-031 关闭）。**真实 bug 2 个**：`order.create/createBatch` 重复预查集合键写小写（`COLLECTIONS.orders`）导致正常下单 100% `INTERNAL_ERROR`（一行修复）；TEST_WRITE 会话未放行 `partner.getPublic` 导致测试账号绑定预览受阻（新增 `TEST_WRITE_READ_ALLOW`，READONLY 不动）。真机绑定/换绑待用户点检。
 - **批 4 离线收口**（提交 `a204ed1`，17 文件 +3036/-442）：建单引擎与票据/批量原子性判据（新 `tools/selftest-order.js`）、AI 兜底判据扩到 197 断言（配额/票据五类失效/降级 DTO 10 键/入队去 PII/规则优先）、四步下单端侧（`clientRequestId` 生命周期、同图多单**逐件** `ai.parseParcel`、逐件预约/备注、识别来源快照、识别原文/截图预览/服务类型说明；新 `tools/selftest-order-flow.js`）。**真实缺陷（首红→复绿）**：①跨域 P0 `lib/id-generator.nextOrderNos` 当天首桶只落 `seq=1` → 同日首单拆单后后续下单全 `INTERNAL_ERROR`（`{key,seq:total}` 一行修复）；②`order.create` 未知字段静默忽略→严格白名单；③AI 降级 DTO 越界键 `duplicated`+双出口；④票据过期/已消费漏判；⑤客户端从不发 `clientRequestId`（弱网重试可重复建单）；⑥识别来源快照丢失；⑦同图多码只外呼 1 次；⑧页面级预约/备注覆盖每件；⑨降级后人话/原文/预览/服务说明缺失。真机项 D1~D12/R1~R4/M1~M3 待用户点检。

@@ -144,3 +144,18 @@
 .service-desc {
   margin-top: 8rpx;
 }
+
+/* v1.0 D23/D24/D25：多图多件工具条 / 手填入口 / 配送地址 */
+.list-tools {
+  align-items: center;
+  padding-top: 16rpx;
+  padding-bottom: 16rpx;
+}
+
+.manual-entry-row {
+  margin-top: 16rpx;
+}
+
+.manual-entry-row + .small {
+  margin-top: 8rpx;
+}

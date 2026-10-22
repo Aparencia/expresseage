@@ -6,14 +6,19 @@
  *   A. 定稿候选 v1.0 关键条目 ⊆ 端内全文：17 项数据表 / 8 个章节标题 / 必披露主题 / 留存数字，
  *      端内文本与 docs/privacy/隐私保护指引.md 同时存在（防双份漂移、防端内缺项）。
  *   B. launch 隐私弹窗 PRIVACY_ITEMS 与文档口径一致：头像/昵称可见边界（兼职昵称凭完整编号预览、
- *      头像绑定成功后才可见）、AI 仅去敏文字、账号切换/测试账号、留存期限、未成年人、注销/解绑。
+ *      头像绑定成功后才可见）、AI 仅去敏文字、账号切换/测试账号、留存期限、未成年人、注销/解绑；
+ *      批 10 摘要同步（D24 截图自愿 0~5 张/可无截图手填/不进入识别链路、D25 本单配送地址/仅本单有效/
+ *      不写回/不采集定位）与旧「必须先有截图」反例锁定。
  *   C. 文案纪律：零金额词（复用零金额扫描词表单源）、零 L3 敏感示例值、零英文错误码、零外链。
  *   D. 文本版本 ↔ config.privacyVersion 对应：版本号由调用方注入（文本里不写死），页面从
  *      store 缓存/出厂默认取 config.privacyVersion；文本版本号与 docs 头部一致。
  *   E. 静态纪律：#24 补偿断言（纯文本件零 Key/端点/URL/require/fetch/wx.cloud/ai.parseParcel）、
  *      #31 零孤立 TEST 字面量、页面四件套/行数/无 wx.cloud、弹窗长文可滚动、帮助页 sections 渲染。
- *   F. help 页 FAQ/口径说明与全文同口径（头像昵称、留存、未成年人、注销路径、权利）。
+ *   F. help 页 FAQ/口径说明与全文同口径（头像昵称、留存、未成年人、注销路径、权利 +
+ *      批 10 两条：截图自愿/无截图手填、本单配送地址与收件人称呼）。
  *   G. 文档单源：docs/privacy 只有一份隐私指引、版本段落与配置键说明齐全。
+ *   H. 批 10 口径（D24 无截图手填 / D25 每单配送地址 / 维持不采集定位）：三处文本
+ *      （端内全文 / 定稿文档 / 补充文档派生物）关键句一致 + 旧「截图必须」口径反例锁死。
  *
  * 纪律：不 mock 全局 wx；只读文档/源码 + 纯件；先合法基线再反例；EXPECTED_ASSERTIONS 与实际断言数精确相等。
  * 取数：node tools/selftest-privacy-text.js | Select-Object -Last 2
@@ -26,7 +31,7 @@ const privacyText = require(path.join(__dirname, '..', 'pkg-customer/parts/priva
 const defaults = require(path.join(__dirname, '..', 'config/defaults.js'));
 
 const ROOT = path.resolve(__dirname, '..');
-const EXPECTED_ASSERTIONS = 164; // 实跑读数：node tools/selftest-privacy-text.js
+const EXPECTED_ASSERTIONS = 203; // 实跑读数：node tools/selftest-privacy-text.js
 
 const PART_FILE = 'pkg-customer/parts/privacy-text.js';
 const HELP_JS = 'pkg-customer/pages/help/index.js';
@@ -43,11 +48,22 @@ const CONFIG_VERSION = defaults.DEFAULT_CONFIG.privacyVersion;
 const TEXT = privacyText.buildText(CONFIG_VERSION);
 const SECTIONS = privacyText.buildSections(CONFIG_VERSION);
 
-// docs §一 17 行数据表逐项名（端内全文必须逐项覆盖）
+// docs §一 数据表逐项名（端内全文必须逐项覆盖；第 18 项为 D25 新增配送地址/收件人称呼）
 const DATA_ITEMS = [
   '微信账号标识', '唯一编号', '微信昵称', '微信头像', '宿舍信息', '手机尾号', '订单信息',
   '取件码截图', '识别失败原图', '第三方 AI', '订单留言', '账号切换与测试账号', '已读水位',
-  '登录与操作日志', '隐私同意记录', '邀请码使用记录', '限流计数'
+  '登录与操作日志', '隐私同意记录', '邀请码使用记录', '限流计数', '配送地址', '收件人称呼'
+];
+
+// 批 10（D24/D25）关键句：端内全文 + 定稿文档 + 补充文档派生物三处必须同时出现（文本一致性）
+const BATCH10_SENTENCES = [
+  '0~5 张',
+  '无截图·手填',
+  '仅本单有效',
+  '不写回',
+  '收件人称呼',
+  '不采集收件方的完整手机号',
+  '不采集任何设备定位'
 ];
 
 // docs 章节标题（两端必须一字不差：端内标题 = 文档标题）
@@ -160,6 +176,17 @@ function register(h) {
       '第 6 条：注销路径「我的 → 账号 → 注销账号」+ 解绑后互不可见');
     t.check(/未满 14 周岁/.test(item(6)) && /监护人/.test(item(6)),
       '第 7 条：未成年人保护提示（未满 14 周岁 + 监护人）');
+    t.check(/0~5 张/.test(item(0)) && /自愿/.test(item(0)) && /手填/.test(item(0))
+      && /每件仍需站点/.test(item(0)) && /取件码或运单尾号/.test(item(0))
+      && /不进入识别链路/.test(item(0)),
+    '批 10 摘要·第 1 条：取件码截图自愿 0~5 张、可无截图手填（每件仍需站点+取件码或尾号）、无截图单不进入识别链路（D24 改判 B）');
+    t.check(/本单配送地址/.test(item(0)) && /收件人称呼/.test(item(0)) && /仅本单有效/.test(item(0))
+      && /不写回/.test(item(0)) && /不采集任何设备定位/.test(item(0)),
+    '批 10 摘要·第 1 条：本单配送地址与收件人称呼可选/仅本单有效/不写回资料/不采集定位（D25）');
+    t.check(/7 天/.test(item(4)) && /无截图/.test(item(4)),
+      '批 10 摘要·第 5 条：留存区分有截图单 7 天删除与无截图手填单不产生截图数据（D24/D9 联动）');
+    t.check(!/必须先有截图|截图必填|拒绝上传将无法完成下单/.test(launchSource),
+      '反例锁定：launch 摘要不得回归「必须先有截图/截图必填」旧口径（D22=A 已作废）');
     t.check(!/头像与昵称只向当前绑定/.test(stripComments(launchSource) + stripComments(helpSource) + stripComments(partSource)),
       '反例锁定：端内不得回归「头像与昵称只向当前绑定对方展示」的窄口径');
     t.check(!/DeepSeek/.test(launchSource) && !/DeepSeek/.test(helpSource),
@@ -243,7 +270,7 @@ function register(h) {
 
   // ------------------------------------------------------------ F. help FAQ / 口径说明同口径
   h.section('F help 页 FAQ / 口径说明与全文同口径', (t) => {
-    t.eq((faqs || []).length, 11, 'FAQ 11 条（新增未成年人/信息权利/账号切换三条）');
+    t.eq((faqs || []).length, 13, 'FAQ 13 条（批 10 增「可以不上传截图吗」「可以让兼职送到其他宿舍吗」两条）');
     const answer = (keyword) => {
       const hit = (faqs || []).filter((item) => String(item.q).indexOf(keyword) !== -1)[0];
       return hit ? String(hit.a) : '';
@@ -266,6 +293,16 @@ function register(h) {
     '注销路径与「我的」页实际卡片标题/入口一致（不写走不通的路径）');
     t.check(answer('信息可以查').indexOf('解绑') !== -1 && answer('信息可以查').indexOf('唯一编号') !== -1,
       'FAQ 用户权利：查改删/解绑/编号作废说明');
+    const noShotFaq = answer('不上传截图');
+    t.check(noShotFaq.indexOf('0~5 张') !== -1 && noShotFaq.indexOf('自愿') !== -1
+      && noShotFaq.indexOf('手填') !== -1 && noShotFaq.indexOf('无截图·手填') !== -1
+      && noShotFaq.indexOf('不进入识别链路') !== -1,
+    '批 10 FAQ：截图自愿 0~5 张、可无截图手填「无截图·手填」、不进入识别链路（D24）');
+    const deliveryFaq = answer('其他宿舍');
+    t.check(deliveryFaq.indexOf('本单配送地址') !== -1 && deliveryFaq.indexOf('默认') !== -1
+      && deliveryFaq.indexOf('仅本单有效') !== -1 && deliveryFaq.indexOf('不写回') !== -1
+      && deliveryFaq.indexOf('不采集任何设备定位') !== -1,
+    '批 10 FAQ：本单配送地址默认本人宿舍、仅本单有效、不写回资料、不采集定位（D25）');
     t.check(statements.avatar.indexOf('完整兼职编号') !== -1 && statements.avatar.indexOf('绑定成功后才显示') !== -1,
       '口径说明·头像：同可见边界口径');
     t.check(statements.ai.indexOf('去敏') !== -1 && statements.ai.indexOf('原图') !== -1
@@ -291,6 +328,33 @@ function register(h) {
       && TEXT.indexOf('剪贴板') !== -1
       && supplement.indexOf(TEXT) !== -1,
     '定稿文档保留用户填写占位符；剪贴板使用披露两端同源；补充文档为端内全文派生物（随文本重新生成，不单独维护）');
+  });
+
+  // ------------------------------------------------------------ H. 批 10 口径（D24/D25）
+  h.section('H 批 10 口径（D24 无截图手填 / D25 每单配送地址 / 维持不采集定位）', (t) => {
+    const supplementFile = 'docs/privacy/补充文档.txt';
+    const supplement = exists(supplementFile) ? readSource(supplementFile) : '';
+    BATCH10_SENTENCES.forEach((term) => {
+      t.check(TEXT.indexOf(term) !== -1, '端内全文覆盖批 10 关键句「' + term + '」（D24/D25 口径）');
+      t.check(privacyTextDocCache.indexOf(term) !== -1, '定稿文档覆盖批 10 关键句「' + term + '」（文本同源）');
+      t.check(supplement.indexOf(term) !== -1, '补充文档派生物覆盖批 10 关键句「' + term + '」（三处一致）');
+    });
+    t.check(TEXT.indexOf('无截图') !== -1 && TEXT.indexOf('不进入识别链路') !== -1,
+      '端内全文：无截图手填单不进入识别链路（D24 口径）');
+    t.check(privacyTextDocCache.indexOf('不进入识别链路') !== -1,
+      '定稿文档：无截图手填单不进入识别链路（D24 口径）');
+    t.check(TEXT.indexOf('取件码截图') !== -1 && TEXT.indexOf('无截图') !== -1,
+      '端内全文：取件码截图自愿、可无截图手填（D24 改判口径）');
+    const oldMandatory = '拒绝上传将无法完成下单';
+    [['端内全文', TEXT], ['定稿文档', privacyTextDocCache], ['补充文档派生物', supplement]].forEach((pair) => {
+      t.check(pair[1].indexOf(oldMandatory) === -1,
+        '反例锁定：' + pair[0] + '不得回归「截图必须、拒绝上传无法下单」旧口径（D22=A 已作废）');
+    });
+    t.check(TEXT.indexOf('不采集任何设备定位') !== -1 && privacyTextDocCache.indexOf('定位') !== -1,
+      '维持「永不收集定位」现行口径（D27 待裁决，不写入楼栋自报/地图/定位采集）');
+    t.check(TEXT.indexOf('如后续提供位置相关功能') !== -1
+      && privacyTextDocCache.indexOf('如后续提供位置相关功能') !== -1,
+    '位置相关功能留「另行更新本指引」表述，不承诺收集（D27 待裁决）');
   });
 }
 

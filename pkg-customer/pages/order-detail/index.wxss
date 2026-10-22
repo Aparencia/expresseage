@@ -185,3 +185,39 @@
   font-size: 26rpx;
   padding: 0 24rpx;
 }
+
+/* v1.0（D23/D24/D25）：多包裹 / 无截图·手填标识 / 多图入口 */
+.parcel-block {
+  border-bottom: 1rpx solid #F0F2F5;
+  padding-bottom: 8rpx;
+  margin-bottom: 8rpx;
+}
+
+.parcel-block:last-of-type {
+  border-bottom: none;
+}
+
+.manual-badge {
+  margin: 8rpx 0;
+  padding: 8rpx 12rpx;
+  border-radius: 8rpx;
+  background: #FFF7E6;
+  color: #AD6800;
+}
+
+.image-actions {
+  flex-wrap: wrap;
+  gap: 24rpx;
+  margin-top: 8rpx;
+}
+
+.image-link {
+  min-height: 56rpx;
+}
+
+.link-text {
+  color: var(--v4-brand);
+  min-height: 64rpx;
+  display: flex;
+  align-items: center;
+}

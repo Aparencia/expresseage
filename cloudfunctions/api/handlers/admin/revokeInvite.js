@@ -40,12 +40,24 @@ async function handler(ctx, payload) {
   if (TERMINAL_INVALID_STATUSES.indexOf(invite.status) >= 0 || REVOCABLE_STATUSES.indexOf(invite.status) < 0) {
     throw errors.invalidState('只有未使用的邀请码可以作废');
   }
-  await scope.dao.update(COLLECTIONS.INVITATION_CODES, invite._id, {
+  // 条件更新（DATA_MODEL §4.3 状态机：仅 UNUSED→REVOKED）：读后写之间若被激活事务改成 USED，
+  // 条件更新命中 0 行 → 回读判定实际状态（已作废=幂等成功；其它终态=INVALID_STATE），不覆盖非法组合。
+  const updated = await scope.dao.updateWhere(COLLECTIONS.INVITATION_CODES, {
+    _id: invite._id,
+    status: enums.INVITATION_STATUS.UNUSED
+  }, {
     status: enums.INVITATION_STATUS.REVOKED,
     revokedAt: scope.nowDate,
     revokedBy: scope.developerNo,
     updatedAt: scope.nowDate
   });
+  if (updated.updated !== 1) {
+    const fresh = await scope.dao.get(COLLECTIONS.INVITATION_CODES, invite._id);
+    if (fresh && fresh.status === enums.INVITATION_STATUS.REVOKED) {
+      return { codeTail: codeTailOf(code), status: 'REVOKED', duplicated: true };
+    }
+    throw errors.invalidState('邀请码状态已变化，请刷新后重试');
+  }
   await scope.writeAudit(
     AUDIT_ACTIONS.INVITE_REVOKE,
     { type: 'invitation_code', id: code },

@@ -38,7 +38,7 @@ const app = require(path.join(ROOT, 'cloudfunctions/api/app.js'));
 const daoModule = require(path.join(ROOT, 'cloudfunctions/api/db/dao.js'));
 const testAccountActions = require(path.join(ROOT, 'cloudfunctions/api/handlers/admin/testAccounts.js')).actions;
 
-const EXPECTED_ASSERTIONS = 171;
+const EXPECTED_ASSERTIONS = 172;
 
 // 旧审计名用拼接构造：本文件不出现旧名字面量（门禁 #30 / 文档纪律）
 const LEGACY_AUDIT_PREFIX = 'VIEW' + '_' + 'AS' + '_';
@@ -352,13 +352,42 @@ function register(h) {
   });
 
   // ---------------------------------------------------------------- §7.8 统计排除
-  h.section('§7.8 统计/列表排除测试数据', (t) => {
+  h.section('§7.8 统计/列表排除测试数据', async (t) => {
     t.check(SRC.stats.indexOf('where: { isTest: false }') !== -1
       && SRC.stats.indexOf('where: { isTestAccount: true }') !== -1,
     '后台统计：真实指标按 isTest:false 排除，测试账号另单列计数');
     t.check(SRC.stats.indexOf('{ isTest: true }') !== -1, '后台统计：测试订单单独出数（不混入真实指标）');
-    t.check(SRC.listOrders.indexOf('if (!includeTest && row.isTest === true)') !== -1,
-      '后台订单列表默认过滤测试单（includeTest 才展示）');
+    // 后台订单列表默认过滤测试单：行为断言（审查整改 M-10 后过滤已下推服务端 where，
+    // 旧静态断言锁定的内存过滤字面量按设计消失 → 改为 fake-DB 端到端行为验证）。
+    const listDb = fixtures.createTestDb();
+    seedAdminUser(listDb);
+    const orderAt = new Date(TEST_NOW - 60 * 60 * 1000);
+    listDb.seed('orders', [
+      {
+        _id: 'real-order', orderNo: '20260101-0001', status: 'SUBMITTED', source: 'CUSTOMER', isTest: false, version: 1,
+        customerNo: 'CAAAAAAA', partnerNo: 'PAAAAAA', service: { code: 'PICKUP_STD', name: '标准代取' },
+        dorm: { zone: 'D', buildingNo: 4 }, parcel: {}, image: { fileId: '' },
+        createdAt: orderAt, statusUpdatedAt: orderAt
+      },
+      {
+        _id: 'test-order', orderNo: '20260101-0002', status: 'SUBMITTED', source: 'CUSTOMER', isTest: true, version: 1,
+        customerNo: 'CTESTAAA', partnerNo: 'PTESTAA', service: { code: 'PICKUP_STD', name: '标准代取' },
+        dorm: { zone: 'D', buildingNo: 4 }, parcel: {}, image: { fileId: '' },
+        createdAt: orderAt, statusUpdatedAt: orderAt
+      }
+    ]);
+    const listApi = app.createApi({
+      db: listDb, openid: TEST_ADMIN, now: TEST_NOW,
+      env: { ADMIN_OPENIDS: JSON.stringify({ [TEST_ADMIN]: 'DEV-01' }) }
+    });
+    const realOnly = await listApi.call('admin.listOrders', {});
+    const withTest = await listApi.call('admin.listOrders', { includeTest: true });
+    t.check(realOnly.ok && realOnly.data.includeTest === false && realOnly.data.list.length === 1
+      && realOnly.data.list.every((row) => row.isTest === false),
+    '后台订单列表默认过滤测试单（行为断言：默认只回真实单，过滤在服务端 where 完成）');
+    t.check(withTest.ok && withTest.data.list.length === 2
+      && withTest.data.list.filter((row) => row.isTest === true).length === 1,
+    '后台订单列表 includeTest:true 才展示测试单（行带 isTest 标签）');
     t.check(SRC.cleanupStats.indexOf('isTest: false') !== -1, '兼职统计缓存重算排除测试单');
   });
 
@@ -409,7 +438,7 @@ function register(h) {
       removeStorageSync: function removeStorageSync() { raw = ''; }
     };
     const loaded = storage.load(platform);
-    t.eq(loaded, { lastRole: 'CUSTOMER', guides: {}, draftPointer: null },
+    t.eq(loaded, { lastRole: 'CUSTOMER', guides: {}, draftPointer: null, pickupChecks: {} },
       '存储白名单：测试会话标记/模式/票据一律丢弃');
     t.check(JSON.stringify(loaded).indexOf('targetIsTest') === -1
       && JSON.stringify(loaded).indexOf('TEST_WRITE') === -1,

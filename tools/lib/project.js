@@ -22,6 +22,7 @@ const SUBPACKAGES = {
     'pages/bind/index',
     'pages/order-create/index',
     'pages/order-detail/index',
+    'pages/pickup-list/index',
     'pages/messages/index',
     'pages/help/index',
   ],
@@ -98,7 +99,7 @@ add('partner', ['getPublic', 'listBindings', 'getCustomer', 'stats'], READ);
 add('bind', ['create', 'release'], WRITE);
 add('bind', ['getCurrent'], READ);
 add('bind', ['claimGuestOrder'], WRITE);
-add('order', ['create', 'createBatch', 'accept', 'reject', 'markPicked', 'unmarkPicked', 'markDelivered',
+add('order', ['create', 'accept', 'reject', 'markPicked', 'unmarkPicked', 'markDelivered',
   'unmarkDelivered', 'reportException', 'resolveException', 'cancel', 'confirmDelivery', 'correct', 'undo',
   'deleteRecord'], WRITE);
 add('order', ['get', 'listCustomer', 'listPartner', 'imageUrl'], READ);

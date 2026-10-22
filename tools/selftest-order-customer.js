@@ -13,6 +13,8 @@
  *   G. 端到端 fake transport：首拉成功→轮询失败退避→恢复成功（旧数据保留 + 最近更新时刻）、
  *      actions 完全由服务端 DTO 驱动、写动作 expectedVersion 透传、CONFLICT 人话、截图错误人话；
  *      首屏即已补码（needCode=false）→ 提示/时间线直接上屏（task-67，端云 note 同字面量联调）
+ *   H. 取件清单（D26）占位词：无码件「码未填」/「需查明（兼职正在查码）」语义不重复
+ *   I. 截图区 v1.0：images[]{index,status,hasImage,cleaned} 三态/多图下标/历史单兼容/零存储句柄
  *
  * 纪律：不 mock 全局 wx（api/client 用 setTransport 注入替身）；fake DTO/事件，不连真云；
  *       先合法基线再反例；样本非空；EXPECTED_ASSERTIONS 与实际断言数精确相等（少算/多算都判红）。
@@ -30,6 +32,8 @@ const poll = require(path.join(ROOT, 'pkg-customer/parts/poll-policy.js'));
 const format = require(path.join(ROOT, 'pkg-customer/parts/format.js'));
 const ordersView = require(path.join(ROOT, 'pages/customer/parts/orders-view.js'));
 const reorder = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/reorder.js'));
+const pickupView = require(path.join(ROOT, 'pkg-customer/pages/pickup-list/parts/pickup-view.js'));
+const parcelView = require(path.join(ROOT, 'pkg-customer/pages/order-detail/parts/parcel-view.js'));
 const orderState = require(path.join(ROOT, 'shared/order-state.js'));
 const enums = require(path.join(ROOT, 'shared/enums.js'));
 const errorCopy = require(path.join(ROOT, 'shared/error-copy.js'));
@@ -38,7 +42,7 @@ const client = require(path.join(ROOT, 'api/client.js'));
 const orderApi = require(path.join(ROOT, 'api/modules/order.js'));
 const serverDto = require(path.join(ROOT, 'cloudfunctions/api/handlers/order/_dto.js'));
 
-const EXPECTED_ASSERTIONS = 190; // 实际断言总数（少算/多算都判红）
+const EXPECTED_ASSERTIONS = 202; // 实际断言总数（少算/多算都判红）
 
 const STATUS = orderState.STATUS;
 const ACTION_KEYS = view.ACTION_KEYS;
@@ -51,7 +55,10 @@ const PAGES = {
   messages: 'pkg-customer/pages/messages/index.js',
   home: 'pages/customer/home/index.js',
   homeWxml: 'pages/customer/home/index.wxml',
-  create: 'pkg-customer/pages/order-create/index.js'
+  create: 'pkg-customer/pages/order-create/index.js',
+  pickup: 'pkg-customer/pages/pickup-list/index.js',
+  pickupWxml: 'pkg-customer/pages/pickup-list/index.wxml',
+  pickupView: 'pkg-customer/pages/pickup-list/parts/pickup-view.js'
 };
 const ISO = '2026-10-22T12:00:00.000Z';
 const NOW = Date.parse('2026-10-22T12:00:03+08:00');
@@ -506,8 +513,8 @@ function register(h) {
     'F12 详情 WXML：再次下单入口 / 留言输入按 DTO message / 已完成归档提示');
     const orders = textOf(PAGES.orders);
     t.check(/ordersView\.tabsWithCounts/.test(orders) && /data\.counts|counts/.test(orders)
-      && /ordersView\.tickRows/.test(orders) && /ordersView\.serverNowMs/.test(orders),
-    'F13 列表：tab 计数取服务端 counts、倒计时按 serverTimeSkew 校时、tick 走纯件');
+      && /(ordersView\.tickRows|tickerPatch\.build)/.test(orders) && /ordersView\.serverNowMs/.test(orders),
+    'F13 列表：tab 计数取服务端 counts、倒计时按 serverTimeSkew 校时、tick 走纯件（P0-6 行级补丁）');
     t.check(/onHide\(\)[\s\S]*stopTicker/.test(orders) && /onUnload\(\)[\s\S]*stopTicker/.test(orders),
       'F14 列表 onHide/onUnload 清倒计时定时器（不在后台空转）');
     t.check(/刷新成功/.test(orders), 'F15 下拉刷新成功 toast「刷新成功」');
@@ -682,6 +689,54 @@ function register(h) {
       client.restoreTransport();
       store.reset();
     }
+  });
+
+  // ---------------------------------------------------------------- H 取件清单（D26）占位词
+  h.section('H. 取件清单（D26）：无码件占位「码未填」/ 需查明语义不重复', (t) => {
+    t.eq(pickupView.codeTextOf({ codeStatus: enums.CODE_STATUS.NEED_CODE, pickupCode: '', trackingTail: '12345' }),
+      '需查明（兼职正在查码）', 'H1 NEED_CODE 件显示「需查明（兼职正在查码）」（语义独立，不被占位词覆盖）');
+    t.eq(pickupView.codeTextOf({ codeStatus: enums.CODE_STATUS.OK, pickupCode: '', trackingTail: '' }),
+      '码未填', 'H2 无码件占位词=「码未填」（UX §3.10 定稿口径，不用近义占位词）');
+    const pickupSource = textOf(PAGES.pickup) + textOf(PAGES.pickupWxml) + textOf(PAGES.pickupView);
+    t.check(!/待补充|待补码/.test(pickupSource) && /\{\{row\.codeText\}\}/.test(textOf(PAGES.pickupWxml)),
+      'H3 取件清单源码零近义占位词残留，行码值统一由 row.codeText 渲染');
+    t.notEmpty(PAGES.pickup, 'H 组样本非空');
+  });
+
+  // ---------------------------------------------------------------- I 截图区 v1.0 images[] DTO
+  h.section('I. 截图区 v1.0：images[]{index,status,hasImage,cleaned} 三态/多图下标/历史单兼容/零存储句柄', (t) => {
+    const multi = parcelView.imagesView({
+      images: [
+        { index: 0, status: 'AVAILABLE', hasImage: true, cleaned: false },
+        { index: 1, status: 'CLEANED', hasImage: false, cleaned: true },
+        { index: 2, status: 'AVAILABLE', hasImage: true, cleaned: false }
+      ]
+    });
+    t.eq([multi.state, multi.canView, multi.count, multi.cleanedCount], ['AVAILABLE', true, 3, 1],
+      'I1 v1.0 images[]：2 张可看 + 1 张已清理 → AVAILABLE（不再因 DTO 无存储句柄被过滤成「无截图·手填」）');
+    t.eq(multi.list.map(function map(row) { return row.index; }), [0, 2],
+      'I2 可看张 index 取服务端 image.index（多图切换向 order.imageUrl({index}) 传对下标）');
+    const cleaned = parcelView.imagesView({ images: [{ index: 0, status: 'CLEANED', hasImage: false, cleaned: true }] });
+    t.eq([cleaned.state, cleaned.canView, cleaned.text], ['EXPIRED', false, '截图已按隐私策略删除'],
+      'I3 全部已清理 → EXPIRED 人话（cleaned 布尔/status=CLEANED 双口径同判）');
+    const missing = parcelView.imagesView({ images: [{ index: 0, status: 'MISSING', hasImage: false, cleaned: false }] });
+    t.eq([missing.state, missing.canView], ['NONE', false],
+      'I4 MISSING（无图）→ NONE 无截图（不把「没图」冒充成「已按隐私策略删除」）');
+    const legacy = parcelView.imagesView({ image: { hasImage: true, cleaned: false } });
+    t.eq([legacy.state, legacy.list.length, (legacy.list[0] || {}).index, parcelView.imagesView({ images: [] }).state,
+      parcelView.imagesView(null).state], ['AVAILABLE', 1, 0, 'NONE', 'NONE'],
+    'I5 历史单 images 缺失 → order.image.hasImage 归一为单元素 index 0；空单/undefined 零截图 → NONE');
+    const shotSource = textOf('pkg-customer/pages/order-detail/parts/parcel-view.js')
+      + textOf('pkg-customer/parts/status-view.js');
+    t.eq([/fileId/.test(shotSource), /cleanedAt/.test(shotSource)], [false, false],
+      'I6 顾客端截图视图源码零存储句柄/清理时刻（服务端 DTO 只下发可见性摘要，看图只经 imageUrl）');
+    const detailWxml = textOf(PAGES.detailWxml);
+    const detailJs = textOf(PAGES.detail);
+    t.check(/wx:for="\{\{image\.list\}\}"[\s\S]*data-index="\{\{item\.index\}\}"/.test(detailWxml)
+      && /dataset\.index/.test(detailWxml + detailJs) && /index:\s*index/.test(detailJs)
+      && /orderApi\.imageUrl\(\{[\s\S]*index:\s*index/.test(detailJs),
+    'I7 详情多图切换接线：WXML 按 image.list[].index → onViewImage 取 dataset.index → order.imageUrl({orderNo,index})');
+    t.notEmpty(multi.list, 'I 组样本非空');
   });
 }
 

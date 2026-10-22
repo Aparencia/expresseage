@@ -42,17 +42,33 @@ const {
   rowOf, pickRow, actionKeysOf, collectKeyPaths, expectCode, expectField
 } = cases;
 
+// v1.0 入参适配（task-34）：cases.createInput 仍是旧单件形态（parcel 顶层），
+// 本文件统一折算为 parcels[] + manualEntry（无截图手填）；parcel 覆盖/未知字段等反例语义保持不变。
+function v100CreateInput(extra) {
+  const legacy = cases.createInput(extra);
+  const parcel = legacy.parcel === undefined
+    ? { stationId: 'P1', pickupCode: 'A12345' }
+    : legacy.parcel;
+  const payload = Object.assign({}, legacy);
+  delete payload.parcel;
+  payload.parcels = payload.parcels || [{ parcel }];
+  if (payload.manualEntry === undefined) {
+    payload.manualEntry = !(Array.isArray(payload.images) && payload.images.length > 0);
+  }
+  return payload;
+}
+
 // ---------------------------------------------------------------- A. bindingId 代客建单
 async function sectionA(h) {
   h.section('A. order.create(bindingId)：已绑定顾客代客单身份快照/requestKey/事件/幂等回放侧别', async (t) => {
     const db = world();
     const pApi = apiOf(db, P1);
     const crid = nextCrid('a1');
-    const created = await pApi.call('order.create', createInput({ bindingId: BIND_C1 }), { clientRequestId: crid });
+    const created = await pApi.call('order.create', v100CreateInput({ bindingId: BIND_C1 }), { clientRequestId: crid });
     t.eq(created.ok, true, 'A1 兼职为已绑定顾客代客下单成功（合法基线）');
     const orderNo = created.data.orderNo;
     const row = rowOf(db, orderNo);
-    t.eq([row.source, row.customerId, row.customerOpenid, row.customerNo, row.guest, row.phoneTail],
+    t.eq([row.source, row.customerId, row.customerOpenid, row.customerNo, row.guest, row.delivery.phoneTail],
       ['PARTNER', C1, C1, CUSTOMER_NO, null, '1234'],
       'A2 身份取 bindings.customerId + customers.customerNo/phoneTail，guest=null（§2.5/§4.8 A）');
     t.eq([row.partnerId, row.partnerNo, row.isTest], [PID1, PARTNER_NO, false],
@@ -71,7 +87,7 @@ async function sectionA(h) {
       'A7 响应 DTO：source/customerNo/dorm 下发、guest=null（不冒充代客单）');
     t.eq(actionKeysOf(dto), ['accept', 'cancel', 'correct', 'message', 'reject'],
       'A8 绑定顾客单对兼职下发 PARTNER 动作条（走正常订单，非 guest 单）');
-    const replay = await pApi.call('order.create', createInput({ bindingId: BIND_C1 }), { clientRequestId: crid });
+    const replay = await pApi.call('order.create', v100CreateInput({ bindingId: BIND_C1 }), { clientRequestId: crid });
     t.eq([replay.data.duplicated, replay.data.orderNo], [true, orderNo],
       'A9 同 clientRequestId 重放返回同一单 + duplicated=true（不重复建单）');
     t.eq([replay.data.order && replay.data.order.source, actionKeysOf(replay.data.order)],
@@ -86,7 +102,7 @@ async function sectionA(h) {
       'A13 已绑定顾客 order.get 可见进度，且不冒充 guest 单（批 7 段①）');
     const testApi = apiOf(db, TEST_P);
     const before = rowsOf(db).length;
-    await expectCode(t, testApi.call('order.create', createInput({ bindingId: BIND_CROSS }),
+    await expectCode(t, testApi.call('order.create', v100CreateInput({ bindingId: BIND_CROSS }),
       { clientRequestId: nextCrid('a14') }), 'FORBIDDEN',
     'A14 测试兼职给真实顾客代客下单 → FORBIDDEN（真实×测试互下单铁律，防御性校验）');
     t.eq(rowsOf(db).length, before, 'A15 A14 拒绝路径零落库');
@@ -99,11 +115,11 @@ async function sectionB(h) {
     const db = world();
     const pApi = apiOf(db, P1);
     const crid = nextCrid('b1');
-    const created = await pApi.call('order.create', createInput({ guest: guestInput() }), { clientRequestId: crid });
+    const created = await pApi.call('order.create', v100CreateInput({ guest: guestInput() }), { clientRequestId: crid });
     t.eq(created.ok, true, 'B1 兼职为新顾客（guest）代客下单成功（合法基线）');
     const orderNo = created.data.orderNo;
     const row = rowOf(db, orderNo);
-    t.eq([row.source, row.customerId, row.customerOpenid, row.customerNo, row.guest, row.phoneTail],
+    t.eq([row.source, row.customerId, row.customerOpenid, row.customerNo, row.guest, row.delivery.phoneTail],
       ['PARTNER', '', '', '', row.guest, '5678'],
       'B2 guest 单顾客身份三字段全空、地址落 guest 快照、phoneTail 取 guest');
     t.eq([row.guest.displayName, row.guest.dormKey, row.guest.buildingText, row.dorm],
@@ -121,7 +137,7 @@ async function sectionB(h) {
     t.eq([dto.guest && dto.guest.avatarFileId, dto.counterpart], [undefined, null],
       'B8 不伪造头像（guest 无 avatarFileId）、无绑定关系时 counterpart=null');
     t.eq(db.dump('bindings').length, 6, 'B9 guest 代客单零 bindings 写入（不产生绑定）');
-    const replay = await pApi.call('order.create', createInput({ guest: guestInput() }), { clientRequestId: crid });
+    const replay = await pApi.call('order.create', v100CreateInput({ guest: guestInput() }), { clientRequestId: crid });
     t.eq([replay.data.duplicated, replay.data.orderNo], [true, orderNo],
       'B10 guest 单重放返回同一单 + duplicated=true');
     t.eq([replay.data.order && replay.data.order.guest && replay.data.order.guest.displayName,
@@ -132,7 +148,7 @@ async function sectionB(h) {
     const ctx = handlerCtxOf(db, TEST_P, {
       role: ROLES.PARTNER, viewMode: VIEW_MODE.TEST_WRITE, developerNo: 'DEV-01'
     });
-    const testResult = await createHandler(ctx, createInput({ guest: guestInput() }));
+    const testResult = await createHandler(ctx, v100CreateInput({ guest: guestInput() }));
     const testRow = rowOf(db, testResult.orderNo);
     t.eq([testRow.isTest, testRow.impersonatedBy, testResult.order.isTest],
       [true, 'DEV-01', true], 'B13 TEST_WRITE 下 isTest/impersonatedBy 服务端派生（客户端传值忽略）');
@@ -145,49 +161,47 @@ async function sectionC(h) {
     const db = world();
     const pApi = apiOf(db, P1);
     const cApi = apiOf(db, C1);
-    await expectField(t, pApi.call('order.create', createInput({ bindingId: BIND_C1, guest: guestInput() }),
+    await expectField(t, pApi.call('order.create', v100CreateInput({ bindingId: BIND_C1, guest: guestInput() }),
       { clientRequestId: nextCrid('c1') }), 'VALIDATION_FAILED', 'guest',
     'C1 绑定顾客与 guest 同时给 → VALIDATION_FAILED（二选一，§7.5 批 7 段①）');
-    await expectField(t, cApi.call('order.create', createInput({ guest: guestInput() }),
+    await expectField(t, cApi.call('order.create', v100CreateInput({ guest: guestInput() }),
       { clientRequestId: nextCrid('c2') }), 'VALIDATION_FAILED', 'guest',
     'C2 顾客单传 guest → VALIDATION_FAILED（顾客单无代客语义，不得静默忽略）');
-    await expectField(t, cApi.call('order.create', createInput({ bindingId: BIND_C1 }),
+    await expectField(t, cApi.call('order.create', v100CreateInput({ bindingId: BIND_C1 }),
       { clientRequestId: nextCrid('c3') }), 'VALIDATION_FAILED', 'bindingId',
     'C3 顾客单传 bindingId → VALIDATION_FAILED（顾客单不得指定绑定顾客）');
-    await expectCode(t, pApi.call('order.create', createInput({ bindingId: BIND_C2 }),
+    await expectCode(t, pApi.call('order.create', v100CreateInput({ bindingId: BIND_C2 }),
       { clientRequestId: nextCrid('c4') }), 'FORBIDDEN',
     'C4 跨兼职 bindingId（他人绑定）→ FORBIDDEN（§4.8 块 A 归属校验）');
-    await expectCode(t, pApi.call('order.create', createInput({ bindingId: BIND_RELEASED }),
+    await expectCode(t, pApi.call('order.create', v100CreateInput({ bindingId: BIND_RELEASED }),
       { clientRequestId: nextCrid('c5') }), 'INVALID_STATE',
     'C5 已释放（RELEASED）绑定 → INVALID_STATE（只有 ACTIVE 绑定可代客下单）');
-    await expectCode(t, pApi.call('order.create', createInput({ bindingId: 'bind-b7-missing' }),
+    await expectCode(t, pApi.call('order.create', v100CreateInput({ bindingId: 'bind-b7-missing' }),
       { clientRequestId: nextCrid('c6') }), 'FORBIDDEN',
     'C6 不存在的 bindingId → FORBIDDEN（不暴露绑定是否存在）');
-    await expectField(t, pApi.call('order.create', createInput({ bindingId: 12345 }),
+    await expectField(t, pApi.call('order.create', v100CreateInput({ bindingId: 12345 }),
       { clientRequestId: nextCrid('c7') }), 'VALIDATION_FAILED', 'bindingId',
     'C7 bindingId 非字符串 → VALIDATION_FAILED 且 data.field=bindingId');
-    await expectCode(t, pApi.call('order.create', createInput({ bindingId: BIND_DELETED }),
+    await expectCode(t, pApi.call('order.create', v100CreateInput({ bindingId: BIND_DELETED }),
       { clientRequestId: nextCrid('c8') }), 'INVALID_STATE',
     'C8 绑定顾客资料已注销（deletedAt）→ INVALID_STATE（不给已注销顾客建单）');
-    await expectField(t, pApi.call('order.create', createInput({}),
+    await expectField(t, pApi.call('order.create', v100CreateInput({}),
       { clientRequestId: nextCrid('c9') }), 'VALIDATION_FAILED', 'guest',
     'C9 兼职单既无 bindingId 也无 guest → VALIDATION_FAILED 且 data.field=guest');
-    await expectField(t, pApi.call('order.create', createInput({ unexpectedKey: 1 }),
+    await expectField(t, pApi.call('order.create', v100CreateInput({ unexpectedKey: 1 }),
       { clientRequestId: nextCrid('c10') }), 'VALIDATION_FAILED', 'unexpectedKey',
     'C10 白名单扩容后未知顶层字段仍拒（field=未知键名，不静默丢弃）');
-    const batchBoundAndGuest = await pApi.call('order.createBatch', batchInput([
-      createInput({ guest: guestInput() })
-    ], { bindingId: BIND_C1 }), { clientRequestId: nextCrid('c11') });
-    t.eq([batchBoundAndGuest.ok, batchBoundAndGuest.code, batchBoundAndGuest.data && batchBoundAndGuest.data.field],
+    const boundAndGuest = await pApi.call('order.create',
+      v100CreateInput({ bindingId: BIND_C1, guest: guestInput() }), { clientRequestId: nextCrid('c11') });
+    t.eq([boundAndGuest.ok, boundAndGuest.code, boundAndGuest.data && boundAndGuest.data.field],
       [false, 'VALIDATION_FAILED', 'guest'],
-      'C11 createBatch 顶层 bindingId + items[i].guest → VALIDATION_FAILED（批量二选一）');
-    const customerBatchGuest = await cApi.call('order.createBatch', batchInput([
-      createInput({ guest: guestInput() })
-    ]), { clientRequestId: nextCrid('c12') });
-    t.eq([customerBatchGuest.ok, customerBatchGuest.code,
-      customerBatchGuest.data && customerBatchGuest.data.field],
+      'C11 bindingId 与 guest 同时给 → VALIDATION_FAILED（二选一，单入口）');
+    const customerGuest = await cApi.call('order.create',
+      v100CreateInput({ guest: guestInput() }), { clientRequestId: nextCrid('c12') });
+    t.eq([customerGuest.ok, customerGuest.code,
+      customerGuest.data && customerGuest.data.field],
     [false, 'VALIDATION_FAILED', 'guest'],
-    'C12 顾客 createBatch items[i].guest → VALIDATION_FAILED（不得静默当普通单落库）');
+    'C12 顾客单填写 guest → VALIDATION_FAILED（不得静默当普通单落库）');
     t.eq(rowsOf(db).length, 0, 'C13 C1~C12 全部非法/越权入参零落库（拒绝路径不写 orders）');
     const bindingsAfter = db.dump('bindings').length;
     t.eq([rowsOf(db).length, db.dump('order_events').length, bindingsAfter, db.dump('counters')
@@ -198,71 +212,81 @@ async function sectionC(h) {
 
 // ---------------------------------------------------------------- D. createBatch
 async function sectionD(h) {
-  h.section('D. order.createBatch：同顾客多单原子/:itemIndex 幂等键/部分非法整批不建/互斥', async (t) => {
+  h.section('D. 一单多包裹（v1.0）：bindingId 代客多件/整单校验原子性/guest 多件/上限', async (t) => {
     const db = world();
     const pApi = apiOf(db, P1);
     const crid = nextCrid('d1');
-    const created = await pApi.call('order.createBatch', batchInput([
-      createInput({ note: '第一件' }), createInput({ note: '第二件' })
-    ], { bindingId: BIND_C1 }), { clientRequestId: crid });
-    t.eq([created.ok, created.data.orders.length], [true, 2],
-      'D1 已绑定顾客一图多码：单事务原子创建 2 单');
+    const twoParcels = [
+      { parcel: { stationId: 'P1', pickupCode: 'D10001' } },
+      { parcel: { stationId: 'P1', pickupCode: 'D10002' } }
+    ];
+    const created = await pApi.call('order.create', {
+      parcels: twoParcels, serviceCode: 'PICKUP_STD', appoint: { type: 'ASAP' }, manualEntry: true, bindingId: BIND_C1
+    }, { clientRequestId: crid });
+    t.eq([created.ok, created.data.order.parcels.length], [true, 2],
+      'D1 已绑定顾客一图多码：单笔建单成功且 parcels=2（不再 N 单）');
     const rows = rowsOf(db);
-    t.eq([rows.length, rows[0].customerId, rows[1].customerId, rows[0].guest, rows[1].guest],
-      [2, C1, C1, null, null], 'D2 两单身份均为绑定顾客、guest=null（同顾客多单）');
-    t.eq(rows.map((row) => row.requestKey).sort(), [C1 + ':' + crid + ':0', C1 + ':' + crid + ':1'],
-      'D3 每条 requestKey={customerId}:{clientRequestId}:{itemIndex}（§4.7）');
-    t.eq(created.data.orders.map((order) => order.orderNo).length, new Set(rows.map((row) => row.orderNo)).size,
-      'D4 两单订单号互不重复（事务内连取号）');
+    t.eq([rows.length, rows[0].customerId, rows[0].guest], [1, C1, null],
+      'D2 落库 1 张订单、身份=绑定顾客、guest=null');
+    t.eq(rows[0].parcels.map((parcel) => parcel.pickupCode), ['D10001', 'D10002'],
+      'D3 parcels[] 逐件快照顺序与入参一致');
+    t.eq(rows[0].requestKey, C1 + ':' + crid,
+      'D4 requestKey={customerId}:{clientRequestId}（v1.0 单入口，无 :itemIndex）');
     const events = db.dump('order_events');
-    t.eq(events.map((event) => event.payload.itemIndex).sort(), [0, 1],
-      'D5 每单 ORDER_CREATED payload.itemIndex 逐单独立');
-    const replay = await pApi.call('order.createBatch', batchInput([
-      createInput({ note: '第一件' }), createInput({ note: '第二件' })
-    ], { bindingId: BIND_C1 }), { clientRequestId: crid });
-    t.eq([replay.data.duplicated, replay.data.orders.length, rowsOf(db).length], [true, 2, 2],
-      'D6 同 clientRequestId 重放返回原 2 单 + duplicated=true，不新增');
+    t.eq([events.length, events[0].payload.parcels, events[0].payload.manualEntry], [1, 2, true],
+      'D5 ORDER_CREATED 事件 1 条、payload 记录包裹 2 件 + 无截图手填标记');
+    const replay = await pApi.call('order.create', {
+      parcels: twoParcels, serviceCode: 'PICKUP_STD', appoint: { type: 'ASAP' }, manualEntry: true, bindingId: BIND_C1
+    }, { clientRequestId: crid });
+    t.eq([replay.data.duplicated, rowsOf(db).length], [true, 1],
+      'D6 同 clientRequestId 重放返回原单 + duplicated=true，不新增订单');
     const before = rowsOf(db).length;
-    const mixedInvalid = await pApi.call('order.createBatch', batchInput([
-      createInput({}), createInput({ parcel: { stationId: 'P1', pickupCode: '###' } })
-    ], { bindingId: BIND_C1 }), { clientRequestId: nextCrid('d7') });
+    const mixedInvalid = await pApi.call('order.create', {
+      parcels: [{ parcel: { stationId: 'P1', pickupCode: '###' } }],
+      serviceCode: 'PICKUP_STD', manualEntry: true, bindingId: BIND_C1
+    }, { clientRequestId: nextCrid('d7') });
     t.eq([mixedInvalid.ok, mixedInvalid.code, mixedInvalid.data && mixedInvalid.data.field],
       [false, 'VALIDATION_FAILED', 'pickupCode'],
-      'D7 任一非法 → VALIDATION_FAILED（不建）');
-    t.eq(rowsOf(db).length, before, 'D8 部分非法整批不建（零落库，原子口径）');
-    const boundPlusGuest = await pApi.call('order.createBatch', batchInput([
-      createInput({}), createInput({ guest: guestInput() })
-    ], { bindingId: BIND_C1 }), { clientRequestId: nextCrid('d9') });
+      'D7 任一包裹非法 → VALIDATION_FAILED（整单不建）');
+    t.eq(rowsOf(db).length, before, 'D8 非法整单零落库（先全量校验再开事务）');
+    const boundPlusGuest = await pApi.call('order.create', {
+      parcels: twoParcels, serviceCode: 'PICKUP_STD', manualEntry: true,
+      bindingId: BIND_C1, guest: guestInput()
+    }, { clientRequestId: nextCrid('d9') });
     t.eq([boundPlusGuest.ok, boundPlusGuest.code, boundPlusGuest.data && boundPlusGuest.data.field],
       [false, 'VALIDATION_FAILED', 'guest'],
-      'D9 顶层 bindingId 时任一 items[i].guest → VALIDATION_FAILED（整批不建）');
+      'D9 bindingId 与 guest 同时给 → VALIDATION_FAILED（二选一，整单不建）');
     const guestDb = world();
     const guestApi = apiOf(guestDb, P1);
     const guestCrid = nextCrid('d10');
-    const guestBatch = await guestApi.call('order.createBatch', batchInput([
-      createInput({ guest: guestInput() }), createInput({ guest: guestInput({ displayName: '代客小李' }) })
-    ]), { clientRequestId: guestCrid });
-    t.eq([guestBatch.ok, guestBatch.data.orders.length, guestBatch.data.orders[0].guest.displayName],
-      [true, 2, '代客小张'], 'D10 guest 批量：逐条 guest 快照建 2 单');
+    const guestMulti = await guestApi.call('order.create', {
+      parcels: [
+        { parcel: { stationId: 'P1', pickupCode: 'D20001' } },
+        { parcel: { stationId: 'P2', pickupCode: 'D20002' } }
+      ],
+      serviceCode: 'PICKUP_STD', manualEntry: true, guest: guestInput()
+    }, { clientRequestId: guestCrid });
+    t.eq([guestMulti.ok, guestMulti.data.order.parcels.length, guestMulti.data.order.guest.displayName],
+      [true, 2, '代客小张'], 'D10 guest 多件：单笔建单 2 件 + guest 快照内联');
     const guestRows = rowsOf(guestDb);
-    t.eq([guestRows[0].customerId, guestRows[1].customerId,
-      guestRows.map((row) => row.requestKey).sort()],
-    ['', '', [PID1 + ':' + guestCrid + ':0', PID1 + ':' + guestCrid + ':1']],
-    'D11 guest 批量身份三空、requestKey 归属=partnerId + :itemIndex');
+    t.eq([guestRows.length, guestRows[0].customerId, guestRows[0].requestKey], [1, '', PID1 + ':' + guestCrid],
+      'D11 guest 单身份三空、requestKey 归属=partnerId（无 :itemIndex）');
     const beforeGuest = guestRows.length;
-    const guestMissing = await guestApi.call('order.createBatch', batchInput([
-      createInput({ guest: guestInput() }), createInput({})
-    ]), { clientRequestId: nextCrid('d12') });
+    const guestMissing = await guestApi.call('order.create', {
+      parcels: [{ parcel: { stationId: 'P1', pickupCode: 'D30001' } }],
+      serviceCode: 'PICKUP_STD', manualEntry: true
+    }, { clientRequestId: nextCrid('d12') });
     t.eq([guestMissing.ok, guestMissing.code, guestMissing.data && guestMissing.data.field],
-      [false, 'VALIDATION_FAILED', 'guest'], 'D12 guest 批量中缺 guest 的一条 → VALIDATION_FAILED');
-    t.eq(rowsOf(guestDb).length, beforeGuest, 'D13 guest 批量部分非法整批不建');
+      [false, 'VALIDATION_FAILED', 'guest'], 'D12 兼职代客单缺 guest → VALIDATION_FAILED');
+    t.eq(rowsOf(guestDb).length, beforeGuest, 'D13 缺 guest 拒绝路径零落库');
     const tooMany = [];
-    for (let i = 0; i < 6; i += 1) {
-      tooMany.push(createInput({ guest: guestInput() }));
+    for (let i = 0; i < 11; i += 1) {
+      tooMany.push({ parcel: { stationId: 'P1', pickupCode: 'D4' + String(i).padStart(4, '0') } });
     }
-    await expectField(t, guestApi.call('order.createBatch', batchInput(tooMany),
-      { clientRequestId: nextCrid('d14') }), 'VALIDATION_FAILED', 'items',
-    'D14 >5 条 → VALIDATION_FAILED 且 data.field=items（上限 5）');
+    await expectField(t, guestApi.call('order.create', {
+      parcels: tooMany, serviceCode: 'PICKUP_STD', manualEntry: true, guest: guestInput()
+    }, { clientRequestId: nextCrid('d14') }), 'VALIDATION_FAILED', 'parcels',
+    'D14 >10 件 → VALIDATION_FAILED 且 data.field=parcels（上限 10）');
   });
 }
 
@@ -353,7 +377,7 @@ async function sectionF(h) {
   h.section('F. DTO：guest 内联锁/source/customerNo/无泄漏/顾客可见绑定单/counterpart/工作台 guest 行', async (t) => {
     const db = world();
     const pApi = apiOf(db, P1);
-    const guestCreated = await pApi.call('order.create', createInput({ guest: guestInput() }),
+    const guestCreated = await pApi.call('order.create', v100CreateInput({ guest: guestInput() }),
       { clientRequestId: nextCrid('f1') });
     const guestNo = guestCreated.data.orderNo;
     const guestDto = guestCreated.data.order;
@@ -370,7 +394,7 @@ async function sectionF(h) {
     const stranger = apiOf(db, C2);
     await expectCode(t, stranger.call('order.get', { orderNo: guestNo }), 'FORBIDDEN',
       'F5 未绑定顾客无权 order.get guest 单（顾客无访问路径，§3.4）');
-    const boundCreated = await pApi.call('order.create', createInput({ bindingId: BIND_C1 }),
+    const boundCreated = await pApi.call('order.create', v100CreateInput({ bindingId: BIND_C1 }),
       { clientRequestId: nextCrid('f6') });
     const boundNo = boundCreated.data.orderNo;
     const boundGet = await pApi.call('order.get', { orderNo: boundNo });

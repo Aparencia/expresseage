@@ -55,7 +55,7 @@ const data = await call('order.confirmDelivery', { orderNo }, { expectedVersion:
 - 自动注入 `clientRequestId`（16~32 位随机串）与（内存有 `viewContext` 时）`viewTicket`；`opts.readRetry` 默认 `true`（读动作 ≤2 次，300/900ms），写动作默认不重试。
 - `opts.clientRequestId`：页面可显式指定幂等键（**重试复用同一 id，内容变更后重新生成**，UX_CUSTOMER §4.8）；形态为 16~32 位 `[A-Za-z0-9_-]`，非法时静默回退自生成（不把格式错误抛给页面；服务端仍按 `shared/validate.validateClientRequestId` 校验）。
 - `opts.expectedVersion`：写动作传当前 DTO 的 `version` 做乐观锁（**正整数才进包络顶层 `expectedVersion`，非法静默丢弃**）；服务端不符回 `CONFLICT`，页面 toast 人话并刷新详情后重试（UX_CUSTOMER §10 #4）。
-- 超时 10s；校验 flat 包络 `{ok, code?, message?, data?, serverTime, requestId?}`；写 `store.serverTimeSkew`。
+- 超时 10s；校验 flat 包络 `{ok, code?, message?, data?, serverTime, requestId?}`；写 `store.serverTimeSkew` **带 1s 抖动阈值**（`|Δ新|≤1000ms` 既不写也不 notify，分钟级倒计时不受影响；见 §3.4 订阅扇出说明）。
 - 页面只 catch 后 toast `err.message`，不得自行拼错误码文案。
 
 ### 3.2 `api/modules/*.js`（action 字符串只在这里出现）
@@ -68,16 +68,17 @@ const data = await call('order.confirmDelivery', { orderNo }, { expectedVersion:
 | `api/modules/customer.js` | `saveProfile(payload)`、`getProfile()` |
 | `api/modules/partner.js` | `activate({invitationCode,displayName,avatarTicket})`、`saveProfile`、`saveServiceConfig`、`getPublic({partnerNo})`、`listBindings`、`unbindCustomer({bindingId,reason,note})`、`saveCustomerNote({bindingId,note})` |
 | `api/modules/bind.js` | `create({partnerNo})`、`release({reason,note})`、`getCurrent()` |
-| `api/modules/order.js` | `create(payload, opts?)`、`createBatch(payload, opts?)`（`opts.clientRequestId` 透传幂等键；拆单重试复用同一键）、`get`、`listCustomer`、`listPartner`、`accept(payload, opts?)`、`reject`、`markPicked`、`unmarkPicked`、`markDelivered`、`unmarkDelivered`、`reportException`、`resolveException`、`cancel(payload, opts?)`、`confirmDelivery(payload, opts?)`、`correct`、`undo`、`deleteRecord(payload, opts?)`、`imageUrl`（写动作 `opts.expectedVersion` 透传乐观锁，见 §3.1） |
+| `api/modules/order.js` | `create(payload, opts?)`（**v1.0 单入口**：`{parcels[], images[], tickets?[], serviceCode, appoint, note, delivery?, guest?/bindingId?, manualEntry?, clientRequestId}`；满足合并窗口时服务端追加到同单）、`get`、`listCustomer`、`listPartner`、`accept`、`reject`、`markPicked`、`unmarkPicked`、`markDelivered`、`unmarkDelivered`、`reportException`、`resolveException`、`cancel`、`confirmDelivery`、`correct`（v1.0 带 `itemIndex` 逐包裹）、`undo`、`deleteRecord`、`imageUrl`（v1.0 `{orderNo,index}` 取 `images[index]`；写动作 `opts.expectedVersion` 透传乐观锁，见 §3.1）。**`createBatch` 已随 v1.0 移除**（一图多码并入 `create`） |
 | `api/modules/message.js` | `send`、`list`、`markRead` |
 | `api/modules/upload.js` | `prepare({purpose})`、`cancel({uploadTicketId})` |
-| `api/modules/config.js` | `getPublic()` |
+| `api/modules/config.js` | `getPublic(force?)`（5 分钟缓存）、`prime(configPublic)`（**启动预热**：bootstrap 已回的公开子集灌入同一缓存，本次会话首次 `getPublic` 零云调用，TTL 语义不变）、`getCachedPublic()`、`clearCache()` |
 | `api/modules/ai.js` | `parseParcel(payload)`（仅识别失败兜底，不自动重试） |
 | `api/modules/admin.js` | `createInvites`、`revokeInvite`、`listInvites`、`listCustomers`、`getCustomer`、`listPartners`、`setPartnerStatus`、`listOrders`、`getOrder`、`listAudit`、`updateConfig`、`stats`、`bootstrap`、`viewAsStart`、`viewAsEnd`、`createTestAccount`、`listTestAccounts`、`deleteTestAccount`、`purgeTestData`、`listRecognitionFailures`、`getRecognitionFailure`、`fixRecognitionFailure`、`ignoreRecognitionFailure` |
 
 ### 3.3 `api/upload.js`
 
 - `prepareAndUpload({ purpose, filePath })` → `{ uploadTicketId, cloudPath, fileId }`；内部：**本地校验/压缩（头像按 `store.config.avatarMaxBytes`，截图长边 1440/≤500KB，走 `utils/avatar` 纯件）→ `upload.prepare({purpose,size,contentType})`（服务端 size/类型闸必须收到真实入参：AVATAR 传压缩后 size + 派生 contentType；TICKET 只传 size、不传 contentType 以兼容聊天 gif）→ `wx.cloud.uploadFile`（唯一上传出口）**。失败抛 `CallError`，可重试至票据过期。
+- **v1.0 截图（D23/D24）**：下单支持 0~5 张截图（每张一个 ticket），`images[i]` ↔ `tickets[i]` 同序一一对应；截图上传失败/超限仍拒绝单张（不放松 ≤500KB 服务端闸），用户可换图/继续用手填；OCR 帧按 `utils/ocr/frame.js` 长边 ≤1440 降采样后再建画布（P0-10 归 C 批）。0 张=无截图手填（`manualEntry=true`），不产生识别数据。
 - `cancelTicket(uploadTicketId)` 调 `upload.cancel`。
 
 ### 3.4 `store/index.js`（内存快照，唯一全局状态）
@@ -97,7 +98,7 @@ const off = store.subscribe((snapshot) => { this.setData({ vm: snapshot }); });
   me: { displayName, avatarFileId? },
   customer: { profileComplete, customerNo?, displayName?, avatarFileId?, dormKey?, roomTag?, zone?, buildingNo?, room?, phoneTail? },
   partner: { status, profileComplete, partnerNo?, displayName?, avatarFileId?, acceptingOrders? },
-  binding: null | { bindingId, partnerNo, partnerDisplayName, partnerAvatarFileId?, roomTag, status },
+  binding: null | { bindingId, partnerNo, partnerDisplayName, partnerAvatarFileId?, roomTag, status, partnerPublic? },
   config: {}, badges: { workbenchPending: 0, messages: 0 },
   viewContext: null | { viewTicket, viewMode, role, targetNo, targetDisplayName, targetAvatarFileId?, targetIsTest, expiresAt },
   serverTimeSkew: 0
@@ -107,11 +108,12 @@ const off = store.subscribe((snapshot) => { this.setData({ vm: snapshot }); });
 - 方法：`snapshot()`、`get(key)`、`set(key,value)`、`patch(obj)`、`subscribe(fn)`（返回取消函数）、`hydrateFromBootstrap(data)`、`setViewContext(ctx)`、`clearViewContext()`、`getViewContext()`、`isDeveloper()`。
 - `viewContext` **只存内存**，绝不写本地存储、绝不做 URL 参数。
 - `hydrateFromBootstrap` 的 `viewContext` 分支**保留本地 `viewTicket`**、其余字段以服务端为准（服务端 `user.bootstrap` 永不回票据）：进入/退出切换会话后由 `utils/session.js` 统一重新拉 `user.bootstrap` 水合目标身份（顾客资料/兼职激活态/绑定），水合不得让票据丢失。
+- **启动期绑定水合（P0-3 性能口径）**：`app.js` 启动关键路径只 `await user.bootstrap`；`bind.getCurrent` 在启动后台推进（不阻塞首帧），成功后把 `{binding, partnerPublic}` 一并写入 `store.binding`（`partnerPublic` 为可选字段）。首页首次 `onShow` 在 30 秒窗口内复用同一 `bind.getCurrent` 结果（不再重复发请求）；**切换会话期间禁止复用**（`viewContext` 存在即跳过）；离开首页再回来/下拉刷新仍自行重拉，不做永久缓存。
 
 ### 3.5 页面与组件约定
 
 - 页面 `.js` 只做：取参 → 调 `api/` → `setData` → 事件转发。禁止：`wx.cloud.*`、七状态字符串字面量、编号/roomTag 生成或 `random`、拼状态文案、直接读集合名/action 字符串。
-- 每个业务页（主包 5 tab + `pkg-customer` 5 页 + `pkg-partner` 7 页）`index.wxml` 根节点第一个子节点必须是 `<switch-bar />`；`pkg-admin` 页面不引用 `switch-bar`/`test-badge`。
+- 每个业务页（主包 5 tab + `pkg-customer` 6 页 + `pkg-partner` 7 页）`index.wxml` 根节点第一个子节点必须是 `<switch-bar />`；`pkg-admin` 页面不引用 `switch-bar`/`test-badge`。**v1.0 新增** `pkg-customer/pages/pickup-list/index`（D26 顾客取件清单：独立入口，只读展示本站订单 `parcels[]` 的站点+取件码，本机勾选只经 `utils/storage.pickupChecks`，不回写服务端）。
 - 页面 `.json` 只写 `navigationBarTitleText` 等；组件已在 `app.json` 全局注册，页面无需再 `usingComponents`。
 - **页面纯件（批 6~8 扩展）**：可测的视图模型/表单校验/文案放同页 `parts/*.js`（纯函数、零 `wx`），页面 `index.js` 只做取参→调 `api/`→`setData`→事件转发；`pkg-admin` 11 页均有 `parts/view-model.js` + `common/copy.js`，`pkg-customer/pkg-partner` 部分页有 `parts/*`。例外组件 `components/maintenance-mask`（维护模式全屏公告）与纯件 `utils/maintenance.js` 采用**页面级 `usingComponents` 注册**（不改 `app.json`；仅 `pages/customer/home`、`pages/partner/workbench` 引用）。
 - 相对路径深度：`pages/xxx/index.js` 与 `pkg-*/pages/xxx/index.js` 到仓库根都是 `../../../`（`pkg-*/pages/xxx/parts/*` 为 `../../../../../`）；`pages/launch/index.js`、`components/xxx/index.js` 为 `../../`。
@@ -151,8 +153,9 @@ const off = store.subscribe((snapshot) => { this.setData({ vm: snapshot }); });
 ### 4.1 入口、路由与中间件
 
 - `index.js`：唯一 `require('wx-server-sdk')` 的文件。`exports.main = async (event, context) => { cloud.init({env}); const wx = cloud.getWXContext(); return invoke(event, { db: cloud.database(), cloud, env: process.env, openid: wx.OPENID, requestId: event && event.requestId, now: Date.now }); }`。
-- `app.js`：`invoke(event, deps)` → 解包 `{action, data, clientRequestId, expectedVersion, viewTicket}` → `router` 取 handler（未登记/非 client 可见一律 `FORBIDDEN`）→ 中间件链 `auth → switch-session → validate → ratelimit → idempotency → audit` → handler → 统一包络。
-- `router.js`：`createRouter()` 返回 `action → handler` 映射；显式列出 `./handlers/<domain>` 的十一个域（`user customer partner bind order message upload config admin ai health`），每个域模块导出 `{ actions: { 'user.bootstrap': fn, ... } }`。
+- `app.js`：`invoke(event, deps)` → 解包 `{action, data, clientRequestId, expectedVersion, viewTicket}` → `router.getHandler(action)` **按域懒加载**取 handler（未登记/非 client 可见一律 `FORBIDDEN`）→ 中间件链 `auth → switch-session → validate → ratelimit → idempotency → audit` → handler → 统一包络。
+- `router.js`：静态域清单 `DOMAIN_NAMES`（十一个域：`user customer partner bind order message upload config admin ai health`）+ `getHandler(action)` 按 action 前缀（`order.accept` → `order`）**只 require 首用域**，模块导出形状仍为 `{ actions: { 'user.bootstrap': fn, ... } }`；域首次加载时校验「导出集 = shared/actions 集」并逐个断言是函数（该域 fail-fast 保留）。全量 `createRouter()/getRouter()` 仅工具/自检使用，不在请求热路径。
+  - **性能口径（P0-5）**：首请求不再一次性加载 11 域；未用域的注册错配由 `tools/check.js` #13 构建期静态判据兜住（补偿判据：11 域覆盖全部 client/放行 internal 动作前缀 + 每域导出集双向相等 + 热路径必须走 `getHandler`）。**性能落差登记**：旧实现「缺注册/多注册」在首请求即抛错，现改为「静态构建期全量校验 + 首用域运行期校验」，未用域的手写错误要等首次调用该动作（或跑 check/selftest 全量）才暴露。
 - handler 签名：`async (ctx, payload) => data`（返回对象进 `data`；抛 `AppError` 走失败包络）。`ctx = { dao, ids, now, env, cloud, openid, identity, requestId, clientRequestId, expectedVersion, config }`；`identity = { actorOpenid, effectiveOpenid, role, isTestAccount, viewMode, viewTicketId, developerNo }`。
   - **双角色口径（Lead 冻结）**：服务端权限判定只看"`users.roles` 是否包含该动作所需业务角色"（customer.*/bind.create 需 CUSTOMER；partner.*/order.listPartner/兼职统计需 PARTNER），**不依赖客户端 activeRole**；同一 openid 同时具备 CUSTOMER+PARTNER 时两类动作都允许，`activeRole` 仅是客户端展示/导航状态（不落库、不作鉴权）。`identity.role` 按动作域解析，解析不出所需角色 → `FORBIDDEN`。
 - `ctx.ids`（由 `lib/id-generator` 绑定 dao 后注入，handler 不自建随机/编号）：`customerNo()`、`partnerNo()`、`orderNo(nowMs)`、`failureNo()`、`inviteCode()`、`randomId(len)`、`uploadTicket()`；均为同步返回 string（内部冲突重试 ≤5 次，失败抛 `DEPENDENCY_FAILED`）。
@@ -164,7 +167,9 @@ const off = store.subscribe((snapshot) => { this.setData({ vm: snapshot }); });
 
 ### 4.2 `db/dao.js`（唯一出现 `db.collection` 的位置）
 
-`createDao(db)` → `{ get, findOne, find({where,orderBy,skip,limit}), count, add, update, updateWhere, remove, removeWhere, transaction(fn), serverDate(), inc(value) }`；集合名一律从 `require('../shared/collections')` 的 `COLLECTIONS.*` 取。返回值形状见 §4.1。
+`createDao(db)` → `{ get, findOne, find({where,orderBy,skip,limit}), count, add, update, updateWhere, remove, removeWhere, transaction(fn), serverDate(), inc(value), command(name, value) }`；集合名一律从 `require('../shared/collections')` 的 `COLLECTIONS.*` 取。返回值形状见 §4.1。
+
+> 查询指令工厂（批 10 / M-10，Lead 已授权）：`ctx.dao.command(name, value)` 返回 SDK 查询指令（`gte/lt/gt/neq/in/exists`），供服务端范围/前缀查询使用（仍由唯一 `db/dao.js` 构造指令对象，业务层不出现 `db`/`db.command`）。`api/db/dao.js` 与 `cleanup/db/dao.js` 两处补丁文本必须逐字一致；已知调用点 = `cloudfunctions/api/handlers/admin/_paging.js`（`fetchOrderedPage`/`fetchPrefixPage`）。
 
 > 写入语义补充（2026-10-22，真实云环境首跑事故）：`update/updateWhere` 的字段值语义 = **整值替换**（dao 内 `normalizeUpdateData` 把普通对象包成 `command.set`；对象字段不会再被 SDK 拍平成点路径，也不会与库内旧子字段合并）。真实故障：`users.privacyConsent` 初值为 `null` 时，写 `{version, at}` 被拍成 `privacyConsent.at` → MongoDB `-502001 Cannot create field 'at' in element {privacyConsent: null}`，导致「同意隐私政策」100% 失败；同理适用于 `orders.exception`（恢复后被置 `null` 再上报）等所有"嵌套对象字段可能从 null/标量起步"的写点。fake DB 已同步复刻该语义（见 ENGINEERING §7.3）。
 

@@ -126,23 +126,23 @@ function matchKeyword(order, keyword) {
     return true;
   }
   const text = keyword.toLowerCase();
-  const parcel = order.parcel || {};
   const guest = order.guest || {};
   const dorm = order.dorm || {};
-  // 搜索入口（UX §4.5）：订单号 / 取件码 / 楼栋宿舍 / 称呼 / 尾号 4 位；代客单无订单归属，
-  // 用 guest 快照（displayName/phoneTail/dormKey）承担锚+键匹配。
+  // 搜索入口（UX §4.5）：订单号 / 任一件取件码或运单尾号 / 楼栋宿舍 / 称呼 / 尾号 4 位；代客单无订单归属，
+  // 用 guest 快照（displayName/phoneTail/dormKey）承担锚+键匹配。v1.0 多包裹由 orderParcelsOf 统一归一。
   const fields = [
     order.orderNo,
     order.customerNo,
     order.phoneTail,
-    parcel.pickupCode,
-    parcel.trackingTail,
     dorm.dormKey,
     dorm.roomTag,
     guest.displayName,
     guest.phoneTail,
     guest.dormKey
   ];
+  common.orderParcelsOf(order).forEach((parcel) => {
+    fields.push(parcel.pickupCode, parcel.trackingTail, parcel.stationName);
+  });
   for (let i = 0; i < fields.length; i += 1) {
     if (typeof fields[i] === 'string' && fields[i].toLowerCase().indexOf(text) >= 0) {
       return true;

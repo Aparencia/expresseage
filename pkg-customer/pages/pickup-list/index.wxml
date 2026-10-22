@@ -1,0 +1,58 @@
+<view class="page-body">
+  <switch-bar />
+
+  <view class="card">
+    <view class="row between">
+      <view class="section-title">取件清单</view>
+      <view class="small link-text" bindtap="onCopyAll">复制全部</view>
+    </view>
+    <view class="muted small">只显示本人进行中订单的站点与取件码。勾选「我已取到」只记在这台手机上，不改订单状态。</view>
+    <view class="row between summary-row" wx:if="{{summary.total}}">
+      <view class="small muted">共 {{summary.total}} 件</view>
+      <view class="small muted">已取到 {{summary.checked}} 件</view>
+      <view class="small muted" wx:if="{{summary.needCode}}">需查明 {{summary.needCode}} 件</view>
+    </view>
+  </view>
+
+  <view class="card" wx:if="{{loading && !groups.length}}">
+    <view class="empty-text">正在加载取件清单…</view>
+  </view>
+
+  <view class="card" wx:if="{{error && !groups.length}}">
+    <view class="muted">{{error}}</view>
+    <button class="btn btn-ghost btn-small" bindtap="onRetry">重新加载</button>
+  </view>
+
+  <view class="card" wx:if="{{!loading && !error && !groups.length}}">
+    <view class="empty-text">现在没有进行中的取件。下单后，站点与取件码会出现在这里。</view>
+  </view>
+
+  <view class="card pickup-group" wx:for="{{groups}}" wx:key="orderNo" wx:if="{{!loading || groups.length}}">
+    <view class="row between group-head">
+      <view class="small link-text" data-order-no="{{item.orderNo}}" bindtap="onOrderTap">订单 {{item.orderNo}}</view>
+      <view class="small muted">{{item.statusText || ''}}{{item.timeText ? ' · ' + item.timeText : ''}}</view>
+    </view>
+    <view class="row between group-check">
+      <view class="small muted">{{item.rows.length}} 件 · 已取到 {{item.checkedCount}} 件</view>
+      <view class="small link-text" data-order-no="{{item.orderNo}}" bindtap="onToggleGroup">{{item.allChecked ? '取消本单勾选' : '本单全部勾选'}}</view>
+    </view>
+
+    <view class="row between pickup-row" wx:for="{{item.rows}}" wx:for-item="row" wx:key="key">
+      <view class="row check-row" data-key="{{row.key}}" bindtap="onToggleCheck">
+        <view class="check-box {{row.checked ? 'checked' : ''}}"></view>
+        <view class="col pickup-meta">
+          <view class="strong pickup-station">第 {{row.no}} 件 · {{row.stationName}}</view>
+          <view class="pickup-code {{row.needCode ? 'error-text' : ''}}">{{row.codeText}}</view>
+        </view>
+      </view>
+      <view class="row pickup-actions">
+        <view class="small link-text" wx:if="{{row.hasCode}}" data-key="{{row.key}}" bindtap="onCopyCode">复制码</view>
+        <view class="small link-text" data-key="{{row.key}}" bindtap="onCopyLine">复制行</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="card" wx:if="{{readonly}}">
+    <view class="muted small">开发者只读视角：勾选只影响本机显示。</view>
+  </view>
+</view>

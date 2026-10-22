@@ -1,0 +1,161 @@
+.workbench-body {
+  padding-bottom: 220rpx;
+}
+
+.head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8rpx 0 24rpx;
+}
+
+.mini-btn {
+  min-height: 64rpx;
+  line-height: 64rpx;
+  padding: 0 20rpx;
+  font-size: 26rpx;
+  margin-left: 16rpx;
+}
+
+/* 页内新订单横幅：只提示不抢操作 */
+.new-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18rpx 24rpx;
+  margin-bottom: 16rpx;
+  border-radius: 12rpx;
+  background: #E8F0FF;
+  color: #2B6DE5;
+  font-size: 26rpx;
+}
+
+.new-banner-action {
+  font-weight: 600;
+  margin-left: 16rpx;
+}
+
+.counts-card {
+  padding: 20rpx 16rpx 12rpx;
+}
+
+.counts-grid {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.count-cell {
+  width: 33.33%;
+  padding: 8rpx 0;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.count-value {
+  font-size: 40rpx;
+  font-weight: 600;
+  color: #2B6DE5;
+}
+
+.updated-row {
+  margin-top: 8rpx;
+}
+
+.warn-card {
+  background: #FFF4CE;
+}
+
+.warn-text {
+  color: #8A6D00;
+  font-size: 24rpx;
+}
+
+.filter-scroll {
+  white-space: nowrap;
+  margin-bottom: 8rpx;
+}
+
+.filter-row {
+  display: inline-flex;
+}
+
+.chip {
+  min-height: 64rpx;
+  line-height: 64rpx;
+  padding: 0 24rpx;
+  border-radius: 32rpx;
+  background: #FFFFFF;
+  color: #666666;
+  font-size: 26rpx;
+  margin: 0 16rpx 8rpx 0;
+}
+
+.chip-active {
+  background: #2B6DE5;
+  color: #FFFFFF;
+}
+
+.filter-desc {
+  padding: 0 8rpx 12rpx;
+  font-size: 24rpx;
+  color: #8A6D00;
+}
+
+.search-card {
+  padding: 8rpx 24rpx;
+}
+
+/* 骨架屏：3 张站点卡占位，不转圈 */
+.skeleton-card {
+  padding: 28rpx 24rpx;
+}
+
+.skeleton-line {
+  height: 24rpx;
+  margin: 12rpx 0;
+  border-radius: 12rpx;
+  background: #EEF1F5;
+}
+
+.skeleton-title {
+  width: 40%;
+  height: 32rpx;
+}
+
+.skeleton-short {
+  width: 60%;
+}
+
+.empty-card {
+  padding: 36rpx 28rpx;
+}
+
+.empty-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  margin-bottom: 12rpx;
+}
+
+.empty-sub {
+  font-size: 26rpx;
+  color: #666666;
+  line-height: 1.6;
+}
+
+.partner-line {
+  margin-top: 16rpx;
+  padding: 16rpx;
+  border-radius: 12rpx;
+  background: #F3F7FF;
+  font-size: 24rpx;
+  color: #2B6DE5;
+}
+
+.empty-actions {
+  margin-top: 24rpx;
+  flex-wrap: wrap;
+}
+
+.share-hint {
+  margin-top: 12rpx;
+}

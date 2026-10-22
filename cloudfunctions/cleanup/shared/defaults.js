@@ -1,5 +1,5 @@
 // config/defaults.js · 全局配置出厂值（唯一默认值来源；admin.bootstrap 种子、admin 范围校验、公开子集）
-// 契约：docs/V4_CONTRACT.md v0.9 §2/§4 config 行；docs/V4_DATA_MODEL.md §2.10（逐键值域）；
+// 契约：docs/V4_CONTRACT.md v1.0 §2/§4 config 行（含 orderMergeWindowMinutes，D23）；docs/V4_DATA_MODEL.md §2.10。
 //       docs/ENGINEERING §3.6（键与默认/范围）。
 // 纪律：值只含布尔/字符串/整数次数与毫秒；无 Key、无第三方服务标识（客户端包内零外呼痕迹）。
 //       `aiFallback.model` 的出厂模型名由云函数 lib/ai 自持（本文件留空串表示"用云侧默认模型"）。
@@ -32,6 +32,8 @@ const DEFAULT_CONFIG = {
   autoCompleteHours: 24,
   screenshotRetentionDays: PROMISE_RETENTION_DAYS.screenshot,
   recognitionFailureRetentionDays: PROMISE_RETENTION_DAYS.recognitionFailure,
+  // v1.0（D23）：短间隔重复提交自动并入同一订单的时间窗；0=关闭合并；仅服务端行为，不进公开子集
+  orderMergeWindowMinutes: 10,
   aiFallback: {
     enabled: true,
     model: '',
@@ -56,7 +58,9 @@ const CONFIG_LIMITS = {
   recognitionFailureRetentionDays: { min: 7, max: 30 },
   avatarMaxBytes: { min: 100 * 1024, max: 200 * 1024 },
   testAccountMaxPerRole: { min: 1, max: 3 },
-  testDataRetentionDays: { min: 7, max: 90 }
+  testDataRetentionDays: { min: 7, max: 90 },
+  // v1.0（D23/CONTRACT §4 config 行）：合并窗口 0~60 分钟，0=关闭
+  orderMergeWindowMinutes: { min: 0, max: 60 }
 };
 
 // config.getPublic 下发的公开子集（模板 ID / aiFallback / 治理参数一律不下发）

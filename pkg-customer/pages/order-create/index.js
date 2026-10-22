@@ -1,18 +1,24 @@
-// pkg-customer/pages/order-create/index.js · 下单四步（截图→核对→服务→提交）
-// 页面只做取参/调 api/setData/事件转发；识别与模型逻辑在 parts/ 与 utils/。
+// pkg-customer/pages/order-create/index.js · 下单四步（截图 → 核对 → 服务/地址 → 提交）
+// v1.0（D23/D24/D25）：0~5 张截图 → 1~10 件包裹合成**一张订单**；无截图可手填（manualEntry）；
+// Step3 加整单配送地址（默认本人宿舍，可改他人+收件人称呼）；提交按 order.create 单入口载荷。
+// 页面只做取参/调 api/setData/事件转发；识别/模型/步骤细节在 parts/。
 'use strict';
 
 const store = require('../../../store/index');
 const orderApi = require('../../../api/modules/order');
 const route = require('../../../config/route');
 const model = require('./parts/model');
+const deliveryModel = require('./parts/delivery');
 const ocrFlow = require('./parts/ocr-flow');
 const bootstrap = require('./parts/bootstrap');
 const reorder = require('./parts/reorder');
+const filesFlow = require('./parts/files-flow');
+const step3 = require('./parts/step3');
+const submitFlow = require('./parts/submit');
 
-const DETAIL_PAGE = '/pkg-customer/pages/order-detail/index';
 const HOME_PAGE = '/pages/customer/home/index';
-const PAGE_SIZE_MAX = model.MAX_BATCH;
+const MAX_PARCELS = model.MAX_PARCELS;
+const MAX_IMAGES = model.MAX_IMAGES;
 
 Page({
   data: {
@@ -20,10 +26,11 @@ Page({
     readonly: false,
     profileReady: false,
     bindingReady: false,
-    filePath: '',
-    file: null,
-    image: null,
-    uploadTicketId: '',
+    // 截图与识别（多图 0~5）
+    files: [],
+    perImage: [],
+    images: [],
+    tickets: [],
     ocrState: 'idle',
     ocrError: '',
     failureCode: '',
@@ -31,25 +38,39 @@ Page({
     failureNext: '',
     failureId: '',
     recognizeHint: '',
-    // 识别原文只留本页内存（不落库/不进本地存储）；「查看识别原文」折叠展示（UX §4.3）
+    imageFailures: [],
+    aiHint: '',
     ocrText: '',
     ocrTextOpen: false,
-    // AI 兜底态：成功提示 / 逐件降级说明（文案单源在 parts/ocr-flow）
-    aiHint: '',
+    // 包裹（件）与整单服务/预约/备注（v1.0：服务类型/预约/备注每单一份）
     items: [],
     stations: [],
     services: [],
     slots: [],
+    serviceCode: '',
+    serviceIndex: 0,
+    appointType: 'ASAP',
+    slotIndex: -1,
+    startAt: '',
+    endAt: '',
+    note: '',
+    // 配送地址（D25）
+    delivery: deliveryModel.createState(null),
+    deliveryText: '',
+    deliverySelfText: '',
+    deliveryZones: [],
+    deliveryBuildings: deliveryModel.buildingOptions(),
+    deliveryErrors: {},
     submitting: false,
     submitError: '',
-    resultOrders: [],
-    resultBatch: false,
+    resultOrderNo: '',
+    resultMerged: false,
     // 提交幂等键（clientRequestId）：进入 Step4 生成、失败重试复用、内容变更重生成、成功清空（UX §4.8）
     submission: null,
-    // 再次下单预填快照（只含 serviceCode/stationId/stationName；见 parts/reorder）
     reorderPrefill: null,
-    // 用户已取消识别改手填：迟到的识别结果不得覆盖手填内容（§4.3.1）
-    manualPicked: false
+    manualPicked: false,
+    maxParcels: MAX_PARCELS,
+    maxImages: MAX_IMAGES
   },
 
   onLoad(options) {
@@ -73,13 +94,20 @@ Page({
     if (snapshot.activeRole !== 'CUSTOMER') wx.reLaunch({ url: route.ROLE_PAGE });
   },
 
-  // 配置 + 对方公开资料 + 服务类型选项（装配在 parts/bootstrap，页面只 setData）
+  // 配置 + 对方公开资料 + 本人资料（配送地址默认值）→ 服务类型选项；装配在 parts/bootstrap
   loadBootstrap() {
     return bootstrap.load().then((state) => {
+      const services = state.services || [];
+      const delivery = deliveryModel.createState(state.profile, (state.config || {}).zoneLabels);
       this.setData({
         partnerPublic: state.partnerPublic,
-        services: state.services,
-        items: bootstrap.serviceIndexes(this.data.items, state.services)
+        services: services,
+        serviceCode: services.length > 0 ? services[0].code : '',
+        serviceIndex: 0,
+        delivery: delivery,
+        deliveryText: deliveryModel.displayText(delivery),
+        deliverySelfText: deliveryModel.selfDisplayText(delivery),
+        deliveryZones: deliveryModel.zoneOptions(delivery)
       });
     });
   },
@@ -88,74 +116,33 @@ Page({
   loadReorder() {
     return reorder.load({ orderNo: this._reorderNo, getOrder: orderApi.get }).then((prefill) => {
       if (!prefill) return;
-      this.setData({
-        reorderPrefill: prefill,
-        items: reorder.applyToItems(this.data.items, prefill, this.data.services)
-      });
+      this._applyReorderPrefill(prefill);
     });
   },
 
-  async onPickFile(e) {
-    if (this.data.readonly) {
-      wx.showToast({ title: '开发者只读视角不能操作', icon: 'none' });
-      return;
+  _applyReorderPrefill(prefill) {
+    const code = reorder.serviceCodeOf(prefill, this.data.services);
+    const patch = { reorderPrefill: prefill };
+    if (code) {
+      let index = 0;
+      this.data.services.forEach(function each(service, i) { if (service.code === code) index = i; });
+      patch.serviceCode = code;
+      patch.serviceIndex = index;
     }
-    const files = (e.detail && e.detail.files) || [];
-    if (files.length === 0) {
-      this.setData({ file: null, image: null, uploadTicketId: '', filePath: '' });
-      return;
-    }
-    const file = files[0];
-    if (!file || !file.localPath) return;
-    // image-picker 的 change 文件项 = api/upload.prepareAndUpload 返回
-    // {localPath, uploadTicketId, cloudPath, fileId, size}；image 快照按 order.create 入参形状组装
-    const image = { fileId: file.fileId || '', width: 0, height: 0 };
-    if (typeof file.size === 'number' && file.size > 0) image.size = file.size;
-    this.setData({
-      file: file,
-      filePath: file.localPath,
-      image: image,
-      uploadTicketId: file.uploadTicketId || '',
-      ocrState: 'ocr',
-      ocrError: '',
-      failureText: '',
-      failureNext: '',
-      failureId: '',
-      recognizeHint: '',
-      aiHint: '',
-      ocrText: '',
-      ocrTextOpen: false,
-      items: [],
-      submission: model.clearSubmission(),
-      manualPicked: false
-    });
-    try {
-      const result = await ocrFlow.identify(file, (state) => this.onOcrPhase(state));
-      if (this.data.manualPicked) return;
-      this.applyIdentify(result);
-    } catch (err) {
-      if (this.data.manualPicked) return;
-      this.setData({ ocrState: 'failed', ocrError: (err && err.message) || '识别失败，可手动填写' });
-    }
+    this.setData(patch);
+  },
+
+  // ── Step1：截图（多图 0~5，逐图识别合并；失败也有手填支路）─────────────────
+  onPickFile(e) {
+    return filesFlow.onPickFile(this, e);
   },
 
   onPickError(e) {
-    const detail = (e && e.detail) || {};
-    this.setData({
-      ocrState: 'failed',
-      failureCode: detail.reason || 'IMAGE_UNREADABLE',
-      failureText: detail.message || '截图上传失败。',
-      failureNext: '可以重试，或手动填写后提交。',
-      uploadTicketId: '',
-      image: null,
-      file: null,
-      filePath: '',
-      ocrText: '',
-      ocrTextOpen: false,
-      aiHint: '',
-      submission: model.clearSubmission(),
-      manualPicked: false
-    });
+    filesFlow.onPickError(this, e);
+  },
+
+  onPickLimit() {
+    // 组件已 toast 明确文案（已添加 n/max）；页面不再重复
   },
 
   onOcrPhase(state) {
@@ -164,84 +151,43 @@ Page({
     if (state && state.phase === 'ai') this.setData({ ocrState: 'ai' });
   },
 
-  applyIdentify(result) {
-    const defaults = this.itemDefaults();
-    if (result && result.file) {
-      this.setData({
-        file: result.file,
-        image: result.image,
-        uploadTicketId: result.file.uploadTicketId || ''
-      });
-    }
-    const meta = {
-      failureId: (result && result.failureId) || '',
-      recognizeHint: (result && result.hint) || '',
-      aiHint: result && result.aiUsed === true ? ocrFlow.AI_SUGGESTION_HINT : '',
-      ocrText: (result && result.ocrText) || '',
-      ocrTextOpen: false,
-      submission: model.clearSubmission(),
-      manualPicked: false
-    };
-    if (result && result.ok && (result.items || []).length > 0) {
-      const items = result.items.slice(0, PAGE_SIZE_MAX).map(function map(item) {
-        return model.makeItem(item, defaults);
-      });
-      if (!meta.failureId) meta.failureId = (items[0] && items[0].failureId) || '';
-      this.setData(Object.assign({
-        items: items,
-        ocrState: 'done',
-        ocrError: '',
-        failureText: '',
-        failureNext: '',
-        step: 2
-      }, meta));
-      return;
-    }
-    const failureCode = (result && result.failureCode) || 'NO_TEXT';
-    const copy = (result && result.failureCopy) || { text: '没识别出来。', next: '可以手动填写。' };
-    const manual = model.makeItem({ trackingTail: (result && result.trackingTail) || '' }, defaults);
-    this.setData(Object.assign({
-      items: [manual],
-      ocrState: 'failed',
-      ocrError: '',
-      failureCode: failureCode,
-      failureText: copy.text,
-      failureNext: copy.next,
-      step: 2
-    }, meta, {
-      // 降级到第 2 步后仍要说真话：失败卡在第 1 步，第 2 步顶部给同一句人话
-      aiHint: copy.text
-    }));
-  },
-
   onRetryOcr() {
-    if (!this.data.file || !this.data.file.localPath) {
+    if (!this.data.files || this.data.files.length === 0) {
       wx.showToast({ title: '请先重新选择截图', icon: 'none' });
       return;
     }
-    this.onPickFile({ detail: { files: [this.data.file] } });
+    const files = this.data.files;
+    this.setData({ files: [] }, () => {
+      this.onPickFile({ detail: { files: files } });
+    });
   },
 
-  // 新增件的默认值：服务/预约/备注继承第一件；没有第一件时用服务目录第一项；
-  // 再次下单场景再叠加预填（服务类型仍启用才用、站点在正式值域才用，取件字段绝不动）
   itemDefaults() {
-    const inherited = model.inheritedDefaults(this.data.items);
-    if (!inherited.serviceCode) inherited.serviceCode = (this.data.services[0] || {}).code || '';
-    return reorder.defaultsFor(inherited, this.data.reorderPrefill, this.data.services);
+    return reorder.defaultsFor({}, this.data.reorderPrefill, this.data.services);
   },
 
-  // §4.3.1 ③：识别/兜底进行中即可「先手动填写」——不阻塞手填，迟到的识别结果不再覆盖
+  // §4.3.1 ③：识别进行中即可「先手动填写」——不阻塞手填，迟到的识别结果不再覆盖
   onManualTap() {
     const defaults = this.itemDefaults();
     this.setData({
       manualPicked: true,
       submission: model.clearSubmission(),
-      items: [model.makeItem({}, defaults)],
+      items: [model.makeItem({ manual: true }, defaults)],
       step: 2,
-      ocrState: 'failed',
+      ocrState: 'manual',
       recognizeHint: '',
       aiHint: ''
     });
+  },
+
+  // D24：0 图直接手填提交（不进入识别链路、不调 AI、不写复核队列）
+  onManualOnlyTap() {
+    if (this.data.readonly) {
+      wx.showToast({ title: '开发者只读视角不能操作', icon: 'none' });
+      return;
+    }
+    this.setData({ files: [], perImage: [], images: [], tickets: [], imageFailures: [], aiHint: '' });
+    this.onManualTap();
   },
 
   // §4.3.1 ③「取消」：放弃本次智能识别（迟到的建议丢弃），文案按取消态静默降级
@@ -257,25 +203,28 @@ Page({
   },
 
   onPreviewImage() {
-    if (!this.data.filePath) {
+    const urls = (this.data.files || []).map(function path(file) { return file.localPath; })
+      .filter(function has(path) { return !!path; });
+    if (urls.length === 0) {
       wx.showToast({ title: '还没有截图', icon: 'none' });
       return;
     }
-    wx.previewImage({ urls: [this.data.filePath], current: this.data.filePath });
+    wx.previewImage({ urls: urls, current: urls[0] });
   },
 
   onToggleOcrText() {
     this.setData({ ocrTextOpen: !this.data.ocrTextOpen });
   },
 
+  // ── Step2：包裹核对（逐件站点/码/柜/尾号；全选；加件）─────────────────────
   onAddItem() {
     if (this.data.readonly) return;
-    if (this.data.items.length >= PAGE_SIZE_MAX) {
-      wx.showToast({ title: '一图最多拆 ' + PAGE_SIZE_MAX + ' 件', icon: 'none' });
+    if (this.data.items.length >= MAX_PARCELS) {
+      wx.showToast({ title: '一单最多 ' + MAX_PARCELS + ' 件', icon: 'none' });
       return;
     }
     const defaults = this.itemDefaults();
-    this.setData({ items: this.data.items.concat([model.makeItem({}, defaults)]) });
+    this.setData({ items: this.data.items.concat([model.makeItem({ manual: true }, defaults)]) });
   },
 
   onRemoveItem(e) {
@@ -290,6 +239,17 @@ Page({
     const items = this.data.items.slice();
     items[index] = Object.assign({}, items[index], { checked: !items[index].checked });
     this.setData({ items: items });
+  },
+
+  // M-17：全选/取消全选（逐件缺码提示已在 wxml 行内）
+  onToggleAll() {
+    const items = this.data.items || [];
+    const allChecked = items.length > 0 && items.every(function on(item) { return item.checked; });
+    this.setData({
+      items: items.map(function map(item) {
+        return Object.assign({}, item, { checked: !allChecked });
+      })
+    });
   },
 
   onStationChange(e) {
@@ -310,46 +270,15 @@ Page({
     this.updateItem(Number(e.currentTarget.dataset.index), { trackingTail: e.detail.value });
   },
 
-  onServiceChange(e) {
-    const index = Number(e.currentTarget.dataset.index);
-    const serviceIndex = Number(e.detail.value);
-    const service = this.data.services[serviceIndex] || {};
-    this.updateItem(index, { serviceCode: service.code || '', serviceIndex: serviceIndex });
-  },
-
   // 手改识别字段 → 来源降为 MANUAL（优先级 MANUAL > AI 来源 > RULE），由纯件统一口径
   updateItem(index, patch) {
     if (!(index >= 0)) return;
     const items = this.data.items.slice();
     items[index] = model.revalidateItem(model.withManualEdit(items[index], patch));
-    this.setData({ items: items });
-  },
-
-  // 每件独立预约/备注（UX §3.7/§4.4：默认继承第一件，之后可逐件改）
-  onItemAppointType(e) {
-    this.updateItem(Number(e.currentTarget.dataset.index), { appointType: e.detail.value });
-  },
-
-  onItemSlotChange(e) {
-    const index = Number(e.currentTarget.dataset.index);
-    const slotIndex = Number(e.detail.value);
-    const slot = this.data.slots[slotIndex] || {};
-    this.updateItem(index, {
-      appointType: 'SLOT',
-      slotIndex: slotIndex,
-      startAt: slot.startAt || '',
-      endAt: slot.endAt || ''
-    });
-  },
-
-  onItemNoteInput(e) {
-    this.updateItem(Number(e.currentTarget.dataset.index), {
-      note: String((e.detail && e.detail.value) || '')
-    });
+    this.setData({ items: items, submission: model.clearSubmission() });
   },
 
   goStep2Next() {
-    // 与提交前同一套形态闸（只要有一件不合格就不进下一步）
     const check = model.canSubmit(this.data.items);
     if (!check.ok) {
       wx.showToast({ title: check.reason, icon: 'none' });
@@ -358,112 +287,66 @@ Page({
     this.setData({ step: 3 });
   },
 
-  // 逐件校验预约与备注（每件独立），再进入 Step4
+  // ── Step3：服务/预约/备注 + 配送地址（整单一份）────────────────────────────
+  onServiceChange(e) {
+    step3.setService(this, e);
+  },
+
+  onAppointType(e) {
+    step3.setAppointType(this, e);
+  },
+
+  onSlotChange(e) {
+    step3.setSlot(this, e);
+  },
+
+  onNoteInput(e) {
+    step3.setNote(this, e);
+  },
+
+  onDeliveryModeChange(e) {
+    step3.setMode(this, e);
+  },
+
+  onDeliveryZoneChange(e) {
+    step3.setZone(this, e);
+  },
+
+  onDeliveryBuildingChange(e) {
+    step3.setBuilding(this, e);
+  },
+
+  onDeliveryRoomInput(e) {
+    step3.setRoom(this, e);
+  },
+
+  onDeliveryNameInput(e) {
+    step3.setRecipient(this, e);
+  },
+
   goStep3Next() {
-    const checked = this.data.items.filter(function on(item) { return item.checked; });
-    for (let i = 0; i < checked.length; i += 1) {
-      const item = checked[i];
-      if (item.appointType === 'SLOT') {
-        const slot = this.data.slots[item.slotIndex];
-        if (!slot || slot.expired) {
-          wx.showToast({ title: '请为每件选择有效预约时段', icon: 'none' });
-          return;
-        }
-      }
-      if (String(item.note || '').length > 200) {
-        wx.showToast({ title: '备注最多 200 字', icon: 'none' });
-        return;
-      }
-    }
-    this.enterStep4();
+    step3.goNext(this);
   },
 
-  // 进入 Step4 即生成提交幂等键；内容没变（如上一步再回来）沿用同一 id（UX §4.8）
-  enterStep4() {
-    const submission = model.ensureSubmission(this.data.submission, this.submitFingerprint());
-    this.setData({ step: 4, submission: submission, submitError: '' });
-  },
-
-  submitFingerprint() {
-    return model.submissionFingerprint(this.data.items);
-  },
-
+  // ── Step4：确认提交（order.create 单入口 + 合并窗口提示）────────────────────
   goPrev() {
     this.setData({ step: Math.max(1, this.data.step - 1) });
   },
 
-  async onSubmit() {
-    if (this.data.readonly) {
-      wx.showToast({ title: '开发者只读视角不能操作', icon: 'none' });
-      return;
-    }
-    if (this.data.submitting) return;
-    const check = model.canSubmit(this.data.items);
-    if (!check.ok) {
-      wx.showToast({ title: check.reason, icon: 'none' });
-      return;
-    }
-    if (!this.data.uploadTicketId || !this.data.image || !this.data.image.fileId) {
-      wx.showToast({ title: '截图还没上传成功，请重新上传', icon: 'none' });
-      return;
-    }
-    this.setData({ submitting: true, submitError: '' });
-    // 失败重试复用同一 clientRequestId（不换键 ⇒ 服务端幂等，不重复建单）；内容变过则重生成
-    const submission = model.ensureSubmission(this.data.submission, this.submitFingerprint());
-    this.setData({ submission: submission });
-    const payload = model.buildPayload(this.data.items, this.data.uploadTicketId, this.data.image, {
-      failureId: this.data.failureId
-    });
-    const submitOptions = { clientRequestId: submission.id };
-    try {
-      if (payload.single) {
-        // order.create 入参：{parcel,serviceCode,appoint,note,ticket,image,recognition}（严格白名单，无视图态字段）
-        const singlePayload = Object.assign({}, payload.items[0], {
-          ticket: payload.ticket,
-          image: payload.image
-        });
-        if (payload.recognition) singlePayload.recognition = payload.recognition;
-        const data = await orderApi.create(singlePayload, submitOptions);
-        const order = (data && data.order) || {};
-        this.setData({ submission: model.clearSubmission() });
-        wx.showToast({ title: '已提交，等待兼职接单', icon: 'success' });
-        setTimeout(function go() {
-          wx.redirectTo({ url: DETAIL_PAGE + '?orderNo=' + encodeURIComponent(order.orderNo || '') });
-        }, 600);
-        return;
-      }
-      // order.createBatch 入参：{items,ticket,image}；每项自带 recognition.failureId（同图多单逐单关联）
-      const batchPayload = {
-        items: payload.items,
-        ticket: payload.ticket,
-        image: payload.image
-      };
-      const data = await orderApi.createBatch(batchPayload, submitOptions);
-      this.setResult((data && data.orders) || []);
-    } catch (err) {
-      this.setData({ submitting: false, submitError: (err && err.message) || '提交失败，内容还在，可以重试' });
-    }
+  submitFingerprint() {
+    return submitFlow.fingerprintOf(this);
   },
 
-  setResult(orders) {
-    this.setData({
-      submitting: false,
-      submission: model.clearSubmission(),
-      resultOrders: orders.map(function map(item) {
-        return { orderNo: item.orderNo || (item.order && item.order.orderNo) || '' };
-      }),
-      resultBatch: true
-    });
+  onSubmit() {
+    return submitFlow.onSubmit(this);
   },
 
   onRetrySubmit() {
     this.onSubmit();
   },
 
-  onViewOrder(e) {
-    const orderNo = e.currentTarget.dataset.orderNo;
-    if (!orderNo) return;
-    wx.redirectTo({ url: DETAIL_PAGE + '?orderNo=' + encodeURIComponent(orderNo) });
+  onViewOrder() {
+    submitFlow.onViewOrder(this);
   },
 
   onBackHome() {

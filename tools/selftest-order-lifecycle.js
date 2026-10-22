@@ -443,8 +443,9 @@ function register(h) {
 
     const normalImage = await cApi.call('order.get', { orderNo: NO.SUBMITTED });
     t.eq([Object.keys(normalImage.data.order.image), normalImage.data.order.image.hasImage,
-      normalImage.data.order.image.cleaned], [['hasImage', 'cleaned'], true, false],
-    'A20 image DTO 基线 {hasImage:true, cleaned:false}（有 fileId 且未清理）');
+      normalImage.data.order.image.cleaned, normalImage.data.order.image.status],
+    [['index', 'status', 'hasImage', 'cleaned'], true, false, 'AVAILABLE'],
+    'A20 image DTO 基线 {index,status,hasImage,cleaned}（有 fileId 且未清理，v1.0 多图加 index/status）');
     const cleanedImage = await cApi.call('order.get', { orderNo: NO.CLEANED });
     t.eq([cleanedImage.data.order.image.hasImage, cleanedImage.data.order.image.cleaned], [false, true],
       'A21 image DTO 已清理态 {hasImage:false, cleaned:true}（cleanup 写 cleanedAt 后不再可看）');
@@ -457,7 +458,7 @@ function register(h) {
       'A23 兼职侧进行中沿用既有键（PICKED：deliver/exception/correct/cancel/message）');
     const noImage = await cApi.call('order.get', { orderNo: NO.NO_IMAGE });
     t.eq([Object.keys(noImage.data.order.image), noImage.data.order.image.hasImage, noImage.data.order.image.cleaned],
-      [['hasImage', 'cleaned'], false, false],
+      [['index', 'status', 'hasImage', 'cleaned'], false, false],
       'A24 无 fileId 订单 image={hasImage:false, cleaned:false}（未清理但也没有可看截图）');
     t.notEmpty(matrix[ORDER_STATUS.SUBMITTED], 'A 组模型样本非空（actions 断言非空集）');
   });

@@ -21,11 +21,31 @@ function identityOf(ctx) {
   return (ctx && ctx.identity) || {};
 }
 
+// identity.roles = auth 按 users.roles 归一出的业务角色集（双角色 [CUSTOMER,PARTNER]）；
+// 切换会话/手工注入 ctx 只有 role 时回落单元素集，保持单角色语义不变。
+function rolesOfIdentity(identity) {
+  const source = identity || {};
+  const raw = Array.isArray(source.roles) ? source.roles : [];
+  const roles = [];
+  if (raw.indexOf(enums.ROLES.CUSTOMER) >= 0) {
+    roles.push(enums.ROLES.CUSTOMER);
+  }
+  if (raw.indexOf(enums.ROLES.PARTNER) >= 0) {
+    roles.push(enums.ROLES.PARTNER);
+  }
+  if (roles.length === 0
+    && (source.role === enums.ROLES.CUSTOMER || source.role === enums.ROLES.PARTNER)) {
+    roles.push(source.role);
+  }
+  return roles;
+}
+
 function scopeOf(ctx) {
   const identity = identityOf(ctx);
   const testWrite = identity.viewMode === enums.VIEW_MODE.TEST_WRITE;
   return {
     role: identity.role || '',
+    roles: rolesOfIdentity(identity),
     openid: identity.effectiveOpenid || (ctx && ctx.openid) || '',
     actorOpenid: identity.actorOpenid || (ctx && ctx.openid) || '',
     developerNo: identity.developerNo || '',
@@ -56,7 +76,7 @@ function assertWritable(ctx) {
 
 function customerScope(ctx) {
   const scope = scopeOf(ctx);
-  if (scope.role !== enums.ROLES.CUSTOMER) {
+  if (scope.roles.indexOf(enums.ROLES.CUSTOMER) < 0) {
     throw errors.forbidden('仅顾客身份可执行该操作');
   }
   return scope.openid;
@@ -64,7 +84,7 @@ function customerScope(ctx) {
 
 async function loadScopePartner(ctx) {
   const scope = scopeOf(ctx);
-  if (scope.role !== enums.ROLES.PARTNER) {
+  if (scope.roles.indexOf(enums.ROLES.PARTNER) < 0) {
     throw errors.forbidden('仅兼职身份可执行该操作');
   }
   let partner = await getPartnerByOpenid(ctx, scope.openid);
@@ -254,6 +274,8 @@ function normalizeOrderNoInput(value) {
   return orderNo;
 }
 
+// 订单侧别按「订单归属 + users.roles 是否含该侧角色」判定（双角色两类订单都允许；不依赖 activeRole）。
+// 单角色语义与旧实现等价：角色不含某侧时该侧不参与匹配。
 function orderSideOf(ctx, order) {
   if (!order) {
     return '';
@@ -262,10 +284,12 @@ function orderSideOf(ctx, order) {
   if (scope.role === enums.CANCELLED_BY.ADMIN) {
     return 'ADMIN';
   }
-  if (scope.role === enums.ROLES.PARTNER && order.partnerOpenid && order.partnerOpenid === scope.openid) {
+  if (scope.roles.indexOf(enums.ROLES.PARTNER) >= 0
+    && order.partnerOpenid && order.partnerOpenid === scope.openid) {
     return 'PARTNER';
   }
-  if (scope.role === enums.ROLES.CUSTOMER && order.customerId && order.customerId === scope.openid) {
+  if (scope.roles.indexOf(enums.ROLES.CUSTOMER) >= 0
+    && order.customerId && order.customerId === scope.openid) {
     return 'CUSTOMER';
   }
   return '';
@@ -332,6 +356,31 @@ function buildImageSnapshot(image, ticket, nowDate) {
   return snapshot;
 }
 
+// ── v1.0 订单聚合字段读取（只读归一，不写库）──────────────────────────────────
+// parcels[]：新订单一单多包裹；历史单只有单包裹 parcel{} → 归一为单元素数组供统一读取。
+function orderParcelsOf(order) {
+  const list = order && Array.isArray(order.parcels) ? order.parcels : [];
+  if (list.length > 0) {
+    return list;
+  }
+  if (order && order.parcel && typeof order.parcel === 'object') {
+    return [order.parcel];
+  }
+  return [];
+}
+
+// images[]：新订单 images[]（每张 {fileId,width,height,cleanedAt?}）；历史单 image{} → 归一为单元素数组。
+function orderImagesOf(order) {
+  const list = order && Array.isArray(order.images) ? order.images : [];
+  if (list.length > 0) {
+    return list;
+  }
+  if (order && order.image && typeof order.image === 'object') {
+    return [order.image];
+  }
+  return [];
+}
+
 module.exports = {
   DEFAULT_PAGE_SIZE,
   MAX_PAGE_SIZE,
@@ -344,6 +393,7 @@ module.exports = {
   validate,
   time,
   identityOf,
+  rolesOfIdentity,
   scopeOf,
   isTestSession,
   assertTestOrderVisible,
@@ -373,5 +423,7 @@ module.exports = {
   assertOrderVisible,
   loadUploadTicket,
   assertImageFile,
-  buildImageSnapshot
+  buildImageSnapshot,
+  orderParcelsOf,
+  orderImagesOf
 };

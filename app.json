@@ -15,6 +15,7 @@
         "pages/bind/index",
         "pages/order-create/index",
         "pages/order-detail/index",
+        "pages/pickup-list/index",
         "pages/messages/index",
         "pages/help/index"
       ]
@@ -114,5 +115,13 @@
   "style": "v2",
   "componentFramework": "glass-easel",
   "sitemapLocation": "sitemap.json",
-  "lazyCodeLoading": "requiredComponents"
+  "lazyCodeLoading": "requiredComponents",
+  "preloadRule": {
+    "pages/customer/home/index": { "network": "all", "packages": ["pkg-customer"] },
+    "pages/partner/workbench/index": { "network": "all", "packages": ["pkg-partner"] }
+  },
+  "networkTimeout": {
+    "request": 10000,
+    "uploadFile": 60000
+  }
 }

@@ -49,3 +49,15 @@
   border-radius: 50%;
   background: var(--v4-danger);
 }
+
+/* D26：取件清单入口卡片 */
+.pickup-entry {
+  margin-top: 8rpx;
+}
+
+.link-text {
+  color: var(--v4-brand);
+  min-height: 64rpx;
+  display: flex;
+  align-items: center;
+}

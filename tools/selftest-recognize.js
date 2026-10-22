@@ -22,7 +22,7 @@ const ocr = require(path.join(ROOT, 'utils/ocr/index.js'));
 const sharedStations = require(path.join(ROOT, 'shared/stations.js'));
 const sharedValidate = require(path.join(ROOT, 'shared/validate.js'));
 
-const EXPECTED_ASSERTIONS = 187; // 改为实际断言数时同步核对 `node tools/selftest-recognize.js` 读数
+const EXPECTED_ASSERTIONS = 195; // 改为实际断言数时同步核对 `node tools/selftest-recognize.js` 读数
 
 // v3 真机语料（sha256 指纹钉：改动语料必须同步改这里的期望与解析断言）
 const CORPUS_ONE = [
@@ -446,6 +446,32 @@ function sectionOcrEntry(h) {
   });
 }
 
+function sectionMergeParcels(h) {
+  h.section('§5.2 多图汇总 mergeParcels（D23：一单 ≤10 件 / 去重 / 截断）', (t) => {
+    t.eq([recognize.MAX_PARCELS_PER_ORDER, recognize.MAX_IMAGES_PER_ORDER], [10, 5],
+      '§5.2 一单上限包裹 10 / 截图 5（CONTRACT §5.2/D23）');
+    const a = recognize.parseOcrText('西苑顺丰快递 取件码 A12345');
+    const b = recognize.parseOcrText('西苑顺丰快递 取件码 B23456');
+    t.notEmpty(a.items, '§5.2 样本非空（规则解析出件）');
+    const merged = recognize.mergeParcels([a.items, b.items]);
+    t.eq(merged.items.length, 2, '§5.2 两图合并为同一单的 2 件（一单多包裹）');
+    t.eq(merged.duplicated, 0, '§5.2 不同码件不去重');
+    const dup = recognize.mergeParcels([a.items, a.items]);
+    t.eq([dup.items.length, dup.duplicated], [1, 1], '§5.2 同一件跨图重复只留一件（去重）');
+    const many = [];
+    for (let i = 0; i < 12; i += 1) many.push([{ stationId: 'P3', pickupCode: 'C' + (12340 + i) }]);
+    const capped = recognize.mergeParcels(many);
+    t.eq([capped.items.length, capped.truncated, capped.dropped], [10, true, 2],
+      '§5.2 超 10 件截断并标记（页面提示分单提交）');
+    t.eq(recognize.parcelKey({ stationId: 'P3', pickupCode: 'A12345' }),
+      recognize.parcelKey({ stationId: 'P3', pickupCode: 'A12345' }),
+      '§5.2 去重键是纯函数（同内容同键）');
+    t.neq(recognize.parcelKey({ stationId: 'P3', pickupCode: 'A12345' }),
+      recognize.parcelKey({ stationId: 'P3', pickupCode: 'B23456' }),
+      '§5.2 取件码不同 → 不同件（不误合并）');
+  });
+}
+
 function register(h) {
   sectionText(h);
   sectionMask(h);
@@ -459,6 +485,7 @@ function register(h) {
   sectionFrame(h);
   sectionVision(h);
   sectionOcrEntry(h);
+  sectionMergeParcels(h);
 }
 
 module.exports = { EXPECTED_ASSERTIONS, register };

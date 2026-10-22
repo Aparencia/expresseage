@@ -186,13 +186,13 @@
 | `customers` | `_id=openid` | **`customerNo`(唯一)**、**`displayName`(昵称，必填)**、`avatarFileId`（可空→默认头像）、`zone/buildingNo/room/dormKey`、`phoneTail`、`profileCompleted`、`createdAt`、`updatedAt` | 顾客资料；宿舍身份；昵称/头像；唯一编号 |
 | `partners` | 自增 | `openid`(唯一；测试账号为合成 `TEST-<random>`)、**`partnerNo`(唯一)**、**`displayName`(昵称，必填)**、`avatarFileId`（可空→默认头像）、`status('ACTIVE'|'SUSPENDED'|'CLOSED')`、`deletedAt`、`serviceConfig{...}`（字段以 §4.2/§6 为准）、`stats{...}`、`activatedAt` | 兼职资料、头像/昵称、服务类型/范围配置、单量统计 |
 | `bindings` | 自增 | `activeKey`(唯一)、`customerId=openid`、`partnerId`、`status('ACTIVE'|'RELEASED')`、`roomTag`、`dormSnapshot{...}`、`partnerNote`、`releaseReason`、`releaseNote`(≤100)、`boundAt`、`releasedAt` | 绑定关系 + roomTag + 兼职私有备注；**只能由顾客发起创建**（§4.2） |
-| `orders` | 自增 | `orderNo`(唯一)、`requestKey`(唯一)、`customerId`/`customerOpenid`/**`customerNo`快照**/`partnerId`/`partnerOpenid`/**`partnerNo`快照**、`source('CUSTOMER'|'PARTNER')`、`isTest`(bool，测试数据标记)、`impersonatedBy?`(测试写时的 `developerNo`)、`status`、`parcel{...}`、`dorm{...}`、`guest{...}`(代客单)、`service{code,name}`、`appoint{...}`、`note`、`image{fileId,...}`、`exception{...}`、`deliveryNote`、`cancelReason`、`cancelledBy`、`deletedByCustomerAt`、`anonymizedAt`、显式时间戳、`batchActionId`、`clientRequestId`、`version` | 订单主表；**无任何金额字段** |
+| `orders` | 自增 | `orderNo`(唯一)、`requestKey`(唯一)、`customerId`/`customerOpenid`/**`customerNo`快照**/`partnerId`/`partnerOpenid`/**`partnerNo`快照**、`source('CUSTOMER'|'PARTNER')`、`isTest`(bool，测试数据标记)、`impersonatedBy?`(测试写时的 `developerNo`)、`status`、**`parcels[]{...}`（v1.0 一单多包裹，1~10 件）**、**`images[]{fileId,width,height,cleanedAt?}`（0~5 张；0=无截图手填，D24；识别失败关联只落 `parcels[].failureId`，`images[]` 不存 `failureId`）**、**`manualEntry`(bool，无截图手填标记)**、`dorm{...}`（下单人宿舍快照）、**`delivery{zone,buildingNo,room,dormKey,buildingText,recipientName?,phoneTail?}`（本单配送地址，默认=下单人宿舍，可改他人宿舍，D25）**、`guest{...}`(代客单)、`service{code,name}`、`appoint{...}`、`note`、`exception{...}`、`deliveryNote`、`cancelReason`、`cancelledBy`、`deletedByCustomerAt`、`anonymizedAt`、显式时间戳、`batchActionId`、`clientRequestId`、`version` | 订单主表（v1.0 批量下单/合并窗口见 D23，一单多包裹）；**无任何金额字段** |
 | `order_events` | 自增 | `orderId`、`orderNo`、`type`、`fromStatus`、`toStatus`、`actorRole`、`actorId`、`impersonatedBy?`、`at`、`note`、`payload`、`requestKey`(唯一) | 全量状态流水（审计/进度条数据源） |
 | `order_messages` | 自增 | `orderId`、`fromRole`、`fromId`、`text`(≤200)、`templateCode?`、`createdAt`、`readAt` | 订单留言（含快捷模板） |
 | `invitation_codes` | 自增 | `code`(唯一)、`status('UNUSED'|'USED'|'REVOKED'|'EXPIRED')`、`batchId`、`expiresAt`、`usedBy`、`usedAt`、`note`、`createdBy`、`createdAt` | 开发者发邀请码（旧 `activation_codes` 更名；测试账号不消耗邀请码） |
 | `admin_view_sessions` | `_id=viewTicket` | `adminOpenid`、`developerNo`、`viewMode('READONLY'|'TEST_WRITE')`、`role('CUSTOMER'|'PARTNER')`、`targetId`、`targetNo`、`targetDisplayName`、`targetAvatarFileId?`、`targetIsTest`、`createdAt`、`expiresAt`、`endedAt` | 开发者切换会话票据（真实账号只读 / 测试账号可写，§1.2/§1.3） |
 | `counters` | 自增 | `key`(唯一)、`seq`、`updatedAt`；键族：`orderNo:YYYYMMDD`、`tag:{partnerId}:{dormKey}`、`rl:{scope}:{openid}:{window}`（限流，cleanup 清理过期） | 原子自增（事务） |
-| `config` | `_id='global'` | `zoneLabels`、`serviceCatalog[{code,name,desc}]`（无价格）、`announcement`、`maintenance`、`orderTimeoutMinutes`、`autoCompleteHours`、`screenshotRetentionDays`、`recognitionFailureRetentionDays`（7~30，默认 30）、`aiFallback{enabled,model,timeoutMs,maxPerUserPerDay,dailyQuota,cooldownMinutes}`、`viewTicketTtlMinutes`、`avatarMaxBytes`（默认 200KB）、`testAccountMaxPerRole`（默认 3）、`testDataRetentionDays`（默认 30）、`privacyVersion`、`updatedAt` | 全局配置（admin 维护，无金额项；`aiFallback` v0.8 新增，值为次数/毫秒/布尔，**无费用字段**；v0.9 新增头像与测试账号配置） |
+| `config` | `_id='global'` | `zoneLabels`、`serviceCatalog[{code,name,desc}]`（无价格）、`announcement`、`maintenance`、`orderTimeoutMinutes`、`autoCompleteHours`、`screenshotRetentionDays`、`recognitionFailureRetentionDays`（7~30，默认 30）、`aiFallback{enabled,model,timeoutMs,maxPerUserPerDay,dailyQuota,cooldownMinutes}`、**`orderMergeWindowMinutes`（v1.0：短间隔自动合并窗口，默认 10，0=关闭，范围 0~60；D23）**、`viewTicketTtlMinutes`、`avatarMaxBytes`（默认 200KB）、`testAccountMaxPerRole`（默认 3）、`testDataRetentionDays`（默认 30）、`privacyVersion`、`updatedAt` | 全局配置（admin 维护，无金额项；`aiFallback` v0.8 新增，值为次数/毫秒/布尔，**无费用字段**；v0.9 新增头像与测试账号配置；v1.0 新增合并窗口） |
 | `admin_audit` | 自增 | `adminOpenid`、`developerNo`、`action`、`target`、`detail`、`at` | 管理操作审计 |
 | `upload_tickets` | 自增 | `ticket`(唯一随机)、`openid`（TEST_WRITE 下=effectiveOpenid）、`purpose('TICKET'|'AVATAR')`、`cloudPath`（不含 openid）、`expiresAt`、`usedAt`、`createdAt` | 截图/头像上传票据（§4.1） |
 | `recognition_failures` | 自增 | `failureNo`(唯一)、`requestKey`(唯一：`{uploaderOpenid}:{clientRequestId}`，写动作幂等)、`failureCode`、`sourceRole('CUSTOMER'|'PARTNER')`、`uploaderOpenid`、`uploadTicketId`、`fileId`、`orderId?`、`ocrTextMasked`(≤2000)、`ruleResult`、`aiTried`、`aiModel`、`aiResult`、`aiErrorCode`、`status('PENDING'|'FIXED'|'IGNORED')`、`resolution{stationId,stationName,pickupCode,note,by,at}`、`createdAt`、`reviewedAt` | 识别失败复核队列（v0.8，含原图引用；仅开发者后台可见，审计；§4.3） |
@@ -212,9 +212,9 @@
 ### 4.1 截图上传（云存储私有）
 1. `upload.prepare`（云函数，入参 `purpose:'TICKET'|'AVATAR'`）→ 校验身份与当日配额 → 返回 `uploadTicket`（5 分钟有效，落库 `upload_tickets`，含 `purpose`）+ `cloudPath`（含不可猜随机段，**不含 openid**）+ `draftId`。
 2. 客户端 `wx.cloud.uploadFile` 到该路径。
-3. 下单云函数校验 ticket 归属、路径一致、文件大小/类型（jpg/png，≤500KB），把 `fileId` 写入订单。
-4. 查看：`order.imageUrl` 云函数鉴权后 `cloud.getTempFileURL`（5 分钟）。
-5. 清理：`cleanup` 定时删除完成/取消超 7 天的文件；同一 fileId 被多张订单引用时（一图多码拆单）只在无引用后删。
+3. 下单云函数校验每张 ticket 归属、路径一致、文件大小/类型（jpg/png，≤500KB），把 `fileId` 写入订单 `images[]`（v1.0：一单可 0~5 张截图，一张截图一个 ticket；D23/D24）。
+4. 查看：`order.imageUrl` 云函数鉴权后 `cloud.getTempFileURL`（5 分钟），入参含 `index` 取 `images[index]`。
+5. 清理：`cleanup` 定时删除完成/取消超 7 天的文件；同一 fileId 被多张订单/多条复核记录引用时只在无引用后删（引用计数覆盖 `orders.images[]`）。
 6. **识别失败引用（v0.8）**：识别失败记录 `recognition_failures.fileId` 引用同一原图；复核期内保留 `recognitionFailureRetentionDays`（默认 30 天，长于订单截图 7 天）；到期删引用，若订单仍在截图留存期则继续按订单规则保留。
 7. **头像上传（v0.9）**：`upload.prepare({purpose:'AVATAR'})` → 云存储路径 `avatars/{role}/{random}.jpg`（不可猜随机段）；客户端压缩到 **≤200KB、jpg/png、建议 200×200**；保存资料时校验 ticket 归属/路径/大小/类型后写 `avatarFileId`；**替换头像即删旧文件**；注销/删除测试账号时删头像文件；默认头像不占存储（客户端本地绘制首字色块）。**头像与截图同一套私有存储规则（客户端不可直接读，展示用 `cloud://` fileID 由 DTO 下发或临时 URL）**。
 
@@ -225,26 +225,26 @@
 - `partners`：`partnerNo`（唯一、生成后不可改）；`displayName`（**昵称，必填**，≤20 字，激活时从微信昵称一键填入、可改；`partner.saveProfile` 可改）；`avatarFileId`（可空→默认头像；`avatars/partner/{random}.jpg`，≤200KB）；`status ∈ {ACTIVE, SUSPENDED, CLOSED}`；`CLOSED`=注销（`deletedAt` + 资料匿名化、不可恢复、绑定释放、订单转异常/完成）；`serviceConfig` 见 §6；`stats` 只含单量（如 `{todayOrders,totalOrders,completedOrders}`，**无收入字段**）；`maxDailyOrders/businessHours/autoAccept` 为 P1 预留。**测试兼职**：`openid='TEST-<random>'`（合成，非真实微信 openid）、默认服务配置全开、范围=全部苑、`acceptingOrders=true`，不计统计。
 - `bindings`：`activeKey`（唯一索引：ACTIVE 时 = `customerId`；RELEASED 时 = `customerId:RELEASED:bindingId`）；`partnerNote`（≤100，顾客不可见，随顾客注销删除）；`releaseReason ∈ {CUSTOMER_INITIATED, PARTNER_INITIATED, PARTNER_CLOSED, ADMIN_ACTION, CUSTOMER_ACCOUNT_CLOSED}`。
 - **绑定方向铁律（v0.9，用户四次修订）**：①**只有顾客能发起绑定**：`bind.create` 仅允许业务角色为 CUSTOMER 的调用者；PARTNER 调用一律 `FORBIDDEN`；②兼职端**不得**出现"添加顾客/绑定顾客/导入顾客/扫码绑定顾客"任何入口，也不得批量建立绑定；③**代客下单不产生绑定**，`bindings` 不得由订单创建流程隐式写入；④兼职只能 `unbindCustomer`（填原因、通知顾客），解绑≠重新绑定；⑤绑定解除后，双方**不再能看到对方头像/昵称**（DTO 按 ACTIVE 绑定关系返回）；⑥测试账号只能与测试账号互相绑定，真实账号×测试账号的绑定请求一律 `FORBIDDEN`；⑦**不能自绑**：顾客的 openid 与其要绑定的兼职 openid 相同（同一 openid 兼顾客+兼职）时 `bind.create` 返回 `FORBIDDEN`（禁止自己下单给自己）；⑧`partner.getPublic` 在绑定前**只回昵称、不回头像**（头像在 ACTIVE 绑定后才下发）。
-- `orders` 身份字段关系：`customerId` = openid 引用键，`customerOpenid` = 同值快照；`partnerId` = partners._id，`partnerOpenid` = 快照；`customerNo/partnerNo` = 建单/接单时编号快照（用于展示与后台搜索，不参与鉴权）；**代客单（guest）customerId/customerOpenid/customerNo 为空**；`isTest` = 参与账号 `isTestAccount` 的快照（测试数据永不计入统计）；`impersonatedBy` 仅测试写会话写入（真实流程为空）。显式时间戳：`statusUpdatedAt/acceptedAt/pickedAt/deliveredAt/completedAt/cancelledAt`。创建幂等：`requestKey` 唯一（`{customerId|partnerId}:{clientRequestId}`）；测试写会话以目标测试账号身份生成幂等键。写动作幂等：`order_events.requestKey` 唯一（`{orderId}:{action}:{clientRequestId}`）。留存幂等：`anonymizedAt`。
+- `orders` 身份字段关系：`customerId` = openid 引用键，`customerOpenid` = 同值快照；`partnerId` = partners._id，`partnerOpenid` = 快照；`customerNo/partnerNo` = 建单/接单时编号快照（用于展示与后台搜索，不参与鉴权）；**代客单（guest）customerId/customerOpenid/customerNo 为空**；`isTest` = 参与账号 `isTestAccount` 的快照（测试数据永不计入统计）；`impersonatedBy` 仅测试写会话写入（真实流程为空）。显式时间戳：`statusUpdatedAt/acceptedAt/pickedAt/deliveredAt/completedAt/cancelledAt`。创建幂等：`requestKey` 唯一（`{customerId|partnerId}:{clientRequestId}`）；测试写会话以目标测试账号身份生成幂等键。写动作幂等：`order_events.requestKey` 唯一（`{orderId}:{action}:{clientRequestId}`）。留存幂等：`anonymizedAt`。**v1.0 订单聚合字段（D23/D25）**：`parcels[]`（每件：`stationId/stationName/pickupCode/lockerNo/trackingTail/codeStatus/recognitionSource?/confidence?/imageIndex?`，字段级以 DATA_MODEL §2.5 定稿；`imageIndex` 只在落库时记录来源截图下标、**不下发 DTO**）、`images[]`（`{fileId,width,height,cleanedAt?}`；`manualEntry=true` 时为空；失败关联只在 `parcels[].failureId`）、`manualEntry`（无截图手填标记）、`delivery`（本单配送地址快照，默认=下单人宿舍；**不写入 customers、不触发重绑/roomTag**）。订单级动作（接单/取件/送达/取消/超时）作用于全部包裹；`order.correct` 按包裹序号 `itemIndex` 纠正；不设包裹级状态。
 - **`roomTag` 触发点**：资料完整是绑定前提；`roomTag` 在**绑定成功时**分配（此时才有 partnerId）；同一（兼职, dormKey）按绑定先后得 **A、B、C…（恒大写）**；已绑定期间顾客改宿舍 → 在新 dormKey 下重新分配，旧 tag 不复用；未绑定前不分配；解绑后 tag 保留在历史绑定记录（`status=RELEASED`）不再复用。
 - **代客单（D12）**：`source=PARTNER`、`customerId=''`、`customerOpenid=''`、`customerNo=''`、`guest{displayName,phoneTail,zone,buildingNo,room,dormKey}` 快照；**代客单不产生绑定**（顾客后续绑定必须本人发起）；guest 无真实微信资料 → 展示**默认头像** + "代客单"标签；MVP **不提供顾客认领**；P1 再做认领（`claimTokenHash/claimExpiresAt/claimedAt` 预留）。
 - `counters`：键族 `orderNo:YYYYMMDD`、`tag:{partnerId}:{dormKey}`、`rl:{scope}:{openid}:{window}`；不设 `tagSeq`。
 - **站点值域（MVP）**：只能选 v3 的 P1~P8 正式名；识别不到时顾客手动选；不做自建站点（P1）。订单存 `stationId + stationName` 快照。
-- `order_events.type` 至少包含：`ORDER_CREATED / ACCEPTED / REJECTED / PICKED / PICKED_REVERTED / DELIVERED / DELIVERED_REVERTED / COMPLETED / AUTO_COMPLETED / CANCELLED / TIMEOUT_CANCELLED / EXCEPTION_REPORTED / EXCEPTION_RESOLVED / ORDER_CORRECTED / DELETED_BY_CUSTOMER / GUEST_ORDER_CLAIMED(P1)`；`actorRole ∈ {CUSTOMER, PARTNER, ADMIN, SYSTEM}`。**不含任何支付/收款类事件**。
+- `order_events.type` 至少包含：`ORDER_CREATED / ACCEPTED / REJECTED / PICKED / PICKED_REVERTED / DELIVERED / DELIVERED_REVERTED / COMPLETED / AUTO_COMPLETED / CANCELLED / TIMEOUT_CANCELLED / EXCEPTION_REPORTED / EXCEPTION_RESOLVED / ORDER_CORRECTED / PARCELS_APPENDED（v1.0 合并窗口追加包裹）/ DELETED_BY_CUSTOMER / GUEST_ORDER_CLAIMED(P1)`；`actorRole ∈ {CUSTOMER, PARTNER, ADMIN, SYSTEM}`。**不含任何支付/收款类事件**。
 - **留痕时间线**：订单终态 → 保留 180 天 → 匿名化（去 openid/昵称/尾号/宿舍/截图引用，写 `anonymizedAt`）→ 再 30 天物理删除；顾客对 `COMPLETED` 单条"删除记录"→ 7 天后物理删除；截图在终态/取消后 7 天删除；注销=立即匿名化+删截图+30 天内物理删除+删 `partnerNote`。
 - **admin 审计**：`admin_audit.action` 至少含 `INVITE_CREATE / INVITE_REVOKE / PARTNER_SUSPEND / PARTNER_RESTORE / CONFIG_UPDATE / ORDER_ANOMALY_CANCEL / BOOTSTRAP`；**v0.8 增** `FAILURE_IMAGE_VIEW / FAILURE_FIX / FAILURE_IGNORE`（识别失败复核，§4.3）；**v0.9 增** `ACCOUNT_SWITCH_START / ACCOUNT_SWITCH_END / ACCOUNT_SWITCH_EXPIRED / TEST_ACCOUNT_CREATE / TEST_ACCOUNT_DELETE / TEST_DATA_PURGE`（`ACCOUNT_SWITCH_*` 的 `detail` 记 `viewMode/targetIsTest`；**旧 `VIEW_AS_*` 作废**）；MVP 不单独建 audit 页，审计区块并入 `pkg-admin/pages/overview/index`。
 - **限流落点**：统一用 `counters.rl:{scope}:{openid}:{window}`；scope 至少 `bind/activate/order/message/viewAs/avatarUpload`；窗口按日/小时；超限返回 `RATE_LIMITED`。**账号切换（含测试账号）20 次/日/开发者；头像上传 5 次/日/人。**
 - **账号切换会话**：`admin_view_sessions` 见 §1.2/§1.3；票据服务端生成、不落客户端存储；每次请求校验票据存在、未过期、`endedAt` 为空、发起人仍白名单；`viewMode=TEST_WRITE` 时额外校验目标 `isTestAccount=true`、`target.status=ACTIVE`；写请求必须同时匹配 `impersonatedBy` 与目标身份（防止票据被挪用到其他账号）。
 - **邀请码字段**：`invitation_codes{code(唯一), status, batchId, expiresAt, usedBy(partnerId), usedAt, note, createdBy(developerNo), createdAt}`；`expiresAt=null` 不允许（必须设有效期）；过期判定以服务端时间。
 - **只读视角/账号切换**：`admin_view_sessions` 见 §1.2/§1.3；票据服务端生成、不落客户端存储；每次请求校验票据存在、未过期、`endedAt` 为空、发起人仍白名单；`viewMode=TEST_WRITE` 时额外校验目标 `isTestAccount=true`、`target.status=ACTIVE`；写请求必须同时匹配 `impersonatedBy` 与目标身份（防止票据被挪用到其他账号）。
-- **v0.6 一致性补充（继续有效）**：资料编辑规则（宿舍身份仅无进行中订单时可改，改宿舍=旧绑定释放+新绑定+新 roomTag，订单快照不变）；截图云存储路径 `orders/{ticket}/image.jpg`；接单开关语义（`serviceConfig.acceptingOrders=false` ⇒ `order.create/createBatch` 返回 `PARTNER_CLOSED`）；兼职公开预览（`partner.getPublic({partnerNo})`，未绑定可调、限流 5 次/日/顾客、**绑定前只回昵称（不回头像）**；测试账号返回 `NOT_FOUND`）；列表 DTO 分级（本人数据完整；admin 后台默认脱敏；完整值只在只读视角）；解绑原因必填；客户列表按 dormKey/roomTag 排序；工作台查询含 `SUBMITTED/ACCEPTED/PICKED/DELIVERED/EXCEPTION` 五类、`counts` 6 项；异常上报允许 `ACCEPTED/PICKED/DELIVERED`；动作登记（`bind.getCurrent`、`admin.bootstrap` 内部动作）；订阅消息模板放 `config`；邀请码错误映射（不存在/已作废→`NOT_FOUND`、已过期→`INVITE_EXPIRED`、已使用→`INVITE_USED`、格式错→`VALIDATION_FAILED`）；文本上限（`exception.text` ≤200、`lockerNo` ≤10）；隐私级别 L1/L2/L3；**收集微信头像/昵称（v0.9 变更，见 §11；原文"不收集头像"作废）**。
-- **v0.8 识别兜底字段（字段名以 `docs/V4_DATA_MODEL.md` 定稿）**：`orders.parcel` 增识别来源与置信度（`recognitionSource ∈ {RULE, DEEPSEEK, MANUAL}`、`confidence?`）；`orders.image` 增 `failureId?` 关联复核队列；同一截图的多张订单**共享同一 `fileId`**；若多单都识别失败，则**每单各一条失败记录**（`failureId` 按单独立，便于逐单补录/逐单回填）。**均为可选字段，不加任何金额语义**。
+- **v0.6 一致性补充（继续有效）**：资料编辑规则（宿舍身份仅无进行中订单时可改，改宿舍=旧绑定释放+新绑定+新 roomTag，订单快照不变）；截图云存储路径 `orders/{ticket}/image.jpg`；接单开关语义（`serviceConfig.acceptingOrders=false` ⇒ `order.create` 返回 `PARTNER_CLOSED`）；兼职公开预览（`partner.getPublic({partnerNo})`，未绑定可调、限流 5 次/日/顾客、**绑定前只回昵称（不回头像）**；测试账号返回 `NOT_FOUND`）；列表 DTO 分级（本人数据完整；admin 后台默认脱敏；完整值只在只读视角）；解绑原因必填；客户列表按 dormKey/roomTag 排序；工作台查询含 `SUBMITTED/ACCEPTED/PICKED/DELIVERED/EXCEPTION` 五类、`counts` 6 项；异常上报允许 `ACCEPTED/PICKED/DELIVERED`；动作登记（`bind.getCurrent`、`admin.bootstrap` 内部动作）；订阅消息模板放 `config`；邀请码错误映射（不存在/已作废→`NOT_FOUND`、已过期→`INVITE_EXPIRED`、已使用→`INVITE_USED`、格式错→`VALIDATION_FAILED`）；文本上限（`exception.text` ≤200、`lockerNo` ≤10）；隐私级别 L1/L2/L3；**收集微信头像/昵称（v0.9 变更，见 §11；原文"不收集头像"作废）**。
+- **v0.8 识别兜底字段（字段名以 `docs/V4_DATA_MODEL.md` 定稿）**：`orders.parcel` 增识别来源与置信度（`recognitionSource ∈ {RULE, DEEPSEEK, MANUAL}`、`confidence?`）；`orders.image` 增 `failureId?` 关联复核队列（**v1.0 起失败关联只落 `parcels[].failureId`，`images[]` 不存 `failureId`**，见 §4.3）；同一截图的多张订单**共享同一 `fileId`**；若多单都识别失败，则**每单各一条失败记录**（`failureId` 按单独立，便于逐单补录/逐单回填）。**均为可选字段，不加任何金额语义**。
 - **v0.9 账号切换与测试账号字段（字段名以 `docs/V4_DATA_MODEL.md` 定稿）**：`users.isTestAccount/createdByDeveloperNo/testLastUsedAt`；`orders.isTest/impersonatedBy?`；`order_events.impersonatedBy?`；`admin_view_sessions.viewMode/targetIsTest/targetAvatarFileId`；`config.avatarMaxBytes/testAccountMaxPerRole/testDataRetentionDays`。**测试数据清理**：`cleanup` 每日清理超过 `testDataRetentionDays`（默认 30 天）未使用的测试账号业务数据（保留账号与审计摘要）；`admin.purgeTestData` 立即清空（二次确认 + 审计）；`admin.deleteTestAccount` 删账号 + 数据 + 头像。
 - **v0.9 头像/昵称可见范围**：`customers/partners.displayName + avatarFileId` 只随"当前 ACTIVE 绑定关系"对对方返回（顾客看到绑定兼职的；兼职客户档案看到绑定顾客的）；**绑定前预览只回昵称、不回头像**，绑定成功后订单列表/详情、绑定确认页、客户档案展示头像+昵称；解绑/停用/注销后不再返回；通知/分享卡片/后台列表/日志**不含头像 fileId 与完整昵称**。
 
 ### 4.3 OCR 识别失败兜底与开发者复核（v0.8 新增，用户三次修订）
 
-**触发口径**：端侧 OCR（沿用 v3 阶梯）+ 规则解析后，**站点或取件码任一缺失/不可信**（`parcel.codeStatus=NEED_CODE`、`stationId=''`、或解析结果与 OCR 文本冲突）→ 客户端调 `ai.parseParcel`（**唯一外呼出口**，云函数侧调 DeepSeek）；客户端不直连任何第三方。
+**触发口径（v1.0 修订，D23/D24）**：端侧 OCR（沿用 v3 阶梯）+ 规则解析后，**任一包裹的站点或取件码缺失/不可信**（`codeStatus=NEED_CODE`、`stationId=''`、或解析结果与 OCR 文本冲突）→ 客户端调 `ai.parseParcel`（**唯一外呼出口**，云函数侧调 DeepSeek）；客户端不直连任何第三方。**触发不以「是否抽到文本」为前置**：只要存在可外发的去敏文本就调 AI 补识别；`NO_TEXT`（无任何文本）时不外呼（无输入），但**必须**入复核队列并给用户明确手填引导（修复旧实现「NO_TEXT 不入队、不提示」缺口）。**无截图手填单（D24）不进入识别链路**，`manualEntry=true`，不调 AI、不写失败队列。
 
 **入参（最小化，客户端先过长/去敏闸）**：`{ocrTextMasked, hintTrackingTail?, uploadTicketId, role}`；`ocrTextMasked ≤2000` 字；服务端再做一次去敏（手机号/身份证/连续长数字掩码、姓名行可保留但不得带详细门牌），**只保留与站点/取件码/运单相关的短文本**。
 
@@ -262,10 +262,10 @@
   needsReview: boolean, failureId?: string }
 ```
 - 字段白名单返回；`stationId` 必须 ∈ P1~P8 否则置 `''`；`pickupCode` 必须过码格式闸（去空格/连字符，4~12 位字母数字）否则置 `''`；`recognized=false` 或 `confidence=LOW` ⇒ `needsReview=true` 并写队列、返回 `failureId`。
-- **合并策略**：AI 结果只做**预填建议**，用户已手填字段优先、不得覆盖；客户端仍允许手填提交（`NEED_CODE` 机制不变）。
+- **合并策略（D29 修订）**：AI 结果只做**预填建议**，用户已手填字段优先、不得覆盖；**低置信且来自 AI（`confidence=LOW` 且 `source='DEEPSEEK'`）不写入任何字段**——返回建议条（站点/码 + 「采纳」按钮），用户点采纳后才写入并标 `recognitionSource=DEEPSEEK`；高/中置信自动预填空字段并标"智能识别建议，请核对"；**`source∈{RULE,NONE}`（含 AI 超时/关闭/配额等降级分支产出的规则字段）照旧自动预填**——它们是规则结果而非 AI 猜测，不能让用户白填；客户端仍允许手填提交（`NEED_CODE` 机制不变）。`recognition_failures` 入队口径不变（低置信照常入队）。
 
 **失败反馈（开发者账号内，含原图）**：
-- **记录粒度**：失败记录以**订单 × 截图**为粒度——同一截图拆多单时，**每张缺码/缺站点的订单各一条记录**（共享同一 `fileId`，`failureId` 按单独立，便于逐单补录/逐单回填）；用户识别失败后**未建单**也保留 `orderId=''` 的记录，建单后回填对应 `orderId/failureId`。
+- **记录粒度（v1.0：包裹 × 截图）**：同一截图拆多件时，**每件缺码/缺站点的包裹各一条 `recognition_failures` 记录**（共享同一 `fileId`，`failureId` 按件独立，便于逐件补录/逐件回填）；用户识别失败后**未建单也保留 `orderId=''` 的记录**（凭 `uploadTicketId` 校验归属后入队），建单/补码成功后回填对应订单的 `orderId` 与 `parcels[itemIndex].failureId`。
 - 入队即：后台总览红点 + `pkg-admin/pages/recognition-review/index` 首屏 `PENDING`；P1 可加订阅消息提醒（模板 ID 入 `config`）。
 - 复核页：**原图**（鉴权临时 URL 5 分钟，每次查看审计 `FAILURE_IMAGE_VIEW`）、失败码、来源角色、上传人（编号/昵称脱敏，**不展示头像**）、`ocrTextMasked`、DeepSeek 尝试结果/错误码、关联订单（若有）、时间。
 - 开发者动作：①查看原图（审计）②**补录站点/取件码**→ 回填关联订单 `parcel.stationId/stationName/pickupCode`（**不改订单状态、不代确认、不创建订单、不改归属**；审计 `FAILURE_FIX`）③标记忽略（备注必填；审计 `FAILURE_IGNORE`）④通知上传者：**不单拆动作**，作为 `fixRecognitionFailure`/`ignoreRecognitionFailure` 的可选参数 `notifyUploader:true`（站内消息必做，订阅消息 P1）。
@@ -314,7 +314,7 @@
 
 | 动作 | 允许状态 | 谁能做 | 语义与副作用 |
 | :-- | :-- | :-- | :-- |
-| `order.correct`（改码/改站点/改柜号/改运单尾号） | `SUBMITTED`/`ACCEPTED`/`EXCEPTION` 全字段；`PICKED` 仅柜号/运单尾号 | 该订单兼职 | **不改订单归属**（不可换顾客）：顾客归属错只能取消重下。记 `ORDER_CORRECTED`；批量改站点用同一 `batchActionId` 循环调用 |
+| `order.correct`（改码/改站点/改柜号/改运单尾号） | `SUBMITTED`/`ACCEPTED`/`EXCEPTION` 全字段；`PICKED` 仅柜号/运单尾号 | 该订单兼职 | **v1.0 按包裹序号 `itemIndex` 纠正单件**（缺省 0；越界 `VALIDATION_FAILED`）；**不改订单归属**（不可换顾客）：顾客归属错只能取消重下。记 `ORDER_CORRECTED`；批量改站点用同一 `batchActionId` 循环调用 |
 | `order.unmarkPicked`（撤销已取件） | `PICKED` | 该订单兼职 | `PICKED → ACCEPTED`，清 `pickedAt`；记 `PICKED_REVERTED`；顾客进度回退并提示 |
 | `order.unmarkDelivered`（撤销已送达） | `DELIVERED` | 该订单兼职 | `DELIVERED → PICKED`，记 `DELIVERED_REVERTED`；顾客进度回退提示 |
 | `order.undo`（撤销条） | 由被撤销动作决定 | 该订单兼职 | 只在动作后 **5 秒**内、且订单无后续状态变化时允许；按 `batchActionId` 批量逐单校验，部分失败如实提示，成功部分回退 |
@@ -330,7 +330,7 @@
 
 - `appoint.type`：`'ASAP'`（尽快）｜`'SLOT'`（预约时段）。`SLOT` 时 `startAt/endAt` 必填；MVP 时段 UI 为「今天/明天 × 上午(08:00-12:00)/下午(12:00-18:00)/晚上(18:00-22:00)」，服务端按 `serverTime` 校验未来时间。
 - `exception.code`：`CODE_INVALID`（取件码/柜号无效或已被取走）｜`PARCEL_NOT_FOUND`（驿站找不到件）｜`CABINET_ERROR`（柜门/设备故障）｜`CUSTOMER_UNREACHABLE`（联系不上顾客）｜`ADDRESS_ISSUE`（宿舍地址问题）｜`OTHER`（必须填备注）。中文文案由服务端下发。
-- **截图与订单关系**：MVP **一个订单 = 一张取件码截图**；一图多码拆单时各订单共用同一 `fileId`（清理按引用计数）；多张截图分别下单（逐张排队）。
+- **截图与订单关系（v1.0 修订，D23/D24）**：**一个订单 = 1~10 件包裹**（`order.parcels[]`），可来自 0~5 张截图（`order.images[]`，一张截图一个 ticket、可一图多码拆成多件；也可多图合并为同一单）。**短间隔重复提交自动并入同一订单**：同一顾客 + 同一绑定兼职 + 已存在 `status=SUBMITTED` 且 `createdAt` 在 `config.orderMergeWindowMinutes`（默认 10 分钟，0=关闭，0~60）内且 `delivery` 相同的订单 → 新提交包裹**追加**到该订单（包裹/图片追加、`version+1`、写 `PARCELS_APPENDED` 事件、状态不变）；不满足任一条件则新建订单。合并仅限 `SUBMITTED`（兼职已接单后的新提交另建新单）；订单包裹上限 10、图片上限 5，超出另建新单；**兼职代客单不参与合并**。**无截图手填（D24）**：`images=[]` 且 `manualEntry=true` 允许提交，兼职端/订单详情/后台显示「无截图·手填」标识；截图仍为推荐路径（识别更快）。**多张截图超过上限时分多单**（按提交批次拆分，最多 5 张/单）。
 - **图片来源**：相册、拍照、微信聊天文件（系统选择器）。隐私指引覆盖"相册/摄像头/文件选择"三类，上线前按微信后台隐私接口清单逐项核对（人执行）。
 - **文本上限**：`orders.note` ≤200；`deliveryNote` ≤100；`bindings.partnerNote` ≤100；`order_messages.text` ≤200；超限 `VALIDATION_FAILED`。
 - **取消原因枚举**：顾客侧 `CHANGED_MIND`（不需要了）｜`WRONG_INFO`（信息填错）｜`DUPLICATE`（重复下单）｜`PARTNER_UNREACHABLE`（联系不上兼职）｜`OTHER`（必填备注）；兼职侧 `TOO_BUSY`（忙不过来）｜`OUT_OF_RANGE`（不在服务范围）｜`SERVICE_OFF`（服务未开）｜`OTHER`（必填备注）；系统侧 `TIMEOUT_UNACCEPTED`（超时未接单）。中文文案由服务端下发。**已删除 `PRICE_ISSUE`（价格问题）与 `PAYMENT_TIMEOUT`（零金钱口径）**。
@@ -345,7 +345,7 @@
 | `customer` | `saveProfile`（首次保存时生成 `customerNo`，幂等；含 `displayName` 昵称与 `avatarFileId`）、`getProfile` |
 | `partner` | `activate`（入参 `invitationCode` + 昵称，激活时可一键取微信昵称/头像）、`saveProfile`（昵称/头像可改）、`saveServiceConfig`、`getPublic`（凭完整 `partnerNo`，未绑定可、限流；**绑定前只回昵称，绑定后回头像/昵称**；测试账号返回 `NOT_FOUND`）、`listBindings`（客户档案，服务端搜索 + 游标分页）、`getCustomer`（`bindingId` 反查自己绑定顾客：档案 + 解绑资格；**不含订单分页**，该顾客历史订单统一走 `order.listPartner({view:'customer'})` 单一来源，批 8 TD-049 收敛）、`unbindCustomer`、`saveCustomerNote`、`stats`（**只含单量**：今日/本周/本月完成量、进行中/异常/取消、完成率、近 7 日单量、日报摘要源；**排除测试账号与 `isTest` 订单**；无任何收入类字段） |
 | `bind` | `create`（**仅顾客可调**；凭完整 `partnerNo`；测试账号只能绑测试账号）、`release`（reason 必填枚举 + note≤100）、`getCurrent`（当前 ACTIVE 绑定摘要 + partner 公开资料（头像/昵称）+ roomTag）、`claimGuestOrder`（P1，顾客认领） |
-| `order` | `create`、`createBatch`（一图多码拆单，**≤5 单、单事务原子创建**；每条 `requestKey` 后缀 `:{itemIndex}`）、`get`、`listCustomer`、`listPartner`（返回列表 + `counts` 6 项）、`accept`、`reject`、`markPicked`、`unmarkPicked`、`markDelivered`、`unmarkDelivered`、`reportException`、`resolveException`、`cancel`、`confirmDelivery`、`correct`、`undo`、`deleteRecord`、`imageUrl` |
+| `order` | `create`（**v1.0 单入口**：入参 `{parcels[1~10], images[0~5], tickets?[], serviceCode, appoint, note, ticket?/tickets?, recognition?, guest?, bindingId?, delivery?, mergeAppend?:boolean, clientRequestId}`；满足合并窗口时追加到同单，见 §5.2/D23）、`get`、`listCustomer`、`listPartner`（返回列表 + `counts` 6 项）、`accept`、`reject`、`markPicked`、`unmarkPicked`、`markDelivered`、`unmarkDelivered`、`reportException`、`resolveException`、`cancel`、`confirmDelivery`（一次确认整单全部包裹）、`correct`（按 `itemIndex` 逐包裹纠正）、`undo`、`deleteRecord`、`imageUrl`（`{orderNo,index}` 取 `images[index]` 临时 URL）。**`order.createBatch` 已于 v1.0 移除**（一图多码能力并入 `create` 的 `parcels[]`/`images[]`；调用未登记动作 → `FORBIDDEN`「不支持的操作」，与全局未登记动作口径一致） |
 | `message` | `send`、`list`（消息中心聚合）、`markRead` |
 | `upload` | `prepare`（`purpose:'TICKET'|'AVATAR'`；头像路径 `avatars/{role}/{random}.jpg`、≤200KB、jpg/png）、`cancel` |
 | `config` | `getPublic`（返回 `zoneLabels/serviceCatalog(无价格)/announcement/maintenance/screenshotRetentionDays/orderTimeoutMinutes/autoCompleteHours/privacyVersion` 等公开配置） |
@@ -371,7 +371,7 @@
 - **没有价格、没有运费、没有报价、没有金额快照**；订单只快照 `service{code,name}`。
 - 兼职可启用/停用服务类型、设置服务范围（哪些苑/楼栋接单）、接单开关、每日接单上限、营业时间段。
 - **服务配置字段（shape）**：`partner.serviceConfig{ services[{code,enabled}], zones[], buildingNos[], acceptingOrders, maxDailyOrders?, businessHours?, autoAccept? }`。**MVP 实现**：`services/zones/acceptingOrders`（范围先做到苑级）；`buildingNos/maxDailyOrders/businessHours/autoAccept` 为 P1 预留可空字段。
-- **接单开关**：`serviceConfig.acceptingOrders=false` ⇒ `order.create/createBatch` 返回 `PARTNER_CLOSED`；顾客端下单入口置灰；恢复后可下单。
+- **接单开关**：`serviceConfig.acceptingOrders=false` ⇒ `order.create` 返回 `PARTNER_CLOSED`；顾客端下单入口置灰；恢复后可下单。
 - 顾客端只展示兼职已启用的服务类型名称；**不展示任何价格/费用信息**。
 
 ---
@@ -396,8 +396,9 @@ pages/profile/index           我的（tab 5：**顾客/兼职共用**，页内�
 分包：
 ```
 pkg-customer/pages/bind/index          绑定兼职（输入完整兼职编号 / 卡片落地确认；展示兼职昵称，**头像绑定成功后才可见**）
-pkg-customer/pages/order-create/index  下单（截图→识别→确认→选服务类型→提交）
-pkg-customer/pages/order-detail/index  订单详情/进度/留言/取消/确认送达
+pkg-customer/pages/order-create/index  下单（截图 0~5 张→识别→多包裹核对→服务类型→提交；支持批量/合并窗口/无截图手填，D23/D24）
+pkg-customer/pages/order-detail/index  订单详情/进度（多包裹列表）/留言/取消/确认送达/配送地址
+pkg-customer/pages/pickup-list/index   顾客取件清单（独立入口：本人进行中订单的站点+取件码，可复制；D26）
 pkg-customer/pages/messages/index      消息中心（订单通知）
 pkg-customer/pages/help/index          帮助/隐私/关于（含"本程序不涉及费用收付"口径说明）
 pkg-partner/pages/activate/index       邀请码激活 + 资料初始化
@@ -444,6 +445,8 @@ pkg-admin/pages/recognition-review/index 识别失败复核（原图+OCR 文本+
 ## 9. 通知口径
 
 - **必做**：顾客订单详情页 10s 轮询（可见时）；兼职工作台 `onShow` 刷新 + 30s 轮询 + 下拉刷新 + 新订单红点/角标；消息中心列表；订单留言。
+- **未读红点口径（D29）**：`message.list` 的 `unread` = 未读留言数 + 未读状态事件数（本人订单的 `order_events`，`at > users.messageReadAt`，状态类事件；不含公告与测试数据）；进入消息中心或对应订单详情后 `message.markRead` 前进水位（只进不退）；底部「订单」角标为**进行中数量**（数量角标，不清零，与红点语义区分）。
+- **AI 低置信呈现（D29）**：低置信不自动写入字段，只给可采纳建议条；文案统一「智能识别建议，请核对」/「没把握，点『采纳建议』或手动填写」。
 - **P1**：微信订阅消息（模板：新订单提醒（兼职）、订单状态提醒（顾客）、异常提醒（双方））。授权按钮在关键动作后引导；用户拒绝不阻断主流程；`config` 存模板 ID，代码不硬编码。
 - 通知文案不带敏感信息；不带完整手机号、不带链接参数里的 openid；**不涉及任何金额/费用文案**。
 
@@ -488,10 +491,11 @@ pkg-admin/pages/recognition-review/index 识别失败复核（原图+OCR 文本+
 | 顾客编号 / 兼职编号 | 系统生成 | 身份识别、绑定、客服沟通 | 账号存续期（注销作废） |
 | 微信昵称（必填，可改/手填） | 必填 | 顾客/兼职展示（订单双方） | 账号存续期（注销删除） |
 | 微信头像（`chooseAvatar`，可拒绝→默认头像） | 自愿 | 绑定双方展示（仅 ACTIVE 绑定关系内） | 账号存续期；换头像/注销即删旧文件 |
-| 苑/楼栋/宿舍号 | 必填（才能下单） | 履约送达 | 账号存续期 |
+| 苑/楼栋/宿舍号 | 必填（才能下单） | 履约送达（下单人宿舍；D25 可另填本单配送地址） | 账号存续期 |
+| 本单配送地址/收件人称呼（D25） | 可选（默认=本人宿舍） | 互送场景送达第三方地址；仅本单有效，不写回资料 | 随订单（完成/取消后 180 天匿名化） |
 | 手机尾号 4 位 | 可选 | 同寝室区分辅助 | 账号存续期 |
-| 订单信息（站点/取件码/柜号/服务类型/预约/备注） | 必 | 履约与进度 | 完成/取消后 180 天，随后删除或匿名化 |
-| 取件码截图 | 顾客上传 | 识别与兼职核对 | 完成/取消后 7 天删除 |
+| 订单信息（站点/取件码/柜号/服务类型/预约/备注；多包裹） | 必 | 履约与进度 | 完成/取消后 180 天，随后删除或匿名化 |
+| 取件码截图（0~5 张/单） | 自愿（D24 改判：可无截图手填） | 识别与兼职核对 | 完成/取消后 7 天删除 |
 | 识别失败兜底外发（v0.8） | 自动（仅识别失败时） | 把**去敏 OCR 文本**发给 DeepSeek API 做结构化识别辅助 | 不落第三方存储、不用于训练；我方只保留脱敏副本（随失败记录） |
 | 识别失败原图与复核记录（v0.8） | 自动 | 开发者排查识别问题（含原图临时查看，审计） | 默认 30 天（`recognitionFailureRetentionDays`，7~30 可配），到期删除 |
 | 订单留言文本 | 可选 | 沟通 | 随订单 |
@@ -561,9 +565,9 @@ v3 是"数据只存本机、不上传、无账号"；v4 必须改为"**订单与
 
 ---
 
-## 13. 用户裁决事项（D1~D22；2026-10-22 全部闭环）
+## 13. 用户裁决事项（D1~D29；2026-10-22 全部闭环，v1.0 增补 D23~D29）
 
-> **裁决状态（2026-10-22 用户回复）**：全部闭环，原文留痕见 `docs/V4_DECISIONS.md` §0.1。D1/D3/D4/D7/D9/D10/D11/D12/D14/D15/D16/D17/D18/D19 = 按推荐确认；D2 = 沿用 v3 appid；D8 = 东/西/南/北/翠苑；D13 = 个人主体+工具类目；D22 = A；D5/D6/D20/D21 早前已定。
+> **裁决状态（2026-10-22 用户回复）**：D1~D22 全部闭环，原文留痕见 `docs/V4_DECISIONS.md` §0.1。D1/D3/D4/D7/D9/D10/D11/D12/D14/D15/D16/D17/D18/D19 = 按推荐确认；D2 = 沿用 v3 appid；D8 = 东/西/南/北/翠苑；D13 = 个人主体+工具类目；D22 = A（**同日改判为 B，见 D24**）；D5/D6/D20/D21 早前已定。**v1.0 增补（2026-10-22 晚用户指令 "先决定 C 再 B 最后 A"）**：D23~D26 为 C 批五项功能的裁决落地；**D28/D29 为 B 批按推荐采纳**（换绑一体化 / 状态事件计入未读红点 + AI 低置信不写入）；A 批 P1 十项按推荐采纳、排在 C→B 之后实现（清单见 `docs/V4_DECISIONS.md`「批 10 方案采纳记录」）。
 
 | # | 事项 | 推荐 | 代价/被否 |
 | :-- | :-- | :-- | :-- |
@@ -588,7 +592,14 @@ v3 是"数据只存本机、不上传、无账号"；v4 必须改为"**订单与
 | D19 | **头像/昵称采集方式**（v0.9）：`chooseAvatar` + `nickname` 输入（昵称必填、可改/手填；头像可拒绝→默认头像）；仅绑定双方可见；后台不展示头像、昵称脱敏；卡片/通知不含；注销删文件 | ✅ 推荐（用户已明确要求采集） | 若强制获取且不可改：违反微信"用户主动选择"原则、体验差；若只采昵称：不满足用户第 4 条 |
 | D20 | **绑定方向**：只能顾客发起绑定，兼职不能绑定顾客（v0.9 按用户指示定） | ✅ 已定（用户四次修订） | 无；兼职端只保留解绑 |
 | D21 | **roomTag 恒大写**（`A…Z/AA…`，展示 `D4-522A`；v0.9 按用户指示定） | ✅ 已定（用户四次修订） | 无 |
-| D22 | **截图上传失败后是否允许「无截图手填提交」**：**用户 2026-10-22 裁决 A（保持必须先有截图）**；上传失败只能重试/换图，OCR/阅读失败仍可手填 `NEED_CODE` | ✅ 已定 A（现状不变） | 选 B 需放开页面校验+补断言；本次只回写口径（UX §4.5 限定句）并关闭 TD-039 |
+| D22 | **截图上传失败后是否允许「无截图手填提交」**：**用户 2026-10-22 裁决 A（保持必须先有截图）**；上传失败只能重试/换图，OCR/阅读失败仍可手填 `NEED_CODE`。**同日改判：用户指令「开放手动填写功能」→ 改为 B（允许无截图手填提交），落地见 D24**；旧口径 A 作废，保留改判留痕 | ✅ 已定 A → **改判 B（2026-10-22 晚）** | 选 B 的代价见 D24；TD-039 关闭依据同步改为 D24；页面/服务端校验与断言按 D24 实现 |
+| D23 | **批量下单与合并窗口（v1.0 订单模型变更，用户 2026-10-22 指令）**：一次多选 0~5 张截图 → 识别后**合成一张订单（1~10 件包裹）**；同一顾客+同一绑定兼职在 `orderMergeWindowMinutes`（默认 10 分钟，0=关闭）内、且已有 `SUBMITTED` 订单且配送地址相同 → 新提交包裹**自动追加到同一订单**（短间隔归一单）；不满足则新建订单。订单级动作作用于全部包裹；单量统计按订单计（合并单=1 单）；`createBatch` **已移除**（无生产数据 D11 空库起、客户端零调用、测试零覆盖；一图多码能力并入 `create` 的 `parcels[]`/`images[]`；调用未登记动作 → `FORBIDDEN`「不支持的操作」） | ✅ 已定（用户明确要求） | 代价：订单主表从单包裹改多包裹（`parcels[]`/`images[]`），状态动作/DTO/兼职工作台/后台/清理/复核/全部判据联动；无生产数据（D11 空库起）故可破坏式升级；合并仅限 `SUBMITTED`，已接单后的新提交另建新单；不同地址不合并；上限 10 件/5 图 |
+| D24 | **无截图手填提交（D22 改判 B，用户 2026-10-22 指令「开放手动填写功能」）**：截图非必填，`images=[]` 且 `manualEntry=true` 可提交；兼职端/订单详情/后台显示「无截图·手填」；仍鼓励上传截图（识别更快）；无截图单不进入识别链路、不调 AI、不写复核队列；每件包裹仍必须站点+取件码或运单尾号（`NEED_CODE` 口径不变） | ✅ 已定 B | 代价：D22/隐私文本/QA/UX 与 `order.create` 校验/兼职核对体验联动；D9「截图 7 天删除」仅适用于有截图单；伪造/漏填风险由「站点+码/尾号」校验兜底 |
+| D25 | **每单配送地址（互送场景，用户 2026-10-22 指令）**：`orders.delivery{zone,buildingNo,room,dormKey,buildingText,recipientName?,phoneTail?}`，默认=下单人当前宿舍；下单时可改为他人苑/楼栋/宿舍并填收件人称呼（≤20 字）；**仅本单有效**，不写回 `customers`、不触发重绑/roomTag；兼职按本单 `delivery` 送达；合并窗口要求 `delivery` 相同才合并 | ✅ 已定 | 代价：新增 L3 第三方地址/称呼（仅本单顾客本人、该单兼职、admin 脱敏可见；不进通知/分享卡片）；`orders.dorm` 保留为下单人宿舍快照；地址校验复用宿舍规则 |
+| D26 | **顾客取件清单（独立入口，用户 2026-10-22 指令）**：新增页面 `pkg-customer/pages/pickup-list/index`；只显示本人进行中订单的「快递站点 + 取件码」（可复制、可按订单分组），可本地勾选"我已取到"（**仅本地标记，不回写服务端、不影响订单状态**）；入口=顾客首页卡片（独立入口，不新增 tab）；数据来自 `order.listCustomer` 的 `parcels[]`；无新采集/新集合/新通知 | ✅ 已定 | 代价：新增分包页面（app.json/页面地图/QA/UX 联动）；勾选状态只在本机（换设备/清缓存丢失，符合"清单"语义）；不显示他人包裹 |
+| D27 | **「看兼职到哪一栋」实时位置**（用户 2026-10-22 晚指令）：**不做 GPS 连续定位、不做行踪轨迹**；推荐 **B0 楼栋级自报**——兼职在订单「已取件」窗口内点一次「我到 X 苑 Y 栋了」，顾客端订单详情显示**楼栋级位置卡**（不移动点/不倒计时/不留历史、终态即清、可关闭；零设备定位接口、零新集合）；备选：A=仅「已取件 N 分钟/历史通常用时」状态卡（不做位置）、B1=真 GPS 单点上报（类目白名单+行踪轨迹敏感个人信息+室内漂移，三重风险，**不建议**）、不做=维持"永不收集定位" | 🔄 **待用户裁决**（裁决前维持「永不收集定位」，不新增任何定位字段/页面/文案） | 选 B0 代价：新增一个可选展示字段与一次性自报动作（兼职端 1 次点击）、顾客端位置卡文案与「可能不更新」提示、隐私文本加一句「楼栋为兼职主动提供、非设备定位」；选 A 代价最小但只能给"大概还要多久"；B1 不建议 |
+| D28 | **换绑一体化（B-1，用户 2026-10-22 晚「按推荐采纳」）**：顾客换绑兼职时**一次确认**内由客户端顺序执行 `bind.release` → `bind.create`（服务端接口不变、不加新 action）；**有进行中订单仍禁止换绑**；任一步失败必须给**单步恢复**且不留双重绑定/半完成中间态（重试只补未完成的那一步） | ✅ 已定（推荐 A） | 代价：跨两个 action 的客户端编排与失败恢复文案/断言；服务端保持无状态（不做跨调用事务）；解绑成功的顾客在重绑失败时短暂无绑定（UX 明确提示"重试绑定"） |
+| D29 | **状态事件计入未读红点 + AI 低置信不写入（B-2/B-5，用户 2026-10-22 晚「按推荐采纳」）**：`message.list` 的 `unread` = **未读留言 + 未读状态事件**，在**合并视图内计数**（零新增查询/索引，上界=最近单×每单事件/留言上限；公告/NOTICE/测试数据/已删单不计）；`markRead` 为**统一前进水位**（事务内 CAS 只进不退；进消息中心或任一订单详情即前进——跨单事件一并清零，属水位语义，文档写明）；AI 识别 `confidence=LOW` 的建议**不写入字段**（**仅 AI 来源 `source='DEEPSEEK'` 适用；`source∈{RULE,NONE}` 的规则/降级结果照旧自动预填**），改为「建议条 + 采纳」（采纳后按建议来源归一 `recognitionSource`，`confidence` 保留 LOW 快照）；HIGH/MEDIUM 及降级分支的规则字段保持自动预填 | ✅ 已定（推荐 A） | 代价：红点数字与列表可见未读点可能不同（视图内计数少计同单 >2 事件，文案不承诺精确数字）；进任一单详情会把他单事件红点一并清零；低置信件多一次「采纳」点击 |
 
 **未决项一律在 `docs/V4_DECISIONS.md` 展开（背景/选项/推荐理由/被否方案/代价）。**
 

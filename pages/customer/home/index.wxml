@@ -47,7 +47,18 @@
       <view class="section-title">进行中的订单</view>
       <view class="small">{{waitedText}}</view>
     </view>
-    <order-row order="{{order}}" data-order-no="{{order.orderNo}}" bind:tap="onOrderTap" />
+    <order-row order="{{orderRow}}" data-order-no="{{order.orderNo}}" bind:tap="onOrderTap" />
+  </view>
+
+  <!-- D26：取件清单独立入口（本人进行中订单的站点+取件码，仅本机勾选） -->
+  <view class="card pickup-entry" bindtap="onPickupListTap">
+    <view class="row between">
+      <view class="col">
+        <view class="section-title">取件清单</view>
+        <view class="muted small">看站点和取件码，可复制；勾选只记在这台手机</view>
+      </view>
+      <view class="small link-text">查看</view>
+    </view>
   </view>
 
   <view class="card" wx:if="{{!loading && !order && vm.binding}}">

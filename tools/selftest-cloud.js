@@ -7,8 +7,7 @@
  * 纪律：fake DB 注入、不连真库、不 mock 全局 wx；有判别力（合法基线 + 只有该闸能挡的反例）。
  * 取数：node tools/selftest-cloud.js | Select-Object -Last 2
  *
- * 说明：handlers 未齐时「§7.3 端到端」「§7.3 cleanup」两节按同数量断言标记待重跑，
- *       断言总数闸仍精确；11 域齐后重跑即应全绿（届时若计数不符按提示同步 pending 数量）。
+ * 说明：11 域 handlers 已齐，端到端/cleanup 两节均为全量断言；若计数不符按提示同步 pending 数量。
  */
 const path = require('path');
 const { createHarness, installCrashGuard } = require('./selftest');

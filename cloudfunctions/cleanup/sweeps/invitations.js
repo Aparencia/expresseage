@@ -23,11 +23,18 @@ async function runInvitationCodes(ctx) {
     }
     scanned += 1;
     try {
-      await ctx.dao.update(C.INVITATION_CODES, code._id, {
+      // 条件更新（DATA_MODEL §10.2「status='UNUSED' && expiresAt<now → 条件更新 EXPIRED」）：
+      // 扫描与写入之间若被 partner.activate 事务改成 USED，则命中 0 行、不改写（防 USED→EXPIRED 非法组合）。
+      const result = await ctx.dao.updateWhere(C.INVITATION_CODES, {
+        _id: code._id,
+        status: util.enums.INVITATION_STATUS.UNUSED
+      }, {
         status: util.enums.INVITATION_STATUS.EXPIRED,
         updatedAt: util.nowDateOf(ctx)
       });
-      acted += 1;
+      if (result.updated > 0) {
+        acted += 1;
+      }
     } catch (error) {
       failed += 1;
     }

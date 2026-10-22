@@ -5,13 +5,15 @@
 > 更新时机：每批开工/收口、用户裁决变化、风险新增或关闭、HEAD 变化需回读。
 > 本文只记**状态、待办与下一步**，不重复设计口径（口径看 CONTRACT，工程规则看 ENGINEERING，接口看 ARCHITECTURE）。
 
-**快照时间：2026-10-22（批 9 工程侧收口 + 用户裁决回写 + D1 单环境修订 + 云环境就绪回填）**
+**快照时间：2026-10-23（批 10 C 批 v1.0 订单模型收口 + 性能 P0 + 审查修复；B 批 D28/D29 规格已备待实现；D27 待用户裁决）**
 > 临时总体说明（全局汇总，非状态源）：[`docs/V4_INTERIM_OVERVIEW.md`](docs/V4_INTERIM_OVERVIEW.md)（2026-10-22 生成/更新 v0.4，依据 HEAD `91d158b` + 云环境回填；状态仍以本文件为准、口径以 CONTRACT 为准）。
 
 ## 1. 一句话状态
 
 **批 0 设计定稿完成；批 1 工程骨架与云端基础设施完成并收口（`check.ps1` 4 步全 PASS、退出码 0）；批 2 账号入口/切换会话/测试账号/头像采集的离线部分完成并收口；批 3 绑定与服务配置的离线部分完成并收口；批 4 顾客下单链路的离线部分完成并收口；批 5 顾客订单闭环的离线部分完成并收口（**14 套 2,078 断言全 PASS**、`check.ps1` 退出码 0、check.js 31/31、check-docs 10/10、零金额 0 命中；新增 `selftest-order-lifecycle`（98）与 `selftest-order-customer`（190）；修 12 项真实 UX/契约缺陷：服务端 actions 矩阵缺 confirm/deleteRecord/reorder、终态可留言、listCustomer 无 counts、image 无 cleaned、补码事件不可区分、列表行四字段全空、详情轮询死 setInterval 无退避/无最近更新、页面本地猜按钮、写动作丢 expectedVersion、无再次下单、消息红点不归零、截图/异常/取消分支与回退提示缺失）；批 6 兼职工作台的离线部分完成并收口（**17 套 2,555 断言全 PASS**、`check.ps1` 退出码 0；新增 `selftest-order-partner`（127）、`selftest-order-workbench`（197）、`selftest-order-detail-partner`（153）；修 9 项真实缺陷：workbench 行 DTO 无 actions、batchActionId 静默丢弃、todayCompleted 100 截断探针、keyword 越窗漏单、CLOSED/SUSPENDED 可读工作台、DELIVERED 下发非法 correct、unmark 事件 undoneAction 写错、undo 残留 deliveryNote、DTO 空时间戳变假时间，另修 reject.OTHER 无备注静默通过）；批 7 兼职客户与运营的离线部分完成并收口（**21 套 3,132 断言全 PASS**、`check.ps1` 退出码 0；新增 `selftest-partner-customers`（129）、`selftest-partner-orders`（89）、`selftest-partner-pages`（156）、`selftest-partner-stats`（203）；修 10+ 项真实缺陷：解绑进行中单按兼职全量误拦、绑定列表按字符串序排列（D10 排 D4 前）、listBindings keyword/cursor/limit 全缺、activeOrderCount 混入 isTest、顾客详情用 keyword 冒充按顾客过滤、代客单只能 guest（绑定顾客单顾客不可见）、stats 客户端 4×100 累加近似（超 400 单偏小）、完成率分母 0 显示 0%、空数据画假柱、解绑/备注归属错误码 NOT_FOUND→FORBIDDEN，另修二选一入参静默缺省与重放侧别错判）。批 2/批 3/批 4/批 5/批 6/批 7/批 8 真机项与云环境验收待用户；**批 8 开发者后台 + 切换会话 + 通知 + 隐私文本的离线部分完成并收口**（`check.ps1` 4 步全 PASS、退出码 0；**27 套 4,062 断言全 PASS**；新增 6 套判据 `selftest-{admin,messages,cleanup,admin-pages,message-pages,privacy-text}`；修 30+ 项真实缺陷：TD-046 异常介入取消不可达（隐私闸/身份域两层根因）、维护闸误拦读、`admin.updateConfig` 白名单范围偏差、cleanup 全域运行必崩 + `image.cleanedAt` 未写 + 识别失败原图残留、后台 11 页无权限五态缺失/错误文案说假话/无效启用开关、消息中心公告双份难关/红点欠计/维护遮罩、端内隐私全文滞后；隐私文本升**定稿候选 v1.0**）。**批 9 联调、合规与发布的工程侧（离线部分）完成并收口**（`check.ps1` 4 步全 PASS、退出码 0；**28 套 4,151 断言全 PASS**；新增 `selftest-deletion` 89 断言端到端覆盖注销/数据删除链路，先判据后修 **14 条真实缺陷**：顾客注销阶段一漏清历史 `bindings.partnerNote`、识别失败原图引用未回收，兼职 CLOSED 未匿名化 `displayName/avatarFileId`/未删头像文件/未清 `invitation_codes.usedBy`/识别失败归属未清，治理链非事务与 `users.purgeAt` 空置等登记 TD-053~057；新建 **审核材料与提审体验路径手册** `docs/V4_REVIEW_MATERIALS.md`、**v3→v4 功能对照验收表** `docs/V4_V3_PARITY.md`；RUNBOOK §10 升级为**灰度发布与回滚演练**（分批/门禁回执/观测判停/R1~R7 演练/记录表），QA 批 9 专项 **H12~H17** 与 E15/P6/P18 注销链路强化，附录 E 计数 255；CONTRACT §11.4/DATA_MODEL §10 注销时点与 CLOSED 口径澄清）。**
 **用户侧开工门已全部闭环（2026-10-22 用户回复，原文留痕见 `docs/V4_DECISIONS.md` §0.1）**：D1 A；**D2 沿用 v3 appid `wxcb7e5b41b89bc806`**（非推荐 A，代价见 DECISIONS D2 留痕）；D3 A；**D13 个人主体 + 工具类目**（提审风险见 D13 留痕）；**D8 东苑/西苑/南苑/北苑/翠苑**（默认值已进 `shared/zones.js`）；**D22 A**（保持必须先有截图）；其余 D4/D7/D9/D10/D11/D12/D14/D15/D16/D17/D18/D19 按推荐确认；D5/D6/D20/D21 早前已定。**D1 同日修订（2026-10-22）**：用户告知「云开发只能开通一个环境」⇒ **单环境方案**——develop/trial/release 三档同 envId（`config/env.js` 单 `ENV_ID`），开发/体验/正式共用一个库；隔离靠测试账号/`isTest` 标记 + 上线前「单环境清零」（RUNBOOK §10.2.1），风险见 §7 #24。**云环境已创建、envId 已回填 `config/env.js`（2026-10-22；值只在代码里，文档不落）；用户已提供 `DEEPSEEK_API_KEY`（只入 `api` 云函数环境变量，仓库零落值）**；控制台执行进行中（2026-10-22 用户已部署 `api` 并跑通真实调用；14 集合/索引/安全规则、`cleanup` 部署、`ADMIN_OPENIDS`、触发器、存储权限仍按 RUNBOOK §3 补齐）；**首跑暴露并已修复 P0 写库缺陷（§7 #25，待用户重新部署 `api` 后复验）**；**2026-10-22 真机反馈已修：进入测试顾客/兼职会话未按目标身份水合（页面显示「资料未完善/待激活」→ 误判无法激活、无法绑定）**——`utils/session.js` 统一进入/退出 bootstrap 水合 + store 保留本地票据（纯客户端，待用户重新编译复验）；真机项未点检。**批 9 用户侧未开始**：双端真机全场景/越权/隐私/性能/弱网、后台与切换会话回归面检、识别兜底与复核面检、隐私后台逐项声明与 13 项填写、`privacyVersion` 定稿写入、审核材料准备与提审、灰度观测与回滚演练（RUNBOOK §10.6 记录表）、v3 对照验收表用户勾选。
+
+**批 10 C 批（v1.0 订单模型 D23~D26）工程侧完成并收口（2026-10-23）**：`check.ps1` 4 步全 PASS（退出码 0；`check.js` **32/32** 含新增 #32 单函数 ≤50 行、`check-docs` **10/10**、零金额 **0 命中**、`selftest` **31 套 4,566 断言全 PASS**）；`gate.ps1 -Anchor 3cf805f` **红 0/黄 0**（199 件变更、+6322/−3306）。交付：`order.create` 单入口一单多包裹（1~10 件/0~5 图）、合并窗口（`orderMergeWindowMinutes` 10/0=关闭/0~60、`PARCELS_APPENDED` 追加不取新单号）、`order.correct(itemIndex)`/`imageUrl(index)`、`createBatch` 移除（→`FORBIDDEN`）、无截图手填（D22 改判 B/D24）、每单配送地址（D25，admin DTO 仅苑+楼栋）、顾客取件清单页（D26）；性能 P0-1~P0-11（启动并行化/config 预热/router 域懒加载/setData 收口/预下载/超时/定时器/OCR 降采样与截图压缩）；审查修复 M-01/M-02/M-10~M-20/M-47 + 工具链 M-43/44/45/46/57。**B 批（D28 换绑一体化 / D29 未读红点+AI 低置信建议条）规格与 QA 已备、代码未开工（按「先 C 再 B 最后 A」排 C 之后）**；**D27（楼栋级位置）待用户裁决**（研究 v2 已交付，推荐 B0 楼栋自报；裁决前维持"永不收集定位"）。C 批真机项与 B 批代码为下一步。
 
 ## 2. 批次台账
 
@@ -27,6 +29,8 @@
 | 批 7 | 兼职客户与运营 | **离线部分完成并收口（2026-10-22）** | 工程侧（代码/判据/文档）已收口（提交 `d34e35b`，48 文件 +7151/-1032）：服务端 `partner.listBindings` 服务端搜索（昵称/楼栋/宿舍/roomTag/尾号四位/编号）+ 自然序排序（`shared/zones.compareDormKey`，修 D10 排 D4 前）+ 游标分页 + 按顾客 `activeOrderCount`（含 isTest 隔离）；新增 `partner.getCustomer`（bindingId 反查档案/订单/解绑资格，不透传 openid）与 `partner.stats`（今日/本周/本月、完成/进行中/异常/取消、完成率 null、近 7 日 series、recent 日报源，一律排除测试数据）；`order.create/createBatch` 兼职路径 `bindingId`（绑定顾客，顾客可见进度）与 `guest`（新顾客，无顾客访问路径）显式互斥、均不写 bindings；`order.listPartner({view:'customer'})` 顾客维度历史单单一来源；`partner.unbindCustomer` 进行中单改按该顾客判定（修全量误拦）+ 归属 FORBIDDEN；`partner.saveCustomerNote` 归属/ACTIVE/≤100 加固；端侧客户列表（服务端搜索/分页/头像昵称/进行中数/分享卡/复制编号/新绑定刷新）、顾客详情（getCustomer 档案+解绑资格、listPartner view=customer 历史单按自然日分组与「查看更早」、备注仅自己可见、解绑原因必填+二次确认、本人兼职编号）、代客下单（两路径互斥、校验矩阵、幂等、逐条结果块、guest 提示、无任何绑定入口）、统计页（partner.stats 单源、三 tab、四格、7 日自绘柱不画假柱、日报复制、「今日完成」跳工作台参数）；新增 4 套判据（`partner-customers` 129 / `partner-orders` 89 / `partner-pages` 156 / `partner-stats` 203）；**真机项 QA F16/F18/F20/F22 与 stats 跨 tab 跳转、头像昵称互见、guest 单无顾客入口待用户** |
 | 批 8 | 开发者后台 + 切换会话 + 通知 + 隐私文本 | **离线部分完成并收口（2026-10-22）** | 工程侧（代码/判据/文档）已收口：`pkg-admin` 11 页达标（五态/脱敏/中文「测试」行标签/危险二次确认/无效启用开关移除）、`admin.*` 23 动作加固（白名单 fail-closed/脱敏 DTO/邀请码生命周期/审计/复核四动作/`updateConfig` 白名单与范围/`stats.developerNo`）、TD-046 异常介入取消可达（隐私闸对 `developerNo` 豁免 + ADMIN 动作域 + 仅 EXCEPTION + 审计）、维护闸改「读放行·写拒绝」、TD-049 收敛（`getCustomer` 去 orders，`listPartner view=customer` 单一来源）、cleanup 13 sweep 审计修复（18 项真实缺陷含全域运行必崩/`image.cleanedAt`/识别失败原图/注销两阶段）、消息中心聚合与水位/红点/公告、维护模式端侧（纯件+遮罩+挂钩）、端内隐私全文单源（`pkg-customer/parts/privacy-text.js` 9 章 64 段）+ launch 弹窗、隐私文本定稿候选 v1.0 + 发布前填写清单 + QA 249 条；新增 6 套判据 **939 断言**；**真机项（QA §G/§V/§T/§R/§P 批 8 分区、后台脱敏截图、切换会话黄蓝条、复核原图、维护模式、隐私版本重同意）与云环境验收待用户** |
 | 批 9 | 联调、合规与发布 | **工程侧（离线部分）完成并收口（2026-10-22）** | 交付：`tools/selftest-deletion.js`（A~F 89 断言端到端注销链路，先判据后修 14 条真实缺陷）、`docs/V4_REVIEW_MATERIALS.md`（审核材料与提审体验路径手册 206 行）、`docs/V4_V3_PARITY.md`（v3→v4 功能对照验收表 256 行）、RUNBOOK §10 灰度发布与回滚演练（§10.1~§10.6）、QA §H12~H17 与 E15/P6/P18 强化（附录 E 255 条）；`check.ps1` 4 步全 PASS、**28 套 4,151 断言**全 PASS；TD-053~057 登记、lessons +2 卡；**用户侧（真机/云环境/提审/灰度演练）待用户执行**（见 §4/§5/§9） |
+
+| 批 10 | C 批 v1.0 订单模型 + 性能 P0 + 审查修复 | **C 批工程侧完成并收口（2026-10-23）** | 一单多包裹/合并窗口/无截图手填/每单配送地址/取件清单（D23~D26）、`createBatch` 移除、admin/cleanup/三端适配、性能 P0-1~P0-11、M-01/M-02/M-10~M-20/M-47 与 M-43/44/45/46/57 修复；`check.ps1` 4 步 0（selftest **31 套 4,566**、check **32/32**、docs **10/10**、零金额 0）；`gate.ps1` 红 0/黄 0（199 件、+6322/−3306）；**B 批 D28/D29 规格已备未实现、D27 待用户裁决**；真机项待用户 |
 
 ## 3. 批 1 并行交付快照（全部收口）
 
@@ -123,6 +127,19 @@
 | 批9-C v3 功能对照验收表（v3-engineering task-85） | 新建 `docs/V4_V3_PARITY.md`（256 行）：v3 真实盘点（4 主包页 + chatpick 独立分包、零云函数）→ 页面级逐页对照（4 改进 + chatpick 取舍不迁）+ v4 30 页反向覆盖（7 改进/23 新增，无来源不明页）+ 19 类业务能力（8 改进/9 新增/2 取舍）+ v3 12 张工程教训与 6 条业务教训逐条承接 + 剩余项与用户勾选栏 + 盘点取数命令（数字不写死） | 已交付 |
 | 批9-D 灰度回滚演练与 QA 批 9 点检（v3-lifecycle-flow task-86） | RUNBOOK §10 从「回滚预案」升级为「灰度发布与回滚演练」（10.1 分批策略 G0→G1→G2、10.2 发布前门禁回执 8 项、10.3 观测指标与判停阈值 7 类、10.4 原六条保留、10.5 演练脚本 R1~R7、10.6 演练记录表）；QA 新增 §H12~H17（灰度观测/回滚演练/审核材料/注销链路/测试账号清理/隐私回执），重写 E15/P6/P18 注销与头像文件删除口径，附录 B 批 9 行、附录 E 255 条（取数命令核对），新增批 9 判定补充与两条取证纪律 | 已交付 |
 | 批9-E Lead 集成与回写 | `tools/selftest.js` 注册第 28 套 `selftest-deletion`；新建两文档登记进 `tools/lib/project.js` DESIGN_DOCS + CONTRACT §12/ENGINEERING §9.1/README 文档地图；CONTRACT §11.4 注销时点与兼职 CLOSED 执行细化，DATA_MODEL §10.3/§10.4/§7.6/§12#4 口径澄清（两阶段时点、partners 匿名化与 openid 保留、binding 幂等分支可达性、CLOSED 编号 NOT_FOUND）；ENGINEERING §8.2 批 9 判据补充 + §11 批 9 行 + §10.4 审核材料引用；TECH_DEBT TD-053~057；lessons +2 卡；README/CHANGELOG/STATE 同步 | 已交付 |
+
+## 3j. 批 10 C 批交付快照（工程侧收口）
+
+| 工作流 | 交付摘要 | 状态 |
+| :-- | :-- | :-- |
+| C 批后端（order 域） | `_create.js` 单引擎（`parcels[1~10]/images[0~5]/tickets/delivery/manualEntry/mergeAppend`、包裹级校验、合并追加）、`_merge.js`（候选/重放/事务追加/冲突重试）、`_parcels-input.js`（入参归一、`imageIndex` 省略与偏移、配送归一）、`_dto.js`+`_dto-fields.js`（`parcels[]/images[]{index,status,hasImage,cleaned}/delivery/manualEntry`、历史单兼容、admin 脱敏）、`correct(itemIndex)`/`imageUrl(index)`/`markPicked` 逐件/`listCustomer|listPartner` 关键词覆盖逐件；`createBatch` 移除；`shared/order-state.js` 上限常量 + `PARCELS_APPENDED` | 完成（`selftest-order 127`） |
+| C 批后台/清理 | `admin.updateConfig` 增 `orderMergeWindowMinutes`(0~60)、admin 订单 DTO 多包裹（`parcelCount/needCodeCount/manualEntry/delivery` 仅苑+楼栋、`parcels[]` 逐件打码、`images[]` 无 fileId）、`fixRecognitionFailure` 按件回填、cleanup 多图逐张引用计数/`cleanedAt`/匿名化逐件/delivery→null、统计单量按订单+`today.parcels` 独立件数指标 | 完成（`admin 249`/`cleanup 212`） |
+| C 批顾客端 | 多图 0~5 张→一单 1~10 件（逐件核对/取消勾选/合并「已并入」）、无截图手填、Step3 本单配送地址（SELF/OTHER+收件人≤20）、取件清单新页+首页入口（本机勾选）、截图区适配 `images[]{index,status}`（去 fileId，多图逐张 `imageUrl`）、多图预览逐张（TD-066）、AI 兜底 NO_TEXT 入队、截图压缩+OCR 降采样 | 完成（`order-customer 202`/`order-flow 158`） |
+| C 批兼职端 | 工作台多包裹行（件数/站点聚合/需查明聚合/无截图 chip、首件站点分组、整单最差件四档）、逐件补码面板（件切换）、整单动作与件边界、批量仅改站点（逐单逐件、同 `batchActionId`、按件汇总）、详情多包裹/配送地址/逐件改码、代客下单 v1.0 单入口 | 完成（`order-workbench 222`/`partner-pages 184`/`detail-partner 170`） |
+| C 批后台页面 | `pkg-admin` 订单列表件数/无截图 chip；详情逐件打码行/无截图 chip/配送地址仅苑+楼栋/历史单回退 | 完成（`admin-pages 154`） |
+| 性能 P0-1~P0-11 | 启动只 await bootstrap、config 预热、router 按域懒加载（首请求 132 文件/564KB→37 文件/153KB）、setData 收口与行级补丁、分包预下载+超时、定时器清理、OCR 降采样、截图压缩、轮询退避 | 完成（`selftest-performance 97`） |
+| 审查修复（M 系列） | M-01 双角色（roles+动作角色表，`cloud-dual 36`）、M-02 识别失败 FIXED 原图清理、M-10/M-11 后台列表游标与前缀搜索、M-12 审计隔离、M-13~M-20/M-47、M-43/44/45/46/57 工具链；`createBatch` 移除（TD-062 关闭） | 完成（`cloud 174`/`bind-cloud 108`/`partner-orders 89`） |
+| 文档回写 | CONTRACT §13 D23~D29（D27 待裁决）、DATA_MODEL v1.0、三份 UX、ENGINEERING/ARCHITECTURE/RUNBOOK/README/INTERIM/SPEC、QA 271 条、TECH_DEBT TD-063~066、`docs/research/` 三份 + `LOCATION_2026-10-22_v2.md` | 完成（`check-docs 10/10`） |
 
 ## 4. 用户待办（阻塞项）
 
@@ -343,6 +360,21 @@
 - 口径回写：CONTRACT §11.4（注销时点/兼职 CLOSED 执行细化/文件与 openid 保留理由）；DATA_MODEL §2.1 `purgeAt`、§7.6 幂等、§10.3/§10.4、§12#4；ENGINEERING §8.2 批 9 判据补充、§9.1 文档地图 +2、§10.4 审核材料引用、§11 批 9 行；README 文档地图 +2 与批 9 条目；TECH_DEBT 新增 TD-053~057；`docs/lessons/` +2 卡（注销链路多源 PII 漏清、文档立即与异步清理时点）。
 - 新增债务：TD-053（`partners.openid` 保留作不可再激活锚点）、TD-054（`users.purgeAt` 未写）、TD-055（治理链非事务）、TD-056（兼职 CLOSED 会话结束审计时点）、TD-057（`moveOrdersToException` 500 单上限）；关闭债务：无。
 
+## 6j. 批 10 C 批收口证据（真实输出）
+
+| 命令 | 结果 |
+| :-- | :-- |
+| `powershell -File check.ps1` | **4 步全 PASS，退出码 0**（原生 PowerShell 复跑；每步汇总行命中） |
+| `node tools/check.js` | 通过 **32 项**；失败 0 项（新增 #32 单函数 ≤50 行） |
+| `node tools/check-docs.js --batch 1` | 通过 **10 项**；失败 0 项（含 §13 D1~D29 引用可解析） |
+| `node tools/zero-money-scan.js` | **0 命中**（白名单 136 项） |
+| `node tools/selftest.js` | 运行 **31 套**；失败 0 套；SKIP 0；**4,566 断言全 PASS**（新增 `cloud-dual 36`/`performance 97`/`tools 10`） |
+| `node tools/check-functions.js` | 扫描 306 文件/3,48x 函数；>50 行 37 个（基线 43）；**违规 0** |
+| `node tools/sync-cloud-shared.js --check` | 16 源 × 2 套 32 件 hash 一致 |
+| `powershell -File gate.ps1 -Anchor 3cf805f -ScopeFiles "CHANGELOG.md,README.md,STATE.md,V4_REBUILD_SPEC.md,api/,app.js,app.json,check.ps1,cloudfunctions/,components/,config/,docs/,gate.ps1,pages/,pkg-admin/,pkg-customer/,pkg-partner/,shared/,store/,tools/,utils/" -Estimate 12000` | 红色 **0** 项；黄色 **0** 项（退出码 0）；变更 199 件、体量 5,442 行（未跟踪）+ tracked +6322/−3306 |
+| QA 条目计数 | `(Select-String -Path docs\QA_CHECKLIST.md -Pattern '^\| [A-Z]+\d+ \|').Count` → **271**（含新增 C14/D13~D16/L1/F24~F30/G18/R16/P23） |
+| 批 10 提交 | 见 §8 最近更新（提交后回读 HEAD） |
+
 ## 7. 当前风险与红灯（如实记录）
 
 1. **云端仅环境就绪**：唯一云环境已创建、envId 已回填（2026-10-22），但**集合、索引、安全规则、环境变量、触发器、存储权限、云函数部署均未在真实控制台执行**；批 1~批 9 的"绿"全部来自 fake-DB/纯件/静态门禁，**不等于云端已跑通**。任何"部署成功/联调成功"必须以 RUNBOOK §13 证据为准。
@@ -419,8 +451,13 @@
 | 2026-10-22 | **「成为兼职」邀请码输入即清空（修复 + 判据）**：真机输入首字符输入框即变空；根因激活页用 `validateInvitationCode(raw).canonical` 做实时回显（未满 12 位时该校验不带 `canonical` → 清空）。修：新增纯件 `pkg-partner/pages/activate/parts/code-input-model.js`（`stateOfInput` 可部分归一 + 4 位分组 + 12 位截断，`isValid` 作提交闸）；`selftest-partner-pages` +9（156→165），变异回旧实现 4 条首红 + SHA256 还原 + 复跑绿；纯客户端改动，**待用户重新编译模拟器复验** |
 | 2026-10-22 | **隐私后台填报口径校准（用户裁决：剪贴板 A / 联系方式邮箱为主 / 变更通知小程序内公告 / DeepSeek 按推荐）**：按官方模板与代码实际调用校正后台字段映射（昵称+头像同一项、选中的照片或视频信息、摄像头、选中的文件、剪切板；地址可选；相册（仅写入）不勾；自开发无第三方 SDK 栏，DeepSeek 改用途/对外提供（如可编辑）/补充文档/端内政策披露）；补「剪切板」使用边界与两端文本（`docs/privacy/隐私保护指引.md`、`pkg-customer/parts/privacy-text.js`、launch 弹窗、CONTRACT §11.1/§11.3）；新增 `docs/privacy/补充文档.txt`（端内全文派生物，`selftest-privacy-text` G 组锁两端披露与派生物）；清单 §1/§2/§3.4/§5、QA Q7/P1/P8/P11/P19、ENGINEERING §6.1 #6/§10.4、REVIEW_MATERIALS、UX_DEVELOPER、INTERIM、CONTRACT/REBUILD_SPEC 回写；新增 TD-059（DeepSeek 单独同意）/TD-060（选相册多余授权）/TD-061（官方隐私指引入口未接）、lessons +1 卡；`check.ps1` 4 步全 PASS（退出码 0；check.js 31/31、check-docs 10/10、零金额 0 命中、selftest 28 套 4,151 断言全 PASS）；代码行为不变，无云函数变更 |
 | 2026-10-22 | **测试账号切换未水合身份（修复 + 判据；用户真机反馈「测试账号无法激活、无法绑定」）**：进入后台测试顾客/兼职会话后页面沿用开发者空身份（测试顾客显示「资料未完善」、测试兼职「我的」显示「待激活」且无编号）。根因：`account-switch` 只写 `viewContext` 就 reLaunch、从未 `user.bootstrap`；且 `store.hydrateFromBootstrap` 会被服务端 `viewContext`（永不回票据）覆盖导致丢 `viewTicket`。修：新增 `utils/session.js` 统一进入/退出水合（进入=写 viewContext→bootstrap→hydrate→reLaunch；退出=viewAsEnd→清→bootstrap 复位→回账号切换），`store` 水合保留本地票据；判据 `selftest-switch` +23（140→163）、`selftest-testaccount` +18 固定测试对端到端（153→171：创建固定测试顾客+测试兼职→TEST_WRITE→直接绑定→双向可见→会话内激活被拒），变异三处首红（4/1/1）+ SHA256 还原复跑绿；ARCHITECTURE/ENGINEERING/UX_DEVELOPER/CHANGELOG/lessons 回写；纯客户端改动，**待用户重新编译模拟器复验** |
+| 2026-10-22 | **批 10 开工（用户裁决「先 C 再 B 最后 A」+ 性能采用推荐 + 审查非重叠直接修复）**：C 批规格已回写 CONTRACT §13 **D23 一单多包裹+合并窗口（默认 10 分钟，0=关闭）**、**D24 无截图手填（D22 改判 B）**、**D25 每单配送地址（互送）**、**D26 顾客取件清单独立入口**；DECISIONS 同步留痕；Lead 已改 `app.json`（pkg-customer/pages/pickup-list）+ `utils/storage.js`（pickupChecks 本机勾选，`selftest-profile` 98→102 断言绿）。8 条并行线（定位可行性重思 D27 待裁决 / 性能 P0 / 代码审查非重叠修复 A2-后台·工具链·M-01 / C 批后端·顾客端·兼职端 / DATA_MODEL 回写）。D23 破坏式升级依据 D11 空库起、无生产数据；`createBatch` 保留过渡兼容别名（TD-062）、`order.create` 单入口。 |
+| 2026-10-23 | **批 10 实现中（并行线完成情况，未收口/未 commit）**：①性能 P0 采纳完成（`selftest-performance` 97 断言、ARCHITECTURE/ENGINEERING 回写；app.json 预下载/超时由 Lead 注入）；②审查修复：M-01 双角色完成（`selftest-cloud-dual` 36 断言，独立套件）、M-02 P1 + M-10~M-20 + M-47 完成（cleanup 185/185、admin 220/220、M-10 服务端游标分页/前缀查询、`dao.command` 授权补丁）、工具链 M-43/44/45/46/57 完成（check.js **32** 条含 #32 单函数行数机械兜底 + 基线）；③C 批：DATA_MODEL v1.0 回写完成、隐私文本 D24/D25 三处同步（`selftest-privacy-text` 197→203 断言）、UX_DEVELOPER/研究文档 D22 改判清理、兼职端多包裹详情与代客下单 v1.0 完成；后端一单多包裹（`parcels[]`/`images[]`/`delivery`/`manualEntry`/合并窗口/`PARCELS_APPENDED`/`_merge.js`）与顾客端多图/手填/地址/取件清单在途。④收口门禁临时状态：check-docs 10/10、零金额 0 命中、sync 对帐 OK；check.js 31/32（#32 命中 partner workbench 在途函数行数，已转写者收敛）；selftest 在途红按各任务归属，收口窗口统一复跑。 |
 
 > 说明：上表最后两行为收口当天记录，提交哈希与 gate 终态以仓库 `git log` 与门禁真实输出为准（本文件不在提交内自引用哈希）。
+
+| 2026-10-23 | **批 10 C 批收口**：v1.0 一单多包裹（D23~D26）三端+后台+清理上线口径、`createBatch` 移除（TD-062 关闭）、性能 P0-1~P0-11、M 系列修复；`check.ps1` 4 步 0、selftest **31 套 4,566**、check **32/32**、docs **10/10**、零金额 0、gate 红 0/黄 0（199 件 +6322/−3306）；B 批 D28/D29 规格已备、D27 待用户裁决 |
+| 2026-10-23 | 批 10 提交回读：见下方「批 10 收口提交」（提交后回填） |
 
 ## 9. 下一步（按序）
 
@@ -434,7 +471,8 @@
 8. **批 7 真机点检**（只能用户）：QA `F16`（客户档案/备注：只看到绑定自己顾客、`partnerNote` 顾客不可见、解绑后不再显示头像昵称）、`F18`（代客下单：已绑定顾客单顾客可见进度、guest 单顾客看不到进度、绑定后只看新单）、`F20`（统计页只有单量、无费用字段、测试数据不计入）、`F22`（客户档案头像+昵称+编号、guest 默认头像+"代客单"标签）；另点检客户列表服务端搜索/分页、详情「查看更早」、解绑原因必填与二次确认、统计「今日完成」跨 tab 跳工作台（`reLaunch` 带参）、头像/昵称 onShow 重取；按 `docs/QA_CHECKLIST.md` 批 7 分区取证。
 9. **批 8 真机点检**（只能用户）：QA §G（开发者后台与治理 G1~G17）、§V（只读视角 V1~V20）、§T（账号切换与测试账号 T1~T17）、§R（识别兜底与复核 R5~R15）、§P（隐私 P8/P10/P19~P22）、§S 隔离负向；另点检维护模式（读可用/写拒绝+端侧公告）、消息中心红点/公告/已读、我的 tab 红点、后台抬头 developerNo 与脱敏截图、审计可查；并完成 §4 #14 隐私 13 项填写、#15 privacyVersion 写入、#16 每月无主文件核对；按 `docs/QA_CHECKLIST.md` 批 8 分区取证。
 10. **批 9 工程侧已收口，剩余为纯用户侧**：a) 首次部署冒烟（§9 第 1~2 步；D1~D22 已全部裁决，D1 已修订为单环境）——**2026-10-22 首跑已暴露 P0 写库缺陷并修复（§7 #25），需重新「上传并部署：云端安装依赖」`api` 后复验「同意隐私政策」，并把 `cleanup` 一并部署**；b) 按 `docs/V4_REVIEW_MATERIALS.md` §1 准备审核材料，§7 三项演示方式裁决后填 §3 模板并提审；c) 按 RUNBOOK §10 跑门禁回执（含 10.2.1 单环境清零）→ 灰度分批 → 观测判停 → R1/R3/R4/R5/R6 回滚演练并填 §10.6（记录表为空不得全量）；d) 批 2~9 真机点检（QA 附录 B 各批分区 + §H12~H17）与隐私 13 项填写/微信后台逐项声明/`privacyVersion` 写入；e) 发布后按 `docs/V4_V3_PARITY.md` §5.3 勾选归档，更新 CHANGELOG/STATE；f) **测试账号单机验收复验（本次修复）**：重新编译模拟器（纯客户端，无需重新部署云函数）→ 后台「切换账号 → 测试账号」建 1 个测试顾客 + 1 个测试兼职 → 进入测试顾客会话（应直接显示资料完整/无「待激活」假状态）→ 首页输入测试兼职编号 → 查询 → 确认绑定（固定测试对直接绑定成功）→ 切测试兼职会话，客户列表应见该测试顾客。
-11. **每批 DoD 不变**：`check.ps1` 退出码 0 + 真实输出 + 本批验收逐条打勾 + 文档回写；真机/控制台/提审/发布项只能用户执行，agent 不代勾、不代宣布通过。
+11. **批 10 C 批真机点检（只能用户）**：QA 新条目 `D13`（多图合成一单/件数=勾选件数/每件 imageIndex 来源正确）、`D14`（合并窗口六边界：窗口内同地址并入、0=关闭、已接单不并、地址不同不并、超 10 件另建、代客单不并）、`D15`（无截图手填，真机必跑）、`D16`（每单配送地址不写回资料）、`L1`（取件清单只本人、本机勾选、回写零）、`G18`（后台多包裹/无截图/地址脱敏）、性能体感（冷启动/多件单 setData/滚动）、`C14`（换绑为 B 批）。B 批 D28/D29 实现按序在 C 之后、A 批 P1 十项排最后。
+12. **每批 DoD 不变**：`check.ps1` 退出码 0 + 真实输出 + 本批验收逐条打勾 + 文档回写；真机/控制台/提审/发布项只能用户执行，agent 不代勾、不代宣布通过。
 
 ## 10. 维护规则
 

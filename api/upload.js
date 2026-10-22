@@ -2,8 +2,11 @@
 // 口径：ARCHITECTURE §3.3 / CONTRACT §4.1；头像上限判定/类型校验/压缩计划一律走 utils/avatar.js 纯件
 // （阈值与质量阶梯单源，TD-007 关闭依据）。顺序铁律：本地校验/压缩 → upload.prepare({purpose,size,contentType})
 // → wx.cloud.uploadFile：服务端 size/类型闸必须收到真实入参（AVATAR 用压缩后 size + 扩展名派生 contentType；
-// TICKET 只传 size、不传 contentType，兼容聊天来源 gif）。平台能力（getImageInfo/compressImage/getFileSystemManager）
-// 由本层注入纯件，纯件不直接吃全局 wx；uploadFile 仍只在本文件出现（门禁 #14）。
+// TICKET 只传 size、不传 contentType，兼容聊天来源 gif）。
+// v1.0（P0-10）：截图 >500KB 先走 TICKET 压缩阶梯（utils/avatar.js planTicketCompression/compressTicket：
+// 长边≤1440 + 质量 3 档，≤3 次仍超限才拒绝），压缩后按真实字节数走同一套服务端闸。
+// 平台能力（getImageInfo/compressImage/getFileSystemManager/离屏画布）由本层注入纯件，纯件不直接吃全局 wx；
+// uploadFile 仍只在本文件出现（门禁 #14）。
 const client = require('./client');
 const store = require('../store/index');
 const avatar = require('../utils/avatar');
@@ -155,15 +158,37 @@ async function prepareAvatar(platform, filePath) {
   return { filePath: compressed.tempFilePath, size: compressed.size };
 }
 
-// 票据：只执行 ≤500KB 的大小闸与"能读到文件"闸。聊天来源的扩展名不受控，
-// 类型不做客户端拦截（OCR 由服务端识别失败兜底，CONTRACT §4.3），因此 TYPE 不阻断。
+// 票据：先 ≤500KB 大小闸；超限走压缩阶梯（P0-10：长边≤1440 + 质量 3 档，≤3 次仍超限才拒绝）。
+// 聊天来源的扩展名不受控，类型不做客户端拦截（OCR 由服务端识别失败兜底，CONTRACT §4.3），因此 TYPE 不阻断。
+const TICKET_TOO_LARGE_MESSAGE = '截图超过 500KB，自动压缩后仍太大：请裁剪掉无关部分，或换一张截图再试';
+
 async function prepareTicket(platform, filePath) {
   const size = await getFileSize(platform, filePath);
   const picked = avatar.validatePicked({ path: filePath, size }, MAX_TICKET_BYTES);
-  if (!picked.ok && picked.reason !== 'TYPE') {
-    throw new client.CallError('VALIDATION_FAILED', invalidMessage('TICKET', picked.reason));
+  if (picked.ok) {
+    return { filePath, size, compressed: false };
   }
-  return { filePath, size };
+  if (picked.reason !== 'SIZE') {
+    return { filePath, size };
+  }
+  // 压缩产物必须重新判大小（服务端仍按 500KB 闸；客户端压缩不替代服务端校验）
+  const compressed = await avatar.compressTicket({ platform, filePath, maxBytes: MAX_TICKET_BYTES });
+  if (compressed && compressed.ok && compressed.tempFilePath
+    && compressed.size > 0 && compressed.size <= MAX_TICKET_BYTES) {
+    return {
+      filePath: compressed.tempFilePath,
+      size: compressed.size,
+      compressed: true,
+      attempts: compressed.attempts
+    };
+  }
+  const unreadable = compressed && (compressed.reason === 'EMPTY'
+    || compressed.reason === 'UNREADABLE'
+    || compressed.reason === 'UNSUPPORTED');
+  if (unreadable) {
+    throw new client.CallError('VALIDATION_FAILED', invalidMessage('TICKET', 'EMPTY'));
+  }
+  throw new client.CallError('VALIDATION_FAILED', TICKET_TOO_LARGE_MESSAGE);
 }
 
 async function prepareAndUpload(options) {

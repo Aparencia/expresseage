@@ -4,7 +4,6 @@
 module.exports = {
   actions: {
     'order.create': require('./create'),
-    'order.createBatch': require('./createBatch'),
     'order.get': require('./get'),
     'order.listCustomer': require('./listCustomer'),
     'order.listPartner': require('./listPartner'),

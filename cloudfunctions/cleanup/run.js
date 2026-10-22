@@ -24,18 +24,27 @@ function toCount(value) {
   return typeof value === 'number' && isFinite(value) && value >= 0 ? Math.floor(value) : 0;
 }
 
+// 注册表加载失败/为空必须显性失败（审查整改 M-20）：旧实现 catch 后返回 []，全量清理静默空转仍 ok:true，
+// 截图留存/注销删除/会话过期/识别失败原图无人清理且无失败信号。现改为抛 AppError，由入口返回 ok:false。
 function loadSweeps() {
+  let mod = null;
   try {
-    const mod = require('./sweeps');
-    const list = Array.isArray(mod) ? mod : (mod && Array.isArray(mod.SWEEPS) ? mod.SWEEPS : []);
-    return list.filter((sweep) => (
-      sweep && typeof sweep.name === 'string' && sweep.name.length > 0 &&
-      sweep.name.length <= MAX_SWEEP_NAME && typeof sweep.run === 'function'
-    ));
+    mod = require('./sweeps');
   } catch (error) {
-    console.warn('[cleanup] sweeps 注册表未就绪，本轮跳过');
-    return [];
+    const wrapped = new AppError('INTERNAL_ERROR', '清理任务注册表加载失败');
+    wrapped.cause = error;
+    console.error('[cleanup] sweeps 注册表加载失败', error && error.message);
+    throw wrapped;
   }
+  const list = Array.isArray(mod) ? mod : (mod && Array.isArray(mod.SWEEPS) ? mod.SWEEPS : []);
+  const valid = list.filter((sweep) => (
+    sweep && typeof sweep.name === 'string' && sweep.name.length > 0 &&
+    sweep.name.length <= MAX_SWEEP_NAME && typeof sweep.run === 'function'
+  ));
+  if (valid.length === 0) {
+    throw new AppError('INTERNAL_ERROR', '清理任务注册表为空');
+  }
+  return valid;
 }
 
 async function loadConfig(dao) {

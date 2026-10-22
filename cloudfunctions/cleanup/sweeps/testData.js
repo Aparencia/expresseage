@@ -14,43 +14,64 @@ async function testDataOf(ctx, user) {
   const orders = await ctx.dao.find(C.ORDERS, { where: { customerId: openid, isTest: true }, limit: util.BATCH });
   const partner = await ctx.dao.findOne(C.PARTNERS, { where: { openid } });
   let partnerOrders = [];
+  let partnerBindings = [];
   if (partner) {
     partnerOrders = await ctx.dao.find(C.ORDERS, { where: { partnerId: partner._id, isTest: true }, limit: util.BATCH });
+    // 测试兼职侧绑定（bindings.partnerId）同样属于该测试账号的业务数据，必须一并清（M-15）。
+    partnerBindings = await ctx.dao.find(C.BINDINGS, { where: { partnerId: partner._id }, limit: util.BATCH });
   }
-  const bindings = await ctx.dao.find(C.BINDINGS, { where: { customerId: openid }, limit: util.BATCH });
+  const customerBindings = await ctx.dao.find(C.BINDINGS, { where: { customerId: openid }, limit: util.BATCH });
+  const bindings = customerBindings.concat(partnerBindings);
   const failures = await ctx.dao.find(C.RECOGNITION_FAILURES, { where: { uploaderOpenid: openid }, limit: util.BATCH });
   const customer = await ctx.dao.get(C.CUSTOMERS, openid);
   return { openid, orders, partnerOrders, bindings, failures, partner, customer };
 }
 
-async function purgeAccountData(ctx, data) {
+// 删订单（事件/留言/订单三级联 + 先清截图引用）：v1.0 多图逐张清引用并按引用计数删云文件，
+// 否则直接删订单会留下无人引用的孤儿截图（隐私留存超标）。
+async function purgeOrdersOf(ctx, allOrders) {
   const C = util.collectionsOf(ctx);
   let orders = 0;
   let events = 0;
   let messages = 0;
   const seen = {};
-  const allOrders = data.orders.concat(data.partnerOrders);
   for (let i = 0; i < allOrders.length; i += 1) {
     const order = allOrders[i];
     if (seen[order._id]) {
       continue;
     }
     seen[order._id] = true;
-    const eventResult = await ctx.dao.removeWhere(C.ORDER_EVENTS, { orderId: order._id });
-    const messageResult = await ctx.dao.removeWhere(C.ORDER_MESSAGES, { orderId: order._id });
-    const orderResult = await ctx.dao.remove(C.ORDERS, order._id);
-    events += eventResult.removed;
-    messages += messageResult.removed;
-    orders += orderResult.removed;
+    await util.clearOrderImages(ctx, order);
+    events += (await ctx.dao.removeWhere(C.ORDER_EVENTS, { orderId: order._id })).removed;
+    messages += (await ctx.dao.removeWhere(C.ORDER_MESSAGES, { orderId: order._id })).removed;
+    orders += (await ctx.dao.remove(C.ORDERS, order._id)).removed;
   }
+  return { orders: orders, events: events, messages: messages };
+}
+
+async function purgeAccountData(ctx, data) {
+  const C = util.collectionsOf(ctx);
+  const purged = await purgeOrdersOf(ctx, data.orders.concat(data.partnerOrders));
+  const orders = purged.orders;
+  const events = purged.events;
+  const messages = purged.messages;
+  const seenBinding = {};
+  let bindingCount = 0;
   for (let i = 0; i < data.bindings.length; i += 1) {
-    await ctx.dao.remove(C.BINDINGS, data.bindings[i]._id);
+    const binding = data.bindings[i];
+    if (!binding || seenBinding[binding._id]) {
+      continue;
+    }
+    seenBinding[binding._id] = true;
+    await ctx.dao.remove(C.BINDINGS, binding._id);
+    bindingCount += 1;
   }
   for (let i = 0; i < data.failures.length; i += 1) {
     const fileId = data.failures[i].fileId;
     await ctx.dao.remove(C.RECOGNITION_FAILURES, data.failures[i]._id);
+    // 引用计数后再删文件：同一 fileId 可能仍被其它订单/记录引用，直接删会产生悬空引用（M-15）。
     if (fileId) {
-      await util.deleteFileSafe(ctx, fileId);
+      await util.deleteFileIfUnreferenced(ctx, fileId);
     }
   }
   const files = [];
@@ -70,7 +91,7 @@ async function purgeAccountData(ctx, data) {
     orders,
     events,
     messages,
-    bindings: data.bindings.length,
+    bindings: bindingCount,
     failures: data.failures.length,
     tickets: ticketResult.removed,
     avatarFiles: files.length

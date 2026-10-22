@@ -258,6 +258,165 @@ function compressAvatar(options) {
   });
 }
 
+// ── 截图（TICKET）上传压缩（P0-10，与头像共用纯件工具，不改变头像既有行为）────────────────
+// 口径：长边 ≤1440、质量阶梯 3 档、≤3 次仍超上限才拒绝（拒绝文案由 api/upload 说真话）。
+const TICKET_TARGET_SIDE = 1440;
+const TICKET_QUALITY_STEPS = [85, 65, 45];
+
+/**
+ * 截图压缩计划（纯函数）：超上限才压；长边超 1440 先缩放，否则只降质量。
+ * @param {{width:number,height:number,size:number}} info
+ * @param {number} maxBytes 服务端 500KB 上限
+ */
+function planTicketCompression(info, maxBytes) {
+  const max = resolveMaxBytes(maxBytes);
+  const normalized = normalizeImageInfo(info);
+  if (!normalized.ok) {
+    return { required: false, reason: 'UNREADABLE', maxBytes: max, qualities: [], needResize: false };
+  }
+  const longSide = Math.max(normalized.width, normalized.height);
+  const scale = longSide > TICKET_TARGET_SIDE ? TICKET_TARGET_SIDE / longSide : 1;
+  return {
+    required: normalized.size > max,
+    reason: 'OK',
+    maxBytes: max,
+    size: normalized.size,
+    width: normalized.width,
+    height: normalized.height,
+    longSide: longSide,
+    needResize: scale < 1,
+    targetLongSide: TICKET_TARGET_SIDE,
+    targetWidth: Math.max(1, Math.round(normalized.width * scale)),
+    targetHeight: Math.max(1, Math.round(normalized.height * scale)),
+    qualities: TICKET_QUALITY_STEPS.slice()
+  };
+}
+
+// 画布降采样（平台能力经 platform 注入；失败返回 null，由质量阶梯兜底）——真机能力见 QA 点检
+function downscaleImage(platform, filePath, targetLongSide, quality) {
+  return invoke(platform, 'getImageInfo', { src: filePath }).then(function (raw) {
+    const info = normalizeImageInfo(raw);
+    if (!info.ok) return null;
+    const longSide = Math.max(info.width, info.height);
+    if (longSide <= targetLongSide) return null;
+    if (!platform || typeof platform.createOffscreenCanvas !== 'function') return null;
+    const scale = targetLongSide / longSide;
+    const width = Math.max(1, Math.round(info.width * scale));
+    const height = Math.max(1, Math.round(info.height * scale));
+    let canvas = null;
+    try {
+      canvas = platform.createOffscreenCanvas({ type: '2d', width: width, height: height });
+    } catch (err) {
+      return null;
+    }
+    const ctx = canvas && typeof canvas.getContext === 'function' ? canvas.getContext('2d') : null;
+    const image = canvas && typeof canvas.createImage === 'function' ? canvas.createImage() : null;
+    if (!ctx || !image) return null;
+    return new Promise(function executor(resolve) {
+      image.onload = function onload() {
+        try {
+          ctx.drawImage(image, 0, 0, width, height);
+          if (typeof platform.canvasToTempFilePath !== 'function') {
+            resolve(null);
+            return;
+          }
+          platform.canvasToTempFilePath({
+            canvas: canvas,
+            x: 0,
+            y: 0,
+            width: width,
+            height: height,
+            destWidth: width,
+            destHeight: height,
+            fileType: 'jpg',
+            quality: quality,
+            success: function ok(res) {
+              resolve(res && res.tempFilePath ? res.tempFilePath : null);
+            },
+            fail: function fail() {
+              resolve(null);
+            }
+          });
+        } catch (err) {
+          resolve(null);
+        }
+      };
+      image.onerror = function onerror() {
+        resolve(null);
+      };
+      image.src = filePath;
+    });
+  });
+}
+
+/**
+ * 截图压缩执行：≤3 次阶梯（缩放/质量），压到上限内返回 ok；全失败返回 TOO_LARGE（不虚构成功）。
+ * @returns {Promise<{ok:boolean,reason?:string,tempFilePath?:string,size?:number,attempts?:number,plan?:object}>}
+ */
+function compressTicket(options) {
+  const opts = options || {};
+  const platform = opts.platform || defaultPlatform();
+  const maxBytes = resolveMaxBytes(opts.maxBytes);
+  const filePath = opts.filePath;
+  if (!filePath) {
+    return Promise.resolve({ ok: false, reason: 'EMPTY', maxBytes: maxBytes });
+  }
+  if (!platform || (typeof platform.compressImage !== 'function' && typeof platform.createOffscreenCanvas !== 'function')) {
+    return Promise.resolve({ ok: false, reason: 'UNSUPPORTED', maxBytes: maxBytes });
+  }
+  return invoke(platform, 'getImageInfo', { src: filePath }).then(function (raw) {
+    return normalizeImageInfo(raw);
+  }).then(function (info) {
+    if (!info.ok) {
+      return { ok: false, reason: 'UNREADABLE', maxBytes: maxBytes };
+    }
+    const sizePromise = info.size ? Promise.resolve(info.size) : fileSizeOf(platform, filePath);
+    return sizePromise.then(function (size) {
+      const plan = planTicketCompression({ width: info.width, height: info.height, size: size }, maxBytes);
+      if (!plan.required) {
+        return { ok: true, tempFilePath: filePath, width: info.width, height: info.height, size: size, attempts: 0, maxBytes: maxBytes };
+      }
+      let index = 0;
+      let lastSize = size;
+      function next() {
+        if (index >= plan.qualities.length) {
+          return { ok: false, reason: 'TOO_LARGE', size: lastSize, attempts: index, maxBytes: maxBytes, plan: plan };
+        }
+        const quality = plan.qualities[index];
+        index += 1;
+        const attempt = plan.needResize
+          ? downscaleImage(platform, filePath, plan.targetLongSide, quality)
+          : invoke(platform, 'compressImage', { src: filePath, quality: quality })
+            .then(function (out) { return out && out.tempFilePath ? out.tempFilePath : ''; });
+        return attempt.then(function (tempFilePath) {
+          if (!tempFilePath) {
+            return next();
+          }
+          return fileSizeOf(platform, tempFilePath).then(function (nextSize) {
+            if (!nextSize) {
+              return { ok: false, reason: 'UNVERIFIED', attempts: index, maxBytes: maxBytes };
+            }
+            lastSize = nextSize;
+            if (nextSize <= maxBytes) {
+              return {
+                ok: true,
+                tempFilePath: tempFilePath,
+                width: plan.targetWidth,
+                height: plan.targetHeight,
+                size: nextSize,
+                attempts: index,
+                maxBytes: maxBytes
+              };
+            }
+            return next();
+          });
+        });
+      }
+      return next();
+    });
+  });
+}
+
 // 默认头像：昵称首字 + 稳定色块（同一昵称每次同色，换账号不共享文件）。
 function initialOf(displayName) {
   const text = typeof displayName === 'string' ? displayName.trim() : '';
@@ -308,6 +467,8 @@ module.exports = {
   MIN_MAX_BYTES,
   MAX_MAX_BYTES,
   TARGET_SIDE,
+  TICKET_TARGET_SIDE,
+  TICKET_QUALITY_STEPS,
   ALLOWED_EXTENSIONS,
   ALLOWED_MIME_TYPES,
   QUALITY_STEPS,
@@ -317,7 +478,9 @@ module.exports = {
   validatePicked,
   normalizeImageInfo,
   planCompression,
+  planTicketCompression,
   compressAvatar,
+  compressTicket,
   initialOf,
   defaultAvatarOf,
   isDefaultAvatar,

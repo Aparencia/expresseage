@@ -1,23 +1,22 @@
-// handlers/order/_create.js · 下单引擎（order.create / order.createBatch 共用）
-// 口径：DATA_MODEL §4.8 块 A / §7.5；一张截图可拆 ≤5 单（单事务原子创建）；代客单不写 bindings。
+// handlers/order/_create.js · 下单引擎（v1.0 单入口 order.create：一单多包裹 / 多截图 / 本单配送地址 / 无截图手填）
+// 口径：CONTRACT v1.0 §4/§4.1/§5.2/§5.3（D23/D24/D25）；DATA_MODEL §4.8/§7.5。
+// 一单 1~10 件包裹 + 0~5 张截图；合并窗口内追加同单（PARCELS_APPENDED）。
 'use strict';
 
 const { COLLECTIONS } = require('../../shared/collections');
 const enums = require('../../shared/enums');
-const orderState = require('../../shared/order-state');
 const idGenerator = require('../../lib/id-generator');
 const { errors } = require('../../lib/errors');
 const common = require('./_common');
 const parcelUtil = require('./_parcel');
+const parcelsInput = require('./_parcels-input');
+const merge = require('./_merge');
 const dto = require('./_dto');
 
-const MAX_BATCH = orderState.MAX_CREATE_BATCH;
-
-// 入参白名单（DATA_MODEL §12 #12）：不认识的顶层/条目字段一律 VALIDATION_FAILED 并回 data.field，
-// 不做"静默忽略"——否则未知键会被悄悄丢弃，掩盖客户端契约漂移（零金额口径：交易类字段同样不得入库）。
-const CREATE_FIELDS = ['parcel', 'serviceCode', 'appoint', 'note', 'ticket', 'image', 'recognition', 'guest', 'bindingId', 'batchActionId'];
-const BATCH_ITEM_FIELDS = ['parcel', 'serviceCode', 'appoint', 'note', 'guest', 'recognition'];
-const CREATE_BATCH_FIELDS = ['items', 'ticket', 'image', 'recognition', 'batchActionId', 'bindingId'];
+// 入参白名单（DATA_MODEL §12 #12）：不认识字段一律 VALIDATION_FAILED 并回 data.field（不静默忽略）；v1.0 新增多包裹/配送/手填位。
+// ticket/image 为旧单图形态兼容位（内部折算为 images[0]/tickets[0]）。
+const CREATE_FIELDS = ['parcels', 'images', 'tickets', 'ticket', 'image', 'serviceCode', 'appoint', 'note', 'delivery',
+  'guest', 'bindingId', 'manualEntry', 'mergeAppend', 'recognition', 'batchActionId'];
 
 function assertKnownFields(input, allowed) {
   const value = parcelUtil.isPlainObject(input) ? input : {};
@@ -39,8 +38,7 @@ async function loadConfigOf(ctx) {
 }
 
 // 下单上下文：顾客=资料完整+ACTIVE 绑定；兼职=ACTIVE+接单开关；真实×测试双方必须同侧
-// 兼职代客（批 7）：bindingId（已绑定顾客，走正常订单）与 guest（新顾客）二选一；
-// 绑定顾客的身份/dorm/phoneTail 在上下文里一次性定好，逐单字段组装复用（不写 bindings）。
+// 兼职代客（批 7）：bindingId（已绑定顾客）与 guest 二选一；绑定/代客地址在上下文一次性定好复用。
 async function prepareCustomerContext(ctx, scope, config, now) {
   const customerId = common.customerScope(ctx);
   const customer = await common.getCustomerByOpenid(ctx, customerId);
@@ -69,6 +67,7 @@ async function prepareCustomerContext(ctx, scope, config, now) {
     customerId,
     customerNo: typeof customer.customerNo === 'string' ? customer.customerNo : '',
     customer,
+    phoneTail: typeof customer.phoneTail === 'string' ? customer.phoneTail : '',
     binding,
     partner,
     dorm: parcelUtil.customerDorm(customer, binding.roomTag),
@@ -98,6 +97,7 @@ async function preparePartnerContext(ctx, scope, config, now, selector, bindingI
       customer: null,
       binding: null,
       dorm: null,
+      guest: null,
       phoneTail: ''
     });
   }
@@ -108,146 +108,175 @@ async function preparePartnerContext(ctx, scope, config, now, selector, bindingI
   return Object.assign(base, parcelUtil.boundCustomerContext(bound, base.isTest));
 }
 
+// 双角色下单的动作域角色：带 guest/bindingId → 兼职代客（PARTNER）；否则按顾客本人（CUSTOMER）。
+// 单角色保持 identity.role；bindingId 只解释为兼职代客选择器，顾客本人下单不得携带（assertCreateSelector 同口径）。
 async function prepareContext(ctx, payload) {
   common.assertWritable(ctx);
   const scope = common.scopeOf(ctx);
   const input = parcelUtil.isPlainObject(payload) ? payload : {};
   const bindingId = parcelUtil.readBindingId(input);
-  const selector = parcelUtil.assertCreateSelector(scope.role, bindingId, parcelUtil.hasGuestField(input));
+  const guestGiven = parcelUtil.hasGuestField(input);
+  const role = parcelUtil.resolveCreateRole(scope, bindingId, guestGiven);
+  const selector = parcelUtil.assertCreateSelector(role, bindingId, guestGiven);
   const config = await loadConfigOf(ctx);
   const now = common.nowMsOf(ctx);
-  if (scope.role === enums.ROLES.CUSTOMER) {
-    return prepareCustomerContext(ctx, scope, config, now);
+  const effectiveScope = Object.assign({}, scope, { role });
+  if (role === enums.ROLES.CUSTOMER) {
+    return prepareCustomerContext(ctx, effectiveScope, config, now);
   }
-  if (scope.role === enums.ROLES.PARTNER) {
-    return preparePartnerContext(ctx, scope, config, now, selector, bindingId);
+  if (role === enums.ROLES.PARTNER) {
+    return preparePartnerContext(ctx, effectiveScope, config, now, selector, bindingId);
   }
   throw errors.forbidden('仅顾客或兼职可以下单');
 }
 
-// 单条下单字段（batch 的 items[i] 与 create 的顶层同构）
-// fallbackSource = AI 兜底被采纳的来源（recognition.source；仅 parcel 未显式给 recognitionSource 时生效）
-function buildItemFields(context, item, fallbackSource) {
-  const input = parcelUtil.isPlainObject(item) ? item : {};
-  const parcel = parcelUtil.normalizeParcel(input.parcel, fallbackSource);
-  const service = parcelUtil.pickService(context.config, context.partner, input.serviceCode);
-  const appoint = parcelUtil.normalizeAppoint(input.appoint, context.now);
-  const note = parcelUtil.normalizeOrderNote(input.note);
-  if (context.mode === 'CUSTOMER') {
-    parcelUtil.assertServiceRange(context.partner, context.dorm.zone);
+// 本单配送地址默认值（D25）：顾客/绑定顾客=其当前宿舍 + 本人手机尾号；代客=guest 地址 + 收件人称呼 + 代客尾号
+function defaultDeliveryOf(context) {
+  if (context.mode === 'PARTNER' && context.customerMode === 'GUEST') {
+    const guest = context.guest || {};
     return {
-      parcel,
-      service,
-      appoint,
-      note,
-      dorm: context.dorm,
-      guest: null,
-      phoneTail: typeof context.customer.phoneTail === 'string' ? context.customer.phoneTail : ''
+      zone: guest.zone,
+      buildingNo: guest.buildingNo,
+      room: guest.room,
+      recipientName: guest.displayName || '',
+      phoneTail: guest.phoneTail || ''
     };
   }
-  // 绑定顾客代客单：身份/地址/尾号全部来自绑定上下文，与顾客本人下单同构（顾客可见进度）。
-  if (context.customerMode === 'BOUND') {
-    parcelUtil.assertServiceRange(context.partner, context.dorm.zone);
-    return {
-      parcel,
-      service,
-      appoint,
-      note,
-      dorm: context.dorm,
-      guest: null,
-      phoneTail: context.phoneTail
-    };
-  }
-  const guest = parcelUtil.normalizeGuest(input.guest);
-  parcelUtil.assertServiceRange(context.partner, guest.zone);
+  const dorm = context.dorm || {};
   return {
-    parcel,
-    service,
-    appoint,
-    note,
-    dorm: null,
-    guest,
-    phoneTail: parcelUtil.guestPhoneTail(guest)
+    zone: dorm.zone,
+    buildingNo: dorm.buildingNo,
+    room: dorm.room,
+    phoneTail: context.phoneTail || ''
   };
 }
 
-async function prepareImage(ctx, payload, context) {
-  const imageInput = payload.image;
-  if (imageInput === undefined || imageInput === null) {
-    return { image: null, ticket: null };
+// 收件人称呼内容安全（D25）：与 message 域同款 msgSecCheck v2；平台不可用 → DEPENDENCY_FAILED（失败关闭）
+async function assertRecipientNameSafe(ctx, delivery) {
+  const name = delivery && delivery.recipientName;
+  if (!name) {
+    return;
   }
-  if (!parcelUtil.isPlainObject(imageInput)) {
-    throw errors.validation('image', '截图参数不合法，请重新上传');
+  const cloud = ctx.cloud;
+  const security = cloud && cloud.openapi && cloud.openapi.security;
+  if (!security || typeof security.msgSecCheck !== 'function') {
+    return;
   }
-  const ticketId = typeof payload.ticket === 'string' ? payload.ticket.trim() : '';
-  if (!ticketId) {
-    throw errors.validation('ticket', '请先上传取件截图');
+  let result = null;
+  try {
+    result = await security.msgSecCheck({ content: name, version: 2 });
+  } catch (error) {
+    throw errors.dependencyFailed('内容检测暂时不可用，请稍后再试');
   }
-  const ticket = await common.loadUploadTicket(ctx, ticketId, context.now);
-  common.assertImageFile(imageInput, ticket);
-  return { image: imageInput, ticket };
+  const errCode = result && typeof result.errCode === 'number' ? result.errCode : 0;
+  if (errCode !== 0) {
+    throw errors.dependencyFailed('内容检测暂时不可用，请稍后再试');
+  }
+  const suggest = result && result.result ? result.result.suggest : '';
+  if (suggest && suggest !== 'pass') {
+    throw errors.validation('recipientName', '收件人称呼包含不适合的内容，请修改后重试');
+  }
 }
 
-function recognitionOf(input) {
-  return parcelUtil.isPlainObject(input && input.recognition) ? input.recognition : {};
+function recognitionFallbackOf(payload) {
+  const recognition = parcelUtil.isPlainObject(payload && payload.recognition) ? payload.recognition : {};
+  return parcelUtil.normalizeRecognitionSource(recognition.source);
 }
 
-function failureNoOf(input) {
-  const recognition = recognitionOf(input);
-  if (typeof recognition.failureId === 'string' && recognition.failureId) {
-    return recognition.failureId;
+function readMergeAppend(input) {
+  const value = input && input.mergeAppend;
+  if (value === undefined || value === null) {
+    return undefined;
   }
-  const image = parcelUtil.isPlainObject(input && input.image) ? input.image : {};
-  if (typeof image.failureId === 'string' && image.failureId) {
-    return image.failureId;
+  if (typeof value !== 'boolean') {
+    throw errors.validation('mergeAppend', '请求参数格式不正确，请刷新页面后重试');
   }
-  return '';
+  return value;
 }
 
-// 逐单失败记录号：items[i].recognition.failureId 优先；顶层 recognition.failureId 只作为 item0 的回退
-//（CONTRACT §4.3 / DATA_MODEL §4.9：同图多单按单调用 ai.parseParcel，各单 failureId 独立）。
-function itemFailureNo(item, payload, index) {
-  const own = failureNoOf(item || {});
-  if (own) {
-    return own;
+// 下单入参归一（包裹/截图/配送/服务/预约/备注 + 票据校验 + 内容安全）
+async function normalizeOrderInput(ctx, context, payload, now) {
+  const input = parcelUtil.isPlainObject(payload) ? payload : {};
+  if (context.mode === 'PARTNER' && context.customerMode === 'GUEST') {
+    context.guest = parcelUtil.normalizeGuest(input.guest);
   }
-  return index === 0 ? failureNoOf(payload || {}) : '';
+  // 先归一 images 再归一 parcels：imageIndex 合法域依赖本批图片数（手填件省略该字段，-1 归一为省略）
+  const imageParts = parcelsInput.normalizeImages(input);
+  const parcels = parcelsInput.normalizeParcels(input, recognitionFallbackOf(input), imageParts.images.length);
+  const manualEntry = parcelsInput.normalizeManualEntry(input, imageParts.images);
+  const delivery = parcelsInput.normalizeDelivery(input, defaultDeliveryOf(context));
+  await assertRecipientNameSafe(ctx, delivery);
+  const service = parcelUtil.pickService(context.config, context.partner, input.serviceCode);
+  parcelUtil.assertServiceRange(context.partner, delivery.zone);
+  const tickets = [];
+  for (let i = 0; i < imageParts.images.length; i += 1) {
+    const ticket = await common.loadUploadTicket(ctx, imageParts.images[i].ticket, now);
+    common.assertImageFile(imageParts.images[i], ticket);
+    tickets.push(ticket);
+  }
+  return {
+    parcels,
+    images: imageParts.images,
+    tickets,
+    manualEntry,
+    delivery,
+    service,
+    appoint: parcelUtil.normalizeAppoint(input.appoint, now),
+    note: parcelUtil.normalizeOrderNote(input.note),
+    batchActionId: common.readBatchActionId(input),
+    mergeAppend: readMergeAppend(input)
+  };
 }
 
-// 逐单识别来源回退：item 级 recognition.source 优先，顶层只回退给 item0（非法/缺失返回 ''，不猜）。
-function itemRecognitionSource(item, payload, index) {
-  const own = parcelUtil.normalizeRecognitionSource(recognitionOf(item || {}).source);
-  if (own) {
-    return own;
-  }
-  return index === 0 ? parcelUtil.normalizeRecognitionSource(recognitionOf(payload || {}).source) : '';
+// 失败记录的来源截图：imageIndex 指向本批 images[]；手填件（未给 imageIndex）在单图批里回退 images[0]。
+function failureImageOf(parcel, images) {
+  const list = Array.isArray(images) ? images : [];
+  const index = typeof parcel.imageIndex === 'number' ? parcel.imageIndex : (list.length === 1 ? 0 : -1);
+  return index >= 0 && index < list.length ? list[index] : null;
 }
 
-// 识别失败关联：只接受本人上传的失败记录；失效/非本人不阻断下单，只丢关联
-async function resolveFailureByNo(ctx, failureNo, context) {
-  if (!failureNo || !enums.FAILURE_NO_PATTERN.test(failureNo)) {
-    return null;
+// 失败记录关联（包裹×截图粒度，D23 修订）：只接受本人上传且票据与包裹来源图一致的记录；
+// 非法/非本人一律静默丢关联（不阻断下单），落库只保留有效 failureId。
+async function resolveFailureAssociations(ctx, context, input) {
+  const list = [];
+  for (let i = 0; i < input.parcels.length; i += 1) {
+    const parcel = input.parcels[i];
+    const failureNo = typeof parcel.failureId === 'string' ? parcel.failureId : '';
+    if (!failureNo) {
+      continue;
+    }
+    const record = await ctx.dao.findOne(COLLECTIONS.RECOGNITION_FAILURES, { where: { failureNo } });
+    const image = failureImageOf(parcel, input.images);
+    const ticketMatched = !record || !record.uploadTicketId || (image && record.uploadTicketId === image.ticket);
+    if (!record || record.uploaderOpenid !== context.scope.openid || !ticketMatched) {
+      delete parcel.failureId;
+      continue;
+    }
+    // 落库关联 id = recognition_failures._id（与旧 orders.image.failureId 口径一致，供清理/复核引用）
+    parcel.failureId = record._id;
+    // 先记下来源图 fileId：合并追加后 order.images 下标会整体偏移，回填不依赖下标。
+    list.push({ parcel, record, fileId: image && image.fileId ? image.fileId : '' });
   }
-  const record = await ctx.dao.findOne(COLLECTIONS.RECOGNITION_FAILURES, { where: { failureNo } });
-  if (!record || record.uploaderOpenid !== context.scope.openid) {
-    return null;
-  }
-  return record;
+  return list;
 }
 
-async function resolveFailureRecord(ctx, payload, context) {
-  return resolveFailureByNo(ctx, failureNoOf(payload), context);
-}
-
-function buildImageSnapshot(imageInput, ticket, failureRecord, nowDate) {
-  if (!imageInput) {
-    return null;
+async function backfillFailureRecords(ctx, associations, order) {
+  for (let i = 0; i < associations.length; i += 1) {
+    const item = associations[i];
+    if (!item || !item.record || !order) {
+      continue;
+    }
+    const patch = {};
+    if (!item.record.orderId) {
+      patch.orderId = order._id;
+    }
+    if (!item.record.fileId && item.fileId) {
+      patch.fileId = item.fileId;
+    }
+    if (Object.keys(patch).length > 0) {
+      await ctx.dao.update(COLLECTIONS.RECOGNITION_FAILURES, item.record._id, patch);
+    }
   }
-  const image = common.buildImageSnapshot(imageInput, ticket, nowDate);
-  if (failureRecord) {
-    image.failureId = failureRecord._id;
-  }
-  return image;
 }
 
 // 幂等键归属（§4.7/§4.8 块 A）：顾客本人与绑定顾客代客单用 customerId，guest 单用 partnerId。
@@ -255,9 +284,8 @@ function requestOwnerOf(context) {
   return context.customerId ? context.customerId : String(context.partner._id);
 }
 
-function buildRequestKey(context, clientRequestId, itemIndex) {
-  const base = requestOwnerOf(context) + ':' + clientRequestId;
-  return typeof itemIndex === 'number' ? base + ':' + itemIndex : base;
+function buildRequestKey(context, clientRequestId) {
+  return requestOwnerOf(context) + ':' + clientRequestId;
 }
 
 function buildOrderDocument(options) {
@@ -275,36 +303,28 @@ function buildOrderDocument(options) {
     isTest: opt.context.isTest === true,
     impersonatedBy: opt.context.impersonatedBy || '',
     status: enums.ORDER_STATUS.SUBMITTED,
-    parcel: opt.fields.parcel,
-    dorm: opt.fields.dorm,
-    guest: opt.fields.guest,
-    phoneTail: opt.fields.phoneTail,
-    service: opt.fields.service,
-    appoint: opt.fields.appoint,
-    note: opt.fields.note,
-    image: opt.image,
+    parcels: opt.input.parcels,
+    images: parcelsInput.storedImagesOf(opt.input.images),
+    manualEntry: opt.input.manualEntry,
+    dorm: opt.context.dorm,
+    delivery: opt.input.delivery,
+    guest: opt.context.guest || null,
+    service: opt.input.service,
+    appoint: opt.input.appoint,
+    note: opt.input.note,
     clientRequestId: opt.clientRequestId,
     version: 1,
     createdAt: opt.nowDate,
     updatedAt: opt.nowDate,
     statusUpdatedAt: opt.nowDate
   };
-  if (opt.batchActionId) {
-    doc.batchActionId = opt.batchActionId;
+  if (opt.input.batchActionId) {
+    doc.batchActionId = opt.input.batchActionId;
   }
   return doc;
 }
 
-function buildCreatedEvent(order, context, clientRequestId, itemIndex, nowDate) {
-  const requestKey = String(order._id) + ':order.create:' + clientRequestId;
-  const payload = {
-    source: order.source,
-    serviceCode: order.service ? order.service.code : '',
-    isTest: order.isTest === true
-  };
-  if (typeof itemIndex === 'number') {
-    payload.itemIndex = itemIndex;
-  }
+function buildCreatedEvent(order, context, clientRequestId, nowDate) {
   return common.buildEventDocument({
     orderId: order._id,
     orderNo: order.orderNo,
@@ -316,8 +336,15 @@ function buildCreatedEvent(order, context, clientRequestId, itemIndex, nowDate) 
     impersonatedBy: context.impersonatedBy,
     at: nowDate,
     note: '',
-    payload,
-    requestKey
+    payload: {
+      source: order.source,
+      serviceCode: order.service ? order.service.code : '',
+      isTest: order.isTest === true,
+      parcels: order.parcels.length,
+      images: order.images.length,
+      manualEntry: order.manualEntry === true
+    },
+    requestKey: String(order._id) + ':order.create:' + clientRequestId
   });
 }
 
@@ -325,44 +352,17 @@ async function findExistingByRequestKey(ctx, requestKey) {
   return ctx.dao.findOne(COLLECTIONS.ORDERS, { where: { requestKey } });
 }
 
-async function backfillFailureRecords(ctx, associations) {
-  const list = Array.isArray(associations) ? associations : [];
-  for (let i = 0; i < list.length; i += 1) {
-    const item = list[i];
-    if (!item || !item.record || !item.order) {
-      continue;
-    }
-    const patch = {};
-    if (!item.record.orderId) {
-      patch.orderId = item.order._id;
-    }
-    if (!item.record.fileId && item.order.image && item.order.image.fileId) {
-      patch.fileId = item.order.image.fileId;
-    }
-    if (Object.keys(patch).length > 0) {
-      await ctx.dao.update(COLLECTIONS.RECOGNITION_FAILURES, item.record._id, patch);
-    }
-  }
+function replayResult(ctx, order, side, merged) {
+  return dto.buildOrderDto(ctx, order, { side }).then((orderDto) => ({
+    orderNo: order.orderNo,
+    order: orderDto,
+    merged: merged === true,
+    duplicated: true
+  }));
 }
 
-async function createOne(ctx, payload) {
-  assertKnownFields(payload, CREATE_FIELDS);
-  // 批量分组标识按统一形态闸校验后再落库（DATA_MODEL §4.1：≤32 随机；不静默接收任意客户端串）。
-  const batchActionId = common.readBatchActionId(payload);
-  const context = await prepareContext(ctx, payload);
-  const clientRequestId = ctx.clientRequestId || '';
-  const fields = buildItemFields(context, payload, itemRecognitionSource(null, payload, 0));
-  const imageCtx = await prepareImage(ctx, payload, context);
-  const failureRecord = await resolveFailureRecord(ctx, payload, context);
-  const requestKey = buildRequestKey(context, clientRequestId);
-  const existing = await findExistingByRequestKey(ctx, requestKey);
-  if (existing) {
-    // 回放侧别按调用方模式取（guest 单两侧 customerId 都是 ''、绑定单两侧都是顾客 id，
-    // 用 customerId 相等判侧会把代客单回放成顾客视图：guest=null + 顾客动作条）。
-    return { orderNo: existing.orderNo, order: await dto.buildOrderDto(ctx, existing, { side: context.mode }), duplicated: true };
-  }
+async function createNewOrder(ctx, context, input, clientRequestId, associations) {
   const nowDate = common.toDate(context.now);
-  const image = buildImageSnapshot(imageCtx.image, imageCtx.ticket, failureRecord, nowDate);
   const nextOrderNos = nextOrderNosOf();
   let created = null;
   try {
@@ -370,130 +370,69 @@ async function createOne(ctx, payload) {
       const orderNos = await nextOrderNos(trx, context.now, 1);
       const doc = buildOrderDocument({
         orderNo: orderNos[0],
-        requestKey,
+        requestKey: buildRequestKey(context, clientRequestId),
         context,
-        fields,
-        image,
+        input,
         clientRequestId,
-        nowDate,
-        batchActionId
+        nowDate
       });
       const added = await trx.add(COLLECTIONS.ORDERS, doc);
       const order = Object.assign({}, doc, { _id: added._id });
-      const event = buildCreatedEvent(order, context, clientRequestId, undefined, nowDate);
+      const event = buildCreatedEvent(order, context, clientRequestId, nowDate);
       await trx.add(COLLECTIONS.ORDER_EVENTS, event);
-      if (imageCtx.ticket) {
-        await trx.update(COLLECTIONS.UPLOAD_TICKETS, imageCtx.ticket._id, { usedAt: nowDate });
+      for (let i = 0; i < input.tickets.length; i += 1) {
+        await trx.update(COLLECTIONS.UPLOAD_TICKETS, input.tickets[i]._id, { usedAt: nowDate });
       }
       return order;
     });
   } catch (error) {
     if (ctx.dao.isDuplicateError && ctx.dao.isDuplicateError(error)) {
-      const replay = await findExistingByRequestKey(ctx, requestKey);
+      const replay = await findExistingByRequestKey(ctx, buildRequestKey(context, clientRequestId));
       if (replay) {
-        return { orderNo: replay.orderNo, order: await dto.buildOrderDto(ctx, replay, { side: context.mode }), duplicated: true };
+        return replayResult(ctx, replay, context.mode, false);
       }
     }
     throw error;
   }
-  await backfillFailureRecords(ctx, [{ record: failureRecord, order: created }]);
+  await backfillFailureRecords(ctx, associations, created);
   const fresh = await common.getOrderById(ctx, created._id);
-  return { orderNo: created.orderNo, order: await dto.buildOrderDto(ctx, fresh || created, { side: context.mode }) };
+  const order = fresh || created;
+  return { orderNo: order.orderNo, order: await dto.buildOrderDto(ctx, order, { side: context.mode }), merged: false };
 }
 
-async function createBatch(ctx, payload) {
-  assertKnownFields(payload, CREATE_BATCH_FIELDS);
-  const batchActionId = common.readBatchActionId(payload);
+async function createOne(ctx, payload) {
+  const input = assertKnownFields(payload, CREATE_FIELDS);
   const context = await prepareContext(ctx, payload);
   const clientRequestId = ctx.clientRequestId || '';
-  const items = Array.isArray(payload.items) ? payload.items : [];
-  if (items.length < 1 || items.length > MAX_BATCH) {
-    throw errors.validation('items', '一图多码最多拆 ' + MAX_BATCH + ' 单');
+  const requestKey = buildRequestKey(context, clientRequestId);
+  const existing = await findExistingByRequestKey(ctx, requestKey);
+  if (existing) {
+    return replayResult(ctx, existing, context.mode, false);
   }
-  items.forEach((item) => {
-    assertKnownFields(item, BATCH_ITEM_FIELDS);
-  });
-  // 条目级二选一（批 7）：顾客单/绑定顾客批量都不得再给 items[i].guest（整批不建）。
-  parcelUtil.assertBatchGuestFields(context, items);
-  const fieldsList = items.map((item, index) => buildItemFields(context, item, itemRecognitionSource(item, payload, index)));
-  const imageCtx = await prepareImage(ctx, payload, context);
-  // 逐单失败记录（items[i].recognition.failureId；顶层 recognition.failureId 只回退 item0）：
-  // 非法形态/非本人一律静默丢关联（不阻断建单），每单 image.failureId 只写本单自己的记录 _id。
-  const failureRecords = [];
-  for (let i = 0; i < items.length; i += 1) {
-    failureRecords.push(await resolveFailureByNo(ctx, itemFailureNo(items[i], payload, i), context));
+  const normalized = await normalizeOrderInput(ctx, context, input, context.now);
+  const associations = await resolveFailureAssociations(ctx, context, normalized);
+  const replay = await merge.findReplayOrder(ctx, context, clientRequestId);
+  if (replay) {
+    return replayResult(ctx, await common.getOrderById(ctx, replay._id), context.mode, true);
   }
-  const requestKeys = fieldsList.map((unused, index) => buildRequestKey(context, clientRequestId, index));
-  const existingList = [];
-  for (let i = 0; i < requestKeys.length; i += 1) {
-    const existing = await findExistingByRequestKey(ctx, requestKeys[i]);
-    existingList.push(existing);
-  }
-  const existingCount = existingList.filter((item) => !!item).length;
-  if (existingCount === requestKeys.length) {
-    const orders = await dto.buildOrderDtos(ctx, existingList, context.mode);
-    return { orders, duplicated: true };
-  }
-  if (existingCount > 0) {
-    throw errors.conflict('该批次已提交过，请刷新订单列表后重试');
-  }
-  const nowDate = common.toDate(context.now);
-  const images = failureRecords.map((record) => buildImageSnapshot(imageCtx.image, imageCtx.ticket, record, nowDate));
-  const nextOrderNos = nextOrderNosOf();
-  let created = [];
-  try {
-    created = await ctx.dao.transaction(async (trx) => {
-      const orderNos = await nextOrderNos(trx, context.now, fieldsList.length);
-      const orders = [];
-      for (let i = 0; i < fieldsList.length; i += 1) {
-        const doc = buildOrderDocument({
-          orderNo: orderNos[i],
-          requestKey: requestKeys[i],
-          context,
-          fields: fieldsList[i],
-          image: images[i],
-          clientRequestId,
-          nowDate,
-          batchActionId
-        });
-        const added = await trx.add(COLLECTIONS.ORDERS, doc);
-        const order = Object.assign({}, doc, { _id: added._id });
-        await trx.add(COLLECTIONS.ORDER_EVENTS, buildCreatedEvent(order, context, clientRequestId, i, nowDate));
-        orders.push(order);
-      }
-      if (imageCtx.ticket) {
-        await trx.update(COLLECTIONS.UPLOAD_TICKETS, imageCtx.ticket._id, { usedAt: nowDate });
-      }
-      return orders;
-    });
-  } catch (error) {
-    if (ctx.dao.isDuplicateError && ctx.dao.isDuplicateError(error)) {
-      const ordered = [];
-      for (let i = 0; i < requestKeys.length; i += 1) {
-        ordered.push(await findExistingByRequestKey(ctx, requestKeys[i]));
-      }
-      if (ordered.filter((item) => !!item).length === requestKeys.length) {
-        return { orders: await dto.buildOrderDtos(ctx, ordered, context.mode), duplicated: true };
-      }
+  const target = await merge.findAppendTarget(ctx, context, normalized, context.now, context.config);
+  if (target) {
+    const appended = await merge.appendWithRetry(ctx, target, normalized, context, clientRequestId, common.toDate(context.now));
+    if (appended) {
+      await backfillFailureRecords(ctx, associations, appended.order);
+      const fresh = await common.getOrderById(ctx, appended.order._id);
+      return {
+        orderNo: (fresh || appended.order).orderNo,
+        order: await dto.buildOrderDto(ctx, fresh || appended.order, { side: context.mode }),
+        merged: true,
+        duplicated: appended.duplicated === true
+      };
     }
-    throw error;
   }
-  // 事务后逐单回填：每条记录只回填它自己那张单的 orderId/fileId（已回填的不覆盖，重放/复用不串）
-  const associations = created.map((order, index) => ({ record: failureRecords[index], order }));
-  await backfillFailureRecords(ctx, associations);
-  const orderDtos = [];
-  for (let i = 0; i < created.length; i += 1) {
-    const fresh = await common.getOrderById(ctx, created[i]._id);
-    orderDtos.push(await dto.buildOrderDto(ctx, fresh || created[i], { side: context.mode }));
-  }
-  return { orders: orderDtos };
+  return createNewOrder(ctx, context, normalized, clientRequestId, associations);
 }
 
 module.exports = {
   prepareContext,
-  buildItemFields,
-  buildRequestKey,
-  MAX_BATCH,
-  createOne,
-  createBatch
+  createOne
 };

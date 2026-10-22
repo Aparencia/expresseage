@@ -56,29 +56,54 @@ function itemTime(item) {
   return isNaN(ms) ? 0 : ms;
 }
 
+async function customerOrders(ctx, scope, isTest) {
+  return ctx.dao.find(common.COLLECTIONS.ORDERS, {
+    where: { customerId: scope.openid, isTest },
+    orderBy: [['statusUpdatedAt', 'desc']],
+    limit: common.MAX_ORDERS_SCAN
+  });
+}
+
+async function partnerOrders(ctx, scope, isTest) {
+  const partner = await ctx.dao.findOne(common.COLLECTIONS.PARTNERS, {
+    where: { openid: scope.openid }
+  });
+  if (!partner) {
+    return [];
+  }
+  return ctx.dao.find(common.COLLECTIONS.ORDERS, {
+    where: { partnerId: partner._id, isTest },
+    orderBy: [['statusUpdatedAt', 'desc']],
+    limit: common.MAX_ORDERS_SCAN
+  });
+}
+
+// 我的订单 = users.roles 含哪侧就取哪侧（双角色两侧合并去重，不依赖 activeRole）
 async function myOrders(ctx, scope) {
   const isTest = scope.testWrite;
-  if (scope.role === common.enums.ROLES.CUSTOMER) {
-    return ctx.dao.find(common.COLLECTIONS.ORDERS, {
-      where: { customerId: scope.openid, isTest },
-      orderBy: [['statusUpdatedAt', 'desc']],
-      limit: common.MAX_ORDERS_SCAN
-    });
+  const roles = Array.isArray(scope.roles) ? scope.roles : [];
+  const lists = [];
+  if (roles.indexOf(common.enums.ROLES.CUSTOMER) >= 0) {
+    lists.push(await customerOrders(ctx, scope, isTest));
   }
-  if (scope.role === common.enums.ROLES.PARTNER) {
-    const partner = await ctx.dao.findOne(common.COLLECTIONS.PARTNERS, {
-      where: { openid: scope.openid }
-    });
-    if (!partner) {
-      return [];
+  if (roles.indexOf(common.enums.ROLES.PARTNER) >= 0) {
+    lists.push(await partnerOrders(ctx, scope, isTest));
+  }
+  if (lists.length !== 2) {
+    return lists.length === 1 ? lists[0] : [];
+  }
+  const seen = {};
+  const merged = [];
+  lists.forEach((list) => list.forEach((order) => {
+    const key = String(order._id || '');
+    if (!key || seen[key]) {
+      return;
     }
-    return ctx.dao.find(common.COLLECTIONS.ORDERS, {
-      where: { partnerId: partner._id, isTest },
-      orderBy: [['statusUpdatedAt', 'desc']],
-      limit: common.MAX_ORDERS_SCAN
-    });
-  }
-  return [];
+    seen[key] = true;
+    merged.push(order);
+  }));
+  merged.sort((left, right) => common.time.toMs(right.statusUpdatedAt) - common.time.toMs(left.statusUpdatedAt));
+  return merged;
 }
 
 async function customerPartnerOpenids(ctx, scope) {
@@ -98,7 +123,8 @@ async function customerPartnerOpenids(ctx, scope) {
 
 // 系统通知：orderId=''（解绑/停用等无关联订单的通知），按历史绑定兼职来源过滤归属
 async function systemNoticeItems(ctx, scope) {
-  if (scope.role !== common.enums.ROLES.CUSTOMER) {
+  const roles = Array.isArray(scope.roles) ? scope.roles : [];
+  if (roles.indexOf(common.enums.ROLES.CUSTOMER) < 0) {
     return [];
   }
   const partnerOpenids = await customerPartnerOpenids(ctx, scope);
@@ -118,7 +144,7 @@ async function systemNoticeItems(ctx, scope) {
 
 async function listCenter(ctx, payload) {
   const scope = common.scopeOf(ctx);
-  if (scope.role !== common.enums.ROLES.CUSTOMER && scope.role !== common.enums.ROLES.PARTNER) {
+  if (scope.roles.length === 0) {
     throw common.errors.forbidden('当前身份没有消息中心');
   }
   const limit = common.parseLimit(payload);

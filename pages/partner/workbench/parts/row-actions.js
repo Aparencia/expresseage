@@ -7,8 +7,10 @@
 const enums = require('../../../../shared/enums');
 const stations = require('../../../../shared/stations');
 
-const PICKUP_CODE_MAX = 40;
-const TRACKING_TAIL_LENGTH = 5;
+const codePanel = require('./code-panel');
+
+const PICKUP_CODE_MAX = codePanel.PICKUP_CODE_MAX;
+const TRACKING_TAIL_LENGTH = codePanel.TRACKING_TAIL_LENGTH;
 const EXCEPTION_TEXT_MAX = 200;
 const NOTE_MAX = 200;
 const DELIVERY_NOTE_MAX = 100;
@@ -141,8 +143,8 @@ function buildToolbar(row, options) {
   };
 }
 
-// 浮层构造：reason（拒单/取消原因）/ exception（异常 6 值）/ code（行内补码）/ deliver（送达备注）
-function openPanel(key, row) {
+// 浮层构造：reason（拒单/取消原因）/ exception（异常 6 值）/ code（行内补码，v1.0 逐件）/ deliver（送达备注）
+function openPanel(key, row, itemIndex) {
   const def = ACTIONS[key];
   if (!def || !def.panel) {
     return null;
@@ -170,20 +172,7 @@ function openPanel(key, row) {
     });
   }
   if (def.panel === 'code') {
-    const code = textOf(row && row.pickupCode);
-    const lockerNo = textOf(row && row.lockerText);
-    const trackingTail = textOf(row && row.trackingTail);
-    return Object.assign(base, {
-      type: 'code',
-      stationName: textOf(row && row.stationName),
-      code: code,
-      lockerNo: lockerNo,
-      trackingTail: trackingTail,
-      // 原值快照：保存时只提交"真正改过的字段"（PICKED 只允许柜号/尾号，见服务端字段白名单）
-      origin: { code: code, lockerNo: lockerNo, trackingTail: trackingTail },
-      codeMax: PICKUP_CODE_MAX,
-      tailLength: TRACKING_TAIL_LENGTH
-    });
+    return Object.assign(base, codePanel.codePanelOf(row, itemIndex));
   }
   return Object.assign(base, {
     type: 'deliver',
@@ -265,65 +254,88 @@ function validatePanel(panel) {
   return { ok: false, message: '未知操作面板' };
 }
 
-// 行/批次请求构造：统一带 expectedVersion（服务端乐观锁）；批量键带同一 batchActionId
-function buildWrite(key, row, values, batchActionId) {
+// 浮层动作没有 method 字段，这里补上它们的云函数方法名（键名逐字对齐 CONTRACT §5.3）
+const PANEL_METHODS = { reject: 'reject', exception: 'reportException', cancel: 'cancel', correct: 'correct' };
+
+// 撤销类方法名：批量模式走 order.undo（按 batchActionId 批量逐单校验），单件走对应 unmark 动作
+function methodOf(key, batchActionId) {
+  if (key === 'undoPick') {
+    return batchActionId ? 'undo' : 'unmarkPicked';
+  }
+  if (key === 'undoDeliver') {
+    return batchActionId ? 'undo' : 'unmarkDelivered';
+  }
+  if (PANEL_METHODS[key]) {
+    return PANEL_METHODS[key];
+  }
   const def = ACTIONS[key];
-  const orderNo = textOf(row && row.orderNo);
+  return def && def.method ? def.method : '';
+}
+
+function batchPayloadOf(payload, batchActionId) {
+  if (batchActionId) {
+    payload.batchActionId = batchActionId;
+  }
+  return payload;
+}
+
+// v1.0 逐件纠正：itemIndex 缺省 0 不传（契约默认即首件，兼容旧调用方）
+function correctPayloadOf(orderNo, values, batchActionId) {
+  const payload = { orderNo: orderNo, patch: values.patch || {} };
+  if (typeof values.itemIndex === 'number' && values.itemIndex > 0) {
+    payload.itemIndex = values.itemIndex;
+  }
+  return batchPayloadOf(payload, batchActionId);
+}
+
+// 动作 → 请求体（键名逐字对齐 CONTRACT §5.3；不认识的键返回 null 由调用方兜底）
+function payloadOf(key, orderNo, values, batchActionId) {
+  if (key === 'accept') {
+    return { orderNo: orderNo };
+  }
+  if (key === 'reject' || key === 'cancel') {
+    return { orderNo: orderNo, reason: values.reason, note: values.note || '' };
+  }
+  if (key === 'pick') {
+    return batchPayloadOf({ orderNo: orderNo }, batchActionId);
+  }
+  if (key === 'deliver') {
+    return batchPayloadOf({ orderNo: orderNo, deliveryNote: values.deliveryNote || '' }, batchActionId);
+  }
+  if (key === 'undoPick' || key === 'undoDeliver') {
+    return batchPayloadOf({ orderNo: orderNo }, batchActionId);
+  }
+  if (key === 'exception') {
+    return { orderNo: orderNo, code: values.code, text: values.text || '' };
+  }
+  if (key === 'resolve') {
+    return { orderNo: orderNo };
+  }
+  if (key === 'correct') {
+    return correctPayloadOf(orderNo, values, batchActionId);
+  }
+  return null;
+}
+
+function versionOptsOf(row) {
   const opts = {};
   const version = row && typeof row.version === 'number' ? row.version : 0;
   if (version > 0) {
     opts.expectedVersion = version;
   }
-  const valuesIn = values || {};
-  if (key === 'accept') {
-    return { key, method: 'accept', payload: { orderNo }, opts };
-  }
-  if (key === 'reject') {
-    return { key, method: 'reject', payload: { orderNo, reason: valuesIn.reason, note: valuesIn.note || '' }, opts };
-  }
-  if (key === 'pick') {
-    const payload = { orderNo };
-    if (batchActionId) {
-      payload.batchActionId = batchActionId;
-    }
-    return { key, method: 'markPicked', payload, opts };
-  }
-  if (key === 'undoPick') {
-    if (batchActionId) {
-      return { key, method: 'undo', payload: { orderNo, batchActionId }, opts };
-    }
-    return { key, method: 'unmarkPicked', payload: { orderNo }, opts };
-  }
-  if (key === 'deliver') {
-    const payload = { orderNo, deliveryNote: valuesIn.deliveryNote || '' };
-    if (batchActionId) {
-      payload.batchActionId = batchActionId;
-    }
-    return { key, method: 'markDelivered', payload, opts };
-  }
-  if (key === 'undoDeliver') {
-    if (batchActionId) {
-      return { key, method: 'undo', payload: { orderNo, batchActionId }, opts };
-    }
-    return { key, method: 'unmarkDelivered', payload: { orderNo }, opts };
-  }
-  if (key === 'exception') {
-    return { key, method: 'reportException', payload: { orderNo, code: valuesIn.code, text: valuesIn.text || '' }, opts };
-  }
-  if (key === 'resolve') {
-    return { key, method: 'resolveException', payload: { orderNo }, opts };
-  }
-  if (key === 'correct') {
-    const payload = { orderNo, patch: valuesIn.patch || {} };
-    if (batchActionId) {
-      payload.batchActionId = batchActionId;
-    }
-    return { key, method: 'correct', payload, opts };
-  }
-  if (key === 'cancel') {
-    return { key, method: 'cancel', payload: { orderNo, reason: valuesIn.reason, note: valuesIn.note || '' }, opts };
-  }
-  return { key, method: '', payload: { orderNo }, opts };
+  return opts;
+}
+
+// 行/批次请求构造：统一带 expectedVersion（服务端乐观锁）；批量键带同一 batchActionId
+function buildWrite(key, row, values, batchActionId) {
+  const orderNo = textOf(row && row.orderNo);
+  const payload = payloadOf(key, orderNo, values || {}, batchActionId);
+  return {
+    key: key,
+    method: methodOf(key, batchActionId),
+    payload: payload || { orderNo: orderNo },
+    opts: versionOptsOf(row)
+  };
 }
 
 // 单件确认框（只对需要二次确认的动作返回；浮层型动作由浮层自述）
@@ -345,6 +357,28 @@ function correctToast(options) {
   const station = textOf(opts.stationName) || '本单站点';
   const tier = textOf(opts.tierText) || '其他';
   return '已补齐：' + station + ' → ' + tier + '档。还剩 ' + remaining + ' 件需查明。';
+}
+
+// v1.0 逐件补码成功文案（带件号；remaining=整屏剩余需查明件数）
+function parcelCorrectToast(options) {
+  const opts = options || {};
+  const indexText = textOf(opts.indexText) || '第 1 件';
+  const remaining = Math.max(0, Number(opts.remaining) || 0);
+  if (remaining <= 0) {
+    return indexText + '已更正，顾客端同步。';
+  }
+  return indexText + '已更正，顾客端同步。还剩 ' + remaining + ' 件需查明。';
+}
+
+// 批量改站点/改码（v1.0）：逐单逐件展开工作项（同一 batchActionId；结果按件汇总）
+function batchPiecesOf(rows) {
+  const out = [];
+  (Array.isArray(rows) ? rows : []).forEach((row) => {
+    codePanel.codeItemsOf(row).forEach((piece) => {
+      out.push({ row: row, itemIndex: piece.index, itemIndexText: piece.indexText });
+    });
+  });
+  return out;
 }
 
 // 保存后自动跳到下一条需查明：返回 { row, remaining }；currentOrderNo 已被补码时从其余单里取第一条
@@ -411,10 +445,14 @@ module.exports = {
   knownActions,
   buildToolbar,
   openPanel,
+  codeItemsOf: codePanel.codeItemsOf,
+  switchCodePanel: codePanel.switchCodePanel,
   validatePanel,
   buildWrite,
   confirmTextOf,
   correctToast,
+  parcelCorrectToast,
+  batchPiecesOf,
   nextNeedCodeAfter,
   openBatchStationPanel,
   validateBatchStation,

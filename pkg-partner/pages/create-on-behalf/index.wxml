@@ -24,9 +24,10 @@
 
       <block wx:if="{{customerMode === 'BOUND'}}">
         <view wx:if="{{!bindingOptions.length}}" class="small">还没有顾客绑定你，可切到「新顾客（代客单）」建单。</view>
-        <picker wx:else range="{{bindingOptions}}" range-key="label" value="{{bindingIndex}}" bindchange="onBindingPick">
+        <picker wx:else range="{{bindingOptions}}" range-key="label" value="{{bindingIndex < 0 ? 0 : bindingIndex}}" bindchange="onBindingPick">
           <view class="form-input picker-value">{{bindingLabel || '选择已绑定档案'}}<text wx:if="{{bindingSub}}"> · {{bindingSub}}</text></view>
         </picker>
+        <view wx:if="{{presetMiss}}" class="warn-text">没找到该顾客（可能不在最近 50 条绑定里）：请手动选择顾客，或切到「新顾客（代客单）」建单。</view>
         <view class="small guest-note">顾客已绑定：走正常订单，顾客可见进度；代客单不改变绑定关系。</view>
       </block>
 
@@ -122,9 +123,11 @@
         <view class="strong">取件截图</view>
         <image-picker wx:if="{{!readonly}}" purpose="TICKET" maxCount="{{1}}" bind:change="onImageChange" bind:error="onImageError" />
       </view>
+      <view class="small">手填优先：看不清就直接填站点/取件码/柜号/运单尾号，不影响提交。</view>
+      <view wx:if="{{noImage}}" class="flag-tip">无截图·手填：不传截图也可提交，兼职会按你填的站点/码核对</view>
       <view wx:if="{{reviewText}}" class="review-text">{{reviewText}}</view>
       <view wx:if="{{!readonly}}" class="row ai-row">
-        <view class="btn btn-ghost mini-btn" bindtap="onRecognizeTap">{{recognizing ? '识别中…' : '识别失败兜底'}}</view>
+        <view class="btn btn-ghost mini-btn" bindtap="onRecognizeTap">{{recognizing ? '识别中…' : '识别不了？反馈开发者复核'}}</view>
         <text class="small">识别不出会反馈开发者复核；手填优先、不阻断提交</text>
       </view>
     </view>
@@ -151,6 +154,7 @@
           <view class="form-input picker-value">{{appointLabel || '尽快'}}</view>
         </picker>
       </view>
+      <view wx:if="{{appointNotice}}" class="small warn-text">{{appointNotice}}</view>
       <view class="form-row">
         <view class="form-label">备注</view>
         <input class="form-input" maxlength="{{noteMax}}" placeholder="≤200 字（可空）" value="{{note}}" bindinput="onNoteInput" />

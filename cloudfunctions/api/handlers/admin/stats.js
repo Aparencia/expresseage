@@ -57,6 +57,7 @@ async function activeSwitchSessionsOf(scope) {
   return rows.filter((row) => row.expiresAt > scope.now).length;
 }
 
+// 区间单量/件数：单量按订单计（合并单=1 单，D23）；件数=逐单 parcels 数之和（独立指标，不得替代单量）。
 async function rangeOrdersOf(scope, range) {
   const days = RANGE_DAYS[range];
   const from = days === 0 ? startOfDayMs(scope.now) : time.addDays(scope.now, -days);
@@ -65,7 +66,11 @@ async function rangeOrdersOf(scope, range) {
     orderBy: [['createdAt', 'desc']],
     limit: MAX_SCAN
   });
-  return rows.filter((row) => time.toMs(row.createdAt) >= from).length;
+  const inRange = rows.filter((row) => time.toMs(row.createdAt) >= from);
+  return {
+    orders: inRange.length,
+    parcels: inRange.reduce((sum, row) => sum + dto.parcelCountOf(row), 0)
+  };
 }
 
 async function inviteSummaryOf(scope) {
@@ -115,8 +120,9 @@ async function handler(ctx, payload) {
   const exceptionsTest = await countOf(scope, COLLECTIONS.ORDERS, { status: enums.ORDER_STATUS.EXCEPTION, isTest: true });
   const pendingFailures = await countOf(scope, COLLECTIONS.RECOGNITION_FAILURES, { status: enums.FAILURE_STATUS.PENDING });
   const activeSwitchSessions = await activeSwitchSessionsOf(scope);
-  const todayOrders = await rangeOrdersOf(scope, range);
-  const recentAuditRows = await scope.dao.find(COLLECTIONS.ADMIN_AUDIT, {
+  const todayOrders = await rangeOrdersOf(scope, range);  const recentAuditRows = await scope.dao.find(COLLECTIONS.ADMIN_AUDIT, {
+    // CONTRACT §11.3 / UX US-D11：多开发者会话与审计互不可见 → 总览「最近审计」只含本人 developerNo。
+    where: { developerNo: scope.developerNo },
     orderBy: [['at', 'desc']],
     limit: RECENT_AUDIT_LIMIT
   });
@@ -136,7 +142,8 @@ async function handler(ctx, payload) {
       activeSwitchSessions: activeSwitchSessions,
       pendingRecognitionFailures: pendingFailures
     },
-    today: { range: range, orders: todayOrders },
+    // 单量按订单计（合并单=1 单）；parcels 为件数独立指标（后台可标注"X 单 / Y 件"，不得替代单量）
+    today: { range: range, orders: todayOrders.orders, parcels: todayOrders.parcels },
     test: { testAccounts: test.total, testOrders: testOrders, testCustomers: test.customer, testPartners: test.partner },
     recentAudit: recentAuditRows.map(dto.auditBrief),
     config: dto.configForAdmin(scope.config),

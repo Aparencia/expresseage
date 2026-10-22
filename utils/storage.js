@@ -1,5 +1,5 @@
 // utils/storage.js · v4 唯一本地存储写口（键 ex_college_v4.store）
-// 只存三样：最近角色 lastRole、引导已读标记 guides、草稿指针 draftPointer。
+// 只存四样：最近角色 lastRole、引导已读标记 guides、草稿指针 draftPointer、取件清单本机勾选 pickupChecks。
 // 边界（ENGINEERING §5.6）：不存身份标识 / 宿舍门牌 / 取件凭据等敏感值；不存切换会话的
 // 票据与视角上下文；不读写 v1/v2/v3 的任何 storage 键（D2 裁决 2026-10-22：沿用 v3 appid
 // `wxcb7e5b41b89bc806` ⇒ 同一 storage 命名空间；v4 只用本键 `ex_college_v4.store`，不碰 v3 的 `ex_college_v3.store`）。
@@ -11,6 +11,10 @@ const ALLOWED_ROLES = ['CUSTOMER', 'PARTNER'];
 // 引导已读标记：只认这两项（纯 UI 偏好，不含业务数据；换账号/清缓存会重看）。
 const GUIDE_KEYS = ['CUSTOMER_HOME_V1', 'PARTNER_WORKBENCH_V1'];
 const POINTER_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+// 取件清单本机勾选（D26）：key = `{orderNo}#{itemIndex}`，值=勾选时间戳（毫秒）。
+// 只存"我已取到"的布尔标记，不存取件码/站点/地址等业务内容；上限 200 条，超出丢最旧。
+const PICKUP_CHECK_PATTERN = /^[0-9]{8}-[0-9]{4}#[0-9]{1,2}$/;
+const PICKUP_CHECK_MAX = 200;
 const MEMORY = { value: '' };
 
 function isPlainObject(value) {
@@ -18,7 +22,7 @@ function isPlainObject(value) {
 }
 
 function emptyState() {
-  return { lastRole: null, guides: {}, draftPointer: null };
+  return { lastRole: null, guides: {}, draftPointer: null, pickupChecks: {} };
 }
 
 function isValidRole(role) {
@@ -31,6 +35,32 @@ function isValidGuideKey(key) {
 
 function isValidDraftPointer(pointer) {
   return typeof pointer === 'string' && POINTER_PATTERN.test(pointer);
+}
+
+function isValidPickupCheckKey(key) {
+  return typeof key === 'string' && PICKUP_CHECK_PATTERN.test(key);
+}
+
+// 归一取件勾选：只保留合法 key + 数值时间戳；超过上限按时间戳丢最旧（保持确定性）。
+function normalizePickupChecks(raw) {
+  const out = {};
+  if (!isPlainObject(raw)) {
+    return out;
+  }
+  const entries = [];
+  Object.keys(raw).forEach(function (key) {
+    const ts = raw[key];
+    if (isValidPickupCheckKey(key) && typeof ts === 'number' && isFinite(ts) && ts > 0) {
+      entries.push({ key: key, ts: ts });
+    }
+  });
+  entries.sort(function (a, b) {
+    return a.ts - b.ts;
+  });
+  entries.slice(Math.max(0, entries.length - PICKUP_CHECK_MAX)).forEach(function (item) {
+    out[item.key] = item.ts;
+  });
+  return out;
 }
 
 function normalizeGuides(raw) {
@@ -59,6 +89,7 @@ function normalize(raw) {
   if (isValidDraftPointer(raw.draftPointer)) {
     state.draftPointer = raw.draftPointer;
   }
+  state.pickupChecks = normalizePickupChecks(raw.pickupChecks);
   return state;
 }
 
@@ -200,6 +231,31 @@ function clearDraftPointer(platform) {
   }, platform);
 }
 
+// 取件清单本机勾选（D26）：只用于"我已取到"的视觉标记，不回写服务端、不影响订单状态。
+function getPickupChecks(platform) {
+  return load(platform).pickupChecks;
+}
+
+function setPickupCheck(key, checked, platform) {
+  if (!isValidPickupCheckKey(key)) {
+    return false;
+  }
+  return update(function (state) {
+    if (checked === true) {
+      state.pickupChecks[key] = Date.now();
+    } else {
+      delete state.pickupChecks[key];
+    }
+    state.pickupChecks = normalizePickupChecks(state.pickupChecks);
+  }, platform);
+}
+
+function clearPickupChecks(platform) {
+  return update(function (state) {
+    state.pickupChecks = {};
+  }, platform);
+}
+
 function clearAll(platform) {
   const api = resolvePlatform(platform);
   try {
@@ -219,6 +275,7 @@ module.exports = {
   isValidRole,
   isValidGuideKey,
   isValidDraftPointer,
+  isValidPickupCheckKey,
   load,
   getLastRole,
   setLastRole,
@@ -228,5 +285,8 @@ module.exports = {
   getDraftPointer,
   setDraftPointer,
   clearDraftPointer,
+  getPickupChecks,
+  setPickupCheck,
+  clearPickupChecks,
   clearAll
 };

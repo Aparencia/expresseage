@@ -41,12 +41,14 @@ const detailView = require(path.join(ROOT, 'pkg-partner/pages/customer-detail/pa
 const unbindFlow = require(path.join(ROOT, 'pkg-partner/pages/customer-detail/parts/unbind-flow.js'));
 const formModel = require(path.join(ROOT, 'pkg-partner/pages/create-on-behalf/parts/form-model.js'));
 const resultModel = require(path.join(ROOT, 'pkg-partner/pages/create-on-behalf/parts/result-model.js'));
+const payloadModel = require(path.join(ROOT, 'pkg-partner/pages/create-on-behalf/parts/payload-model.js'));
+const presetModel = require(path.join(ROOT, 'pkg-partner/pages/create-on-behalf/parts/preset-model.js'));
 const shareCard = require(path.join(ROOT, 'pages/profile/parts/share-card.js'));
 const codeInput = require(path.join(ROOT, 'pkg-partner/pages/activate/parts/code-input-model.js'));
 
 // 注意：F 段（异步 fake transport）必须注册在最后——harness 的异步断言在 await 之后才计入，
 // 若后面再注册同步段，console 的节标题会被后注册的段名覆盖。
-const EXPECTED_ASSERTIONS = 165; // 实际断言总数（少算/多算都判红）
+const EXPECTED_ASSERTIONS = 184; // 实际断言总数（少算/多算都判红）
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
@@ -361,19 +363,19 @@ function register(h) {
 
     const bound = boundState();
     t.eq(formModel.validate(bound), '', 'D8 已绑定路径合法基线可提交（先合法基线）');
-    const boundPayload = formModel.buildPayload(bound);
+    const boundPayload = payloadModel.buildPayload(bound);
     t.eq([boundPayload.ok, boundPayload.batch], [true, false], 'D9 单件已绑定路径 → order.create');
     t.eq([boundPayload.data.bindingId, 'guest' in boundPayload.data, boundPayload.data.serviceCode],
       ['b1', false, 'PICKUP_STD'], 'D10 已绑定路径带 bindingId、不带 guest（二选一）');
-    t.eq(boundPayload.data.parcel, {
+    t.eq(boundPayload.data.parcels, [{
       pickupCode: '27-2-7016', lockerNo: '3 号柜', trackingTail: '66785',
       stationId: 'P4', stationName: stations.stationNameOf('P4')
-    }, 'D11 parcel：码/柜号/尾号 + P1~P8 站点（不自建站点）');
+    }], 'D11 parcels[]：单件也是数组（v1.0 单入口，不再 parcel{}）');
     t.eq(boundPayload.data.appoint, { type: 'ASAP' }, 'D12 预约 ASAP 只带 type（不带时段起止）');
 
     const guest = guestState();
     t.eq(formModel.validate(guest), '', 'D13 新顾客路径合法基线可提交（先合法基线）');
-    const guestPayload = formModel.buildPayload(guest);
+    const guestPayload = payloadModel.buildPayload(guest);
     t.eq([guestPayload.batch, 'bindingId' in guestPayload.data], [false, false],
       'D14 新顾客路径不带 bindingId（二选一）');
     t.eq(guestPayload.data.guest, {
@@ -389,34 +391,35 @@ function register(h) {
       ],
       imageFileId: 'cloud://test.env/ticket.jpg', imageTicketId: 'ticket-it'
     });
-    const batch = formModel.buildPayload(batchState);
-    t.check(batch.ok && batch.batch === true && batch.data.items.length === 2,
-      'D17 一图多码（2 件）→ order.createBatch，items 逐条');
-    t.eq([batch.data.image, batch.data.ticket, batch.data.bindingId], [{ fileId: 'cloud://test.env/ticket.jpg' }, 'ticket-it', 'b1'],
-      'D18 createBatch 顶层共用同一 fileId/ticket，已绑定路径 bindingId 顶层');
-    t.eq(batch.data.items[1].parcel.pickupCode, '27-2-7017', 'D19 逐条 parcel 独立（不合并成一条）');
-    const guestBatch = formModel.buildPayload(mutate(guestState(), {
+    const batch = payloadModel.buildPayload(batchState);
+    t.check(batch.ok && batch.batch === false && batch.data.parcels.length === 2 && !('items' in batch.data),
+      'D17 一图多码（2 件）→ 同一 order.create 的 parcels[]（createBatch 移除）');
+    t.eq([batch.data.images, batch.data.tickets, batch.data.bindingId],
+      [[{ fileId: 'cloud://test.env/ticket.jpg' }], ['ticket-it'], 'b1'],
+      'D18 顶层 images[]/tickets[] 与 bindingId 同单提交（一单多包裹）');
+    t.eq(batch.data.parcels[1].pickupCode, '27-2-7017', 'D19 逐件 parcel 独立（不合并成一条）');
+    const guestBatch = payloadModel.buildPayload(mutate(guestState(), {
       items: [{ pickupCode: '1-1-1', lockerNo: '', trackingTail: '' }, { pickupCode: '2-2-2', lockerNo: '', trackingTail: '' }]
     }));
-    t.eq(guestBatch.data.items.map((item) => item.guest.dormKey), ['D4-522', 'D4-522'],
-      'D20 新顾客批量：guest 逐条带（接口约定 items[i].guest）');
-    t.check(!('bindingId' in guestBatch.data), 'D21 新顾客批量顶层不带 bindingId（互斥）');
-    t.eq(formModel.MAX_CREATE_LIMIT || formModel.BATCH_MAX, 5, 'D22 一图多码上限 = 5（order-state.MAX_CREATE_BATCH）');
+    t.check(guestBatch.data.parcels.length === 2 && guestBatch.data.guest.dormKey === 'D4-522',
+      'D20 新顾客多件：guest 顶层快照 + parcels 逐件（不再 items[i].guest）');
+    t.check(!('bindingId' in guestBatch.data), 'D21 新顾客路径不带 bindingId（互斥）');
+    t.eq(formModel.BATCH_MAX, 10, 'D22 单次一图多码上限 = 10（CONTRACT D23：一单 1~10 件）');
     t.eq(formModel.validate(mutate(bound, {
-      items: [1, 2, 3, 4, 5, 6].map((index) => ({ pickupCode: '码' + index, lockerNo: '', trackingTail: '' }))
-    })), '一图多码最多 5 件，请分次提交', 'D23 超过 5 件被挡（不拆单不静默丢件）');
+      items: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((index) => ({ pickupCode: '码' + index, lockerNo: '', trackingTail: '' }))
+    })), '一图多码最多 10 件，请分次提交', 'D23 超过 10 件被挡（不拆单不静默丢件）');
 
-    const goodSignature = formModel.contentSignature(bound);
+    const goodSignature = payloadModel.contentSignature(bound);
     const reused = formModel.ensureRequestKey({ clientRequestId: 'REQ_ABCDEFGHIJKLMNOP', signature: goodSignature },
       goodSignature, { makeId: () => 'NEW_ID_1234567890', isValid: () => true });
     t.eq(reused.clientRequestId, 'REQ_ABCDEFGHIJKLMNOP', 'D24 同内容重试复用同一幂等键（失败重试不重复建单）');
     const regenerated = formModel.ensureRequestKey({ clientRequestId: 'REQ_ABCDEFGHIJKLMNOP', signature: goodSignature },
-      formModel.contentSignature(mutate(bound, { note: '换了备注' })), { makeId: () => 'NEW_ID_1234567890', isValid: () => true });
+      payloadModel.contentSignature(mutate(bound, { note: '换了备注' })), { makeId: () => 'NEW_ID_1234567890', isValid: () => true });
     t.eq(regenerated.clientRequestId, 'NEW_ID_1234567890', 'D25 内容变化重新生成幂等键（旧键不复用）');
     const invalidOld = formModel.ensureRequestKey({ clientRequestId: 'bad', signature: goodSignature }, goodSignature,
       { makeId: () => 'NEW_ID_1234567890', isValid: () => false });
     t.eq(invalidOld.clientRequestId, 'NEW_ID_1234567890', 'D26 旧键非法也重新生成（不把非法键发给服务端）');
-    t.check(formModel.contentSignature(bound) === formModel.contentSignature(mutate(bound, {})),
+    t.check(payloadModel.contentSignature(bound) === payloadModel.contentSignature(mutate(bound, {})),
       'D27 同内容签名稳定（不因对象引用变化换键）');
 
     const recognition = formModel.applyRecognition(mutate(bound, {
@@ -438,10 +441,10 @@ function register(h) {
       && guestResult.hintLines.join('').indexOf('未绑定') >= 0
       && guestResult.hintLines.join('').indexOf('自动完成') >= 0,
     'D33 guest 成功必须展示未绑定/线下告知/自动完成提示块（§3.4）');
-    const batchResult = resultModel.buildResult({ orders: ['20261022-0031', { orderNo: '20261022-0032' }, '20261022-0033'] }, { customerMode: 'BOUND' });
-    t.check(batchResult.rows.length === 3 && batchResult.title === '本次提交 3 单'
-      && batchResult.rows.map((row) => row.label).join('|') === '第 1 单|第 2 单|第 3 单',
-    'D34 一图多码结果块逐条列 N 个 orderNo（同一 fileId 拆单）');
+    const oneOrderResult = resultModel.buildResult({ orderNo: '20261022-0031', parcels: [{}, {}, {}] }, { customerMode: 'BOUND' });
+    t.check(oneOrderResult.rows.length === 1 && oneOrderResult.title === '订单已提交'
+      && oneOrderResult.rows[0].label === '点开查看进度',
+    'D34 多包裹仍是 1 张订单结果块（v1.0 一单多包裹，不拆 N 单）');
     const duplicateResult = resultModel.buildResult({ duplicated: true, orderNo: '20261022-0031' }, { customerMode: 'GUEST' });
     t.check(duplicateResult.visible && duplicateResult.duplicateText.indexOf('不会重复建单') >= 0,
       'D35 重复提交（幂等命中）给出说明，不报错也不重复建单');
@@ -458,7 +461,26 @@ function register(h) {
       [errorCopy.CODE_COPY.RATE_LIMITED, errorCopy.CODE_COPY.INTERNAL_ERROR],
       'D39 其余 13 码统一取 shared/error-copy（错误码不暴露给用户）');
     t.eq(formModel.failureText({ code: 'TEAPOT' }), errorCopy.UNKNOWN_CODE_COPY, 'D40 未登记码回退 UNKNOWN_CODE_COPY');
-    t.notEmpty(boundPayload.data.parcel.pickupCode, 'D 组样本非空（防止空集全绿）');
+
+    const manualPayload = payloadModel.buildPayload(guestState());
+    t.check(manualPayload.data.manualEntry === true && !('images' in manualPayload.data)
+      && !('tickets' in manualPayload.data), 'D41 无截图手填（D24）：manualEntry=true 且 images/tickets 缺省');
+    const imagePayload = payloadModel.buildPayload(mutate(guestState(), {
+      imageFileId: 'cloud://test.env/ticket.jpg', imageTicketId: 'ticket-it'
+    }));
+    t.check(imagePayload.data.manualEntry === false && imagePayload.data.images.length === 1
+      && imagePayload.data.tickets[0] === 'ticket-it', 'D42 有截图：manualEntry=false + images[]/tickets[] 成对');
+    t.eq(manualPayload.data.delivery, {
+      zone: 'D', buildingNo: 4, room: '522', dormKey: 'D4-522', buildingText: 'D4',
+      recipientName: '小张', phoneTail: '6678'
+    }, 'D43 代客单 delivery（D25）：本单地址=guest 快照（含收件人），不写回顾客资料');
+    t.check(!('delivery' in boundPayload.data), 'D44 已绑定路径不传 delivery（服务端按下单人宿舍默认）');
+    const failPayload = payloadModel.buildPayload(mutate(bound, { recognitionFailureId: 'F-9' }));
+    t.eq(failPayload.data.parcels[0].failureId, 'F-9', 'D45 识别失败件关联 failureId（逐件回填，首件）');
+    const createPage = textOfRel('pkg-partner/pages/create-on-behalf/index.js');
+    t.check(createPage.indexOf('payloadModel.buildPayload') >= 0 && createPage.indexOf('orderApi.createBatch') === -1,
+      'D46 页面接线到 v1.0 单入口（order.create），不再 createBatch');
+    t.notEmpty(boundPayload.data.parcels[0].pickupCode, 'D 组样本非空（防止空集全绿）');
   });
 
   // ------------------------------------------------------------------ E 字段校验矩阵
@@ -557,9 +579,10 @@ function register(h) {
       + textOfRel('pages/partner/customers/parts/list-model.js');
     t.check(customersSource.indexOf('filterByKeyword') === -1 && customersSource.indexOf('onReachBottom') >= 0
       && customersSource.indexOf('onShow') >= 0, 'G6 列表页：无本地全量过滤、有触底分页、onShow 重拉（缺陷修复锁定）');
-    const createModel = textOfRel('pkg-partner/pages/create-on-behalf/parts/form-model.js');
-    t.check(createModel.indexOf("data.bindingId = binding.bindingId") >= 0 && createModel.indexOf('row.guest = Object.assign') >= 0,
-      'G7 代客单两条路径都在请求体构造处落地（bindingId / guest 互斥）');
+    const createModel = textOfRel('pkg-partner/pages/create-on-behalf/parts/payload-model.js');
+    t.check(createModel.indexOf('data.bindingId = binding.bindingId') >= 0 && createModel.indexOf('data.guest = guest') >= 0
+      && createModel.indexOf('parcels: parcels') >= 0,
+    'G7 代客单 v1.0 请求体单源：bindingId / guest 互斥 + parcels[] 落在一处（parts/payload-model）');
 
     const wxmls = PAGE_FILES.map((rel) => textOfRel(rel + '.wxml'));
     t.check(wxmls.every((wxml) => wxml.indexOf('switch-bar') >= 0),
@@ -630,6 +653,49 @@ function register(h) {
       && activateSrc.indexOf('validateInvitationCode') < 0,
     'H9 激活页回显接线到纯件：不再用整串校验读 canonical（真实缺陷回归闸）');
   });
+  // ------------------------------------------------------------------ I 代客下单三项缺陷回归
+  h.section('I. 代客下单缺陷回归：预约过滤已过时段/识别兜底入口/预置顾客不猜（M-35/M-41/M-42）', (t) => {
+    const noon = new Date(2026, 9, 22, 13, 30, 0).getTime();
+    const dusk = new Date(2026, 9, 22, 20, 30, 0).getTime();
+    const night = new Date(2026, 9, 22, 22, 30, 0).getTime();
+    t.eq(formModel.buildAppointOptions(noon).map((item) => item.label),
+      ['尽快', '今天 下午 12:00-18:00', '今天 晚上 18:00-22:00'],
+      'I1 预约选项过滤已过时段（13:30 不再出现今天上午；进行中的下午段仍可选）');
+    t.eq(formModel.buildAppointOptions(dusk).map((item) => item.label),
+      ['尽快', '今天 晚上 18:00-22:00'], 'I2 晚上 20:30 只剩仍在进行中的晚间段（上午/下午已过）');
+    t.eq(formModel.buildAppointOptions(night).length, 1, 'I3 22:30 三段全过 → 只剩「尽快」（不构造已过时段）');
+    t.eq(formModel.createInitialState({ config: CONFIG, partner: PARTNER, bindingList: [ROW_1], nowMs: NOW }).appointNotice, '',
+      'I4 有可选时段时不显示已过时段提示（不打扰）');
+    const lateState = formModel.createInitialState({ config: CONFIG, partner: PARTNER, bindingList: [ROW_1], nowMs: night });
+    const lateNotice = lateState.appointNotice || '';
+    t.check(lateNotice.indexOf('已过') >= 0 && lateNotice.indexOf('尽快') >= 0,
+      'I5 无时段可选时给原因（提示只能选「尽快」）');
+    const createPage = textOfRel('pkg-partner/pages/create-on-behalf/index.js');
+    const createWxml = textOfRel('pkg-partner/pages/create-on-behalf/index.wxml');
+    t.check(createPage.indexOf('serverTimeSkew') >= 0 && createPage.indexOf('appointNotice') >= 0,
+      'I6 页面按 store.serverTimeSkew 校时并渲染预约提示（不用设备钟过滤）');
+
+    const presetFound = presetModel.applyPresetBinding(
+      formModel.createInitialState({ config: CONFIG, partner: PARTNER, bindingList: [ROW_1, ROW_2], nowMs: NOW }), 'b2');
+    t.eq([presetFound.customerMode, presetFound.bindingIndex, presetFound.presetMiss], ['BOUND', 1, false],
+      'I7 ?bindingId= 命中时选中该档案（不再默认第 0 位）');
+    const presetMiss = presetModel.applyPresetBinding(
+      formModel.createInitialState({ config: CONFIG, partner: PARTNER, bindingList: [ROW_1], nowMs: NOW }), 'b-not-in-window');
+    t.eq([presetMiss.bindingIndex, presetMiss.presetMiss, formModel.currentBinding(presetMiss)], [-1, true, null],
+      'I8 ?bindingId= 不在 50 条窗口内 → 不猜、不默认选中第 0 位（bindingIndex=-1）');
+    t.eq(formModel.validate(presetMiss), '请选择一位已绑定的顾客', 'I9 预置未命中的表单不可提交（拦住错误顾客建单）');
+    const noPreset = formModel.createInitialState({ config: CONFIG, partner: PARTNER, bindingList: [ROW_1], nowMs: NOW });
+    t.eq([presetModel.applyPresetBinding(noPreset, '') === noPreset, noPreset.presetMiss], [true, false],
+      'I10 无 ?bindingId= 时不改默认路径（普通入口不受影响）');
+    t.check(createPage.indexOf("'./parts/preset-model'") >= 0 && createPage.indexOf('presetModel.applyPresetBinding') >= 0
+      && createWxml.indexOf('presetMiss') >= 0, 'I11 页面接线到预置纯件并在 WXML 给「请选择顾客」态');
+
+    t.check(createPage.indexOf('aiApi.parseParcel') >= 0 && createPage.indexOf('uploadTicketId') >= 0
+      && createPage.indexOf("ocrTextMasked: ''") >= 0,
+      'I12 识别兜底按 D23/C2：NO_TEXT 不外呼但服务端入复核队列（端侧无 OCR 文本，仅传 uploadTicketId）');
+    t.check(createWxml.indexOf('反馈开发者复核') >= 0 && createWxml.indexOf('手填优先') >= 0
+      && createWxml.indexOf('识别失败兜底') === -1, 'I13 入口文案改为「反馈开发者复核」+ 手填优先（不再叫识别兜底）');
+  });
   // ------------------------------------------------------------------ F READONLY/TEST_WRITE + transport
   h.section('F. READONLY/TEST_WRITE 与 fake transport：包络/零请求/票据/分享（§6.3、§6.4）', async (t) => {
     const captured = [];
@@ -655,16 +721,16 @@ function register(h) {
         ['order.listPartner', { view: 'customer', bindingId: 'b1', limit: 20, cursor: 'cur-2' }],
         'F5b 历史单单一来源：order.listPartner view=customer（服务端排序/游标/扫描窗与工作台一致）');
 
-      const payload = formModel.buildPayload(boundState());
+      const payload = payloadModel.buildPayload(boundState());
       await orderApi.create(payload.data, { clientRequestId: 'REQ_ABCDEFGHIJKLMNOP' });
       t.eq([captured[3].action, captured[3].data.bindingId, captured[3].clientRequestId],
         ['order.create', 'b1', 'REQ_ABCDEFGHIJKLMNOP'], 'F6 已绑定代客单经 api 层透传 bindingId + 显式幂等键');
-      const batchPayload = formModel.buildPayload(mutate(boundState(), {
+      const batchPayload = payloadModel.buildPayload(mutate(boundState(), {
         items: [{ pickupCode: '27-2-7016', lockerNo: '', trackingTail: '' }, { pickupCode: '27-2-7017', lockerNo: '', trackingTail: '' }]
       }));
-      await orderApi.createBatch(batchPayload.data, { clientRequestId: 'REQ_ABCDEFGHIJKLMNOP' });
-      t.eq([captured[4].action, captured[4].data.items.length], ['order.createBatch', 2],
-        'F7 多件经 api 层走 order.createBatch（同一截图拆单）');
+      await orderApi.create(batchPayload.data, { clientRequestId: 'REQ_ABCDEFGHIJKLMNOP' });
+      t.eq([captured[4].action, captured[4].data.parcels.length], ['order.create', 2],
+        'F7 多件经 api 层仍走 order.create（v1.0 一单多包裹；createBatch 移除）');
 
       store.setViewContext({ viewMode: 'READONLY', viewTicket: 'ticket-ro', role: 'PARTNER', targetNo: 'P8F3K2M' });
       const before = captured.length;
@@ -700,8 +766,9 @@ function register(h) {
       }
       t.check(roAiError !== null && roAiError.code === 'FORBIDDEN' && captured.length === before,
         'F11 READONLY：识别兜底（ai.parseParcel）也被拒，零请求');
-      t.eq([client.isWriteAction('order.create'), client.isWriteAction('order.createBatch')], [true, true],
-        'F12 两条下单接口都登记为写动作（READONLY 矩阵覆盖）');
+      t.eq([client.isWriteAction('order.create'), client.isWriteAction('order.createBatch'), typeof orderApi.createBatch],
+        [true, false, 'undefined'],
+        'F12 单入口：order.create 已登记写动作；order.createBatch 已移除（未登记、模块无导出）');
 
       store.setViewContext({ viewMode: 'TEST_WRITE', viewTicket: 'ticket-tw', role: 'PARTNER', targetNo: 'P8F3K2M', targetIsTest: true });
       await partnerApi.unbindCustomer({ bindingId: 'b1', reason: 'PARTNER_INITIATED', note: '原因' });

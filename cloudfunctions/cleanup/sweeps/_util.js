@@ -11,6 +11,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 const MINUTE_MS = 60 * 1000;
 const SYSTEM = 'SYSTEM';
+// orders.images[] 上限 5 张（CONTRACT §4.1/DATA_MODEL §2.5）→ 下标 0~4。
+// 云 DB 数组子元素没有通配点查语法（不支持 'images.$.fileId'），引用计数/到期扫描按逐下标点路径点查。
+const IMAGE_INDEX_SLOTS = 5;
 
 function collectionsOf(ctx) {
   return (ctx && ctx.COLLECTIONS) || shared.COLLECTIONS;
@@ -135,12 +138,41 @@ async function deleteFileSafe(ctx, fileId) {
   }
 }
 
-// 文件引用计数：订单截图 + 识别失败原图共用同一 fileId（一图多码拆单/复核共享），全部归零才删文件。
+// ── orders.images[] 归一（v1.0 一单多图，D23）─────────────────────────────────
+// 新单只写 images[]；历史单 image{} 只读归一为单元素数组（cross-order 共享 fileId 时引用计数必须两边都数）。
+function orderImagesOf(order) {
+  const list = order && Array.isArray(order.images) ? order.images : [];
+  if (list.length > 0) {
+    return list;
+  }
+  return order && order.image && typeof order.image === 'object' ? [order.image] : [];
+}
+
+function imageFileIdsOf(order) {
+  const seen = {};
+  const out = [];
+  orderImagesOf(order).forEach((image) => {
+    const fileId = image && typeof image.fileId === 'string' ? image.fileId : '';
+    if (fileId && !seen[fileId]) {
+      seen[fileId] = true;
+      out.push(fileId);
+    }
+  });
+  return out;
+}
+
+// ── 文件引用计数：订单截图（历史 image{} + v1.0 images[]）+ 识别失败原图共用同一 fileId──────
+// 调用方只判"是否仍有引用"，因此在找到任一订单引用后短路（避免每张图都跑满 5 个下标点查）。
 async function countFileRefs(ctx, fileId) {
   const C = collectionsOf(ctx);
-  const orders = await ctx.dao.count(C.ORDERS, { where: { 'image.fileId': fileId } });
-  const failures = await ctx.dao.count(C.RECOGNITION_FAILURES, { where: { fileId } });
-  return { orders, failures };
+  let orders = await ctx.dao.count(C.ORDERS, { where: { 'image.fileId': fileId } });
+  for (let i = 0; orders === 0 && i < IMAGE_INDEX_SLOTS; i += 1) {
+    const where = {};
+    where['images.' + i + '.fileId'] = fileId;
+    orders = await ctx.dao.count(C.ORDERS, { where: where });
+  }
+  const failures = await ctx.dao.count(C.RECOGNITION_FAILURES, { where: { fileId: fileId } });
+  return { orders: orders, failures: failures };
 }
 
 async function deleteFileIfUnreferenced(ctx, fileId) {
@@ -154,23 +186,104 @@ async function deleteFileIfUnreferenced(ctx, fileId) {
   return deleteFileSafe(ctx, fileId);
 }
 
-// 清订单截图引用（订单侧唯一入口）：写 image.cleanedAt 供 api order.imageUrl/order.get 判定
-// （批 5 契约：cleaned 只读 image.cleanedAt，写入由批 8 cleanup），引用计数归零再删云文件。
-async function clearOrderImage(ctx, order) {
+async function deleteFilesIfUnreferenced(ctx, fileIds) {
+  let deleted = 0;
+  const seen = {};
+  for (let i = 0; i < fileIds.length; i += 1) {
+    const fileId = fileIds[i];
+    if (typeof fileId !== 'string' || fileId === '' || seen[fileId]) {
+      continue;
+    }
+    seen[fileId] = true;
+    if (await deleteFileIfUnreferenced(ctx, fileId)) {
+      deleted += 1;
+    }
+  }
+  return deleted;
+}
+
+// 历史单 image{}：写 image.cleanedAt 供 api order.imageUrl/order.get 判定（cleaned 只读 image.cleanedAt），
+// 引用计数归零再删云文件。
+async function clearLegacyImage(ctx, order) {
   const C = collectionsOf(ctx);
   const image = (order && order.image) || {};
   const fileId = typeof image.fileId === 'string' ? image.fileId : '';
+  const nowDate = nowDateOf(ctx);
   if (!fileId) {
-    return false;
+    return {
+      cleared: 0,
+      image: { fileId: '', width: 0, height: 0, failureId: '', cleanedAt: image.cleanedAt || null }
+    };
+  }
+  const next = { fileId: '', width: 0, height: 0, failureId: '', cleanedAt: nowDate };
+  await ctx.dao.update(C.ORDERS, order._id, { image: next, updatedAt: nowDate });
+  await deleteFilesIfUnreferenced(ctx, [fileId]);
+  return { cleared: 1, image: next };
+}
+
+async function clearOrderImage(ctx, order) {
+  const result = await clearLegacyImage(ctx, order);
+  return result.cleared > 0;
+}
+
+function imageHasRef(image) {
+  const doc = image && typeof image === 'object' ? image : {};
+  return (typeof doc.fileId === 'string' && doc.fileId !== '')
+    || (typeof doc.failureId === 'string' && doc.failureId !== '');
+}
+
+// 单张清引用：清 fileId/failureId（§10.3 字段表）并去掉云存储路径；有文件引用时写 cleanedAt。
+function clearedImageOf(image, nowDate) {
+  const doc = image && typeof image === 'object' ? Object.assign({}, image) : {};
+  const hadFile = typeof doc.fileId === 'string' && doc.fileId !== '';
+  if (hadFile) {
+    doc.cleanedAt = nowDate;
+  }
+  doc.fileId = '';
+  if (typeof doc.failureId === 'string') {
+    doc.failureId = '';
+  }
+  delete doc.cloudPath;
+  return doc;
+}
+
+// 清订单截图引用（订单侧唯一入口，v1.0 逐张）：images[] 逐张清 fileId/failureId，引用计数归零再删云文件；
+// 历史单 image{} 走 clearLegacyImage。幂等：没有可清引用时不写库、返回 cleared=0。
+async function clearOrderImages(ctx, order) {
+  const C = collectionsOf(ctx);
+  if (!order || !Array.isArray(order.images)) {
+    const legacy = await clearLegacyImage(ctx, order || {});
+    return { cleared: legacy.cleared, images: [legacy.image] };
   }
   const nowDate = nowDateOf(ctx);
-  await ctx.dao.update(C.ORDERS, order._id, {
-    image: { fileId: '', width: 0, height: 0, failureId: '', cleanedAt: nowDate },
-    updatedAt: nowDate
+  const source = order.images;
+  const fileIds = [];
+  let cleared = 0;
+  const next = source.map((image) => {
+    if (!imageHasRef(image)) {
+      return image;
+    }
+    const fileId = image && typeof image.fileId === 'string' ? image.fileId : '';
+    if (fileId) {
+      fileIds.push(fileId);
+    }
+    cleared += 1;
+    return clearedImageOf(image, nowDate);
   });
-  await deleteFileIfUnreferenced(ctx, fileId);
-  return true;
+  if (cleared === 0) {
+    return { cleared: 0, images: source.slice() };
+  }
+  const patch = { images: next, updatedAt: nowDate };
+  await ctx.dao.update(C.ORDERS, order._id, patch);
+  // 混合形态兜底：v1.0 单理论上不写 image{}，但历史合并/回填异常时 legacy 引用也要清掉
+  if (order.image && typeof order.image === 'object' && typeof order.image.fileId === 'string'
+    && order.image.fileId !== '') {
+    await clearLegacyImage(ctx, order);
+  }
+  await deleteFilesIfUnreferenced(ctx, fileIds);
+  return { cleared: cleared, images: next };
 }
+
 
 function eventDoc(order, type, fromStatus, toStatus, actorRole, nowDate, payload, requestKey) {
   return {
@@ -244,6 +357,7 @@ module.exports = {
   HOUR_MS,
   MINUTE_MS,
   SYSTEM,
+  IMAGE_INDEX_SLOTS,
   enums,
   audit,
   collectionsOf,
@@ -259,10 +373,16 @@ module.exports = {
   prefixUpperBound,
   keyPrefixWhere,
   startsWith,
+  orderImagesOf,
+  imageFileIdsOf,
   deleteFileSafe,
   countFileRefs,
   deleteFileIfUnreferenced,
+  deleteFilesIfUnreferenced,
+  clearLegacyImage,
   clearOrderImage,
+  clearOrderImages,
+  clearedImageOf,
   eventDoc,
   removeOrderCascade,
   writeAuditOnce,

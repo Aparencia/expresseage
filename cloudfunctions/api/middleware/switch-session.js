@@ -145,6 +145,29 @@ function assertModeScope(state, mode, spec) {
   }
 }
 
+// 退出会话（审查整改 M-13）：只结束发起人自己的票据，**不解析目标身份** —— 目标可能已被停用/注销，
+// 先解析会抛 NOT_FOUND 使 admin.viewAsEnd 永远不可达（黄条退出失败、会话滞留到过期）。
+// 这里只做「票据补进包络 + identity 按发起人回填」（不放大任何目标权限）；endedAt/审计由 handler 负责。
+function applyExitState(state, ctx, session, viewTicket) {
+  const clean = state.payload && typeof state.payload === 'object' && !Array.isArray(state.payload)
+    ? Object.assign({}, state.payload)
+    : {};
+  if (clean.viewTicket === undefined || clean.viewTicket === '') {
+    clean.viewTicket = viewTicket;
+  }
+  state.payload = clean;
+  ctx.identity = {
+    actorOpenid: ctx.openid,
+    effectiveOpenid: ctx.openid,
+    role: session.role,
+    isTestAccount: session.targetIsTest === true,
+    viewMode: session.viewMode,
+    viewTicketId: viewTicket,
+    developerNo: ctx.identity.developerNo
+  };
+  return state;
+}
+
 async function middleware(state) {
   const ctx = state.ctx;
   const viewTicket = state.meta.viewTicket;
@@ -171,14 +194,7 @@ async function middleware(state) {
   }
   const isExit = state.action === EXIT_ACTION;
   if (isExit) {
-    // 客户端退出只把票据放包络（data 为空对象），handler 校验的是 payload.viewTicket —— 这里补注入。
-    const clean = state.payload && typeof state.payload === 'object' && !Array.isArray(state.payload)
-      ? Object.assign({}, state.payload)
-      : {};
-    if (clean.viewTicket === undefined || clean.viewTicket === '') {
-      clean.viewTicket = viewTicket;
-    }
-    state.payload = clean;
+    return applyExitState(state, ctx, session, viewTicket);
   }
   const target = session.viewMode === VIEW_MODE.READONLY
     ? await resolveReadonlyTarget(ctx, session)
@@ -190,9 +206,7 @@ async function middleware(state) {
   if (session.viewMode === VIEW_MODE.TEST_WRITE && session.targetId !== target.effectiveOpenid) {
     throw invalidTicket('切换会话状态不一致，请重新开启');
   }
-  if (!isExit) {
-    assertModeScope(state, session.viewMode, spec);
-  }
+  assertModeScope(state, session.viewMode, spec);
   ctx.identity = {
     actorOpenid: ctx.openid,
     effectiveOpenid: target.effectiveOpenid,
@@ -202,7 +216,7 @@ async function middleware(state) {
     viewTicketId: viewTicket,
     developerNo: ctx.identity.developerNo
   };
-  if (!isExit && spec.write && session.viewMode === VIEW_MODE.TEST_WRITE) {
+  if (spec.write && session.viewMode === VIEW_MODE.TEST_WRITE) {
     try {
       await ctx.dao.update(COLLECTIONS.USERS, target.effectiveOpenid, { testLastUsedAt: ctx.now, updatedAt: ctx.now });
     } catch (error) {

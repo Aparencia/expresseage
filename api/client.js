@@ -15,6 +15,9 @@ const REQUEST_ID_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789abcdefghijkmnpqrstuvwx
 // 服务端 shared/validate.validateClientRequestId 同口径：16~32 位 [A-Za-z0-9_-]
 const CLIENT_REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{16,32}$/;
 const RETRYABLE_CODES = ['DEPENDENCY_FAILED', 'INTERNAL_ERROR'];
+// P0-6：校时抖动阈值——每个成功响应都写 serverTimeSkew 会 notify 全部订阅者（含隐藏 tab 页），
+// 变化 ≤1s 时静默丢弃（分钟级倒计时不受影响；跨秒级偏差才更新）。
+const SKEW_NOTIFY_MS = 1000;
 
 class CallError extends Error {
   constructor(code, message, data, requestId) {
@@ -128,7 +131,11 @@ function normalizeResult(result) {
     throw new CallError('INTERNAL_ERROR', '服务返回异常，请稍后重试');
   }
   if (typeof result.serverTime === 'number' && result.serverTime > 0) {
-    store.set('serverTimeSkew', Date.now() - result.serverTime);
+    const skew = Date.now() - result.serverTime;
+    const previous = store.get('serverTimeSkew');
+    if (Math.abs(skew - (typeof previous === 'number' ? previous : 0)) > SKEW_NOTIFY_MS) {
+      store.set('serverTimeSkew', skew);
+    }
   }
   if (!result.ok) {
     if (result.code === 'VIEW_TICKET_EXPIRED') {
@@ -186,5 +193,6 @@ module.exports = {
   isValidClientRequestId,
   resolveExpectedVersion,
   CLIENT_REQUEST_ID_PATTERN,
-  RETRYABLE_CODES
+  RETRYABLE_CODES,
+  SKEW_NOTIFY_MS
 };

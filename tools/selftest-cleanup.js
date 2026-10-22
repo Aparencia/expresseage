@@ -1,42 +1,29 @@
 'use strict';
 /**
  * tools/selftest-cleanup.js — cleanup 单触发器判据套件（ENGINEERING §7.3/§4.7；DATA_MODEL §10）。
- * 覆盖：①各 sweep 阈值前/后（固定 now 时间旅行）②重跑幂等（acted 收敛、审计不重复）③批上限
- *      ④失败隔离 ⑤关键不变量（订单 180d 匿名化→30d 物理删、截图 7d cleanedAt/引用计数、
- *      识别失败原图 7~30d、viewSession 过期审计每票一条、测试数据 30d 保账号、邀请码过期、
- *      timeout/autoComplete 转态、注销级联匿名化/删图/会话审计、rl 前缀不误删 orderNo/tag）
- *      ⑥cleanup↔api shared 副本逐字节 hash 一致（只读校验，不改 sync 脚本）。
+ * 覆盖：各 sweep 阈值前/后、重跑幂等、批上限、失败隔离、关键不变量（订单 180d 匿名化→30d 物理删、
+ * 截图 7d 逐张 cleanedAt/引用计数、识别失败原图 7~30d、viewSession 过期审计、测试数据 30d 保账号、
+ * 注销级联、rl 前缀不误删）+ shared 副本逐字节 hash；v1.0 用例表见 tools/lib/cleanup-v1-cases.js。
  * 纪律：fake DB 注入、不 mock wx、不连真库；EXPECTED_ASSERTIONS 与实际断言数精确相等。
  */
-const fs = require('fs');
-const path = require('path');
-const crypto = require('crypto');
+const fs = require('fs'); const path = require('path'); const crypto = require('crypto');
 const ROOT = path.resolve(__dirname, '..');
-const { createHarness, installCrashGuard } = require('./selftest');
-const fake = require('./fake-db');
+const { createHarness, installCrashGuard } = require('./selftest'); const fake = require('./fake-db');
 const CLEANUP = path.join(ROOT, 'cloudfunctions/cleanup');
-const RUN = require(path.join(CLEANUP, 'run.js'));
-const SWEEP_MOD = require(path.join(CLEANUP, 'sweeps/index.js'));
-const ordersSweep = require(path.join(CLEANUP, 'sweeps/orders.js'));
-const storageSweep = require(path.join(CLEANUP, 'sweeps/storage.js'));
-const retentionSweep = require(path.join(CLEANUP, 'sweeps/retention.js'));
-const accountsSweep = require(path.join(CLEANUP, 'sweeps/accounts.js'));
-const invitationsSweep = require(path.join(CLEANUP, 'sweeps/invitations.js'));
-const viewSessionsSweep = require(path.join(CLEANUP, 'sweeps/viewSessions.js'));
-const countersSweep = require(path.join(CLEANUP, 'sweeps/counters.js'));
-const recognitionSweep = require(path.join(CLEANUP, 'sweeps/recognitionFailures.js'));
-const testDataSweep = require(path.join(CLEANUP, 'sweeps/testData.js'));
-const statsSweep = require(path.join(CLEANUP, 'sweeps/stats.js'));
+const RUN = require(path.join(CLEANUP, 'run.js')); const SWEEP_MOD = require(path.join(CLEANUP, 'sweeps/index.js'));
+const ordersSweep = require(path.join(CLEANUP, 'sweeps/orders.js')); const storageSweep = require(path.join(CLEANUP, 'sweeps/storage.js'));
+const retentionSweep = require(path.join(CLEANUP, 'sweeps/retention.js')); const accountsSweep = require(path.join(CLEANUP, 'sweeps/accounts.js'));
+const invitationsSweep = require(path.join(CLEANUP, 'sweeps/invitations.js')); const viewSessionsSweep = require(path.join(CLEANUP, 'sweeps/viewSessions.js'));
+const countersSweep = require(path.join(CLEANUP, 'sweeps/counters.js')); const recognitionSweep = require(path.join(CLEANUP, 'sweeps/recognitionFailures.js'));
+const testDataSweep = require(path.join(CLEANUP, 'sweeps/testData.js')); const statsSweep = require(path.join(CLEANUP, 'sweeps/stats.js'));
 const { createDao } = require(path.join(CLEANUP, 'db/dao.js'));
 const { COLLECTIONS } = require(path.join(CLEANUP, 'shared/collections.js'));
-const enums = require(path.join(CLEANUP, 'shared/enums.js'));
-const auditActions = require(path.join(CLEANUP, 'shared/audit-actions.js'));
+const enums = require(path.join(CLEANUP, 'shared/enums.js')); const auditActions = require(path.join(CLEANUP, 'shared/audit-actions.js'));
 // harness 完整性闸：先占位，首跑按真实断言数回填（少算/多算都判红）。
-const EXPECTED_ASSERTIONS = 183;
+const cleanupV1 = require(path.join(__dirname, 'lib', 'cleanup-v1-cases.js'));
+const EXPECTED_ASSERTIONS = 185 + cleanupV1.EXPECTED_ASSERTIONS;
 const NOW = Date.parse('2026-10-22T12:00:00+08:00');
-const MINUTE = 60 * 1000;
-const HOUR = 60 * MINUTE;
-const DAY = 24 * HOUR;
+const MINUTE = 60 * 1000, HOUR = 60 * MINUTE, DAY = 24 * HOUR;
 const COLLECTION_NAMES = Object.keys(COLLECTIONS).map((key) => COLLECTIONS[key]);
 const SWEEP_NAMES = ['orderTimeout', 'autoComplete', 'files', 'tickets', 'retention', 'accountDeletion',
   'testAccountsDeletion', 'invitationCodes', 'viewSessions', 'rateLimits', 'recognitionFailures', 'testData',
@@ -262,6 +249,9 @@ const SWEEPS_RUN = {
   testData: testDataSweep.runTestData,
   recomputeStats: statsSweep.runRecomputeStats
 };
+// v1.0 用例表依赖（拆出 tools/lib/cleanup-v1-cases.js 控行数；夹具/断言计数单源在该文件）
+const V1_DEPS = { makeWorld: makeWorld, orderOf: orderOf, createCloud: createCloud, makeCtx: makeCtx, SWEEPS_RUN: SWEEPS_RUN, enums: enums, NOW: NOW, DAY: DAY, dateMs: dateMs, COLLECTIONS: COLLECTIONS };
+
 // ---------------------------------------------------------------- §B orderTimeout
 async function orderTimeoutSection(t) {
   const due = orderOf({
@@ -391,6 +381,7 @@ async function filesSection(t) {
   const cloud2 = createCloud();
   await SWEEPS_RUN.files(makeCtx(db2, { cloud: cloud2, config: { screenshotRetentionDays: 3 } }));
   t.eq(cloud2.deleted.indexOf('cloud://shot-config.jpg') !== -1, true, '§D config.screenshotRetentionDays=3 生效');
+  await cleanupV1.filesChecks(t, V1_DEPS);
 }
 // ---------------------------------------------------------------- §E tickets
 async function ticketsSection(t) {
@@ -530,6 +521,7 @@ async function retentionSection(t) {
     db2.dump(COLLECTIONS.ORDER_MESSAGES).filter((row) => row._id === 'msg-purge').length], [0, 0],
   '§F 物理删级联清事件/留言（无孤儿 PII）');
   t.eq(cloud2.deleted.indexOf('cloud://shot-purge.jpg') !== -1, true, '§F 物理删前清截图文件（不留孤儿）');
+  await cleanupV1.retentionChecks(t, V1_DEPS);
 }
 // ---------------------------------------------------------------- §G accountDeletion
 async function accountDeletionSection(t) {
@@ -548,7 +540,7 @@ async function accountDeletionSection(t) {
       status: enums.ORDER_STATUS.COMPLETED,
       statusUpdatedAt: NOW - 5 * DAY,
       image: { fileId: 'cloud://shot-del.jpg', width: 800, height: 600, failureId: '' }
-    })],
+    }), ...cleanupV1.delOrdersOf(orderOf, enums, NOW, DAY)],
     bindings: [{ _id: 'bind-del', customerId: 'CUST-DEL', partnerId: 'P-1', status: 'RELEASED', activeKey: 'CUST-DEL:RELEASED:1' }],
     upload_tickets: [{ _id: 'ticket-del', ticket: 'TKDEL', openid: 'CUST-DEL', purpose: 'TICKET', cloudPath: 'orders/TKDEL/image.jpg', expiresAt: NOW + 5 * MINUTE, usedAt: null, createdAt: NOW }],
     recognition_failures: [{ _id: 'failure-del', failureNo: 'F-20261001-ABCDEF', uploaderOpenid: 'CUST-DEL', status: 'IGNORED', fileId: 'cloud://failure-del.jpg', createdAt: NOW - 2 * DAY }],
@@ -580,6 +572,7 @@ async function accountDeletionSection(t) {
   t.eq([delOrder.customerId, delOrder.customerOpenid], ['', ''], '§G 订单立即匿名化（不等 180 天）');
   t.eq([delOrder.image.fileId, dateMs(delOrder.image.cleanedAt)], ['', NOW], '§G 注销立即删截图引用（写 cleanedAt 供 api 判定）');
   t.eq(cloud.deleted.indexOf('cloud://shot-del.jpg') !== -1, true, '§G 注销立即删截图云文件');
+  cleanupV1.accountDeletionChecks(t, db, cloud, V1_DEPS);
   const session = db.dump(COLLECTIONS.ADMIN_VIEW_SESSIONS).filter((row) => row._id === 'session-del')[0];
   t.check(session.endedAt instanceof Date, '§G 目标账号有效切换会话立即 endedAt');
   const endAudits = auditsOf(db, auditActions.AUDIT_ACTIONS.ACCOUNT_SWITCH_END);
@@ -617,7 +610,8 @@ async function testAccountsDeletionSection(t) {
     ],
     orders: [
       orderOf({ _id: 'orphan-order-1', customerId: 'TEST-ORPHAN', customerOpenid: 'TEST-ORPHAN', isTest: true }),
-      orderOf({ _id: 'orphan-order-2', customerId: 'TEST-ORPHAN', customerOpenid: 'TEST-ORPHAN', isTest: true, status: enums.ORDER_STATUS.COMPLETED })
+      orderOf({ _id: 'orphan-order-2', customerId: 'TEST-ORPHAN', customerOpenid: 'TEST-ORPHAN', isTest: true, status: enums.ORDER_STATUS.COMPLETED }),
+      ...cleanupV1.orphanExtraOrdersOf(orderOf, enums)
     ],
     order_events: [
       { _id: 'orphan-evt-1', orderId: 'orphan-order-1', type: 'ORDER_CREATED', actorId: 'TEST-ORPHAN', payload: {}, at: NOW },
@@ -627,9 +621,11 @@ async function testAccountsDeletionSection(t) {
     bindings: [{ _id: 'orphan-bind', customerId: 'TEST-ORPHAN', partnerId: 'P-9', status: 'ACTIVE', activeKey: 'TEST-ORPHAN' }],
     upload_tickets: [{ _id: 'orphan-ticket', ticket: 'TKORPHAN', openid: 'TEST-ORPHAN', purpose: 'TICKET', cloudPath: 'orders/TKORPHAN/image.jpg', expiresAt: NOW + HOUR, usedAt: null, createdAt: NOW }]
   });
-  const ctx = makeCtx(db);
+  const cloud = createCloud();
+  const ctx = makeCtx(db, { cloud });
   const result = await SWEEPS_RUN.testAccountsDeletion(ctx);
   const ids = (name) => db.dump(name).map((row) => row._id);
+  cleanupV1.testAccountsChecks(t, cloud);
   t.eq(result.acted, 1, '§H 孤儿测试账号（users 行已丢）→ 级联清数据');
   t.eq(ids(COLLECTIONS.ORDERS).filter((id) => id.indexOf('orphan-order') === 0), [], '§H 清该账号测试订单');
   t.eq([ids(COLLECTIONS.ORDER_EVENTS).filter((id) => id.indexOf('orphan-evt') === 0).length,
@@ -765,7 +761,8 @@ async function recognitionSection(t) {
         fileId: 'cloud://f-ignored.jpg',
         resolution: { stationId: '', stationName: '', pickupCode: '', note: '人工忽略', by: 'DEV-01', at: NOW - 10 * DAY }
       }),
-      failure('fixed', { status: enums.FAILURE_STATUS.FIXED, fileId: 'cloud://f-fixed.jpg' }),
+      failure('fixed', { status: enums.FAILURE_STATUS.FIXED, fileId: 'cloud://f-fixed.jpg', resolution: { note: '已补录', by: 'DEV-01', at: NOW - 2 * DAY } }),
+      failure('fixed-fresh', { status: enums.FAILURE_STATUS.FIXED, createdAt: NOW - 5 * DAY, fileId: 'cloud://f-fixed-fresh.jpg' }),
       failure('shared', { fileId: 'cloud://f-shared.jpg' }),
       failure('clamped', { retentionDays: 90, fileId: 'cloud://f-clamped.jpg' }),
       failure('anon', { uploaderOpenid: '', status: enums.FAILURE_STATUS.IGNORED, fileId: 'cloud://f-anon.jpg' }),
@@ -781,7 +778,7 @@ async function recognitionSection(t) {
   const ctx = makeCtx(db, { cloud });
   const result = await SWEEPS_RUN.recognitionFailures(ctx);
   const record = (id) => db.dump(COLLECTIONS.RECOGNITION_FAILURES).filter((row) => row._id === 'failure-' + id)[0];
-  t.eq(result.acted, 5, '§L 到期清理 5 条：PENDING/IGNORED/共享引用/retentionDays 越界/上传者已注销');
+  t.eq(result.acted, 6, '§L 到期清理 6 条：PENDING/IGNORED/FIXED/共享引用/retentionDays 越界/上传者已注销');
   t.eq(record('pending').status, enums.FAILURE_STATUS.IGNORED, '§L PENDING 到期 → IGNORED');
   t.eq([record('pending').resolution.note, record('pending').resolution.by], ['EXPIRED', 'SYSTEM'], '§L resolution.note=EXPIRED / by=SYSTEM');
   t.check(record('pending').reviewedAt instanceof Date, '§L reviewedAt=注入 now');
@@ -790,8 +787,11 @@ async function recognitionSection(t) {
   t.eq(record('fresh').status, enums.FAILURE_STATUS.PENDING, '§L 阈值前不动（29 天记录保留）');
   t.eq([record('ignored').fileId, record('ignored').resolution.note], ['', '人工忽略'],
     '§L 已人工 IGNORED 记录到期也清原图（旧实现只扫 PENDING → 原图永久残留），且不覆盖人工备注');
-  t.eq([record('fixed').status, record('fixed').fileId], [enums.FAILURE_STATUS.FIXED, 'cloud://f-fixed.jpg'],
-    '§L FIXED 终态不动（ENGINEERING §4.7 status≠FIXED）');
+  t.eq([record('fixed').status, record('fixed').fileId, record('fixed').resolution.note], [enums.FAILURE_STATUS.FIXED, '', '已补录'],
+    '§L 到期 FIXED 也清原图引用（CONTRACT §11.1/隐私「默认 30 天到期删除」优先于 ENGINEERING §4.7 旧口径），状态与复核结果保留');
+  t.eq(cloud.deleted.indexOf('cloud://f-fixed.jpg') !== -1, true, '§L FIXED 无其它引用 → 删原图云文件（旧实现 status≠FIXED 永不清理）');
+  t.eq([record('fixed-fresh').status, record('fixed-fresh').fileId], [enums.FAILURE_STATUS.FIXED, 'cloud://f-fixed-fresh.jpg'],
+    '§L 反例：未到期（5 天）FIXED 原图保留（保留期阈值有效，不是无条件删）');
   t.eq(record('shared').fileId, '', '§L 共享原图：记录侧清引用');
   t.eq(cloud.deleted.indexOf('cloud://f-shared.jpg'), -1, '§L 同一 fileId 仍被订单引用 → 不删文件（引用计数合并）');
   t.eq(record('clamped').status, enums.FAILURE_STATUS.IGNORED, '§L retentionDays 越界（90）按 7~30 收窄为 30 天 → 到期处理');
@@ -799,6 +799,7 @@ async function recognitionSection(t) {
   t.eq(cloud.deleted.indexOf('cloud://f-anon.jpg') !== -1, true, '§L 匿名记录删前按引用计数删原图');
   t.eq(record('anon-fresh') !== undefined, true, '§L 匿名记录未到期保留');
   t.eq((await SWEEPS_RUN.recognitionFailures(ctx)).acted, 0, '§L 重跑幂等：acted=0');
+  await cleanupV1.recognitionLockChecks(t, V1_DEPS);
 }
 // ---------------------------------------------------------------- §M testData
 async function testDataSection(t) {
@@ -823,6 +824,7 @@ async function testDataSection(t) {
   }
   users.push(userOf('TEST-FRESH', { isTestAccount: true, testLastUsedAt: NOW - 5 * DAY, createdAt: NOW - 200 * DAY }));
   users.push(userOf('CUST-REAL-USER', { isTestAccount: false }));
+  orders.push(...cleanupV1.testDataExtraOrdersOf(orderOf));
   const db = makeWorld({
     users,
     customers,
@@ -854,7 +856,9 @@ async function testDataSection(t) {
     db.dump(COLLECTIONS.UPLOAD_TICKETS).filter((row) => row._id === 'td-ticket-0').length], [0, 0, 0],
   '§M 绑定/识别失败/票据一并清');
   t.eq(audits.length, 6, '§M 每个清理账号写 1 条 CLEANUP 审计（detail.sweep=testData）');
-  t.eq([audits[0].detail.counts.orders, audits[0].detail.counts.events], [1, 1], '§M 审计记清理条数摘要');
+  t.eq([audits[0].detail.counts.orders, audits[0].detail.counts.events], [2, 1],
+    '§M 审计记清理条数摘要（含 v1.0 多图单，按订单计）');
+  cleanupV1.testDataChecks(t, cloud);
   t.eq(db.dump(COLLECTIONS.USERS).filter((row) => row._id === 'TEST-FRESH').length, 1, '§M 未到期（5 天）测试账号不动');
   const rerun = await SWEEPS_RUN.testData(ctx);
   t.eq(rerun.acted, 2, '§M 重跑继续清剩余 2 个到期账号（批 ≤6/轮可重入）');

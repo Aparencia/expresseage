@@ -26,7 +26,7 @@ const validate = require(path.join(ROOT, 'shared/validate.js'));
 const launchRoute = require(path.join(ROOT, 'config/route.js'));
 const uploadCommon = require(path.join(ROOT, 'cloudfunctions/api/handlers/upload/_common.js'));
 
-const EXPECTED_ASSERTIONS = 98;
+const EXPECTED_ASSERTIONS = 102;
 
 const TOKEN = 'T'.repeat(32);
 const CONSENT_AT = 1700000000000;
@@ -130,12 +130,12 @@ function register(h) {
       targetIsTest: true,
       [OPEN_ID_WORD]: 'raw-identity'
     });
-    t.eq(keysOf(sanitized), ['draftPointer', 'guides', 'lastRole'], '归一后只剩三个白名单字段');
+    t.eq(keysOf(sanitized), ['draftPointer', 'guides', 'lastRole', 'pickupChecks'], '归一后只剩四个白名单字段');
     t.eq(storage.normalize({
       lastRole: 'PARTNER',
       guides: { PARTNER_WORKBENCH_V1: true, CUSTOMER_HOME_V1: 'yes' },
       draftPointer: 'draft_01'
-    }), { lastRole: 'PARTNER', guides: { PARTNER_WORKBENCH_V1: true }, draftPointer: 'draft_01' },
+    }), { lastRole: 'PARTNER', guides: { PARTNER_WORKBENCH_V1: true }, draftPointer: 'draft_01', pickupChecks: {} },
     '合法值保留；非法 guide 值（非 true）丢弃');
     t.eq(storage.normalize({ lastRole: 'ADMIN' }).lastRole, null,
       'lastRole 只认两个业务角色（非法值读路径丢弃）');
@@ -155,7 +155,7 @@ function register(h) {
       viewMode: 'READONLY',
       targetIsTest: true
     });
-    t.eq(keysOf(storage.load(plat.api)), ['draftPointer', 'guides', 'lastRole'],
+    t.eq(keysOf(storage.load(plat.api)), ['draftPointer', 'guides', 'lastRole', 'pickupChecks'],
       '历史/误写的票据与视角字段在读取时被剥掉');
     storage.setLastRole('PARTNER', plat.api);
     t.check(!/viewTicket|viewContext|viewMode|targetIsTest/.test(String(plat.bucket[storage.KEY])),
@@ -169,6 +169,26 @@ function register(h) {
     t.check(storage.setDraftPointer('bad pointer!', plat.api) === false, '草稿指针非法字符被拒');
     t.check(storage.setDraftPointer('order-draft_01', plat.api) === true
       && storage.getDraftPointer(plat.api) === 'order-draft_01', '草稿指针合法值往返一致');
+
+    // 取件清单本机勾选（D26）：只存 orderNo#itemIndex 布尔标记，不存取件码/站点；非法 key 拒绝。
+    t.check(storage.setPickupCheck('20261022-0001#0', true, plat.api) === true
+      && typeof storage.getPickupChecks(plat.api)['20261022-0001#0'] === 'number',
+      '取件清单勾选可写可读（值为本机时间戳，不含取件码/站点）');
+    t.check(storage.setPickupCheck('bad-key', true, plat.api) === false
+      && storage.setPickupCheck('20261022-0001#0', false, plat.api) === true
+      && storage.getPickupChecks(plat.api)['20261022-0001#0'] === undefined,
+      '取件清单非法 key 被拒；取消勾选可删除标记');
+    const manyChecks = {};
+    for (let i = 0; i <= 200; i += 1) {
+      manyChecks['20261022-' + String(1000 + i).slice(-4) + '#0'] = i + 1;
+    }
+    const capped = storage.normalize({ pickupChecks: manyChecks }).pickupChecks;
+    t.check(Object.keys(capped).length === 200 && capped['20261022-1200#0'] !== undefined
+      && capped['20261022-1000#0'] === undefined,
+      '取件清单勾选上限 200 条（超出丢最旧，避免本地存储无限增长）');
+    t.check(storage.clearPickupChecks(plat.api) === true
+      && Object.keys(storage.getPickupChecks(plat.api)).length === 0,
+      '取件清单勾选可整体清除（换账号/退出不留残渣）');
     t.check(storage.clearAll(plat.api) === true && JSON.stringify(storage.load(plat.api)) === JSON.stringify(storage.emptyState()),
       'clearAll 后回到空状态（换账号不留残渣）');
   });

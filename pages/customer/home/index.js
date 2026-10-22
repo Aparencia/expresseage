@@ -10,12 +10,16 @@ const messageApi = require('../../../api/modules/message');
 const maintenance = require('../../../utils/maintenance');
 const route = require('../../../config/route');
 const format = require('../parts/format');
+const ordersView = require('../parts/orders-view');
 
 const BIND_PAGE = '/pkg-customer/pages/bind/index';
 const CREATE_PAGE = '/pkg-customer/pages/order-create/index';
 const DETAIL_PAGE = '/pkg-customer/pages/order-detail/index';
 const MESSAGES_PAGE = '/pkg-customer/pages/messages/index';
+const PICKUP_LIST_PAGE = '/pkg-customer/pages/pickup-list/index';
 const CONFIG_TTL_MS = 60 * 1000;
+// P0-11：首屏请求 ≥300ms 才置「加载」态（快网不闪、不产生多余 setData），对齐 UX_CUSTOMER §0.3
+const LOADING_DELAY_MS = 300;
 
 function pickVm() {
   const snapshot = store.snapshot();
@@ -58,6 +62,8 @@ Page({
     dormKey: '',
     servicesText: '',
     order: null,
+    // M-21：order-row 需要视图模型（codeText/customerLine/serviceName/timeText），不能直喂服务端 DTO
+    orderRow: null,
     waitedText: '',
     announcement: '',
     announcementClosed: false,
@@ -73,6 +79,8 @@ Page({
     this._maintenanceClosed = '';
     this._maintenanceView = null;
     this._configFetchedAt = 0;
+    this._loadingTimer = null;
+    this._startupBindingTaken = false;
     this._off = store.subscribe(() => this.sync());
   },
 
@@ -86,11 +94,13 @@ Page({
 
   onHide() {
     this.clearTicker();
+    this.clearLoadingTimer();
   },
 
   onUnload() {
     if (this._off) this._off();
     this.clearTicker();
+    this.clearLoadingTimer();
   },
 
   guard() {
@@ -189,14 +199,55 @@ Page({
     this.setData({ loading: false, error: (err && err.message) || '网络开小差了，请下拉重试' });
   },
 
+  // P0-11：首屏请求 ≥300ms 才置「加载」态；快网请求不产生加载闪动与多余 setData
+  scheduleLoading() {
+    this.clearLoadingTimer();
+    this._loadingTimer = setTimeout(() => {
+      this._loadingTimer = null;
+      this.setData({ loading: true });
+    }, LOADING_DELAY_MS);
+  },
+
+  clearLoadingTimer() {
+    if (this._loadingTimer) {
+      clearTimeout(this._loadingTimer);
+      this._loadingTimer = null;
+    }
+  },
+
+  // P0-3：首页首次 refresh 复用启动期 bind.getCurrent（同一 Promise，含 partnerPublic）；
+  // 之后各次 onShow/下拉仍自行重拉（离开再回来必须拿到最新绑定）。
+  takeStartupBinding() {
+    if (this._startupBindingTaken || store.getViewContext()) {
+      return null;
+    }
+    this._startupBindingTaken = true;
+    const app = typeof getApp === 'function' ? getApp() : null;
+    if (!app || typeof app.consumeStartupBinding !== 'function') {
+      return null;
+    }
+    return app.consumeStartupBinding();
+  },
+
+  bindingTask() {
+    const pending = this.takeStartupBinding();
+    if (!pending) {
+      return bindApi.getCurrent();
+    }
+    // 启动期绑定失败（null）→ 本页重拉，保证错误不被静默吞掉
+    return pending.then((data) => data || bindApi.getCurrent());
+  },
+
   async refresh() {
-    this.setData({ loading: true, error: '' });
-    const tasks = [bindApi.getCurrent(), orderApi.listCustomer({ limit: 1 })];
+    this.setData({ error: '' });
+    this.scheduleLoading();
+    const tasks = [this.bindingTask(), orderApi.listCustomer({ limit: 1 })];
     if (!this.data.vm.config || !this.data.vm.config.privacyVersion) {
       tasks.push(configApi.getPublic());
     }
     try {
       const results = await Promise.all(tasks);
+      this.clearLoadingTimer();
       const bindingData = results[0] || {};
       const listData = results[1] || {};
       if (results[2]) store.patch({ config: results[2] });
@@ -210,11 +261,16 @@ Page({
         roomTag: binding ? binding.roomTag : '',
         dormKey: binding ? binding.dormKey : '',
         order: order,
+        orderRow: order ? ordersView.rowView(order, {
+          nowMs: ordersView.serverNowMs(store.get('serverTimeSkew'), Date.now()),
+          config: this.data.vm.config || {}
+        }) : null,
         waitedText: order ? '更新于 ' + format.formatTimeAgo(order.statusUpdatedAt) : ''
       });
       this.applyDerived();
       this.startTicker();
     } catch (err) {
+      this.clearLoadingTimer();
       this.applyMaintenanceError(err);
     }
   },
@@ -301,6 +357,11 @@ Page({
 
   onMessagesTap() {
     wx.navigateTo({ url: MESSAGES_PAGE });
+  },
+
+  // D26：取件清单独立入口（独立页面，不做 tab；只读页面，维护期也可查看）
+  onPickupListTap() {
+    wx.navigateTo({ url: PICKUP_LIST_PAGE });
   },
 
   onProfileTap() {

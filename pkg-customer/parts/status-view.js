@@ -26,7 +26,9 @@ const EVENT_TEXT = {
   EXCEPTION_RESOLVED: '异常已解除',
   ORDER_CORRECTED: '兼职更正了订单信息',
   DELETED_BY_CUSTOMER: '顾客删除记录',
-  GUEST_ORDER_CLAIMED: '代客单已认领'
+  GUEST_ORDER_CLAIMED: '代客单已认领',
+  // v1.0（D23）：短间隔重复提交被服务端并入最近订单时写入该事件（订单动态给人话）
+  PARCELS_APPENDED: '追加了包裹'
 };
 EVENT_TEXT[STATUS.ACCEPTED] = state.statusText(STATUS.ACCEPTED);
 EVENT_TEXT[STATUS.PICKED] = state.statusText(STATUS.PICKED);
@@ -145,12 +147,11 @@ function canMessage(order) {
   return !state.isTerminal(status) || isStatus(status, STATUS.COMPLETED);
 }
 
-// 订单截图：服务端 DTO 只给 image {hasImage, cleaned}（fileId 不落客户端列表 DTO）
+// 订单截图：服务端 v1.0 DTO 只给 image {index,status,hasImage,cleaned}（存储句柄不落客户端）
 function canViewImage(order) {
-  if (!order) return false;
-  if (order.image && order.image.cleaned === true) return false;
-  if (order.image && order.image.hasImage === true) return true;
-  return !!(order.image && order.image.fileId);
+  if (!order || !order.image) return false;
+  if (order.image.cleaned === true) return false;
+  return order.image.hasImage === true;
 }
 
 /**
