@@ -143,7 +143,7 @@ expressage_college_v4/
 | `miniprogramRoot` | `./` | 不另建 `miniprogram/` 子目录 |
 | `setting.es6/enhance/postcss/minified` | 全 `true` | 与 v3 一致；`urlCheck:false`（无自建域名请求） |
 | `setting.minifyWXSS/minifyWXML/uploadWithSourceMap` | `true` | 发布可追溯 |
-| `packOptions.ignore` | `cloudfunctions`、`docs`、`tools`、`.git`、`node_modules`、`*.md` | 工程文件不进小程序包 |
+| `packOptions.ignore` | `cloudfunctions`、`docs`、`tools`、`.git`、`node_modules`、`.dsh-code-index`、`coverage`、`*.md`、`*.log` | 工程文件/工具产物不进小程序包（上传校验按**编译后**体积求和，实测口径；2026-10-23 漏配 `.dsh-code-index/` 使主包 6351KB 超 2048KB 被拒） |
 | `condition`/`editorSetting` | 空 | 不提交个人调试条件 |
 ### 3.2 其他配置文件
 | 文件 | 内容 | 规则 |
@@ -151,7 +151,7 @@ expressage_college_v4/
 | `project.private.config.json` | `libVersion`（实测可用）、编译热重载等 | **gitignore**（机器私有）；基础库版本回填 `.tool-versions` |
 | `.tool-versions` | 本地 node/npm、云函数运行时、基础库版本、无 DB 版本 | 改任意一行 = 环境变更，回执说明 |
 | `.env.example` | 只键名+注释：`ADMIN_OPENIDS={"<openid>":"DEV-01","<openid2>":"DEV-02"}`（云函数环境变量，非 .env，JSON 映射）、`DEEPSEEK_API_KEY`（v0.8，仅 `api` 云函数环境变量） | 真实值永不提交；客户端无任何密钥；**订阅消息模板 ID/开关/文案、`viewTicketTtlMinutes`、`avatarMaxBytes`、`testAccountMaxPerRole`、`testDataRetentionDays` 全放 `config`（admin.updateConfig 维护）；`aiFallback` 也在 `config` 但 MVP 后台只读（改值走部署配置脚本/控制台）；均不进环境变量、不硬编码** |
-| `.gitignore` | `.env*`、`project.private.config.json`、`node_modules/`、`cloudfunctions/*/node_modules/`、`.dsh-code-index/`、`coverage/`、`*.log` | v3 教训：`.dsh-code-index` 误提交致 gate 假红/体量虚高 |
+| `.gitignore` | `.env*`、`project.private.config.json`、`node_modules/`、`cloudfunctions/*/node_modules/`、`.dsh-code-index/`、`coverage/`、`*.log` | v3 教训：`.dsh-code-index` 误提交致 gate 假红/体量虚高；**与 `packOptions.ignore` 同步维护**——工具产物目录两份都要登记，2026-10-23 只进 `.gitignore` 未进打包忽略清单，导致上传被拒 |
 | `sitemap.json` | 默认 `allow *`（无搜索需求） | 与 v3 一致 |
 | `app.json` 性能配置 | `networkTimeout.request=10000`（与 `api/client.js` 10s 超时口径一致）、`networkTimeout.uploadFile=60000`（大图上传弱网余量）；**`networkTimeout` 不约束 `wx.cloud.callFunction`**（云调用超时仍由 `api/client.js` 竞速控制）；`preloadRule` 见 §2.3 | 只改值不改结构；由 Lead 单写者维护并在改后跑一次工具编译确认无警告 |
 ### 3.3 云环境（`config/env.js`；**单环境方案**，D1 修订）

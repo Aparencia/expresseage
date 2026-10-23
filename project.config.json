@@ -53,8 +53,20 @@
         "value": "node_modules"
       },
       {
+        "type": "folder",
+        "value": ".dsh-code-index"
+      },
+      {
+        "type": "folder",
+        "value": "coverage"
+      },
+      {
         "type": "suffix",
         "value": ".md"
+      },
+      {
+        "type": "suffix",
+        "value": ".log"
       }
     ],
     "include": []

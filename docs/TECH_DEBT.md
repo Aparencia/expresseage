@@ -77,6 +77,7 @@
 | TD-068 | **下单前服务范围预检纯件两份同口径实现**：`pages/customer/home/parts/home-view.js` 的 `zoneAllowedOf/scopeTextOf` 与 `pkg-customer/pages/order-create/parts/precheck.js` 的 `zoneAllowedOf/rangeCheckOf` 各一份（文案同句、判据同口径，两端各有断言） | 两份同口径逻辑未来可能漂移（当前一致且有断言） | 下沉 `utils/`（新纯件）后两页 require 单源，同步 `selftest-order-customer`/`selftest-order-flow` 断言；改动会动两个分包页面，建议随下一批页面改动一起做 | 开放 | 批 10 A 批 task-42/task-43 回执 + Lead 登记 2026-10-23 |
 | TD-069 | **代客下单页 `image-picker` 属性名用驼峰**：`pkg-partner/pages/create-on-behalf/index.wxml` 为 `<image-picker maxCount="{{1}}">`，而项目其它用法为 `max-count`（WXML 自定义组件属性建议 kebab-case）；当前组件默认值恰为 1，行为未变 | 若将来把组件默认 `maxCount` 改为 5，该页会意外放开多图；维护口径不一致 | 改为 `max-count="{{1}}"`（一字符级改动，随兼职端下一批页面改动一起做并跑 `selftest-order-partner`） | 开放 | 批 10 A 批 task-42 回执 + Lead 登记 2026-10-23 |
 | TD-070 | **`precheck.CUSTOM_SERVICE_CODE` 由 `shared/enums.SERVICE_CODES` 末项推导**：当前末项=CUSTOM（`selftest-order-flow` L1 断言锁 'CUSTOM'），服务端用显式常量 `'CUSTOM'` | 若未来在 SERVICES 末尾新增服务码，客户端「其他代办强制备注」会作用到错误码上（与服务端漂移） | 二选一收口：`shared/enums.js` 导出同名单码常量（需 sync 两套副本）+ 服务端引用同一常量；或客户端改显式 `'CUSTOM'` 常量并与 L1 断言一起改 | 开放 | 批 10 A 批 task-42 回执 + Lead 登记 2026-10-23 |
+| TD-071 | **打包忽略清单与 `.gitignore` 靠人工同步，无门禁判据**：`packOptions.ignore` 无任何 check 断言，新增工具产物目录（如 `.dsh-code-index/`）漏配即可能把主包顶过上传上限 | 上传阻塞、返工 | 关闭依据（需新增判据并带首红证据）：在 `tools/check.js` 增加「打包源目录内的工具产物目录 ⊆ `packOptions.ignore`」判据，或由 Lead 明确接受长期人工核对并列月度清单 | 开放 | ENGINEERING §3.1/§3.2 + 2026-10-23 上传故障 |
 
 
 

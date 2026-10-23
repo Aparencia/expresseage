@@ -438,6 +438,7 @@
 26. **后台总览 `-502005`（控制台手建集合名拼错，用户侧已修正）**：2026-10-22 后台总览 `admin.stats` 稳定 `INTERNAL_ERROR`；云端日志 `-502005 ... Db or Table not exist: invitation_codes`——控制台集合名被手打为 `inbitation_codes`（拼错的集合无代码引用，创建时不会报错）。用户在控制台删除拼错集合、按正确名字新建并补权限/索引后总览恢复。RUNBOOK §3.5 已补「集合名逐字复制 + `missingCollections: []` 自检 + 拼错集合清场」（提交 `a06a20d`）与 lessons 卡；代码无需改动。
 27. **「成为兼职」邀请码输入即清空（已修，待用户重新编译复验）**：2026-10-22 真机输入第一个字符后输入框立刻变空、无法输入（不报错）。根因：激活页 `onCodeInput` 用 `validateInvitationCode(raw).canonical` 做实时回显，该校验在"未满 12 位/含字母表外字符"时返回 `ok:false` 且不带 `canonical` → 回显被清空。已修：新增纯件 `pkg-partner/pages/activate/parts/code-input-model.js`（`stateOfInput` 用可部分归一的 `canonicalCode` + 4 位分组 + 12 位截断；`isValid` 整串校验作提交闸）；判据 `selftest-partner-pages` +9（156→165），变异回旧实现 4 条首红 + SHA256 还原；**纯客户端改动，用户重新编译模拟器即可复验，无需重新部署云函数**。
 28. **测试文件行数余量**：拆出 `tools/selftest-cloud-fixtures.js`（夹具 85 行）后 `selftest-cloud` 994 行、`selftest-order-partner` 1000 行（均 ≤1000，门禁 #18）；后续新增断言须先拆夹具/新开套件，不能硬追加。
+29. **上传被拒「main package source size 6351KB exceed max limit 2048KB」（已修，待用户重新上传复验）**：2026-10-23 07:18/07:49 两次上传被服务端拒绝。根因：仓库根 `.dsh-code-index/`（工具代码索引缓存 9,655,629B，只写进 `.gitignore`）未登记 `packOptions.ignore`，被开发者工具打进主包——该 JSON 编译后 6,192,992B + 主包编译产物约 310,432B = 6,503,424B = 6351KB。修：忽略清单补 `.dsh-code-index`/`coverage`/`*.log`，主包回到约 310KB（预算 1.5MB 内）；ENGINEERING §3.1/§3.2、`docs/lessons/`、TD-071 回写。**上传复验属用户点击，agent 不代传。**
 
 ## 8. 最近更新
 
@@ -494,6 +495,7 @@
 | 2026-10-23 | **批 10 B 批收口**：D28 换绑一体化（`utils/rebind.js` + bind 页一次确认 `release`→`create`、单步恢复只补 create）、D29 未读红点（`unread`=留言+状态事件、水位事务 CAS、`ALL` 置读、`watermarkMsOf` 修复、兼职端同口径）、D29 AI 低置信（仅 LOW+DEEPSEEK 不写入 + 采纳建议条）；`check.ps1` 4 步 0、selftest **31 套 4,660**（+94）、check **32/32**、docs **10/10**、零金额 0、check-functions 0 违规、sync 32 件一致；TD-067 登记 |
 | 2026-10-23 | **批 10 A 批收口（P1 十项，用户「A 按推荐采纳」）**：P1-1 资料自动展开（`config/route.js` `?edit=1` + profile 每实例一次）、P1-2 bind 自动查询 + 预览缓存（`auto-query.js`/`preview-cache.js`，正常落地 `getPublic` ≤1）、P1-4 单图替换/失败卡两路/原地重识别、P1-5 `ordersOngoing` 角标（不清零/不轮询）、P1-6 服务范围前移预检、P1-7 三步引导、P1-8 相册零 scope（TD-060 关闭代码侧）、P1-9 其他代办强备注（客户端+服务端）、P1-10 头像票据自愈；`check.ps1` 4 步 0、selftest **31 套 4,799**（+139）、check **32/32**、docs **10/10**、零金额 0、check-functions 0 违规、sync 32 件一致；TD-068/069/070 登记；QA 271→275 |
 | 2026-10-23 | **批 10 A 批提交 `bf74a1c`**（45 文件 +2050/−271）：提交后复跑 `check.ps1` 4 步 0、`gate.ps1 -Anchor bda0623 -ScopeFiles "CHANGELOG.md,STATE.md,api/,cloudfunctions/api/handlers/order/,components/image-picker/,config/route.js,custom-tab-bar/,docs/,pages/customer/home/,pages/customer/orders/,pages/profile/,pages/role/,pkg-customer/pages/bind/,pkg-customer/pages/order-create/,store/,tools/,utils/preview-cache.js" -Estimate 1400` 红 0/黄 0（45 件、体量 2,050 ≤ 2,100、范围 17 前缀全匹配）；工作树干净（本行为收口证据回填提交） |
+| 2026-10-23 | **上传被拒「主包 6351KB 超 2048KB」（定位 + 修复 + 回写）**：`.dsh-code-index/`（工具代码索引缓存 9,655,629B，只在 `.gitignore`）漏配 `packOptions.ignore` 被打进主包——JSON 编译后 6,192,992B + 主包编译产物约 310,432B = 6,503,424B = 6351KB；忽略清单补 `.dsh-code-index`/`coverage`/`*.log` 后主包回约 310KB；ENGINEERING §3.1/§3.2、`docs/lessons/`、TD-071 回写；`check.ps1` 真实读数见本次提交证据串；**上传复验属用户点击（agent 不代传）** |
 
 ## 9. 下一步（按序）
 
