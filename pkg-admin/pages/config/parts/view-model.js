@@ -1,12 +1,15 @@
 // pkg-admin/pages/config/parts/view-model.js · 全局配置视图模型（纯件，零 wx）
-// 口径：V4_UX_DEVELOPER §3.8/§7.4——可编辑白名单字段（识别失败留存 7~30）、只读项、变更清单与二次确认。
+// 口径：V4_UX_DEVELOPER §3.8/§7.4——可编辑白名单字段（识别失败留存 7~30、站点名称 1~20 字唯一）、
+//       只读项、变更清单与二次确认。站点名称单源 = shared/stations（默认名与 id 不复制第二份）。
 'use strict';
 
 const C = require('../../../common/constants');
 const F = require('../../../common/format');
+const stationsLib = require('../../../../shared/stations');
 
 const FIELD_LABELS = {
   zoneLabels: '苑名',
+  stations: '站点名称',
   serviceCatalog: '服务类型模板',
   announcement: '公告',
   maintenance: '维护模式',
@@ -26,9 +29,17 @@ function toInt(value) {
   return isNaN(parsed) ? NaN : Math.floor(parsed);
 }
 
+// 站点编辑行：当前配置名 + 默认名占位提示（id 固定 P1~P8，不自建/不增删）
+function stationRowsOf(stations) {
+  return stationsLib.stationsFromConfig({ stations: stations }).map(function mapStation(item) {
+    return { id: item.id, name: item.name, defaultName: stationsLib.stationNameOf(item.id) };
+  });
+}
+
 function emptyForm() {
   return {
     zones: [],
+    stations: stationRowsOf(null),
     services: [],
     announcement: { enabled: false, title: '', text: '' },
     maintenance: { enabled: false, text: '' },
@@ -52,6 +63,7 @@ function buildForm(config) {
       value: zoneLabels[key] || ''
     };
   });
+  form.stations = stationRowsOf(source.stations);
   form.services = (source.serviceCatalog || []).map(function mapService(item) {
     // 契约口径（CONTRACT §6 / DATA_MODEL §2.10）：serviceCatalog 只有 {code,name,desc}，无展示开关
     return {
@@ -101,6 +113,9 @@ function buildPayload(form) {
       acc[item.key] = String(item.value || '').trim();
       return acc;
     }, {}),
+    stations: (source.stations || []).map(function mapStation(item) {
+      return { id: item.id, name: String(item.name || '').trim() };
+    }),
     serviceCatalog: (source.services || []).map(function mapService(item) {
       // 只上行契约字段 code/name/desc；enabled 不在 CONTRACT §6 口径内，不得凭空新增
       return {
@@ -125,6 +140,26 @@ function buildPayload(form) {
     ttlMinutes: toInt(source.ttlMinutes),
     avatarMaxBytes: toInt(source.avatarMaxKb) * 1024
   };
+}
+
+// 站点名称校验：8 个固定 id 全覆盖、名称 1~20 字且不重复（id 不可增删/改名）
+function validateStationsOf(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  if (list.length !== stationsLib.STATION_COUNT) {
+    return '站点名称需覆盖全部 8 个站点。';
+  }
+  const seen = {};
+  for (let i = 0; i < list.length; i += 1) {
+    const name = String((list[i] && list[i].name) || '').trim();
+    if (name.length < stationsLib.STATION_NAME_MIN || name.length > stationsLib.STATION_NAME_MAX) {
+      return '站点名称需填 ' + stationsLib.STATION_NAME_MIN + '~' + stationsLib.STATION_NAME_MAX + ' 字。';
+    }
+    if (seen[name]) {
+      return '站点名称不能重复。';
+    }
+    seen[name] = true;
+  }
+  return '';
 }
 
 function validatePayload(payload) {
@@ -162,6 +197,10 @@ function validatePayload(payload) {
     return !data.zoneLabels[key];
   })) {
     return '五个苑名都不能为空。';
+  }
+  const stationError = validateStationsOf(data.stations);
+  if (stationError) {
+    return stationError;
   }
   return '';
 }

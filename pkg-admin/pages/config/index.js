@@ -82,6 +82,16 @@ Page({
     this.markDirty();
   },
 
+  // v1.1（D32）站点正式名：8 行固定 P1~P8，只改名称，不增删站点
+  onStationInput(event) {
+    const index = Number(event.currentTarget.dataset.index);
+    const stations = this.data.form.stations.slice();
+    if (!stations[index]) return;
+    stations[index].name = event.detail.value;
+    this.setData({ 'form.stations': stations });
+    this.markDirty();
+  },
+
   onServiceInput(event) {
     const index = Number(event.currentTarget.dataset.index);
     const field = event.currentTarget.dataset.field;

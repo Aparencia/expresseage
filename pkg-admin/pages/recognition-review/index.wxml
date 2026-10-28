@@ -7,6 +7,7 @@
   <view class="card">
     <text class="section-title">识别失败复核</text>
     <view class="small">这里只处理识别失败的截图复核：可按单查看原图（每次查看都会记审计），补录站点/取件码只回填订单的识别字段，不会改变订单状态。</view>
+    <view class="small {{aiStatusWarn ? 'error-text' : 'muted'}} ai-status" wx:if="{{aiStatusText}}">{{aiStatusText}}</view>
   </view>
 
   <scroll-view class="filter-row" scroll-x="true">
@@ -68,7 +69,8 @@
 
         <view class="detail-block">
           <text class="detail-label">原图</text>
-          <view class="btn btn-ghost btn-small" bindtap="onViewImage">查看原图（临时 5 分钟，将记审计）</view>
+          <view class="btn btn-ghost btn-small" wx:if="{{detail.hasImage}}" bindtap="onViewImage">查看原图（临时 5 分钟，将记审计）</view>
+          <text class="muted" wx:else>该记录没有关联原图（截图上传凭证未关联），无法查看。</text>
         </view>
 
         <view class="detail-block">

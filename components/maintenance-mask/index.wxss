@@ -39,6 +39,12 @@
   word-break: break-all;
 }
 
+/* 原生 button 默认 width:184px（button:not([size='mini'])，特异性 0,1,1）会压过单类；
+   维护遮罩的确认按钮应整宽：用 .mm-card .mm-btn(0,2,0) 提特异性。 */
+.mm-card .mm-btn {
+  width: 100%;
+}
+
 .mm-btn {
   margin-top: 32rpx;
   min-height: 88rpx;

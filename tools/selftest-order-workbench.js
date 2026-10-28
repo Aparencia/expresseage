@@ -40,7 +40,7 @@ const orderState = require(path.join(ROOT, 'shared/order-state.js'));
 const storage = require(path.join(ROOT, 'utils/storage.js'));
 const serverDto = require(path.join(ROOT, 'cloudfunctions/api/handlers/order/_dto.js'));
 
-const EXPECTED_ASSERTIONS = 222; // 实际断言总数（少算/多算都判红）
+const EXPECTED_ASSERTIONS = 235; // 实际断言总数（少算/多算都判红）
 
 const STATUS = orderState.STATUS;
 const STATUS_LITERALS = ['SUBMITTED', 'ACCEPTED', 'PICKED', 'DELIVERED', 'COMPLETED', 'CANCELLED', 'EXCEPTION'];
@@ -816,6 +816,47 @@ function register(h) {
       t.eq([normalRow.needCodeCountText, normalRow.stationSummaryText], ['', ''], 'H24 单件单不出聚合 chip（保持 v0.9 视觉）');
       t.notEmpty(pieces, 'H25 多包裹样本非空');
     });
+  });
+
+  // ── I. 空态入口按钮文案合并 + 0 单多选隐藏（UI 修复）──────────────────────
+  h.section('I 空态入口按钮文案 + 0 单多选', (t) => {
+    const wxml = textOf(PAGES.wxml);
+    const indexSrc = textOf(PAGES.index);
+
+    // 空态数据必须带 actions：曾用 plan.emptyInfo={title,text} 覆盖 initial empty → 三个按钮无文字
+    const vacuum = loadView.emptyOf({ filter: 'all', keyword: '' });
+    t.eq([vacuum.title, vacuum.text],
+      ['今天还没有订单', '把绑定卡片发给顾客，让顾客自己绑定；或给熟客代客下单。'],
+      'I01 空态逐句文案仍来自 filter-view（真空态）');
+    t.eq([vacuum.actions.shareText, vacuum.actions.createOnBehalfText, vacuum.actions.replayText],
+      ['分享绑定卡片', '代客下单', '重新看引导'], 'I02 空态 actions = guideView.emptyActions（三个按钮都有文字）');
+    t.eq(vacuum.actions.shareHint, '顾客在自己手机上确认后才建立绑定', 'I03 分享提示随空态下发');
+    t.eq(loadView.emptyOf({ filter: 'submitted' }).actions.shareText, '分享绑定卡片',
+      'I04 筛空态同样带 actions（不因筛选丢按钮文案）');
+    t.eq(loadView.emptyOf({ keyword: 'P4' }).title, '没找到匹配的订单', 'I05 搜索空态文案不变');
+
+    const emptyPlan = loadView.applyRefresh({ list: [], page1Keys: [] }, {
+      list: [], counts: loadView.COUNTS_FALLBACK, nextCursor: null
+    }, { filterKey: 'all', keyword: '', nowMs: DOC_MS });
+    t.eq(emptyPlan.emptyInfo.actions.replayText, '重新看引导',
+      'I06 加载结果 emptyInfo 已合并 actions（不再只有 title/text）');
+    const emptyPatch = loadView.resultPatch(emptyPlan, { filterKey: 'all', poll: false, selecting: false });
+    t.eq([emptyPatch.setData.empty.actions.shareText, emptyPatch.setData.empty.title],
+      ['分享绑定卡片', '今天还没有订单'], 'I07 resultPatch 下发的 empty 带 actions（空态三按钮有文字）');
+    t.eq(emptyPatch.setData.hasRows, false, 'I08 0 单 → hasRows=false（顶部「多选」主按钮隐藏）');
+    const readyPlan = loadView.applyRefresh({ list: [], page1Keys: [] }, {
+      list: [dto(STATUS.SUBMITTED)], counts: loadView.COUNTS_FALLBACK, nextCursor: null
+    }, { filterKey: 'all', keyword: '', nowMs: DOC_MS });
+    t.eq(loadView.resultPatch(readyPlan, { filterKey: 'all', poll: false, selecting: false }).setData.hasRows, true,
+      'I09 有单 → hasRows=true（多选入口恢复）');
+    t.eq(loadView.resultPatch(readyPlan, { filterKey: 'all', poll: true, selecting: false }).setData.empty.actions.shareHint,
+      '顾客在自己手机上确认后才建立绑定', 'I10 轮询行级补丁分支同样带 actions（不丢按钮文案）');
+
+    t.check(/selecting \|\| hasRows/.test(wxml) && wxml.indexOf('hasRows') >= 0,
+      'I11 WXML 顶部「多选」条件 = selecting || hasRows（0 单隐藏，多选中仍可退出）');
+    t.check(indexSrc.indexOf('loadView.emptyOf(') >= 0 && indexSrc.indexOf('filterView.emptyOf(') === -1,
+      'I12 页面空态统一走 loadView.emptyOf（initial/筛选/错误，actions 不再被覆盖）');
+    t.notEmpty([vacuum.actions, emptyPatch.setData], 'I13 I 组样本非空');
   });
 }
 

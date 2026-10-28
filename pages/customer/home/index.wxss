@@ -9,13 +9,62 @@
   align-items: center;
 }
 
+/* 我的兼职卡：压缩高度——头像/昵称同行、状态标贴昵称、服务信息两行小字 */
+.partner-card {
+  padding: 20rpx 24rpx;
+}
+
+.partner-head {
+  align-items: center;
+}
+
+.partner-id {
+  min-width: 0;
+}
+
 .partner-meta {
   margin-left: 20rpx;
   min-width: 0;
 }
 
+.partner-name-row {
+  min-width: 0;
+  align-items: center;
+}
+
+.partner-name {
+  flex: 1;
+  min-width: 0;
+  margin-bottom: 0;
+  font-size: 32rpx;
+}
+
+.partner-status {
+  margin-left: 12rpx;
+  flex-shrink: 0;
+}
+
+.partner-lines {
+  margin-top: 8rpx;
+}
+
+.partner-line {
+  font-size: 24rpx;
+  line-height: 1.5;
+}
+
 .order-card {
   padding-bottom: 12rpx;
+}
+
+/* 无进行中订单：压缩成一行提示，不再用大段留白 */
+.order-empty-card {
+  padding: 20rpx 24rpx;
+}
+
+.order-empty-text {
+  font-size: 26rpx;
+  line-height: 1.5;
 }
 
 .btn-small {
@@ -97,4 +146,10 @@
 .guide-skip {
   padding: 16rpx 24rpx;
   color: var(--v4-text-2);
+}
+
+/* 分享提示（朋友圈入口只能走右上角菜单，平台限制见 D36） */
+.share-tip {
+  margin-top: 12rpx;
+  line-height: 1.6;
 }

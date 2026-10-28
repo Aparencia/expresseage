@@ -35,8 +35,9 @@ const shareCard = require(path.join(ROOT, 'pages/profile/parts/share-card.js'));
 const rebind = require(path.join(ROOT, 'utils/rebind.js'));
 const previewCache = require(path.join(ROOT, 'utils/preview-cache.js'));
 const autoQuery = require(path.join(ROOT, 'pkg-customer/pages/bind/parts/auto-query.js'));
+const avatarUtil = require(path.join(ROOT, 'utils/avatar.js'));
 
-const EXPECTED_ASSERTIONS = 161;
+const EXPECTED_ASSERTIONS = 169;
 
 // 异步用例：microtask 全清（client.call → transport → normalizeResult 都是 promise 链）
 function flushAsync() {
@@ -423,9 +424,10 @@ function register(h) {
   h.section('§6 分享绑定卡 path 单一来源（全页面层扫描 + 客户页接纯件）', (t) => {
     // 绑定卡分享 path 只有两种写法：字面量 /pages/role/index?bind=… 或纯件里的 route.ROLE_PAGE + '?bind='
     const SHARE_BIND_PATH_RE = /\/pages\/role\/index\?bind=|\bROLE_PAGE\s*\+\s*['"]\?bind=['"]/;
-    const ALLOWED = 'pages/profile/parts/share-card.js';
+    // D36：卡片构造单源迁到 utils/share/index.js（页面层只转发）；扫描范围=页面层 + 卡片纯件
+    const ALLOWED = 'utils/share/index.js';
     const scanFiles = [];
-    ['pages', 'pkg-customer', 'pkg-partner'].forEach((dir) => {
+    ['pages', 'pkg-customer', 'pkg-partner', 'utils/share'].forEach((dir) => {
       walkJs(dir).forEach((full) => {
         scanFiles.push({
           rel: path.relative(ROOT, full).split(path.sep).join('/'),
@@ -786,6 +788,32 @@ function register(h) {
       'auto-query 纯件零 wx（时钟/调度可注入，可脱离小程序单测）');
     t.check(bindWxml.indexOf('bindtap="onQuery"') !== -1, 'wxml 保留手动「查询」按钮（自动查询失败可重试）');
     t.check(bindJs.indexOf('preview-cache') === -1, '绑定页不直接碰预览缓存（唯一出口是 auto-query 纯件）');
+  });
+
+  // ---------------------------------------------------------------- §8 头像组件兜底（无头像/加载失败不裂图）
+  h.section('§8 头像组件：有头像显示头像、无头像/加载失败显示对方昵称首字', (t) => {
+    const named = avatarUtil.viewModelOf('', '小王');
+    t.check(named.isDefault === true && named.fileId === '' && named.initial === '小',
+      '§8-1 无头像 → 默认头像 + 对方昵称首字（不裂图、不空白）');
+    t.check(typeof named.backgroundColor === 'string' && typeof named.color === 'string',
+      '§8-2 默认头像底色/字色由 utils/avatar 色板下发（同昵称稳定同色）');
+    const withFile = avatarUtil.viewModelOf('cloud://env/avatars/partner/x.jpg', '小王');
+    t.check(withFile.isDefault === false && withFile.fileId === 'cloud://env/avatars/partner/x.jpg',
+      '§8-3 有头像 → 直出云文件 ID（微信客户端直连存储，不经临时 URL）');
+    const unnamed = avatarUtil.viewModelOf('', '');
+    t.check(unnamed.isDefault === true && unnamed.initial === '?',
+      '§8-4 昵称也为空 → 兜底首字（不把空串当头像）');
+    const componentJs = fs.readFileSync(path.join(ROOT, 'components/avatar-view/index.js'), 'utf8');
+    const componentWxml = fs.readFileSync(path.join(ROOT, 'components/avatar-view/index.wxml'), 'utf8');
+    const componentWxss = fs.readFileSync(path.join(ROOT, 'components/avatar-view/index.wxss'), 'utf8');
+    t.check(componentWxml.indexOf('binderror="onError"') !== -1 && componentWxml.indexOf('view.initial') !== -1,
+      '§8-5 组件图片加载失败回默认头像首字（不出现裂图/空白）');
+    t.check(componentJs.indexOf('_failedFileId') !== -1 && componentJs.indexOf("UNNAMED_INITIAL = '代'") !== -1,
+      '§8-6 失败标记按 fileId 记忆（换头像会重试，坏地址不反复请求）+ 无昵称兜底字');
+    t.check(/font-size:\s*1em/.test(componentWxss) && componentWxss.indexOf('44%') === -1,
+      '§8-7 默认头像首字字号不再用百分比（44% 会相对页面 30rpx 缩成 13rpx）');
+    t.check(componentWxml.indexOf('size * 0.42') !== -1,
+      '§8-8 默认头像首字随 size 等比缩放（64/96rpx 卡片都可读）');
   });
 }
 

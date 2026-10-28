@@ -6,6 +6,11 @@
     <view class="subtitle">上传取件码截图，请兼职帮你取件送到宿舍。</view>
   </view>
 
+  <view class="card" wx:if="{{singlePage}}">
+    <view class="section-title">朋友圈预览</view>
+    <view class="muted">{{singlePageHint}}</view>
+  </view>
+
   <view class="card" wx:if="{{bindCard}}">
     <view class="row between">
       <view class="col flex-1">

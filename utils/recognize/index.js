@@ -44,7 +44,7 @@ function validateParcel(parcel) {
   if (!value.stationId || !station.stationName(value.stationId)) {
     errors.station = FORM_ERROR.station;
   }
-  if (value.pickupCode && !codes.isAutoFillCode(value.pickupCode)) {
+  if (value.pickupCode && !codes.isFillableCode(value.pickupCode)) {
     errors.pickupCode = FORM_ERROR.pickupCode;
   }
   if (value.lockerNo && !codes.isPlausibleLocker(value.lockerNo)) {
@@ -97,13 +97,15 @@ function buildParcel(base) {
  * 一图多码：每个紧凑码可提交的候选一件（共享同一 fileId，由页面组装）；无码有尾号 → 一件 NEED_CODE。
  * 超长/带奇怪符号的候选「认出但不像」：不自动填，单独放 unalignedCodes 交给页面提示。
  * @param {string} rawText OCR 行文本
+ * @param {{stations?: Array<{id:string,name:string}>}} [options] 当前配置站点表（config.getPublic.stations；
+ *   缺省=内置默认，旧调用零破坏）
  * @returns {{items:object[], found:boolean, station:object|null, trackingTail:string, lockerNo:string,
  *   unalignedCodes:string[], needsReview:boolean, formErrors:object}}
  */
-function parseOcrText(rawText) {
+function parseOcrText(rawText, options) {
   const lines = text.splitLines(rawText);
   const joined = lines.join(' ');
-  const matched = station.matchStation(joined);
+  const matched = station.matchStation(joined, options);
   const tail = text.pickTrackingTail(lines);
   const candidates = codes.pickCodeCandidates(lines);
   const codeList = candidates.filter(function compact(item) { return item.compact; });
@@ -170,7 +172,7 @@ function lowSuggestionOf(ai) {
     out.stationId = ai.stationId;
     out.stationName = station.stationName(ai.stationId);
   }
-  if (codes.isAutoFillCode(ai.pickupCode)) out.pickupCode = codes.normalizeCode(ai.pickupCode);
+  if (codes.isFillableCode(ai.pickupCode)) out.pickupCode = codes.normalizeCode(ai.pickupCode);
   if (codes.isPlausibleTail(ai.trackingTail)) out.trackingTail = codes.normalizeTail(ai.trackingTail);
   if (ai.lockerNo && codes.isPlausibleLocker(ai.lockerNo)) out.lockerNo = codes.normalizeLocker(ai.lockerNo);
   if (Object.keys(out).length === 0) return null;
@@ -209,7 +211,7 @@ function applyAiSuggestion(parcel, suggestion) {
     target.stationName = ai.stationName || station.stationName(ai.stationId);
     changed.push('station');
   }
-  if (!target.pickupCode && codes.isAutoFillCode(ai.pickupCode)) {
+  if (!target.pickupCode && codes.isFillableCode(ai.pickupCode)) {
     target.pickupCode = codes.normalizeCode(ai.pickupCode);
     changed.push('pickupCode');
   } else if (ai.pickupCode && !codes.isCompactCode(ai.pickupCode) && !target.pickupCode) {
@@ -257,7 +259,7 @@ function adoptAiSuggestion(parcel, suggestion) {
     }
   }
   if (!target.pickupCode && ai.pickupCode) {
-    if (codes.isAutoFillCode(ai.pickupCode)) {
+    if (codes.isFillableCode(ai.pickupCode)) {
       target.pickupCode = codes.normalizeCode(ai.pickupCode);
       changed.push('pickupCode');
     } else {

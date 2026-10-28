@@ -12,11 +12,16 @@ param(
 )
 
 $ErrorActionPreference = 'Continue'
+
+# 控制台编码兜底（2026-10-28 踩坑）：Windows PowerShell 5.1 在 GBK 控制台把 node 的 UTF-8 中文
+# 解成乱码，下方汇总行正则匹配不上 → 4 步全 PASS 却判 FAIL（假红）。先钉 UTF-8 再跑。
+try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
+try { $OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 $root = Split-Path -Parent $PSCommandPath
 Set-Location $root
 
 $steps = @(
-  @{ Name = 'check.js 代码/配置门禁（32 条）'; Args = @('tools/check.js');
+  @{ Name = 'check.js 代码/配置门禁（33 条）'; Args = @('tools/check.js');
      Summaries = @('通过 \d+ 项；失败 0 项') },
   @{ Name = "check-docs.js 设计文档门禁（--batch $Batch）"; Args = @('tools/check-docs.js', '--batch', "$Batch");
      Summaries = @('check-docs（--batch \d+）：通过 \d+ 项；失败 0 项') },

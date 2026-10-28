@@ -71,6 +71,13 @@
             <view class="form-label">手机尾号</view>
             <input class="form-input" type="number" maxlength="4" value="{{form.phoneTail}}" placeholder="后 4 位，可不填（仅用于同寝室区分）" bindinput="onPhoneTailInput" />
           </view>
+          <view class="form-row">
+            <view class="form-label">性别</view>
+            <picker class="form-input" mode="selector" range="{{genderLabels}}" value="{{form.genderIndex}}" bindchange="onGenderChange">
+              <view>{{genderLabels[form.genderIndex] || '未知'}}</view>
+            </picker>
+          </view>
+          <view class="muted form-hint">性别默认按苑/楼栋推断，可修改；选「未知」不影响资料保存。</view>
           <view wx:if="{{form.dormPreview}}" class="dorm-preview">你的宿舍：{{form.dormPreview}}</view>
           <view class="muted form-hint">宿舍身份仅在无进行中订单时可改；保存后新订单使用这份资料，已提交的订单不受影响。</view>
         </block>
@@ -87,6 +94,10 @@
             <view class="row between profile-line">
               <text class="muted">宿舍</text>
               <text class="profile-value">{{profileCard.dormText || '未完善'}}</text>
+            </view>
+            <view class="row between profile-line">
+              <text class="muted">性别</text>
+              <text class="profile-value">{{profileCard.genderText || '未知'}}</text>
             </view>
             <view wx:if="{{profileCard.roomTag}}" class="row between profile-line">
               <text class="muted">同寝室标识</text>
@@ -191,6 +202,12 @@
             </view>
             <text class="row-arrow">›</text>
           </view>
+        </view>
+
+        <view wx:if="{{isCustomer && !viewSession}}" class="card">
+          <view class="section-label">分享</view>
+          <button class="btn btn-ghost btn-block" open-type="share">分享给朋友</button>
+          <view class="muted share-hint">分享卡片不含取件码、宿舍、订单与个人信息；切换会话下不提供分享。</view>
         </view>
 
         <view class="card list-card">

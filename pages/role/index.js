@@ -8,6 +8,8 @@ const partnerApi = require('../../api/modules/partner');
 const route = require('../../config/route');
 const storage = require('../../utils/storage');
 const previewCache = require('../../utils/preview-cache');
+const share = require('../../utils/share/handlers');
+const sharePlatform = require('../../utils/share/platform');
 
 const ACTIVATE_PAGE = '/pkg-partner/pages/activate/index';
 const BIND_PAGE = '/pkg-customer/pages/bind/index';
@@ -42,15 +44,28 @@ Page({
     bindNo: '',
     bindLoading: false,
     bindCard: null,
-    bindError: ''
+    bindError: '',
+    // 朋友圈单页模式（scene=1154）：只渲染静态介绍，点底部「前往小程序」后走正常登录/分流
+    singlePage: false,
+    singlePageHint: '',
+    shareTip: ''
   },
 
   onLoad(options) {
     const opts = options || {};
     const bindNo = String(opts.bind || '').trim();
+    const singlePage = sharePlatform.singlePageNow();
     this._bindNo = bindNo;
-    this.setData({ bindNo: bindNo });
+    this.setData({
+      bindNo: bindNo,
+      singlePage: singlePage,
+      singlePageHint: singlePage ? share.SINGLE_PAGE_HINT : '',
+      shareTip: share.SHARE_TIP
+    });
     this.sync();
+    if (singlePage) {
+      return;
+    }
     if (this.data.vm.viewContext) {
       const role = this.data.vm.viewContext.role === 'PARTNER' ? 'PARTNER' : 'CUSTOMER';
       redirect(role === 'PARTNER' ? route.PARTNER_WORKBENCH : route.CUSTOMER_HOME);
@@ -65,6 +80,9 @@ Page({
   },
 
   onShow() {
+    if (this.data.singlePage) {
+      return;
+    }
     this.sync();
     const guard = this.data.vm;
     if (guard.viewContext) {
@@ -167,5 +185,14 @@ Page({
       }
       if (this._bindNo) this.loadBindCard(this._bindNo);
     });
+  },
+
+  // 好友转发：通用邀请卡（path=/pages/role/index，零业务值）；朋友圈：固定标题+中性封面
+  onShareAppMessage() {
+    return share.appMessage();
+  },
+
+  onShareTimeline() {
+    return share.timeline();
   }
 });

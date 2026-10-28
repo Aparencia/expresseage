@@ -1,5 +1,9 @@
 // db/dto/full.js · 本人 / 当前 ACTIVE 绑定对方视角的完整 DTO（L3 只允许在本文件与本人接口出现）
 // 口径 = DATA_MODEL §2.2/§2.3/§7.3/§7.4：头像/昵称只随当前 ACTIVE 绑定关系返回；后台不走这里。
+'use strict';
+
+const genderLib = require('../../shared/gender');
+
 function customerSelf(customer) {
   const doc = customer || {};
   return {
@@ -11,6 +15,8 @@ function customerSelf(customer) {
     room: doc.room || '',
     dormKey: doc.dormKey || '',
     phoneTail: doc.phoneTail || '',
+    gender: genderLib.normalizeGender(doc.gender),
+    genderManual: doc.genderManual === true,
     profileCompleted: !!doc.profileCompleted
   };
 }

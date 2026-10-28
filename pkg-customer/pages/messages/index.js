@@ -8,6 +8,7 @@ const messageApi = require('../../../api/modules/message');
 const modeGuard = require('../../../api/mode-guard');
 const route = require('../../../config/route');
 const view = require('./parts/message-view');
+const share = require('../../../utils/share/handlers');
 
 const DETAIL_PAGE = '/pkg-customer/pages/order-detail/index';
 const PAGE_SIZE = 30;
@@ -166,5 +167,9 @@ Page({
       return;
     }
     wx.navigateTo({ url: DETAIL_PAGE + '?orderNo=' + encodeURIComponent(orderNo) });
+  },
+
+  onShareAppMessage() {
+    return share.appMessage();
   }
 });

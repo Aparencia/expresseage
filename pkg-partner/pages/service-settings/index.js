@@ -3,6 +3,7 @@ const partnerApi = require('../../../api/modules/partner');
 const configApi = require('../../../api/modules/config');
 const store = require('../../../store/index');
 const modeGuard = require('../../../api/mode-guard');
+const share = require('../../../utils/share/handlers');
 
 function arr(value) {
   return Array.isArray(value) ? value : [];
@@ -177,5 +178,9 @@ Page({
         this.setData({ saving: false, errorText: (err && err.message) || '保存失败，已恢复上次保存的值' });
         this.load();
       });
+  },
+
+  onShareAppMessage() {
+    return share.appMessage();
   }
 });

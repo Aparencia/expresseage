@@ -6,6 +6,7 @@
 const { COLLECTIONS } = require('../../shared/collections');
 const enums = require('../../shared/enums');
 const validate = require('../../shared/validate');
+const genderLib = require('../../shared/gender');
 const { insertUnique, generateCustomerNo } = require('../../lib/id-generator');
 const { customerSelf } = require('../../db/dto/full');
 const { errors } = require('../../lib/errors');
@@ -33,6 +34,41 @@ function pickDormInput(payload, existing) {
     throw errors.validation(result.field || 'zone', message);
   }
   return { provided: true, valid: true, zone: result.zone, buildingNo: result.buildingNo, room: result.room, dormKey: result.dormKey, buildingText: result.buildingText };
+}
+
+// 性别入参/推断（用户 2026-10-27 口径，返回 null = 本次不改）：
+// ① payload.gender 给出 → 校验规范字面量并置 genderManual=true（手改值此后不被宿舍变化覆盖）；
+// ② 首次保存未给 → 按苑/楼栋推断（genderManual=false）；
+// ③ 已存且未手改（genderManual!==true）→ 随本次宿舍字段重算（改宿舍即跟随推断）；
+// ④ 性别永不参与 profileCompleted 判据（判据仍=昵称+宿舍），未知不阻塞保存。
+function pickGenderPatch(input, existing, dorm) {
+  if (input.gender !== undefined) {
+    if (!genderLib.isGender(input.gender)) {
+      throw errors.validation('gender', '性别选择无效，请选择男、女或未知');
+    }
+    return { gender: input.gender, genderManual: true };
+  }
+  if (!existing) {
+    return { gender: genderLib.deriveGender(dorm.zone, dorm.buildingNo), genderManual: false };
+  }
+  if (dorm.provided && existing.genderManual !== true) {
+    return { gender: genderLib.deriveGender(dorm.zone, dorm.buildingNo), genderManual: false };
+  }
+  return null;
+}
+
+// 头像变更入参：有票据才消费（purpose=AVATAR、归属 effectiveOpenid、路径 avatars/{role}/、大小/类型）；
+// 无票据但显式传 avatarFileId='' = 清空回默认头像；其余一律不采信（归属只认票据一条路）。
+async function loadAvatarChange(ctx, input, nowMs) {
+  const ticketId = input.avatarTicket || input.avatarTicketId || '';
+  if (!ticketId) {
+    return { ticket: null, fileId: input.avatarFileId === '' ? '' : null };
+  }
+  const config = await configCommon.loadRuntimeConfig(ctx);
+  const ticket = await uploadCommon.loadAvatarTicket(ctx, ticketId, nowMs);
+  const providedFileId = input.avatarFileId || input.fileId || '';
+  const fileId = uploadCommon.assertAvatarFile(providedFileId, ticket, uploadCommon.avatarMaxBytes(config));
+  return { ticket, fileId };
 }
 
 async function ensureCustomerDoc(ctx, openid, base) {
@@ -116,6 +152,7 @@ async function handler(ctx, payload) {
   if (!existing && !dorm.provided) {
     throw errors.validation('zone', '请完善苑/楼栋/宿舍号');
   }
+  const genderChange = pickGenderPatch(input, existing, dorm);
   let phoneTailPatch = null;
   if (input.phoneTail !== undefined) {
     const checked = validate.validatePhoneTail(input.phoneTail);
@@ -127,18 +164,10 @@ async function handler(ctx, payload) {
     phoneTailPatch = '';
   }
 
-  // 头像票据消费：purpose=AVATAR、归属 effectiveOpenid、路径前缀 avatars/{role}/、大小/类型
-  let avatarTicket = null;
-  let avatarFileId = null;
-  const avatarTicketId = input.avatarTicket || input.avatarTicketId || '';
-  if (avatarTicketId) {
-    const config = await configCommon.loadRuntimeConfig(ctx);
-    avatarTicket = await uploadCommon.loadAvatarTicket(ctx, avatarTicketId, nowMs);
-    const providedFileId = input.avatarFileId || input.fileId || '';
-    avatarFileId = uploadCommon.assertAvatarFile(providedFileId, avatarTicket, uploadCommon.avatarMaxBytes(config));
-  } else if (input.avatarFileId === '') {
-    avatarFileId = '';
-  }
+  // 头像票据消费：purpose=AVATAR、归属 effectiveOpenid、路径前缀 avatars/{role}/、大小/类型（见 loadAvatarChange）
+  const avatarChange = await loadAvatarChange(ctx, input, nowMs);
+  const avatarTicket = avatarChange.ticket;
+  const avatarFileId = avatarChange.fileId;
 
   const displayName = displayNamePatch !== null ? displayNamePatch : (existing ? existing.displayName || '' : '');
   const completedFlag = displayName !== '' && dorm.valid;
@@ -160,6 +189,10 @@ async function handler(ctx, payload) {
   if (avatarFileId !== null) {
     patch.avatarFileId = avatarFileId;
     patch.profileUpdatedAt = nowDate;
+  }
+  if (genderChange) {
+    patch.gender = genderChange.gender;
+    patch.genderManual = genderChange.genderManual;
   }
   patch.profileCompleted = completedFlag;
 
@@ -183,6 +216,8 @@ async function handler(ctx, payload) {
       room: dorm.room || '',
       dormKey: dorm.dormKey || '',
       phoneTail: phoneTailPatch || '',
+      gender: genderChange.gender,
+      genderManual: genderChange.genderManual,
       profileCompleted: completedFlag,
       createdAt: nowDate,
       updatedAt: nowDate,

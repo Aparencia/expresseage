@@ -43,18 +43,36 @@ function dedupeLines(lines) {
   return out;
 }
 
-/** 去敏：手机号/身份证/连续长数字打码；保留 4~5 位尾号与短码 */
-function maskSensitive(value, maxLength) {
-  const limit = Math.max(1, Number(maxLength) || 2000);
-  let text = normalizeText(value).slice(0, limit);
-  text = text.replace(/\b1[3-9]\d{9}\b/g, '***');
-  text = text.replace(/\b\d{17}[\dXx]\b/g, '***');
-  text = text.replace(/(\d{2})(\d{4,})(\d{2})/g, function mask(match, head, middle, tail) {
+// 码上下文行：取件码/取货码/提货码。这些行里的 4~12 位连续数字是识别必需信息，不能去敏成 ****
+const CODE_LINE_RE = /(?:取件码|取货码|提货码|取件|提货)/;
+// 运单号等超长连续数字（≥13 位）在码上下文行里仍要打码
+const LONG_RUN_RE = /(?<!\d)\d{13,}(?!\d)/g;
+const DORM_ROOM_RE = /(?:湖工大)?[\u4e00-\u9fa5]{1,6}(?:苑|栋)[\u4e00-\u9fa5\d]{0,8}(?:\d{3,4})\s*(?:室|寝)/g;
+
+function maskLongRun(run) {
+  return run.slice(0, 2) + '****' + run.slice(-2);
+}
+
+function maskLine(line) {
+  let out = line.replace(/\b1[3-9]\d{9}\b/g, '***');
+  out = out.replace(/\b\d{17}[\dXx]\b/g, '***');
+  if (CODE_LINE_RE.test(line)) {
+    // D35：取件码行保留 4~12 位码（连写/空格分组/连字符都不打码），只打码 ≥13 位运单长数字
+    out = out.replace(LONG_RUN_RE, maskLongRun);
+    return out.replace(DORM_ROOM_RE, '***');
+  }
+  out = out.replace(/(\d{2})(\d{4,})(\d{2})/g, function mask(match, head, middle, tail) {
     if (middle.length < 4) return match;
     return head + '****' + tail;
   });
-  text = text.replace(/(?:湖工大)?[\u4e00-\u9fa5]{1,6}(?:苑|栋)[\u4e00-\u9fa5\d]{0,8}(?:\d{3,4})\s*(?:室|寝)/g, '***');
-  return text.slice(0, limit);
+  return out.replace(DORM_ROOM_RE, '***');
+}
+
+/** 去敏：手机号/身份证/连续长数字打码；保留 4~5 位尾号与短码（取件码行按 D35 保留 4~12 位码） */
+function maskSensitive(value, maxLength) {
+  const limit = Math.max(1, Number(maxLength) || 2000);
+  const normalized = normalizeText(value).slice(0, limit);
+  return normalized.split('\n').map(maskLine).join('\n').slice(0, limit);
 }
 
 function tailCandidatesFromLine(line) {

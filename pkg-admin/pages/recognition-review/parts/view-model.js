@@ -71,8 +71,27 @@ function buildAiResultText(result) {
   const parts = [];
   if (result.stationId) parts.push('站点 ' + result.stationId);
   if (result.pickupCode) parts.push('取件码 ' + result.pickupCode);
-  if (typeof result.confidence === 'number') parts.push('置信度 ' + result.confidence);
-  return parts.length ? parts.join(' · ') : '—';
+  if (result.trackingTail) parts.push('尾号 ' + result.trackingTail);
+  if (result.lockerNo) parts.push('柜号 ' + result.lockerNo);
+  if (typeof result.confidence === 'number' && isFinite(result.confidence)) {
+    parts.push('置信度 ' + result.confidence);
+  } else if (typeof result.confidence === 'string' && result.confidence) {
+    parts.push('置信度 ' + result.confidence);
+  }
+  return parts.length ? parts.join(' · ') : 'AI 未返回可用字段';
+}
+
+// 只读 AI 状态（enabled/hasKey/model）：给开发者判断「开关关 / 云函数环境变量未配」的环境原因；
+// 客户端包内不出现任何 Key 名或外呼端点（门禁 #24），hasKey 只保留布尔语义。
+function buildAiStatusText(status) {
+  const value = status || {};
+  if (value.enabled !== true) {
+    return '智能识别兜底：未开启（云函数配置页的 AI 开关为关），识别失败不会外呼 AI。';
+  }
+  if (value.hasKey !== true) {
+    return '智能识别兜底：未配置凭据（api 云函数环境变量未设置），识别失败不会外呼 AI。';
+  }
+  return '智能识别兜底：已开启 · 模型 ' + (value.model || '默认模型') + ' · 凭据已配置（只显示是否配置）。';
 }
 
 function decorateDetail(data) {
@@ -89,6 +108,7 @@ function decorateDetail(data) {
     orderNo: row.orderNo || '',
     statusText: C.FAILURE_STATUS_LABELS[row.status] || '—',
     canReview: row.status === C.FAILURE_STATUS_PENDING,
+    hasImage: row.hasImage === true,
     createdAtText: F.formatTime(row.createdAt),
     reviewedAtText: row.reviewedAt ? F.formatTime(row.reviewedAt) : '',
     ocrText: ocrText,
@@ -162,6 +182,7 @@ module.exports = {
   decorateDetail,
   buildRuleText,
   buildAiResultText,
+  buildAiStatusText,
   buildParams,
   buildEmptyText,
   fixConfirmContent,

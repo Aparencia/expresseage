@@ -135,6 +135,7 @@
 | `recognitionFailureRetentionDays` | 30（7~30） | admin.updateConfig |
 | `orderTimeoutMinutes` / `autoCompleteHours` / `screenshotRetentionDays` | 120 / 24 / 7 | admin.updateConfig |
 | `zoneLabels` / `serviceCatalog` / `announcement` / `maintenance` | 五苑展示名 / 五类服务 / 公告 / 维护开关 | admin.updateConfig |
+| `stations`（v1.1/D32） | 8 条 `{id,name}` 站点正式名（P1~P8 固定；识别/选择器/AI prompt 用当前名称；缺省回退默认） | admin.updateConfig（后台配置页可改；名称 1~20 字、唯一） |
 | `privacyVersion` | 定稿候选文本 v1.0 对应 `v4.0.0`（首次发布保持；仅当体验版已让用户同意旧文本才 bump，见 `docs/privacy/发布前填写清单.md` §1#17） | admin.updateConfig（白名单文本键；后台 config 页不提供编辑入口，发布前由 Lead/用户一次性写入并留证） |
 | `aiFallback` | `{enabled:false, timeoutMs:8000, maxPerUserPerDay:5, ...}` | **后台只读**；改值走部署配置脚本/控制台，并与隐私文本同步 |
 
@@ -292,6 +293,33 @@
 3. 最小权限：云开发管理员只授予项目负责人；开发者白名单变更后立即跑 `admin.bootstrap` 冒烟。
 4. 数据库手工改仅限故障处置，且记录原因/时间/前后值并落审计。
 5. 上传/下载敏感文件（截图、复核原图）只在受控页面，不导出、不批量、不转发。
+
+## 12.1 安全基线核对清单（v1.1/D34，每次环境变更后执行；用户/Lead 共同点检）
+
+| # | 核对项 | 期望 | 执行人 | 证据 |
+| :-- | :-- | :-- | :-- | :-- |
+| 1 | 入参总闸 | 构造 >64KB 或 12 层嵌套 `data` 调任一 client 动作 → `VALIDATION_FAILED`；正常下单/绑定不受影响 | Lead（工具/控制台） | 返回原文 |
+| 2 | 限流覆盖 | 资料保存/头像上传/临时 URL 签发/后台补录等按日额度打满 → `RATE_LIMITED`（AI 兜底改为静默降级入队） | Lead | 返回原文 + `counters.rl:*` 截图 |
+| 3 | 数据库/存储权限 | 14 集合客户端读写全拒（规则截图）；云存储私有、临时 URL 仅服务端签发 | 用户（控制台） | 规则截图 + 真机上传记录 |
+| 4 | 环境变量 | `ADMIN_OPENIDS` JSON 合法且白名单可用；`DEEPSEEK_API_KEY` 存在（AI 状态只读面板 `hasKey=true`） | 用户（控制台）/Lead 复核 | 键名可见、值打码截图 + 后台 AI 状态截图 |
+| 5 | 日志脱敏 | 云函数日志只含动作名/请求号/耗时/结果码，不含 openid/取件码/昵称/头像 fileID/去敏文本 | Lead（日志抽查） | 日志截图 |
+| 6 | 复核原图与审计 | 识别失败复核页可临时查看原图（5 分钟），`admin_audit{FAILURE_IMAGE_VIEW}` 可查 | Lead/用户 | 页面 + 审计返回原文 |
+| 7 | 站点改名 | 后台修改站点名保存成功；公开配置/下单选择器/识别 prompt 用新名；审计 `CONFIG_UPDATE` 有前后值 | Lead/用户 | 配置页截图 + 审计记录 |
+
+## 12.2 本地 OCR（VisionKit）排查清单（v1.1/D35，真机识别异常时执行）
+
+> 端侧识别 = 微信 VisionKit 静态图片 OCR（**不是**云端）。按顺序排除，结论写进 QA W10 / TD-014。
+
+| # | 检查项 | 期望/判据 | 失败时的结论 |
+| :-- | :-- | :-- | :-- |
+| 1 | 复现环境 | **只能在真机**（微信客户端）；**微信开发者工具模拟器不支持 VisionKit** | 工具里必失败，不是缺陷 |
+| 2 | 基础库版本 | ≥ **2.27.0**（`wx.getAppBaseInfo().SDKVersion`）；`createVKSession` 本身 2.20.0 起才有 | 低于 2.27.0 无 OCR 能力 → 提示升级微信 |
+| 3 | 隐私声明 | 后台《用户隐私保护指引》已声明**摄像头**；用户已同意隐私弹窗 | `start` 返回 **112/1025** = 未声明/被封禁，先去后台补声明 |
+| 4 | 失败卡文案 | 停在 Step1 出失败卡 = OCR 没出文本；若进入核对页且站点已填 = **OCR 已出文本**，问题在解析/校验层 | 后者不要当 OCR 失败排查 |
+| 5 | 识别原文 | Step1 点「查看识别原文」（有 `ocrText` 才出现）；复核页看 `recognition_failures.ocrTextMasked`（非空=OCR 出过文本） | 无文本→AI 只吃文本不吃图，**救不回**码（手填/开发者看原图复核） |
+| 6 | 官方 demo 对照 | 同机同图跑官方 `photo-ocr-detect`（真机、同基础库），记录 SDKVersion/机型/系统 | demo 出字→本仓移植问题；demo 也无字→平台/隐私/机型问题 |
+| 7 | 代码侧取证 | 需要时在开发版临时打点：`ocr-flow.js` 的 `start` errno、`updateAnchors` 文本数、`runOCR` 抛错、帧宽高/`data.length` | 记录后还原，不提交调试日志 |
+
 
 ## 13. 证据与记录（当前执行状态）
 

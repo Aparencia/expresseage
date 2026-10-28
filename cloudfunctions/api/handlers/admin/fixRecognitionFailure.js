@@ -24,12 +24,16 @@ function normalizeFailureNo(value) {
   return text;
 }
 
-function buildRecognitionFields(input) {
+function buildRecognitionFields(input, config) {
   const fields = {};
   const stationId = readTrimmedText(input.stationId, 8);
   const stationName = readTrimmedText(input.stationName, 40);
   if (stationId || stationName) {
-    const check = stations.validateStation(stationId, stationName);
+    // D32：站点正式名可被后台改，校验/回填都用当前配置表（缺省=内置默认）
+    const options = typeof stations.stationsFromConfig === 'function'
+      ? { stations: stations.stationsFromConfig(config) }
+      : {};
+    const check = stations.validateStation(stationId, stationName, options);
     if (!check.ok) {
       throw errors.validation('stationId', '站点必须是 P1~P8 的正式站点');
     }
@@ -159,7 +163,7 @@ async function handler(ctx, payload) {
       duplicated: true
     };
   }
-  const fields = buildRecognitionFields(input);
+  const fields = buildRecognitionFields(input, scope.config);
   if (Object.keys(fields).length === 0) {
     throw errors.validation('stationId', '请至少补录站点或取件码');
   }

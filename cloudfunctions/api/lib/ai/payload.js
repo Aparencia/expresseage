@@ -29,6 +29,9 @@ const TAIL_RE = /^\d{5}$/;
 const PHONE_RE = /(?<!\d)1[3-9]\d{9}(?!\d)/g;
 const ID_CARD_RE = /(?<![\dXx])\d{17}[\dXx](?![\dXx])/g;
 const LONG_DIGITS_RE = /\d{11,}/g;
+// v1.1/D35：取件码上下文行里的 4~12 位码是识别必需信息，不能整体打码；只打码 ≥13 位运单长数字
+const CODE_LINE_RE = /(?:取件码|取货码|提货码|取件|提货)/;
+const CODE_LONG_RUN_RE = /(?<!\d)\d{13,}(?!\d)/g;
 const DORM_KEY_RE = /(?<![0-9A-Za-z])[A-Z]\d{0,2}-\d{3,4}[A-Z]{0,2}(?![0-9A-Za-z])/g;
 const ROOM_DETAIL_RE = /(\d{3,4})(?=\s*(?:室|房|号房|房间))/g;
 const NAME_LINE_RE = /((?:收件人|收货人|联系人|姓名)\s*[：:]?\s*)[^\s，,。；;：:]{1,20}/g;
@@ -38,9 +41,28 @@ function maskPhoneSegment(match) {
   return match.slice(0, 3) + '****' + match.slice(7);
 }
 
+function maskCodeLine(line) {
+  let out = line.replace(PHONE_RE, maskPhoneSegment);
+  out = out.replace(ID_CARD_RE, '***');
+  out = out.replace(CODE_LONG_RUN_RE, '***');
+  out = out.replace(DORM_KEY_RE, '***');
+  out = out.replace(ROOM_DETAIL_RE, '***');
+  return out.replace(NAME_LINE_RE, '$1**');
+}
+
+function maskPlainLine(line) {
+  let out = line.replace(PHONE_RE, maskPhoneSegment);
+  out = out.replace(ID_CARD_RE, '***');
+  out = out.replace(LONG_DIGITS_RE, '***');
+  out = out.replace(DORM_KEY_RE, '***');
+  out = out.replace(ROOM_DETAIL_RE, '***');
+  return out.replace(NAME_LINE_RE, '$1**');
+}
+
 /**
  * 对 OCR 文本做服务端二次去敏。
  * 保留站点名/取件码/柜号等识别必需信息；掩码联系方式与详细门牌。
+ * v1.1/D35：取件码行里的 4~12 位码保留（AI/规则归一需要它），手机号/门牌/运单长数字照常打码。
  * @param {string} text 原始（客户端已去过敏的）OCR 文本
  * @returns {string} 去敏后的文本（未截断）
  */
@@ -48,13 +70,12 @@ function maskSensitiveText(text) {
   if (typeof text !== 'string' || text.length === 0) {
     return '';
   }
-  let out = text.replace(INVISIBLE_RE, '');
-  out = out.replace(PHONE_RE, maskPhoneSegment);
-  out = out.replace(ID_CARD_RE, '***');
-  out = out.replace(LONG_DIGITS_RE, '***');
-  out = out.replace(DORM_KEY_RE, '***');
-  out = out.replace(ROOM_DETAIL_RE, '***');
-  out = out.replace(NAME_LINE_RE, '$1**');
+  const out = text.replace(INVISIBLE_RE, '')
+    .split('\n')
+    .map(function eachLine(line) {
+      return CODE_LINE_RE.test(line) ? maskCodeLine(line) : maskPlainLine(line);
+    })
+    .join('\n');
   return out.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 

@@ -1,6 +1,6 @@
 # V4_ENGINEERING · v4 工程结构 / 环境 / 测试 / 门禁 / 部署设计
 
-> 版本：v1.0 草案（2026-10-22 批 10 回写：**D23~D26 C 批**一单多包裹/合并窗口/无截图手填/每单配送地址/顾客取件清单；**D28/D29 B 批**换绑一体化/状态事件未读红点/AI 低置信不写入；**性能 P0 采纳**（P0-1~P0-11）；**代码审查非重叠修复**（M-01/M-02 P1 等）；页面 31 页、门禁 #32 单函数行数机械兜底、识别兜底记录粒度=包裹×截图）｜维护：lead｜状态：**D1~D26、D28~D29 已裁决**（D27 定位方案待研究结论后裁决）；E5/E12 平台实测与 E11 用户确认仍待做
+> 版本：v1.0 草案（2026-10-22 批 10 回写：**D23~D26 C 批**一单多包裹/合并窗口/无截图手填/每单配送地址/顾客取件清单；**D28/D29 B 批**换绑一体化/状态事件未读红点/AI 低置信不写入；**性能 P0 采纳**（P0-1~P0-11）；**代码审查非重叠修复**（M-01/M-02 P1 等）；页面 31 页、门禁 #32 单函数行数机械兜底、识别兜底记录粒度=包裹×截图；**v1.2 增补：D36 分享与朋友圈（19 页好友转发/3 页朋友圈/中性封面/会话禁分享）+ 门禁 #33 分享卡口中性 + `selftest-share` 182 断言**）｜维护：lead｜状态：**D1~D26、D28~D29 已裁决**（D27 定位方案待研究结论后裁决）；E5/E12 平台实测与 E11 用户确认仍待做
 > 上游（冲突以它们为准）：`docs/V4_CONTRACT.md` **v0.9**（唯一口径）、`V4_REBUILD_SPEC.md` §9.1/§10、`docs/V4_DATA_MODEL.md`（字段/索引/API 契约细节；**v0.9 字段增量以 CONTRACT §4.2 补充字段为准**，DATA_MODEL 回写后同版）、`docs/V4_DECISIONS.md`、`docs/V4_UX_CUSTOMER.md` / `V4_UX_PARTNER.md` / `V4_UX_DEVELOPER.md`。
 > 引用规则：口径用 CONTRACT `§/D#`；字段/索引/action 入参出参以 DATA_MODEL 为契约载体（残差由 `tools/check-docs.js` 双向兜底）；工程缺口标 `[E#]`（§13）；引用 v3 用"文件 + 函数名"（不写行号）；数字给取数命令。
 > 版本标注约定（v0.9 统一）：正文"（v0.5/v0.6/v0.7 定稿）"= 该口径在 CONTRACT v0.5/v0.6/v0.7 冻结、v0.9 未改；"（v0.8）"= 三次修订新增；"（v0.9）"= 四次修订新增/变更；本文自身版本 = v0.9。**UX 页面上的版本号一律运行时取**（App 版本取 `wx.getAccountInfoSync().miniProgram.version`，隐私版本取 `config.getPublic.privacyVersion`），文档与代码不写死。
@@ -46,7 +46,7 @@
 | :-- | :-- | :-- | :-- |
 | `AGENTS.md`（94 行宪法） | `AGENTS.md` | 改造 | 保留 DoD/范围四禁/回写/红线/代码硬标准；删 v3 本机数据红线，加"云开发/双角色/零金额/隐私承诺变更"；仍守 ≤200 行 |
 | `check.ps1` / `gate.ps1` / `doctor.ps1` | 同名三件 | 改造 | check STEPS 扩为 **9 条**（`check.js`/`check-docs.js`/`selftest.js`/`selftest-ai.js`/`selftest-cloud.js`/`selftest-bind.js`/`selftest-profile.js`/`selftest-switch.js`/`selftest-testaccount.js`；零金额并入 `check.js` #22）+ UTF-8 BOM；gate 保留六项、行数统一全文本（修 TD-062）；doctor 新增 git 身份检查（v3 教训：未配身份提交静默失败） |
-| `tools/check.js`（11 条判据） | `tools/check.js` | 改造 | 按 v4 重列为 **31 条**（§8.2）：集合/action 注册表、客户端禁直连、shared+ids/room-tag 副本 hash、BOM 双向、**零金额扫描 #22**、**切换会话接入 #23**、**AI 外呼/白名单/必入队/原图审计 #24~#27**、**绑定方向 #28**、**头像昵称 #29**、**账号切换与测试数据隔离 #30**、**测试视觉 #31** |
+| `tools/check.js`（11 条判据） | `tools/check.js` | 改造 | 按 v4 重列为 **33 条**（§8.2）：集合/action 注册表、客户端禁直连、shared+ids/room-tag 副本 hash、BOM 双向、**零金额扫描 #22**、**切换会话接入 #23**、**AI 外呼/白名单/必入队/原图审计 #24~#27**、**绑定方向 #28**、**头像昵称 #29**、**账号切换与测试数据隔离 #30**、**测试视觉 #31**、**单函数行数 #32**、**分享卡口中性 #33（v1.2/D36）** |
 | `tools/selftest.js`（harness） | `tools/selftest.js` | 改造 | 保留"计数器 + EXPECTED_ASSERTIONS 完整性闸 + 崩溃也打印总数 + 分节 run({check,eq})"；断言按 v4 语义全部重写 |
 | `tools/selftest-parse.js`+`parse-fixtures.js`、`tools/selftest-*.js`（5 个波次件） | `selftest-recognize.js` + `fixtures/v3-parse.js` + core/state/recognize 三件 | 复制+改造 | v3 语料与 sha256 指纹照搬、输出改 DTO；历史源码字面量钉丢弃，按主题重写 |
 | `utils/stations.js`、`utils/buildings.js` | `shared/stations.js` + `shared/zones.js` + `utils/building-parse.js` | 复制+改造 | P1~P8 与别名归一原样；zone/buildingNo/room/dormKey 解析、zoneLabels 走 config（D8） |
@@ -179,6 +179,7 @@ expressage_college_v4/
 | 键 | 用途 | 默认/范围 | 谁能改 |
 | :-- | :-- | :-- | :-- |
 | `zoneLabels` | 五苑展示名（D8） | `D/X/N/B/C → 东苑/西苑/南苑/北苑/翠苑`（D8 已裁决；仍可由后台配置覆盖） | admin.updateConfig |
+| `stations`（v1.1/D32） | **站点正式名（固定 P1~P8，8 条 `{id,name}`）**；识别/选择器/AI prompt 用当前名称；缺省回退 `shared/stations.js` 默认 | 名称 1~20 字、非空、唯一；旧配置自动补默认 | admin.updateConfig（后台配置页可编辑；审计 CONFIG_UPDATE 记前后值） |
 | `serviceCatalog` | 服务类型目录 `[{code,name,desc}]`（**只有类型名与说明**） | CONTRACT §6 五类 | admin.updateConfig |
 | `announcement` / `maintenance` | 公告 / 维护模式开关+文案 | `''` / `{enabled:false,text:''}` | admin.updateConfig |
 | `orderTimeoutMinutes` | 未接单超时 | 120 | admin.updateConfig |
@@ -192,7 +193,7 @@ expressage_college_v4/
 | `aiFallback`（v0.8） | **AI 兜底开关与限额**：`{enabled,model,timeoutMs,maxPerUserPerDay,dailyQuota,cooldownMinutes}` | 默认 `{enabled:false（实测后开）, model:'deepseek-chat', timeoutMs:8000, maxPerUserPerDay:5, dailyQuota:<按运营量定>, cooldownMinutes:10}`；值为次数/毫秒/布尔，**不含任何交易语义** | MVP **后台只读展示**（`admin.updateConfig` 白名单不含该键，P1 再开）；改值走部署配置脚本/控制台，且与隐私文本同步 |
 | `privacyVersion` | 隐私版本号 | 由隐私文本定稿回填（文本键，非空≤32） | admin.updateConfig（隐私定稿流程；后台 config 页不提供编辑入口） |
 | `subscribe`（P1） | 订阅消息 `{enabled,templates:{newOrder,status,exception}}` | 默认关闭 | admin.updateConfig |
-- 客户端只经 `config.getPublic` 取公开子集（不含 `subscribe.templates` 的模板 ID、不含 `aiFallback` 的任何密钥类信息；**公开子集含 `avatarMaxBytes`（压缩目标）与 `viewTicketTtlMinutes`（黄条/蓝条倒计时），均为只读数值**）；`config` 缓存 TTL 5 分钟 + onShow 刷新；AI 开关/限额变更仅服务端生效（客户端不依赖开关做安全判断）；**`aiFallback` 不经 `admin.updateConfig`**（MVP 后台只读），改值走部署配置脚本/控制台并与隐私文本同步。
+- 客户端只经 `config.getPublic` 取公开子集（不含 `subscribe.templates` 的模板 ID、不含 `aiFallback` 的任何密钥类信息；**公开子集含 `avatarMaxBytes`（压缩目标）与 `viewTicketTtlMinutes`（黄条/蓝条倒计时），均为只读非敏感值（并含  站点展示名，D32）**）；`config` 缓存 TTL 5 分钟 + onShow 刷新；AI 开关/限额变更仅服务端生效（客户端不依赖开关做安全判断）；**`aiFallback` 不经 `admin.updateConfig`**（MVP 后台只读），改值走部署配置脚本/控制台并与隐私文本同步。
 ---
 ## 4. 云开发资源设计
 ### 4.1 云函数与代码分层
@@ -262,17 +263,19 @@ expressage_college_v4/
 **`viewTicket` 只允许由 `api/client.js` 从内存 `viewContext` 注入**；页面/组件不得出现该字段；服务端只接受"发起人仍在 ADMIN_OPENIDS 白名单且票据 `adminOpenid` 匹配"的票据。
 | 顺序 | 中间件 | 做什么 | 失败返回 |
 | :-- | :-- | :-- | :-- |
+| 0 | `request-guard`（v1.1/D34） | 入参总闸：`event.data` 序列化 ≤64KB、嵌套 ≤8 层、键数 ≤256、单字符串 ≤8192；深剥 `__proto__/constructor/prototype`（含数组内）；只读形状不依赖身份；不打印 payload | `VALIDATION_FAILED`（`data.field='data'`） |
 | 1 | `trace` | 生成 `requestId`、计时、解包 | `VALIDATION_FAILED` |
 | 2 | `auth` | OPENID → users（懒建）→ roles/status；admin 查 env 白名单并注入 `developerNo`；DEACTIVATED 拒 | `FORBIDDEN` |
 | 3 | `switch-session`（v0.9） | 请求带 `viewTicket` 时：票据存在/未过期/`endedAt` 空/发起人仍白名单/`adminOpenid` 匹配；`READONLY` ⇒ 写动作一律 `FORBIDDEN`；`TEST_WRITE` ⇒ 目标 `users.isTestAccount=true` 且 `status=ACTIVE`，写动作按 §4.2 白名单放行；**交叉校验 `targetId/targetIsTest/impersonatedBy` 与票据一致**（票据不可挪用到其他账号/模式）；通过后 `ctx.identity={actorOpenid(开发者), effectiveOpenid(目标), role, isTest, impersonatedBy}`；目标已删除/停用 ⇒ `NOT_FOUND` | `FORBIDDEN` / `NOT_FOUND` / `VIEW_TICKET_EXPIRED` |
 | 4 | `validate` | 按 `actions.js` schema 校验并剥离未知字段；枚举/长度/字符集/文本上限；**编号按 `shared/ids.js` 归一化、roomTag 按 `^[A-Z]+$` 校验、昵称按 ≤20 字闸**（错前缀给统一提示） | `VALIDATION_FAILED`（`data.field`） |
-| 5 | `ratelimit` | `counters.rl:{scope}:{openid}:{window}`（scope 至少 `bind/activate/order/message/accountSwitch/avatarUpload/ai`）；**切换会话按 `effectiveOpenid` 计（测试配额独立）**；超限拒；**`ai.parseParcel` 例外：不抛错，见本节链路差异** | `RATE_LIMITED`（AI 兜底不在此层返回） |
+| 5 | `ratelimit` | `counters.rl:{scope}:{openid}:{window}`（scope 至少 `bind/bindRelease/activate/order/orderCorrect/orderException/orderResolve/message/imageUrl/upload/avatarUpload/profileSave/partnerProfileSave/serviceConfigSave/partnerUnbind/partnerPublic/accountSwitch/adminConfig/failureView/failureFix/failureIgnore/ai`）；**切换会话按 `effectiveOpenid` 计（测试配额独立）**；超限拒；**`ai.parseParcel` 例外：不抛错，见本节链路差异** | `RATE_LIMITED`（AI 兜底不在此层返回） |
 | 6 | `idempotency` | `orders.requestKey` / `order_events.requestKey` 预查；命中返回原结果 | 成功式重放；键归属不符 → `CONFLICT` |
 | 7 | `handler` | 纯业务（deps 注入），返回 data | 13 码集内的业务错误码 |
 | 8 | `audit` | 订单事件/管理审计 append-only（`ACCOUNT_SWITCH_*`/`TEST_ACCOUNT_*`/`TEST_DATA_PURGE`；`VIEW_AS_*` 已作废） | 审计失败不静默吞（`INTERNAL_ERROR` + 告警日志） |
 | 9 | `respond` | 统一 flat 包络；未知异常 → `INTERNAL_ERROR`（不泄露堆栈/细节） | — |
 
 - 写动作必传 `clientRequestId`（缺失/格式错 → `VALIDATION_FAILED`）；读动作不需要；`cleanup.*` 只允许定时触发器调用（客户端调用 → `FORBIDDEN`）。
+- **入参总闸（v1.1/D34）**：`request-guard` 在 auth 之前执行（只读 payload 形状）：超体积/超层级/超键数/超长字符串 → `VALIDATION_FAILED`；嵌套危险键深剥且计数可观测（`state.meta.requestGuard`）；不改变合法请求语义、不打印 payload；internal 动作同样受闸（空 payload 天然通过）。
 - 限流配额来源 `config`（默认取 CONTRACT §10）；限流/审计基础设施失败时**失败关闭**（拒绝写）并记日志。
 - **切换会话读白名单（v0.9，CONTRACT §1.2/§1.3）**：`user.bootstrap`、`customer.getProfile`、`partner.listBindings`、`bind.getCurrent`、`order.get`、`order.listCustomer`、`order.listPartner`、`message.list`、`order.imageUrl`、`config.getPublic`；其他读动作一律拒绝（含 admin 动作：**票据不能当后台凭据**）。`READONLY` 只走上列白名单；**`TEST_WRITE` 额外放行读动作 `partner.getPublic`**（测试兼职预览，真实顾客仍 `NOT_FOUND`；`switch-session.js` 的 `TEST_WRITE_READ_ALLOW` 单源）**+ §4.2 的业务写白名单**。
 - **身份传播（v0.9）**：`admin_audit.adminOpenid` = `actorOpenid`；业务/限流/`upload_tickets.openid`/`order_messages.fromId`/`order_events.actorId` = `effectiveOpenid`；`impersonatedBy=developerNo` 只落订单与事件；**handler 只读 `ctx.identity`，不得自行解析票据或写"if 视角"分支**。
@@ -416,10 +419,10 @@ expressage_college_v4/
 
 **4.10.1 数据流（唯一路径）**
 1. 客户端 `utils/recognize/` 端侧 OCR + 规则解析（v3 阶梯保留）；站点或取件码缺失/不可信（`NEED_CODE`、`stationId=''`、结果与 OCR 文本冲突）时进入兜底。
-2. 客户端 `api/modules/ai.js` 调 `ai.parseParcel`（**唯一外呼出口；客户端不直连任何第三方**），入参先过长/去敏闸：`ocrTextMasked ≤2000`、`hintTrackingTail?`、`uploadTicketId`、`role`；**写动作幂等键 `clientRequestId` 必传**（落 `recognition_failures.requestKey`）。**同图多单时按单调用**（DATA_MODEL §4.9）：每张缺码/缺站点的订单各调一次（同一 `uploadTicketId`、各自独立 `clientRequestId` 与 `failureId`），非缺字段件不外呼（规则优先）。
+2. 客户端 `api/modules/ai.js` 调 `ai.parseParcel`（**唯一外呼出口；客户端不直连任何第三方**），入参先过长/去敏闸：`ocrTextMasked ≤2000`、`hintTrackingTail?`、`uploadTicketId`、`role`、**`fileId?`（v1.1/D33：失败截图云文件 ID，仅用于失败记录关联原图，绝不外发）**；**写动作幂等键 `clientRequestId` 必传**（落 `recognition_failures.requestKey`）。**同图多单时按单调用**（DATA_MODEL §4.9）：每张缺码/缺站点的订单各调一次（同一 `uploadTicketId`、各自独立 `clientRequestId` 与 `failureId`），非缺字段件不外呼（规则优先）。
 3. 云函数 `handlers/ai/parseParcel.js`：auth → 二次去敏（手机号/身份证/连续长数字掩码；姓名行保留但不带详细门牌）→ 配额/开关/熔断判定 → `lib/ai/deepseek.js` 外呼 → `lib/ai/parse.js` 校验并裁剪 DTO。
 4. 成功且 `recognized=true`：返回 DTO 供本页**预填建议**；客户端合并策略 = 用户已手填字段优先（AI 不覆盖），用户可改可弃。
-5. 仍失败/低置信/LLM 异常：写 `recognition_failures`（含 `uploadTicketId`；`fileId` 入队时可为 `''`，建单后由下单动作回填；**未建单时 `orderId=''` 也保留记录**）→ 返回 `recognized=false` + `failureId`；客户端静默降级为手填，不阻断下单（`NEED_CODE` 机制不变）。
+5. 仍失败/低置信/LLM 异常：写 `recognition_failures`（含 `uploadTicketId` 与**真实失败截图 `fileId`**：客户端传 `fileId`，服务端按 `upload_tickets` 归属/`purpose=TICKET`/未过期 + `cloudPath` 与 `fileId` 逐字相等校验后写入；未传/校验失败则 `fileId=''` 并记 `ruleResult.ticketInvalid=true`，**不得伪造**；**未建单时 `orderId=''` 也保留记录**）→ 返回 `recognized=false` + `failureId`；客户端静默降级为手填，不阻断下单（`NEED_CODE` 机制不变）；**任何识别失败路径（含无文本/解码失败/OCR 失败）都必须调用一次 `ai.parseParcel` 入队（无票据时才不调，避免孤儿记录）**。
 6. 订单创建时可携可选 `recognition:{source:'RULE'|'DEEPSEEK'|'MANUAL', failureId?}`（**逐单顶层一份**；v1.0 一单多包裹时，逐件失败关联写在 `parcels[i].failureId`（见 DATA_MODEL §4.9），顶层 `recognition.failureId` 只对应首件/整单）：服务端校验 `failureId` 的 `uploaderOpenid` 与本人一致（形态/归属非法静默丢弃、不阻断建单，只做快照/关联，不参与鉴权），写 `orders.parcels[i].recognitionSource/confidence?`、本单 `orders.images[j].failureId?`；建单成功后回填该记录的 `orderId`/`fileId`（每单只回填**本单自己**那条记录）。**同图多单的记录粒度由调用粒度保证**：客户端对每张缺码/缺站点订单各调一次 `ai.parseParcel`（同一 `uploadTicketId`、各自独立 `clientRequestId`/`failureId`，见 DATA_MODEL §4.9）；**服务端不在建单时补建失败记录**（写入唯一入口仍是 `ai.parseParcel`）。
 7. 开发者后台复核：红点 + 首屏 `PENDING` 列表 → 原图（临时 URL 5 分钟、逐次审计）→ 补录/忽略/通知上传者。
 8. `cleanup.recognitionFailures` 到期清理；订单截图 7 天规则不受影响（§4.1/§4.7）。
@@ -432,7 +435,7 @@ expressage_college_v4/
 
 **4.10.3 只发去敏文本（外发白名单，CONTRACT §11.3）**
 - 外发 payload 键集合**恰好等于** `AI_PAYLOAD_KEYS = ['ocrTextMasked','hintTrackingTail','role']`（`lib/ai/payload.js` 单源，`buildAiPayload()` 是唯一构造器）；多键/少键/手拼 body 均判红（门禁 #25 + 单测 §7.3 #21）。
-- **不发**：原图/`fileId`/openid/订单归属/编号/宿舍全值/联系方式；`lib/ai/**` 源码不得出现 `fileId`/`openid`/`orderId` 字面量。
+- **不发**：原图/`fileId`/openid/订单归属/编号/宿舍全值/联系方式；`lib/ai/**` 源码不得出现 `fileId`/`openid`/`orderId` 字面量。**`fileId` 属于 `ai.parseParcel` 入站字段（仅用于失败记录关联原图，服务端校验后写 `recognition_failures`），绝不进 DeepSeek payload。**
 - 二次去敏在云函数内做（客户端去敏只是第一道，**服务端不信任客户端**）；去敏后的文本随失败记录存 `ocrTextMasked`（≤2000）。
 
 **4.10.4 返回 DTO 与合并策略（客户端只认这一份，CONTRACT §4.3）**
@@ -452,6 +455,7 @@ expressage_college_v4/
 - `failureCode` 5 枚举：`NO_TEXT`（OCR 无文本）/`PARSE_MISS`（有文本但规则+AI 均缺站点或码）/`LOW_CONFIDENCE`/`LLM_ERROR`（AI 不可用/超限/熔断/解析失败）/`IMAGE_UNREADABLE`（图片打不开/压缩失败）。
 - 写入字段：`failureNo(唯一)/requestKey(唯一：{uploaderOpenid}:{clientRequestId})/failureCode/sourceRole/uploaderOpenid/uploadTicketId/fileId/orderId?(未建单为 '')/ocrTextMasked/ruleResult/aiTried/aiModel/aiResult/aiErrorCode/status='PENDING'/createdAt`。
 - **写入幂等**：`requestKey` 唯一；同键重放返回已有 `failureId`（客户端重试/连点必须复用同一 `clientRequestId`，不重复入队）；不同 `clientRequestId` 各自成记录（**同图多单逐单调用即不同 `clientRequestId`**，服务端不按文本相似度合并、也不在 `order.create` 时补建记录）。
+- **`fileId` 入站校验（v1.1/D33）**：`resolveTicketFileId` 只接受 `cloud://` 且路径与票据 `cloudPath` 逐字相等，并先过 `ticketStatusOf`（openid/purpose/有效期/未消费）；任一不满足静默 `''`、不拒绝降级；历史已入队 `fileId=''` 记录仍无原图（仅新记录受益）；复核页以 `hasImage` 决定是否可查看。
 - 降级矩阵（`aiErrorCode` 值域以 `DATA_MODEL §2.14` 为唯一单源）：开关关闭 → `LLM_ERROR`（`aiTried=false`，`aiErrorCode='DISABLED'`）；Key 缺失 → `LLM_ERROR`（`DISABLED`）；超时 → `LLM_ERROR`（`TIMEOUT`）；网络/5xx → `LLM_ERROR`（`HTTP_5XX`）；熔断 → `LLM_ERROR`（`CIRCUIT_OPEN`）；配额超限 → `LLM_ERROR`（`QUOTA_EXCEEDED`，**不外呼**）；解析失败 → `LLM_ERROR`（`PARSE_ERROR`）/`PARSE_MISS`。全部返回 `ok:true + recognized:false`，对用户静默。
 
 **4.10.6 复核队列与后台动作（开发者）**
@@ -466,6 +470,10 @@ expressage_college_v4/
 - 原图"例外可见"仅限复核页（CONTRACT §1.1 例外条款）；非失败单原图仍只能走只读视角 + `order.imageUrl`。
 - 隐私披露：`docs/privacy/` 必须写明"识别失败时把去敏 OCR 文本发给 DeepSeek；原图不出本程序云存储；失败原图进入开发者复核（临时查看+审计+30 天删除）"（CONTRACT §11.2）。
 - **注销/停用口径（CONTRACT §11.4）**：上传者注销 → 清 `uploaderOpenid`（匿名化）、原图按引用计数删、`ocrTextMasked` 保留至到期（默认 30 天）后物理删；兼职 `CLOSED` 同口径；复核审计日志按审计策略保留（≥180 天）。
+
+**v1.1/D33 识别失败回传修复口径**：识别未成功（无 OCR 文本/规则未命中/AI 低置信或失败）都必须调用一次 `ai.parseParcel` 入队（空文本只入队不外呼）；入参 `{ocrTextMasked,hintTrackingTail?,uploadTicketId,role,fileId?}`，其中 `fileId` 为客户端的失败截图云文件 ID，服务端按 `upload_tickets`（归属/`purpose=TICKET`/`cloudPath` 前缀）校验后落 `recognition_failures.fileId`，校验失败不采信、不得写伪造值（`ruleResult.ticketInvalid=true` 留痕）；复核接口/页面返回 `aiTried/aiErrorCode/aiModel/aiResult/ocrTextMasked/hasImage` 与只读 AI 状态（`enabled/hasKey 布尔/model`，**绝不下发 Key**）；规则码提取排除去敏掩码 token 与运单上下文 token（`JT22****25` 不得当取件码），`207-3-1014` 归一 `20731014`；客户端提示按缺失字段说真话、失败行不得空文案；真实截图 fixture 进断言。
+
+**v1.1/D35 取件码回填口径（2026-10-27 真机复验）**：端侧规则必须覆盖真实截图 OCR 的四种形态——**连写 `20731014`／逐字空格 `2 0 7 3 1 0 1 4`／带连字符 `207-3-1014`／标签粘连 `取件码20731014`**，以及 OCR 把码拆成多行（标签行 + `207/3/1014` 片段行）时跨行拼码（最多 4 行、≤12 位）；日期启发式只拦「带日期分隔符/年月日」或现实年份（1900~2029）的 8 位日期，`20731014` 不得被误杀；新增 `isFillableCode`（紧凑 4~12 位字母数字且至少 1 位数字，与服务端 `validatePickupCode` 同判）用于形态闸/`codeStatus`/AI 回填/低置信建议采纳——**AI 明确返回的码字段不得再被「猜候选」的日期/手机号启发式否决**；去敏（客户端 `utils/recognize/text.js` 与服务端 `lib/ai/payload.js`）**取件码上下文行保留 4~12 位码**，手机号/身份证/门牌/≥13 位运单长数字仍打码，非取件码行口径不变。**本地 OCR 移植缺口同轮补**：条带重试改为「先按原图坐标裁条带再放大」并按 `{bands,index}` 逐带重试（首个出字即收口）；`frameBuffer` 按 `byteOffset/byteLength` 精确切片；`start` errno 按官方 status 表全分类（2000002/2000003/2000004→不支持，其余初始化/隐私/权限类分列）。边界：本地 OCR 完全没出文本时 AI 不吃图、无法补码（手填或开发者看原图复核）。真机复验见 QA §W10。
 
 ### 4.11 测试账号（合成身份）与测试数据隔离（v0.9）
 **一句话**：测试账号是开发者后台创建的**合成账号**（无真实微信资料），用于一个微信号单机验收顾客/兼职两端真实操作；与真实账号严格隔离、永不计入经营数据、可一键清理。
@@ -576,7 +584,7 @@ expressage_college_v4/
 | `custom-tab-bar/`（根） | 5 tab 按角色渲染 3 格（切换会话渲染目标角色）+ 红点 | 只读 store；不调 api |
 | `switch-bar`（v0.9，取代旧会话条） | 会话条：READONLY 黄条 / TEST_WRITE 蓝条（角色/编号/昵称/剩余时长/退出 + TEST 角标） | 只读 store；无 `viewContext` 渲染空；不得可关闭；两色只在自身 wxss |
 | `test-badge`（v0.9） | 右上角 `TEST` 角标 | 仅 `viewMode=TEST_WRITE` 渲染；`TEST` 字面量只允许出现在此组件 |
-| `avatar-view`（v0.9） | 头像圆形展示 + 默认头像兜底（首字色块）、加载失败不裂图 | 列表 64rpx/详情 96rpx；fileID 来自 DTO；不缓存 fileID/临时 URL |
+| `avatar-view`（v0.9；v1.1 字号修正） | 头像圆形展示 + 默认头像兜底（首字色块）、加载失败不裂图 | 列表 64rpx/详情 96rpx/卡头 88rpx；fileID 来自 DTO；不缓存 fileID/临时 URL；默认头像首字字号按 `size × 0.42rpx` 等比下发（v1.1 修 13rpx 不可读） |
 | `id-text`（v0.7） | 编号展示（canonical→display 分组、独立行、复制） | 只用 `utils/ids.js`；不自行拼格式 |
 | `room-tag-text`（v0.9） | roomTag 大写标签（`D4-522A`） | 只用 `utils/room-tag.js`；不转小写 |
 | `failure-image`（v0.8） | 复核页原图预览：每次进入取一次 5 分钟临时 URL，失败可重试 | 只经 `api/modules/admin` 取 URL；禁长按保存/批量/导出；URL 不缓存、不落本地存储 |
@@ -584,12 +592,14 @@ expressage_college_v4/
 | `order-row` | 工作台/订单列表行（锚+键、四档标记） | 数据来自 `order-view` 视图模型 |
 | `customer-row` | 顾客档行（`D4-522A · 尾号6678 · 小王`）+ 顾客编号 + 头像/昵称 | 锚+键配对；不显示 openid；头像/昵称只来自当前 ACTIVE 绑定 DTO |
 | `image-picker` / `code-editor` | 相册/拍照/聊天选择 + 压缩；取件码/柜号/运单尾号行内编辑 | 只调 `api/upload` 与隐私层；校验走 `shared/validate` |
-| `section-card`/`empty-state`/`form-field`/`role-switch` | 展示/表单/角色切换 | 无业务判据 |
+| `section-card`/`empty-state`/`form-field`/`role-switch` | 展示/表单/角色切换 | 无业务判据；**empty-state 按钮用 `.empty-state .empty-state-btn` 覆盖原生宽度** |
+
+- **原生 button 宽度纪律（v1.1）**：微信内置 `button:not([size='mini']){width:184px}`（特异性 0,1,1）会压过单类宽度。整宽 CTA 用 `.btn.btn-block`（0,2,0），窄按钮用 `.btn.btn-small/.btn.mini-btn`（0,2,0）；组件自有非 `.btn` 原生 button（如 `.empty-state-btn`、`.mm-btn`、`.avatar-btn`）必须用「父作用域 + 类」提高特异性覆盖（如 `.mm-card .mm-btn{width:100%}`、`.avatar-row .avatar-btn{width:auto;flex-shrink:0}`）；新增原生 button/自定义按钮必须真机自查宽度，禁止再被 184px 压窄或撑宽。
 ### 5.8 v3 utils / 零件 → v4 落点（文件级）
 | v3 文件 | v4 落点 | 改造点 | 测试承接 |
 | :-- | :-- | :-- | :-- |
-| `utils/buildings.js`、`utils/stations.js` | `shared/zones.js` + `utils/building-parse.js` + `shared/stations.js` | D/X/N/B/C、buildingNo 1~10、room≥100、dormKey（zoneLabels 走 config）；P1~P8 与别名归一原样、禁止自建站点 | `selftest-core` |
-| `utils/parse*.js`（4 件）、`utils/ocr*.js`（3 件） | `utils/recognize/{index,text,codes,station}.js` + `utils/ocr/{index,frame,vision}.js` | 输入=OCR 文本行、输出订单字段 DTO、形态闸单源、无页面依赖；VisionKit 阶梯/帧诊断保留、只留有调用方导出 | `selftest-recognize` + v3 语料；`selftest-core` |
+| `utils/buildings.js`、`utils/stations.js` | `shared/zones.js` + `utils/building-parse.js` + `shared/stations.js` | D/X/N/B/C、buildingNo 1~10、room≥100、dormKey（zoneLabels 走 config）；**v1.1/D32：id 固定 P1~P8、正式名存 `config.stations` 可改；识别/手输按「精确名→规范名→静态别名→关键词命中」唯一归一（多解不猜）**；识别函数支持注入配置站点表（`parseOcrText(raw,{stations})` / `matchStationInText(text,{stations})`），缺省回退内置默认 | `selftest-core` / `selftest-recognize` |
+| `utils/parse*.js`（4 件）、`utils/ocr*.js`（3 件） | `utils/recognize/{index,text,codes,station}.js` + `utils/ocr/{index,frame,vision}.js` | 输入=OCR 文本行、输出订单字段 DTO、形态闸单源、无页面依赖；VisionKit 阶梯/帧诊断保留、只留有调用方导出；**v1.1/D35：码上下文行整行解析（连写/空格分组/连字符/标签粘连）+ 跨行片段拼码；`isFillableCode` 与服务端紧凑闸同判；日期启发式只拦带分隔符/现实年份 8 位；去敏保留取件码行 4~12 位码** | `selftest-recognize`（含 D35 21 条）+ v3 语料；`selftest-core` |
 | `utils/customer-input.js`、`utils/reason.js` | `shared/validate.js` + `shared/error-codes.js` + `error-copy.js` | 宿舍身份/尾号/displayName + **`partnerNo`/`invitationCode` 形态**；13 码→人话单源、禁回显 L3 值、编号前缀提示同源 | `selftest-core` |
 | `utils/aggregate.js`/`aggregate-customers.js`、`utils/parcel-edit.js` | `shared/order-view.js` + `utils/customer-view.js` + `utils/order-edit.js` | Parcel→Order；站点分组 + 四档排序；锚+键+编号；改码/柜号/运单尾号（校验调 shared） | `selftest-state` |
 | `utils/privacy.js` | `api/privacy.js`（+`utils/privacy-policy.js`） | 三类隐私接口/拒绝降级/版本号；**头像 `chooseAvatar`（可拒绝→默认头像）与昵称输入接入**；微信后台声明含头像/昵称（v0.9） | `selftest-core`（纯部分） |
@@ -730,6 +740,8 @@ expressage_college_v4/
 | M22 | roomTag 分配改小写/字符串排序 | roomTag 断言 + check #29 红 |
 
 - 流程：`Copy-Item` 复制被测文件 → 注入变异（锚点尽量 ASCII）→ 跑目标测试记录首红断言 → 还原 → SHA256 逐字节比对 → 复跑全绿；证据（首红 + hash 相等）写进 CHANGELOG。判绿的变异 = 判据没牙，当场补断言。
+**v1.1 安全基线测试（D34）**：新增 `tools/selftest-security.js` 并注册进聚合 SUITES（EXPECTED_ASSERTIONS 闸）：入参总闸（体积/层级/键数/字符串/嵌套危险键/链首装配）、写动作 clientRequestId 强校验、限流覆盖与打满行为（fake DAO 计数）、管理员闸 fail-closed、切换会话读白名单/禁止项、云函数层零 `userInfo` 伪造入口、日志语句不含敏感变量、错误包络不回堆栈、错误码恰 13、admin handler 均经 `createAdminScope`。
+
 ### 7.6 零金额扫描判据设计（v0.7，门禁自身可测）
 - **扫描范围三处**：①源码（`**/*.js|json|wxml|wxss`，含 `cloudfunctions/`）；②页面文案（wxml/js 里的人话字符串）；③文档（根 `*.md` + `docs/**/*.md`，含 CONTRACT/DATA_MODEL/三份 UX/本文/QA/隐私）。
 - **词表（唯一单源，写在 `tools/zero-money-scan.js`）**：中文 `金额`（**例外**：固定术语「零金额」整体放行）、`价格`、`运费`、`收款`、`结算`；英文大小写不敏感 token：`price(s)`、`fee(s)`、`pay`/`pays`/`paid`/`payment(s)`/`payStatus`、`amount(s)`、以及标识符后缀 `*Fen`（如 `totalFen`）。英文按 token/标识符边界匹配，**不因子串误报**（`payload` 等不是命中，但词表本身不放宽）。
@@ -779,6 +791,7 @@ expressage_college_v4/
 | 30 | **账号切换与测试数据隔离（v0.9）**：`admin_view_sessions` 写入含 `viewMode/targetIsTest`；TEST_WRITE 签发处断言 `isTestAccount`；统计/红点/邀请码/后台列表查询含 `isTest`/`isTestAccount` 过滤；`orders` 写入含 `isTest` 派生与 `impersonatedBy`；`shared/audit-actions.js` 枚举 = 本文 §4.9 列表（`ACCOUNT_SWITCH_*`/`TEST_ACCOUNT_*`/`TEST_DATA_PURGE` 在册，`VIEW_AS_*` 零残留） | 测试数据污染真实统计 | v4 新增（v0.9，CONTRACT §12） |
 | 31 | **测试视觉（v0.9）**：`TEST` 字面量只允许在 `components/test-badge`；蓝条/黄条颜色常量只在 `components/switch-bar` wxss；`pkg-admin/**` 零引用两组件；角标渲染受 `viewMode=TEST_WRITE` 条件控制 | 测试会话视觉混入真实页面 | v4 新增（v0.9） |
 | 32 | **单函数 ≤50 行（批 10，M-57 机械兜底）**：`tools/check-functions.js` 按花括号配平扫描函数跨度；存量违例登记 `tools/function-length-baseline.json`（file+函数名+行数基线），**超基线或新增 >50 行函数判红**；由 `tools/check.js` #32 挂载（`check.ps1` 仍 4 步） | 长函数回流、纪律无牙 | 批 10 新增（AGENTS §4.2 判据侧） |
+| 33 | **分享卡口中性（v1.2/D36）**：实现 `tools/lib/check-share.js`（由 `check.js` #33 挂载）：①`tools/lib/share-pages.js` 清单内 19 个顾客/兼职业务页必须挂 `onShareAppMessage` 且接 `utils/share`（页面零自拼卡片）；②仅 role/home/help 三页挂 `onShareTimeline`；③`pkg-admin/**` 零分享/转发入口；④清单外页面私挂分享判红（新增页面必须同步清单）；⑤`utils/share/index.js` 零 `wx.`、零 L3 字段名（orderNo/pickupCode/dormKey/phoneTail/avatarFileId/displayName/viewTicket/openid）、必须使用固定中性封面；⑥页面层零 `assets/share/` 路径拼接；⑦`components/switch-bar` 必调 `syncSession`（会话禁分享 O3/M-33）、`app.js` 必识别单页模式 scene=1154 | 分享卡片泄漏 L3 / 切换会话仍可转发 / 新增页面漏接或私挂 | v1.2 新增（D36，2026-10-28 用户指令） |
 
 - **批 3 补充的行为/静态回归判据**（`tools/selftest-bind-cloud.js`，第 10 套；`check.js` 仍 31 条不扩容）：A 方向守卫（顾客基线/PARTNER→`FORBIDDEN`/自绑→`FORBIDDEN`/真实×测试→`FORBIDDEN`）；B 编号归一并复用 `shared/error-copy.PREFIX_HINT` 三句同源提示（`data.field='partnerNo'`）；C roomTag 大写/顺序/隔离/旧号不复用/`tagKey` 唯一；D 换绑与换宿舍（旧 ACTIVE→RELEASED+新 binding）；E 解绑失联与通知；F `partner.getPublic`/`bind.getCurrent`/`listBindings` 头像昵称边界与 TEST_WRITE 路由级放行（READONLY 仍拒）；G 接单开关 `PARTNER_CLOSED` + **全仓 `cloudfunctions/**/*.js` 去注释后 `COLLECTIONS.<小写键>` 零命中**（批 3 P0 回归闸：`handlers/order/_create.js` 曾写 `COLLECTIONS.orders`，下单快乐路径全挂）；H 事务冲突重试边界（默认 3 次、只重试冲突、唯一索引冲突不重试）。
 - **批 9 补充的注销/数据删除端到端判据**（`tools/selftest-deletion.js`，register+`EXPECTED_ASSERTIONS` 聚合形态；`check.js` 仍 31 条不扩容）：A `user.deleteAccount` handler（确认文本/进行中订单闸/事务释放绑定并清 `partnerNote`/DEACTIVATED/READONLY 与非顾客拒绝/隐私与维护闸/handler 幂等分支）；B `cleanup.accountDeletion` 阶段一（customers PII+头像文件、订单立即匿名化含 EXCEPTION、截图与留言/事件、识别失败 `uploaderOpenid/fileId` 清空并按引用计数删原图、票据、会话 `ACCOUNT_SWITCH_END(reason=TARGET_DELETED)` 幂等、历史 `bindings.partnerNote`）；C 阶段二（+30 天物理删 users/customers/bindings/票据+头像兜底、重跑 acted 收敛 0、批上限 100 可重入）；D 兼职 CLOSED（释放绑定+订单转异常、partners PII 匿名化+删头像文件+`invitation_codes.usedBy` 置空、识别失败匿名化、`getPublic` NOT_FOUND/`activate` CONFLICT/不可恢复）；E 修复回归与失败隔离；F 端侧注销静态判据。**先判据后修**：首跑 14 条缺陷红（partnerNote 漏清、CLOSED 匿名化/头像/邀请码/识别失败缺失、原图引用未回收）→ 修后全绿；3 组变异电池首红 + SHA256 逐字节还原复跑。

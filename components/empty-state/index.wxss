@@ -24,6 +24,13 @@
   margin: 0;
 }
 
+/* 微信原生 button 默认 width:184px（特异性 0,1,1）：这里用 .empty-state .empty-state-btn(0,2,0)
+   覆盖，空态 CTA 按文案自适应宽度、不出现被原生宽度撑出的怪居中 */
+.empty-state .empty-state-btn {
+  width: auto;
+  box-sizing: border-box;
+}
+
 .empty-state-btn::after {
   border: none;
 }

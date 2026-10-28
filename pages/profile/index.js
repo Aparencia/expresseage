@@ -54,6 +54,7 @@ Page({
     version: '开发版',
     zoneLabels: vm.ZONE_LABELS,
     buildingLabels: vm.BUILDING_LABELS,
+    genderLabels: vm.GENDER_LABELS,
     nameLimit: vm.NAME_LIMIT,
     form: null,
     unbindVisible: false,
@@ -74,6 +75,10 @@ Page({
   onShow() {
     if (!this.guard()) {
       return;
+    }
+    // 「我的」是第 3 个 tab（index=2）：进入页面主动同步 tabBar 选中态，避免切角色/切换会话后高亮错格。
+    if (typeof this.getTabBar === 'function' && this.getTabBar()) {
+      this.getTabBar().setData({ selected: 2 });
     }
     this.refresh();
     this.maybeOpenEditForm();
@@ -266,10 +271,13 @@ Page({
     this.setData({ form: form });
   },
 
+  // 性别 picker：用户显式选择才置 genderDirty（保存时上报，服务端置 genderManual=true）
+  onGenderChange(event) {
+    this.setData({ form: vm.applyGenderChoice(this.data.form, Number(event.detail.value)) });
+  },
+
   applyDormPatch(partial) {
-    const form = Object.assign({}, this.data.form, partial);
-    form.dormPreview = vm.previewDorm(form);
-    this.setData({ form: form });
+    this.setData({ form: vm.applyDormPatch(this.data.form, partial) });
   },
 
   onSave() {

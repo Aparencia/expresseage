@@ -25,7 +25,7 @@ cloudfunctions/*/shared/（由 shared/** 与 utils/ids.js、utils/room-tag.js �
 
 | 工作流 | Owner | 写作用域（只许改这些） |
 | :-- | :-- | :-- |
-| S0 骨架与集成 | lead | `app.json` `app.js` `app.wxss` `project.config.json` `sitemap.json` `.gitignore` `.tool-versions` `.env.example` `config/env.js` `config/route.js` `api/**` `store/**` `pages/launch/**` `pages/profile/**` `docs/ARCHITECTURE.md` |
+| S0 骨架与集成 | lead | `app.json` `app.js` `app.wxss` `project.config.json` `sitemap.json` `.gitignore` `.tool-versions` `.env.example` `config/env.js` `config/route.js` `api/**` `store/**` `pages/launch/**` `pages/profile/**` `utils/share/**` `docs/ARCHITECTURE.md` |
 | S1 口径纯件 | v3-data-model | `shared/**` `utils/ids.js` `utils/room-tag.js` `config/defaults.js` |
 | S1b 云端身份域 | v3-data-model | `cloudfunctions/api/handlers/{user,customer,partner,bind,upload,config}/**` |
 | S2 工具链与门禁 | v3-engineering | `tools/**` `check.ps1` `gate.ps1` `doctor.ps1` |
@@ -96,7 +96,7 @@ const off = store.subscribe((snapshot) => { this.setData({ vm: snapshot }); });
   roles: ['CUSTOMER'|'PARTNER'], activeRole: 'CUSTOMER'|'PARTNER'|null,
   isDeveloper: false,
   me: { displayName, avatarFileId? },
-  customer: { profileComplete, customerNo?, displayName?, avatarFileId?, dormKey?, roomTag?, zone?, buildingNo?, room?, phoneTail? },
+  customer: { profileComplete, customerNo?, displayName?, avatarFileId?, dormKey?, roomTag?, zone?, buildingNo?, room?, phoneTail?, gender?, genderManual? },
   partner: { status, profileComplete, partnerNo?, displayName?, avatarFileId?, acceptingOrders? },
   binding: null | { bindingId, partnerNo, partnerDisplayName, partnerAvatarFileId?, roomTag, status, partnerPublic? },
   config: {}, badges: { workbenchPending: 0, messages: 0, ordersOngoing: 0 },
@@ -115,6 +115,8 @@ const off = store.subscribe((snapshot) => { this.setData({ vm: snapshot }); });
 - `viewContext` **只存内存**，绝不写本地存储、绝不做 URL 参数。
 - `hydrateFromBootstrap` 的 `viewContext` 分支**保留本地 `viewTicket`**、其余字段以服务端为准（服务端 `user.bootstrap` 永不回票据）：进入/退出切换会话后由 `utils/session.js` 统一重新拉 `user.bootstrap` 水合目标身份（顾客资料/兼职激活态/绑定），水合不得让票据丢失。
 - **启动期绑定水合（P0-3 性能口径）**：`app.js` 启动关键路径只 `await user.bootstrap`；`bind.getCurrent` 在启动后台推进（不阻塞首帧），成功后把 `{binding, partnerPublic}` 一并写入 `store.binding`（`partnerPublic` 为可选字段）。首页首次 `onShow` 在 30 秒窗口内复用同一 `bind.getCurrent` 结果（不再重复发请求）；**切换会话期间禁止复用**（`viewContext` 存在即跳过）；离开首页再回来/下拉刷新仍自行重拉，不做永久缓存。
+- **首页对方卡兜底（v1.1）**：home 视图用纯件 `partnerCardOf(binding, partnerPublic)`——`partnerPublic` 优先；未到达时允许用 `store.binding` 的启动期字段 `partnerNo/partnerDisplayName/partnerAvatarFileId` 作合法展示回退（首帧不空卡、不错误显示默认「代」）；`bind.getCurrent` 到达后覆盖；**不得**用顾客本人资料冒充对方。
+- **tabBar 选中格 per-page 同步（v1.1）**：每个 tab 页 `onShow` 显式 `getTabBar().setData({selected})`（home=0/orders=1/workbench=0/customers=1/profile=2）；`custom-tab-bar` 路径未命中时保留页面显式值，不回落 0 覆盖。
 
 ### 3.5 页面与组件约定
 
@@ -122,6 +124,7 @@ const off = store.subscribe((snapshot) => { this.setData({ vm: snapshot }); });
 - 每个业务页（主包 5 tab + `pkg-customer` 6 页 + `pkg-partner` 7 页）`index.wxml` 根节点第一个子节点必须是 `<switch-bar />`；`pkg-admin` 页面不引用 `switch-bar`/`test-badge`。**v1.0 新增** `pkg-customer/pages/pickup-list/index`（D26 顾客取件清单：独立入口，只读展示本站订单 `parcels[]` 的站点+取件码，本机勾选只经 `utils/storage.pickupChecks`，不回写服务端）。
 - 页面 `.json` 只写 `navigationBarTitleText` 等；组件已在 `app.json` 全局注册，页面无需再 `usingComponents`。
 - **页面纯件（批 6~8 扩展）**：可测的视图模型/表单校验/文案放同页 `parts/*.js`（纯函数、零 `wx`），页面 `index.js` 只做取参→调 `api/`→`setData`→事件转发；`pkg-admin` 11 页均有 `parts/view-model.js` + `common/copy.js`，`pkg-customer/pkg-partner` 部分页有 `parts/*`。例外组件 `components/maintenance-mask`（维护模式全屏公告）与纯件 `utils/maintenance.js` 采用**页面级 `usingComponents` 注册**（不改 `app.json`；仅 `pages/customer/home`、`pages/partner/workbench` 引用）。
+- **分享事件（v1.2/D36）**：页面 `onShareAppMessage`/`onShareTimeline` 只允许 `return` 纯件结果——身份/会话/卡片/封面判据全在 `utils/share/{index,handlers}.js`（页面零自拼 `title/path/imageUrl`、零 `assets/share/` 路径）；朋友圈仅 role/home/help 三页（单页模式静态可自洽）；切换会话禁分享由 `components/switch-bar` 统一调 `utils/share/platform.syncSession`（唯一收口，页面/组件不直写 `wx.hideShareMenu`）；单页模式（scene=1154）启动降级在 `app.js`。判据：`tools/check.js` #33 + `tools/selftest-share.js`。
 - 相对路径深度：`pages/xxx/index.js` 与 `pkg-*/pages/xxx/index.js` 到仓库根都是 `../../../`（`pkg-*/pages/xxx/parts/*` 为 `../../../../../`）；`pages/launch/index.js`、`components/xxx/index.js` 为 `../../`。
 - 组件 props/events（冻结）：
 
@@ -129,7 +132,7 @@ const off = store.subscribe((snapshot) => { this.setData({ vm: snapshot }); });
 | :-- | :-- | :-- |
 | `switch-bar` | 无（读 store；含 `test-badge`，`TEST_WRITE` 渲染蓝条 + 角标，`READONLY` 黄条，无会话不渲染） | `exit` |
 | `test-badge` | 无（读 store，仅 `viewMode=TEST_WRITE` 渲染；`TEST` 字面量只允许在本组件） | — |
-| `avatar-view` | `fileId?`、`name?`（默认头像首字）、`size?`（rpx，默认 64） | — |
+| `avatar-view` | `fileId?`、`name?`（默认头像首字）、`size?`（rpx，默认 64；默认头像首字字号按 `size` 等比 ≈0.42×size 下发，不写死页面字号） | — |
 | `id-text` | `kind`（`CUSTOMER`/`PARTNER`）、`no`（canonical） | `copy` |
 | `room-tag-text` | `dormKey`、`tag` | — |
 | `status-pill` | `status`（七状态之一） | — |
@@ -145,7 +148,7 @@ const off = store.subscribe((snapshot) => { this.setData({ vm: snapshot }); });
 | `maintenance-mask`（页面级注册，非全局） | `view`（`{enabled,title,text}`，来自 `utils/maintenance.buildMaintenanceView`） | `ack`（关闭遮罩，仅本页内存态） |
 
 - `app.wxss` 已提供全局工具类：`page-body`、`card`、`row`、`col`、`flex-1`、`between`、`center`、`title`、`section-title`、`subtitle`、`muted`、`small`、`strong`、`ellipsis`、`divider`、`btn`、`btn-primary`、`btn-ghost`、`btn-danger`、`btn-disabled`、`btn-block`、`tag`、`tag-test`、`safe-bottom`、`hidden`、`empty-text`、`form-row`、`form-label`、`form-input`。用到未定义的类必须写进本页 wxss（门禁 #9）。
-- `custom-tab-bar`：按 store 渲染 3 格；`setData({ selected, role })`；切格 `wx.switchTab`；无会话按 `activeRole`，有会话按 `viewContext.role`。
+- `custom-tab-bar`：按 store 渲染 3 格；`setData({ selected, role })`；切格 `wx.switchTab`；无会话按 `activeRole`，有会话按 `viewContext.role`；**v1.1 起 `selected` 由各 tab 页 `onShow` 显式同步（见 §3.4），组件只在首次挂载/会话变化时推断，不覆盖页面显式值**。
 
 ### 3.6 `config/route.js` 的 snapshot 形状（供 launch/profile 使用）
 
@@ -196,7 +199,8 @@ const off = store.subscribe((snapshot) => { this.setData({ vm: snapshot }); });
 | `shared/audit-actions.js` | 审计枚举：`INVITE_CREATE` `INVITE_REVOKE` `PARTNER_SUSPEND` `PARTNER_RESTORE` `CONFIG_UPDATE` `ORDER_ANOMALY_CANCEL` `BOOTSTRAP` `FAILURE_IMAGE_VIEW` `FAILURE_FIX` `FAILURE_IGNORE` `ACCOUNT_SWITCH_START` `ACCOUNT_SWITCH_END` `ACCOUNT_SWITCH_EXPIRED` `TEST_ACCOUNT_CREATE` `TEST_ACCOUNT_DELETE` `TEST_DATA_PURGE` |
 | `shared/order-state.js` | 七状态转移表 + 动作合法起始状态 + 七状态中文文案 |
 | `shared/role.js` | 角色判定纯函数 |
-| `shared/zones.js` / `shared/stations.js` | 五苑标识与站点 P1~P8（名称/别名归一） |
+| `shared/zones.js` / `shared/stations.js` | 五苑标识与站点 P1~P8（名称/别名归一；v1.1/D32 起站点名称可由 `config.stations` 覆盖，匹配命中归一） |
+| `shared/gender.js` | 顾客性别枚举 + 「苑+楼栋」推断/归一/展示名（v1.1/D31；纯件，无 wx） |
 | `shared/validate.js` | 宿舍身份/尾号/文本上限/编号形态/邀请码形态校验 |
 | `shared/format.js` | 时间/编号展示/文本截断 |
 | `shared/order-view.js` | 订单视图模型（四档动线排序、状态桶、锚+键） |

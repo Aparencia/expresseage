@@ -9,6 +9,7 @@ const store = require('../../../store/index');
 const route = require('../../../config/route');
 const viewModel = require('./parts/view-model');
 const dailyReport = require('./parts/daily-report');
+const share = require('../../../utils/share/handlers');
 
 Page({
   data: Object.assign(viewModel.initialView(), { report: dailyReport.emptyReport() }),
@@ -115,5 +116,9 @@ Page({
       }));
       return false;
     });
+  },
+
+  onShareAppMessage() {
+    return share.appMessage();
   }
 });

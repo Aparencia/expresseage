@@ -13,6 +13,7 @@ const enums = require('../../../shared/enums');
 const validate = require('../../../shared/validate');
 const route = require('../../../config/route');
 const codeInput = require('./parts/code-input-model');
+const share = require('../../../utils/share/handlers');
 
 const SERVICE_SETTINGS_PAGE = '/pkg-partner/pages/service-settings/index';
 const SUCCESS_JUMP_MS = 1500;
@@ -225,5 +226,9 @@ Page({
   onGoServiceSettings() {
     this.clearJumpTimer();
     wx.reLaunch({ url: SERVICE_SETTINGS_PAGE + '?first=1' });
+  },
+
+  onShareAppMessage() {
+    return share.appMessage();
   }
 });

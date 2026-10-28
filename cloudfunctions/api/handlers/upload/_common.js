@@ -83,6 +83,23 @@ async function consumeTicket(ctx, ticket, nowMs) {
   await ctx.dao.update(COLLECTIONS.UPLOAD_TICKETS, ticket._id, { usedAt: new Date(nowMs) });
 }
 
+// 识别失败原图归属校验（TICKET 票据）：fileId 必须恰好落在本票据云路径上才允许写入
+// recognition_failures.fileId；校验失败静默返回 ''（不拒绝请求、更不写伪造值）。
+// 归属/用途/有效期由调用方 ticketStatusOf 先校验；本函数只认「路径 = 票据 cloudPath」。
+function resolveTicketFileId(ticket, fileId) {
+  const value = typeof fileId === 'string' ? fileId.trim() : '';
+  if (!value || value.indexOf('cloud://') !== 0) {
+    return '';
+  }
+  const cloudPath = ticket && typeof ticket.cloudPath === 'string' ? ticket.cloudPath : '';
+  if (!cloudPath) {
+    return '';
+  }
+  const slash = value.indexOf('/', 'cloud://'.length);
+  const path = slash >= 0 ? value.slice(slash + 1) : '';
+  return path === cloudPath ? value : '';
+}
+
 module.exports = {
   TICKET_MAX_BYTES,
   AVATAR_MAX_BYTES_FALLBACK,
@@ -92,5 +109,6 @@ module.exports = {
   avatarMaxBytes,
   loadAvatarTicket,
   assertAvatarFile,
-  consumeTicket
+  consumeTicket,
+  resolveTicketFileId
 };

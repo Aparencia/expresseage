@@ -31,7 +31,7 @@ const loadView = require(path.join(ROOT, 'pages/partner/workbench/parts/load-vie
 const cloudActions = require(path.join(ROOT, 'cloudfunctions/api/shared/actions.js'));
 const { createApi } = require(path.join(ROOT, 'cloudfunctions/api/app.js'));
 
-const EXPECTED_ASSERTIONS = 97; // 实际断言总数（运行后校准；少算/多算都判红）
+const EXPECTED_ASSERTIONS = 106; // 实际断言总数（运行后校准；少算/多算都判红）
 const NOW = Date.parse('2026-10-22T12:00:00+08:00');
 const ROLES = { CUSTOMER: 'CUSTOMER', PARTNER: 'PARTNER' };
 const USER_STATUS = { ACTIVE: 'ACTIVE' };
@@ -375,6 +375,41 @@ function register(h) {
     t.check(preloadOk, 'I1 preloadRule 恰含 首页→pkg-customer、工作台→pkg-partner 且 network∈{all,wifi}（不夹带其他页）');
     const timeout = appJson.networkTimeout || {};
     t.check(timeout.request === 10000 && timeout.uploadFile === 60000, 'I2 networkTimeout.request===10000（对齐 api/client.js 竞速口径）且 uploadFile===60000');
+  });
+
+  // ---------------------------------------------------------------- J. 客户端热路径收口（顾客首页/订单/自定义 tabBar）
+  asyncSection('J. 客户端热路径：home/orders/tabbar 引用判等 + 热路径零 snapshot clone', async (t) => {
+    const home = codeOf('pages/customer/home/index.js');
+    const ordersPage = codeOf('pages/customer/orders/index.js');
+    const tabBar = codeOf('custom-tab-bar/index.js');
+
+    t.check(home.indexOf("store.get('customer')") >= 0 && home.indexOf("store.get('badges')") >= 0,
+      'J1 首页 pickVm 逐键读 store.get（不再每次 notify 整份 store.snapshot clone）');
+    t.check(home.indexOf('_vmRefs') >= 0 && home.indexOf('last.binding !== vm.binding') >= 0,
+      'J2 首页 sync 按引用判等：无关 store 通知不重复 setData/applyDerived');
+    t.check(home.indexOf('partnerCard: homeView.partnerCardOf') >= 0,
+      'J3 兼职卡模型在 applyDerived 一次 setData 下发（不再逐字段多轮渲染）');
+
+    t.check(ordersPage.indexOf("store.get('serverTimeSkew')") >= 0
+      && ordersPage.indexOf('store.snapshot().serverTimeSkew') < 0,
+      'J4 orders 1s 倒计时读 store.get（每秒不再 clone 全量快照）');
+    t.check(ordersPage.indexOf("store.get('config')") >= 0 && ordersPage.indexOf('store.snapshot().config') < 0,
+      'J5 orders 配置读 store.get（同源、不 clone）');
+
+    t.check(tabBar.indexOf('store.snapshot()') < 0 && tabBar.indexOf("store.get('viewContext')") >= 0,
+      'J6 custom-tab-bar 逐键读 store.get（不对每个通知 clone 快照）');
+    t.check(tabBar.indexOf('sameBadges(') >= 0 && tabBar.indexOf('sameTabs(') >= 0
+      && tabBar.indexOf('current.selected === selected') >= 0,
+      'J7 tabBar 按 role/selected/tabs/badges 判等后才 setData（每次 store.patch 不再重渲染）');
+
+    const tabPages = ['pages/customer/home/index.js', 'pages/customer/orders/index.js',
+      'pages/partner/workbench/index.js', 'pages/partner/customers/index.js'];
+    const synced = tabPages.filter((rel) => {
+      const src = textOf(rel);
+      return src.indexOf('getTabBar()') >= 0 && /setData\(\{\s*selected:\s*[01]/.test(src);
+    });
+    t.eq(synced.length, 4, 'J8 4 个 tab 页 onShow 均显式同步 tabBar 选中格（per-page 单一来源，页面隐藏时零空转）');
+    t.notEmpty([home, ordersPage, tabBar], 'J9 J 组样本非空');
   });
 }
 

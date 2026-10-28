@@ -8,6 +8,7 @@
 
 const filterView = require('./filter-view');
 const groupView = require('./group-view');
+const guideView = require('./guide-view');
 
 const PAGE_LIMIT = 30;
 const FIRST_CHUNK_ROWS = 20;
@@ -55,6 +56,18 @@ function mergeCounts(prevCounts, raw) {
     return normalizeCounts(prevCounts);
   }
   return normalizeCounts(raw);
+}
+
+// 空态数据 = 逐句文案（filter-view.emptyOf）+ 空态入口按钮文案（guide-view.emptyActions）合并。
+// 纪律：任何 setData({empty}) 都走本函数——initial/加载结果/筛选/错误四处都要带 actions，
+// 否则空态会渲染出三个没有文字的按钮（load-view 曾直接用 {title,text} 覆盖 initial empty）。
+function emptyOf(options) {
+  const info = filterView.emptyOf(options);
+  return {
+    title: info.title,
+    text: info.text,
+    actions: guideView.emptyActions()
+  };
 }
 
 function totalOf(groups) {
@@ -123,7 +136,7 @@ function applyRefresh(prevIn, data, options) {
     totalRows: totalOf(groups),
     nextCursor: response.nextCursor || null,
     stage: stage,
-    emptyInfo: filterView.emptyOf({ keyword: opts.keyword, filter: opts.filterKey }),
+    emptyInfo: emptyOf({ keyword: opts.keyword, filter: opts.filterKey }),
     patches: diff.patches,
     structural: diff.structural,
     changed: changed,
@@ -160,7 +173,7 @@ function applyAppend(prevIn, data, options) {
     totalRows: totalOf(groups),
     nextCursor: response.nextCursor || null,
     stage: groups.length ? 'ready' : 'empty',
-    emptyInfo: filterView.emptyOf({ keyword: opts.keyword, filter: opts.filterKey }),
+    emptyInfo: emptyOf({ keyword: opts.keyword, filter: opts.filterKey }),
     structural: true,
     patches: {},
     changed: [],
@@ -220,7 +233,9 @@ function resultPatch(plan, options) {
     updatedAtText: plan.updatedAtText,
     lastSuccessText: plan.updatedAtText,
     filterDesc: filterView.describe(opts.filterKey),
-    empty: plan.emptyInfo
+    empty: plan.emptyInfo || emptyOf({ filterKey: opts.filterKey }),
+    // 0 单时顶部「多选」主按钮不显示（无可选行）；多选进行中由 wxml 的 selecting 分支保持可退出
+    hasRows: plan.totalRows > 0
   };
   let groups = plan.groups;
   if (opts.selecting) {
@@ -262,5 +277,6 @@ module.exports = {
   badgePatch,
   bannerOf,
   errorTextOf,
-  clockText
+  clockText,
+  emptyOf
 };

@@ -12,6 +12,7 @@ const exceptionPanel = require('./parts/exception-panel');
 const reasonPanel = require('./parts/reason-panel');
 const undoPart = require('./parts/undo');
 const viewModel = require('./parts/view-model');
+const share = require('../../../utils/share/handlers');
 
 const UNDO_TICK_MS = 1000;
 const MESSAGE_POLL_MS = 10000;
@@ -286,8 +287,7 @@ Page({
     return Promise.resolve();
   },
 
-  // 写动作统一入口：loading 防重 → 成功 toast（TEST_WRITE 带测试数据提示）→ 重拉 DTO；
-  // 状态/版本冲突（INVALID_TRANSITION/CONFLICT）自动刷新，不保留旧按钮态。
+  // 写动作统一入口：loading 防重 → 成功 toast（TEST_WRITE 带测试数据提示）→ 重拉 DTO；状态/版本冲突（INVALID_TRANSITION/CONFLICT）自动刷新，不保留旧按钮态。
   submitWrite(run, successText, panelName) {
     if (this.guardReadonly()) {
       return Promise.resolve();
@@ -313,7 +313,6 @@ Page({
         }
       });
   },
-
   // ---------- 补码/改站点面板（v1.0 一单多包裹：逐件 itemIndex 纠正，订单级动作不变） ----------
   openCorrectPanel(itemIndex) {
     const panel = this.data.correctPanel || {};
@@ -355,7 +354,6 @@ Page({
     this.submitWrite(() => orderApi.correct(submit.data, submit.opts),
       correctPanel.savedCopy(this.data.correctPanel), 'correct');
   },
-
   // ---------- 异常上报/解除 ----------
   openExceptionPanel() {
     this.setData({ panel: 'exception', exceptionIndex: 0, exceptionNote: '', exceptionError: '' });
@@ -494,5 +492,9 @@ Page({
   onPanelClose() {
     this.setData({ panel: '', correctError: '', exceptionError: '', deliveryError: '', reasonError: '' });
   },
-  noop() {}
+  noop() {},
+
+  onShareAppMessage() {
+    return share.appMessage();
+  }
 });

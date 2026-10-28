@@ -15,6 +15,7 @@ const reorder = require('./parts/reorder');
 const filesFlow = require('./parts/files-flow');
 const step3 = require('./parts/step3');
 const submitFlow = require('./parts/submit');
+const share = require('../../../utils/share/handlers');
 
 const HOME_PAGE = '/pages/customer/home/index';
 const MAX_PARCELS = model.MAX_PARCELS;
@@ -82,7 +83,7 @@ Page({
     this._reorderNo = reorder.orderNoOf(options);
     this.setData({
       readonly: readonly,
-      stations: model.stationOptions(),
+      stations: model.stationOptions(snapshot.config),
       slots: model.appointmentSlots(new Date()),
       profileReady: !!(snapshot.customer && snapshot.customer.profileComplete),
       bindingReady: !!snapshot.binding
@@ -104,6 +105,7 @@ Page({
       const delivery = deliveryModel.createState(state.profile, (state.config || {}).zoneLabels);
       this.setData({
         partnerPublic: state.partnerPublic,
+        stations: model.stationOptions(state.config),
         services: services,
         serviceCode: services.length > 0 ? services[0].code : '',
         serviceIndex: 0,
@@ -362,5 +364,9 @@ Page({
 
   onBackHome() {
     wx.switchTab({ url: HOME_PAGE });
+  },
+
+  onShareAppMessage() {
+    return share.appMessage();
   }
 });

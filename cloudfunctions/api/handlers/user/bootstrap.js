@@ -8,6 +8,7 @@
 const { COLLECTIONS } = require('../../shared/collections');
 const enums = require('../../shared/enums');
 const roleLib = require('../../shared/role');
+const genderLib = require('../../shared/gender');
 const time = require('../../lib/time');
 const identity = require('./_common');
 const configCommon = require('../config/_common');
@@ -30,6 +31,8 @@ function buildCustomerBlock(customer, binding) {
     room: customer.room || '',
     dormKey: customer.dormKey || '',
     phoneTail: customer.phoneTail || '',
+    gender: genderLib.normalizeGender(customer.gender),
+    genderManual: customer.genderManual === true,
     roomTag: binding ? binding.roomTag || '' : ''
   };
   if (binding && binding.dormSnapshot) {

@@ -8,6 +8,7 @@ const orderApi = require('../../../api/modules/order');
 const storage = require('../../../utils/storage');
 const route = require('../../../config/route');
 const view = require('./parts/pickup-view');
+const share = require('../../../utils/share/handlers');
 
 const DETAIL_PAGE = '/pkg-customer/pages/order-detail/index';
 const PAGE_SIZE = 100;
@@ -165,5 +166,9 @@ Page({
 
   onRetry() {
     this.refresh();
+  },
+
+  onShareAppMessage() {
+    return share.appMessage();
   }
 });

@@ -148,6 +148,7 @@ const LIMITS = {
   maintenanceTextMax: 200,
   serviceNameMax: 20,
   serviceDescMax: 60,
+  stationNameMax: 20,
   testDisplayNameMax: 20,
   purgeConfirmText: 2,
   deleteConfirmText: 2

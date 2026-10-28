@@ -14,6 +14,7 @@ const actionFlow = require('./parts/action-flow');
 const loadView = require('./parts/load-view');
 const historyView = require('./parts/history-view');
 const guideView = require('./parts/guide-view');
+const share = require('../../../utils/share/handlers');
 
 const DETAIL_PAGE = '/pkg-partner/pages/order-detail/index?orderNo=';
 const ACCOUNT_SWITCH_PAGE = '/pkg-admin/pages/account-switch/index';
@@ -64,7 +65,7 @@ const base = {
     banner: { visible: false, pendingNew: 0, text: '', actionText: '去看看' },
     completed: { text: '', expanded: false, loading: false, sections: [], moreText: '', hasMore: false, nextCursor: null },
     guide: guideView.closedState(),
-    empty: { title: '', text: '', actions: guideView.emptyActions() },
+    empty: loadView.emptyOf({ filter: filterView.FILTER_ALL }), hasRows: false,
     maintenance: { visible: false, title: '', text: '' },
     partnerNoText: ''
   },
@@ -81,22 +82,27 @@ const base = {
     this._maintenanceView = null;
     this._configFetchedAt = 0;
     this._completedFocusDate = focusDateOf(options);
-    this.setData({ empty: Object.assign({}, this.data.empty, filterView.emptyOf({ filter: this.data.filter })) });
     this.syncMode();
     this.watchStore();
     this.loadGuide();
   },
 
   onShow() {
+    this.syncTabBar();
     this.syncMode();
     this.refreshConfig();
     this.syncMaintenance();
     // onShow 也走增量：已加载过就只发变化行补丁，不整页重拉（UX §4.11）
     this.load({ poll: this.data.stage === 'ready' }).then(() => {
-      this.loadHistorySummary();
-      this.applyCompletedFocus();
+      this.loadHistorySummary(); this.applyCompletedFocus();
     });
     this.startPolling();
+  },
+
+  // custom-tab-bar 每页一份实例：本页 onShow 显式同步选中格（工作台=0）
+  syncTabBar() {
+    const tabBar = typeof this.getTabBar === 'function' ? this.getTabBar() : null;
+    if (tabBar) tabBar.setData({ selected: 0 });
   },
 
   // 统计页「今日完成」跳转：带 completedDate=今天 时自动展开已完结区（复用既有 onCompletedToggle）
@@ -130,10 +136,8 @@ const base = {
   },
 
   onPullDownRefresh() {
-    this.load({ silent: true }).then(() => {
-      this.loadHistorySummary();
-      wx.stopPullDownRefresh();
-    }).catch(() => wx.stopPullDownRefresh());
+    this.load({ silent: true }).then(() => { this.loadHistorySummary(); wx.stopPullDownRefresh(); })
+      .catch(() => wx.stopPullDownRefresh());
   },
 
   onReachBottom() {
@@ -155,6 +159,7 @@ const base = {
         counts: plan.counts,
         totalRows: plan.totalRows,
         nextCursor: plan.nextCursor,
+        hasRows: plan.totalRows > 0,
         loadingMore: false
       };
       if (this.data.selecting) {
@@ -170,12 +175,9 @@ const base = {
     });
   },
 
+  // 好友转发：判据单源在 utils/share（兼职+非切换会话→绑定卡只带编号；其余回通用卡）
   onShareAppMessage() {
-    const partnerNo = this.partnerNo();
-    return {
-      title: '我在做校园代取，凭兼职编号找我下单',
-      path: '/pages/role/index' + (partnerNo ? '?bind=' + encodeURIComponent(partnerNo) : '')
-    };
+    return share.appMessage();
   },
 
   partnerNo() {
@@ -258,7 +260,7 @@ const base = {
       this.setData({
         stage: 'error',
         errorText: maintenanceFallback.text,
-        empty: filterView.emptyOf({ filter: this.data.filter })
+        empty: loadView.emptyOf({ filter: this.data.filter })
       });
       return;
     }
@@ -267,7 +269,7 @@ const base = {
       this.setData({ syncError: text });
       return;
     }
-    this.setData({ stage: 'error', errorText: text, empty: filterView.emptyOf({ filter: this.data.filter }) });
+    this.setData({ stage: 'error', errorText: text, empty: loadView.emptyOf({ filter: this.data.filter }) });
   },
 
   applyResult(data, options) {
@@ -327,16 +329,12 @@ const base = {
   },
 
   loadHistorySummary() {
-    return orderApi.listPartner(historyView.summaryQuery(Date.now())).then((data) => {
-      this.setData({ 'completed.text': historyView.collapsedState(data).text });
-    }).catch(() => {});
+    return orderApi.listPartner(historyView.summaryQuery(Date.now()))
+      .then((data) => this.setData({ 'completed.text': historyView.collapsedState(data).text })).catch(() => {});
   },
 
   onRefreshTap() {
-    this.load({ silent: true }).then(() => {
-      this.loadHistorySummary();
-      this.toastMsg('已刷新');
-    });
+    this.load({ silent: true }).then(() => { this.loadHistorySummary(); this.toastMsg('已刷新'); });
   },
 
   onRetryTap() {
@@ -379,7 +377,8 @@ const base = {
       totalRows: 0,
       nextCursor: null,
       filterDesc: filterView.describe(key),
-      empty: filterView.emptyOf({ filter: key, keyword: this.data.keyword })
+      empty: loadView.emptyOf({ filter: key, keyword: this.data.keyword }),
+      hasRows: false
     });
     this.load({ silent: true });
   },

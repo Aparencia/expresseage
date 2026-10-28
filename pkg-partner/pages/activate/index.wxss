@@ -11,6 +11,12 @@
   align-items: center;
 }
 
+/* 原生 button 默认 width:184px 会压过单类宽度；头像行内的按钮应随内容收缩 */
+.avatar-row .avatar-btn {
+  width: auto;
+  flex-shrink: 0;
+}
+
 .avatar-btn {
   min-height: 72rpx;
   padding: 0 20rpx;

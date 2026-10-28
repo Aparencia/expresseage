@@ -6,7 +6,12 @@
   padding: 8rpx;
 }
 
+/* 分组 tab：子项在 .tabs.row 里必须自成 flex 容器，center 类（justify/align）才生效，文案才算居中 */
 .tab-item {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
   min-height: 72rpx;
   font-size: 28rpx;
   color: var(--v4-text-2);

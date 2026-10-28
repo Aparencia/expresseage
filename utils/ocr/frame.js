@@ -73,6 +73,45 @@ function bandRanges(bands) {
   return ranges;
 }
 
+/**
+ * 条带源矩形（原图坐标，v1.1/D35 补）：按 bands 均分纵向，最后一带取到边界。
+ * 用于「整图无文字」时逐带放大重试——必须先裁原图再缩放，直接缩放整图再裁顶部带没有收益。
+ * @returns {{ok:boolean,x?:number,y?:number,width?:number,height?:number,code?:string}}
+ */
+function bandSourceOf(width, height, bands, index) {
+  const w = Number(width);
+  const h = Number(height);
+  if (!isFinite(w) || !isFinite(h) || w <= 0 || h <= 0) {
+    return fail('IMAGE_DECODE_FAILED', '读不到图片尺寸');
+  }
+  const count = Math.max(1, Math.min(4, Number(bands) || 1));
+  const idx = Math.max(0, Math.min(count - 1, Number(index) || 0));
+  const y = Math.floor((h * idx) / count);
+  const next = idx === count - 1 ? h : Math.floor((h * (idx + 1)) / count);
+  const bandHeight = next - y;
+  if (bandHeight <= 0) {
+    return fail('IMAGE_DECODE_FAILED', '条带尺寸非法');
+  }
+  return { ok: true, x: 0, y: y, width: w, height: bandHeight };
+}
+
+/**
+ * 从 getImageData().data 取 runOCR 需要的精确 RGBA ArrayBuffer（v3 真机踩过 byteOffset≠0：
+ * 直传 data.buffer 会把同一内存池的前后数据当图像 → 引擎零 anchor）。offset=0 且长度一致才直传。
+ * @param {Uint8ClampedArray|Uint8Array} data
+ * @returns {ArrayBuffer|null}
+ */
+function rgbaBufferOf(data) {
+  if (!data || !data.buffer || typeof data.byteLength !== 'number' || data.byteLength <= 0) {
+    return null;
+  }
+  const offset = typeof data.byteOffset === 'number' ? data.byteOffset : 0;
+  if (offset === 0 && data.buffer.byteLength === data.byteLength) {
+    return data.buffer;
+  }
+  return data.buffer.slice(offset, offset + data.byteLength);
+}
+
 module.exports = {
   MIN_EDGE,
   MAX_EDGE,
@@ -80,5 +119,7 @@ module.exports = {
   fail,
   frameSize,
   isUsableFrame,
-  bandRanges
+  bandRanges,
+  bandSourceOf,
+  rgbaBufferOf
 };

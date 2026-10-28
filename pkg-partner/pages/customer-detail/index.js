@@ -6,6 +6,7 @@ const orderApi = require('../../../api/modules/order');
 const modeGuard = require('../../../api/mode-guard');
 const detailView = require('./parts/detail-view');
 const unbindFlow = require('./parts/unbind-flow');
+const share = require('../../../utils/share/handlers');
 
 const DEFAULT_NOTE_MAX = unbindFlow.NOTE_MAX;
 
@@ -226,5 +227,9 @@ Page({
     wx.navigateTo({
       url: '/pkg-partner/pages/create-on-behalf/index?bindingId=' + encodeURIComponent(this.data.bindingId)
     });
+  },
+
+  onShareAppMessage() {
+    return share.appMessage();
   }
 });

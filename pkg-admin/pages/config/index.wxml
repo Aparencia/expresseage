@@ -33,6 +33,15 @@
     </view>
 
     <view class="card">
+      <text class="section-title">站点名称</text>
+      <view class="form-row" wx:for="{{form.stations}}" wx:key="id">
+        <text class="form-label">{{item.id}}</text>
+        <input class="form-input" value="{{item.name}}" maxlength="{{limits.stationNameMax}}" placeholder="{{item.defaultName}}" data-index="{{index}}" bindinput="onStationInput" />
+      </view>
+      <view class="small">站点编号固定 P1~P8，只能改名称：每个 1~20 字且不能重复；改名后选择器、手输归一与识别结果都用新名称。</view>
+    </view>
+
+    <view class="card">
       <text class="section-title">公告</text>
       <view class="row between toggle-row">
         <text class="muted">启用公告</text>

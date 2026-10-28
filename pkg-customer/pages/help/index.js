@@ -6,6 +6,8 @@
 const store = require('../../../store/index');
 const defaults = require('../../../config/defaults');
 const privacyText = require('../../parts/privacy-text');
+const share = require('../../../utils/share/handlers');
+const sharePlatform = require('../../../utils/share/platform');
 
 const FAQS = [
   {
@@ -121,11 +123,23 @@ Page({
     paragraphs: DOCS.about,
     statements: privacyText.STATEMENTS,
     privacyVersion: privacyVersionOf(),
-    version: readVersion()
+    version: readVersion(),
+    // 朋友圈单页模式（scene=1154）：本页是纯静态内容，可直接当朋友圈落地页；按钮类交互需隐藏
+    singlePage: false,
+    singlePageHint: '',
+    shareTip: '',
+    viewSession: false
   },
 
   onLoad(options) {
     const raw = String((options && options.doc) || 'about');
+    const singlePage = sharePlatform.singlePageNow();
+    this.setData({
+      singlePage: singlePage,
+      singlePageHint: singlePage ? share.SINGLE_PAGE_HINT : '',
+      shareTip: share.SHARE_TIP,
+      viewSession: !!store.getViewContext()
+    });
     this.openDoc(DOC_KEYS.indexOf(raw) === -1 ? 'about' : raw);
   },
 
@@ -145,5 +159,14 @@ Page({
   openDoc(key) {
     const view = docViewOf(key);
     this.setData({ doc: key, sections: view.sections, paragraphs: view.paragraphs });
+  },
+
+  // 好友转发 + 朋友圈：卡片判据单源 utils/share（中性封面、零业务值；朋友圈落地=本页静态内容）
+  onShareAppMessage() {
+    return share.appMessage();
+  },
+
+  onShareTimeline() {
+    return share.timeline();
   }
 });

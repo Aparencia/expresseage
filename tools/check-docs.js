@@ -227,10 +227,10 @@ function defineRefSets() {
   return { dDefined, eDefined };
 }
 
-// D 裁决编号范围（CONTRACT §13）：上限随裁决扩展而变（D22 → D26 → D29 …）。
+// D 裁决编号范围（CONTRACT §13）：上限随裁决扩展而变（D22 → D26 → D29 → D35 → D36 …）。
 // 条目数不写死：以 CONTRACT §13 实际 D 行为准，只要求「1..最大定义号连续、无缺号」；
-// D_MAX 是引用硬上界——伪造 D30 引用必须判红（负向判据由 E 轴 selftest/手工钻取验证）。
-const D_MAX = 29;
+// D_MAX 是引用硬上界——伪造 D37+ 引用必须判红（负向判据由 E 轴 selftest/手工钻取验证）。
+const D_MAX = 36;
 
 function dRangeProblems(dDefined) {
   const out = [];

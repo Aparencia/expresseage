@@ -8,6 +8,7 @@ const orderApi = require('../../../api/modules/order');
 const route = require('../../../config/route');
 const ordersView = require('../parts/orders-view');
 const tickerPatch = require('./parts/ticker-patch');
+const share = require('../../../utils/share/handlers');
 
 const DETAIL_PAGE = '/pkg-customer/pages/order-detail/index';
 const CREATE_PAGE = '/pkg-customer/pages/order-create/index';
@@ -36,6 +37,7 @@ Page({
 
   onShow() {
     this.guard();
+    this.syncTabBar();
     this.refresh();
   },
 
@@ -62,12 +64,21 @@ Page({
     }
   },
 
+  // custom-tab-bar 每页一份实例：本页 onShow 显式同步选中格（订单=1），不再高亮「首页」
+  syncTabBar() {
+    const tabBar = typeof this.getTabBar === 'function' ? this.getTabBar() : null;
+    if (tabBar) {
+      tabBar.setData({ selected: 1 });
+    }
+  },
+
+  // 1s 倒计时热路径：直接读 store 引用，避免每秒整份 snapshot clone
   nowMs() {
-    return ordersView.serverNowMs(store.snapshot().serverTimeSkew, Date.now());
+    return ordersView.serverNowMs(store.get('serverTimeSkew'), Date.now());
   },
 
   config() {
-    return store.snapshot().config || {};
+    return store.get('config') || {};
   },
 
   refresh() {
@@ -219,5 +230,9 @@ Page({
 
   onRetry() {
     this.refresh();
+  },
+
+  onShareAppMessage() {
+    return share.appMessage();
   }
 });

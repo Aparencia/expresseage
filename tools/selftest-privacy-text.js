@@ -19,6 +19,8 @@
  *   G. 文档单源：docs/privacy 只有一份隐私指引、版本段落与配置键说明齐全。
  *   H. 批 10 口径（D24 无截图手填 / D25 每单配送地址 / 维持不采集定位）：三处文本
  *      （端内全文 / 定稿文档 / 补充文档派生物）关键句一致 + 旧「截图必须」口径反例锁死。
+ *   I. 性别收集项（2026-10-27 task-1）：第一节新增第 19 项（默认按苑/楼栋推断、可手动修改、
+ *      仅本人可见、未知不影响保存、注销删除）；旧「不采集微信头像以外的微信资料（如性别…）」表述删除。
  *
  * 纪律：不 mock 全局 wx；只读文档/源码 + 纯件；先合法基线再反例；EXPECTED_ASSERTIONS 与实际断言数精确相等。
  * 取数：node tools/selftest-privacy-text.js | Select-Object -Last 2
@@ -31,7 +33,7 @@ const privacyText = require(path.join(__dirname, '..', 'pkg-customer/parts/priva
 const defaults = require(path.join(__dirname, '..', 'config/defaults.js'));
 
 const ROOT = path.resolve(__dirname, '..');
-const EXPECTED_ASSERTIONS = 203; // 实跑读数：node tools/selftest-privacy-text.js
+const EXPECTED_ASSERTIONS = 217; // 实跑读数：node tools/selftest-privacy-text.js
 
 const PART_FILE = 'pkg-customer/parts/privacy-text.js';
 const HELP_JS = 'pkg-customer/pages/help/index.js';
@@ -355,6 +357,41 @@ function register(h) {
     t.check(TEXT.indexOf('如后续提供位置相关功能') !== -1
       && privacyTextDocCache.indexOf('如后续提供位置相关功能') !== -1,
     '位置相关功能留「另行更新本指引」表述，不承诺收集（D27 待裁决）');
+  });
+
+  // ------------------------------------------------------------ I. 性别收集项（2026-10-27 task-1）
+  h.section('I 性别收集项（新增条款 / 旧「不采集性别」表述删除 / 派生物同源）', (t) => {
+    const supplementFile = 'docs/privacy/补充文档.txt';
+    const supplement = exists(supplementFile) ? readSource(supplementFile) : '';
+    t.check(TEXT.indexOf('19. 性别：') !== -1, '端内全文第一节新增收集项「性别」（第 19 项）');
+    t.check(TEXT.indexOf('默认按你填写的苑与楼栋推断') !== -1
+      && TEXT.indexOf('也可以手动修改并保存') !== -1,
+    '端内全文写明性别默认按苑/楼栋推断、也可手动修改（用户 2026-10-27 口径）');
+    t.check(TEXT.indexOf('用于本人资料核对与后续按楼栋属性核对') !== -1,
+      '端内全文写明性别用途（本人资料核对 / 后续按楼栋属性核对）');
+    t.check(TEXT.indexOf('仅本人可见，不向兼职端、后台列表与其他用户展示') !== -1,
+      '端内全文写明性别可见范围（仅本人；不向兼职端/后台列表/其他用户展示）');
+    t.check(TEXT.indexOf('未知或未填写不影响资料保存') !== -1, '端内全文写明未知不阻塞资料保存');
+    t.check(TEXT.indexOf('保存至账号存续期，注销时删除') !== -1,
+      '端内全文写明性别留存期限=账号存续期、注销时删除');
+    t.check(supplement.indexOf('19. 性别：') !== -1, '补充文档派生物与端内全文同源含性别条款（正文逐字节同源）');
+    t.check(TEXT.indexOf('不采集微信头像以外的微信资料') === -1
+      && TEXT.indexOf('（如性别、地区、好友列表）') === -1,
+    '反例锁定：端内全文不得回归「不采集微信头像以外的微信资料（如性别…）」旧表述');
+    t.check(TEXT.indexOf('性别不由微信资料获取') !== -1,
+      '端内全文明确「性别不由微信资料获取」（与旧表述删除配套，如实披露来源=苑/楼栋推断或手改）');
+    t.check(TEXT.indexOf('可修改微信昵称、头像、性别、苑/楼栋/宿舍号、手机尾号') !== -1,
+      '第五节「改」权利清单加入性别（可手动修改）');
+    t.check(TEXT.indexOf('性别可保持「未知」') !== -1,
+      '第五节「拒绝非必要信息」写明性别可保持未知、不影响资料保存');
+    t.check(privacyText.SECTIONS.some((section) => section.title === '一、我们收集哪些信息、做什么用')
+      && privacyText.SECTIONS[1].paragraphs.some((line) => line.indexOf('19. 性别：') === 0),
+    '性别条款落在第一节数据项列表（与收集清单同一结构，非散落正文）');
+    t.check(privacyTextDocCache.indexOf('不采集微信头像以外的任何微信资料') === -1
+      && privacyTextDocCache.indexOf('如性别、地区、好友列表') === -1,
+    '定稿文档同步删除旧「不采集微信头像以外的微信资料（如性别…）」表述（三处同口径）');
+    t.check(privacyTextDocCache.indexOf('性别') !== -1 && privacyTextDocCache.indexOf('D31') !== -1,
+      '定稿文档登记性别条款（D31 可追溯到 CONTRACT/DECISIONS）');
   });
 }
 

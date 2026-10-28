@@ -4,9 +4,21 @@
 
 const { COLLECTIONS } = require('../../shared/collections');
 const time = require('../../lib/time');
+const { createDeepSeekClient } = require('../../lib/ai/deepseek');
 
 const NOTIFY_TEMPLATE = 'RECOGNITION_REVIEW';
 const NOTIFY_TEXT = '你的截图识别失败，开发者已处理；如需补充取件码，请到订单页面手动填写。';
+
+// 只读 AI 兜底状态（供开发者判断开关/Key 未配/模型；hasKey 只返回布尔，绝不下发 Key 值）。
+function aiStatusOf(ctx, config, nowMs) {
+  const client = createDeepSeekClient({ env: ctx && ctx.env, config: config, now: nowMs });
+  const status = client.status(nowMs);
+  return {
+    enabled: status.enabled === true,
+    hasKey: status.hasKey === true,
+    model: status.model || ''
+  };
+}
 
 async function loadUploader(scope, record) {
   const openid = record && record.uploaderOpenid ? record.uploaderOpenid : '';
@@ -68,6 +80,7 @@ async function notifyUploader(scope, record, failureNo) {
 module.exports = {
   NOTIFY_TEMPLATE,
   NOTIFY_TEXT,
+  aiStatusOf,
   loadUploader,
   orderNoOf,
   notifyUploader

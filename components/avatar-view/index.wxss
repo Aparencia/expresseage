@@ -24,7 +24,9 @@
   justify-content: center;
 }
 
+/* 字号由组件按 size 内联下发（size*0.42rpx）：百分比会相对父级 font-size（页面 30rpx）计算，
+   会把默认头像首字缩成 13rpx 的「看不清」状态；这里继承内联字号。 */
 .avatar-initial {
-  font-size: 44%;
+  font-size: 1em;
   font-weight: 600;
 }

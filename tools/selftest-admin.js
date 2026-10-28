@@ -32,7 +32,7 @@ const sharedActions = require(path.join(ROOT, 'cloudfunctions/api/shared/actions
 // v1.0（D23/D24/D25）用例表：拆出以控本文件 ≤1000 行（门禁 #18），断言数合并计
 const v1Cases = require(path.join(__dirname, 'lib', 'admin-v1-cases.js'));
 
-const EXPECTED_ASSERTIONS = 220 + v1Cases.EXPECTED_ASSERTIONS;
+const EXPECTED_ASSERTIONS = 220 + v1Cases.EXPECTED_ASSERTIONS + 14; // +14：v1.1/D32 站点名称配置
 
 const NOW = Date.UTC(2026, 9, 22, 4, 0, 0);
 const MINUTE = 60 * 1000;
@@ -609,6 +609,78 @@ async function sectionD(h) {
   });
 }
 
+// ── D2. 站点名称配置（v1.1/D32：白名单/校验/公开子集/审计/旧配置回退） ───────
+async function sectionD2(h) {
+  h.section('§D2 站点名称配置（D32：白名单/值域校验/公开子集/审计/旧配置回退）', async (t) => {
+    const db = world();
+    const api = apiOf(db, ADMIN);
+    // 旧 config 文档无 stations：读层回退内置默认（8 条固定 id）
+    const stats0 = await api.call('admin.stats', {});
+    t.eq(stats0.data.config.stations.map((item) => item.id),
+      ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8'],
+      'D2-1 旧 config 文档缺 stations 时 admin.stats 回退内置默认 8 条');
+    t.eq(stats0.data.config.stations[2].name, '西苑一栋南面快递中心', 'D2-2 回退默认名与内置站点表一致');
+    const public0 = await apiOf(db, C1).call('config.getPublic', {});
+    t.eq([public0.data.stations.length, public0.data.stations[0].id, public0.data.stations[0].name],
+      [8, 'P1', '西苑顺丰快递（西苑五食堂）'], 'D2-3 config.getPublic 下发 stations（客户端选择器/识别用名称）');
+    // 合法基线：改 P1/P5 名称（去空白后落库）
+    const custom = stats0.data.config.stations.map((item) => {
+      if (item.id === 'P1') return { id: 'P1', name: ' 西苑顺丰快递东门 ' };
+      if (item.id === 'P5') return { id: 'P5', name: '西苑菜鸟驿站东门' };
+      return { id: item.id, name: item.name };
+    });
+    const updated = await api.call('admin.updateConfig', { config: { stations: custom } },
+      { clientRequestId: nextCrid('d2a') });
+    t.eq([updated.ok, updated.data.config.stations[0].name, updated.data.config.stations[4].name],
+      [true, '西苑顺丰快递东门', '西苑菜鸟驿站东门'], 'D2-4 stations 是 admin.updateConfig 白名单键（名称 trim 后落库）');
+    t.eq(updated.data.config.stations.length, 8, 'D2-5 返回配置仍固定 8 条（不增删站点 id）');
+    const audit = auditsOf(db, 'CONFIG_UPDATE').filter((row) => (row.detail.keys || []).indexOf('stations') >= 0)[0];
+    const beforeText = audit && audit.detail.changes.stations ? String(audit.detail.changes.stations.before) : '';
+    const afterText = audit && audit.detail.changes.stations ? String(audit.detail.changes.stations.after) : '';
+    t.check(!!audit && beforeText.length > 0 && afterText.length > 0 && beforeText !== afterText
+      && beforeText.length <= 120 && afterText.length <= 120,
+    'D2-6 改站点名写 CONFIG_UPDATE 审计（before/after 摘要，沿用 120 字截断）');
+    const stats1 = await api.call('admin.stats', {});
+    t.check(stats1.data.config.stations[4].name === '西苑菜鸟驿站东门',
+      'D2-7 admin.stats 配置区块反映新名称（后台配置页回填数据源）');
+    const public1 = await apiOf(db, C1).call('config.getPublic', {});
+    t.check(public1.data.stations[4].name === '西苑菜鸟驿站东门',
+      'D2-8 config.getPublic 下一次请求即生效（客户端选择器/识别用新名）');
+    // 校验：固定 8 id、非空、1~20 字、唯一；非法整表整体拒绝，不半写入
+    const validStations = updated.data.config.stations;
+    const invalidCases = [
+      validStations.slice(0, 7),
+      validStations.map((item, index) => (index === 0 ? { id: item.id, name: '   ' } : item)),
+      validStations.map((item, index) => (index === 0 ? { id: item.id, name: '站'.repeat(21) } : item)),
+      validStations.map((item, index) => (index === 1 ? { id: item.id, name: validStations[0].name } : item)),
+      validStations.map((item, index) => (index === 0 ? { id: 'P9', name: '自建驿站' } : item)),
+      validStations.concat([{ id: 'P9', name: '自建驿站' }])
+    ];
+    const invalidResults = [];
+    for (let i = 0; i < invalidCases.length; i += 1) {
+      invalidResults.push(await api.call('admin.updateConfig', { config: { stations: invalidCases[i] } },
+        { clientRequestId: nextCrid('d2b' + i) }));
+    }
+    t.eq(invalidResults.map((res) => [res.ok, res.code]),
+      invalidCases.map(() => [false, 'VALIDATION_FAILED']),
+      'D2-9 站点校验：缺条/空名/超 20 字/重名/未知 id/重复编码 → VALIDATION_FAILED');
+    t.eq(invalidResults[0].data.field, 'stations', 'D2-10 校验失败 data.field=stations（前端可定位）');
+    const statsAfterInvalid = await api.call('admin.stats', {});
+    t.check(statsAfterInvalid.data.config.stations[4].name === '西苑菜鸟驿站东门',
+      'D2-11 非法整表被拒后配置未被半写入（仍为上一次合法值）');
+    // 旧库兼容：admin.bootstrap 给缺 stations 的旧 config 文档补默认种子键
+    const db2 = world();
+    const boot = await apiOf(db2, ADMIN).call('admin.bootstrap', {}, { clientRequestId: nextCrid('d2c') });
+    const rawConfig = (db2.dump('config') || [])[0] || {};
+    t.eq([boot.ok, boot.data.configSeeded], [true, true], 'D2-12 admin.bootstrap 可对旧配置补齐种子键');
+    t.eq([Array.isArray(rawConfig.stations), rawConfig.stations.length], [true, 8],
+      'D2-13 bootstrap 后 config 文档落 stations 8 条（旧库不用先迁移）');
+    const bootAudit = auditsOf(db2, 'BOOTSTRAP')[0];
+    t.check(!!bootAudit && (bootAudit.detail.filledKeys || []).indexOf('stations') >= 0,
+      'D2-14 BOOTSTRAP 审计 filledKeys 记录补了 stations');
+  });
+}
+
 // ── E. 异常介入取消（TD-046） ───────────────────────────────────────────────
 async function sectionE(h) {
   h.section('§E TD-046 异常介入取消（admin 仅 EXCEPTION + 审计 + 幂等）', async (t) => {
@@ -836,6 +908,7 @@ function register(h) {
   sectionB(h);
   sectionC(h);
   sectionD(h);
+  sectionD2(h);
   sectionE(h);
   sectionF(h);
   sectionG(h);

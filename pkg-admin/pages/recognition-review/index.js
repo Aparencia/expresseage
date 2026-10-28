@@ -39,6 +39,8 @@ Page({
     list: [],
     nextCursor: '',
     emptyText: vm.buildEmptyText(C.FAILURE_STATUS_PENDING),
+    aiStatusText: '',
+    aiStatusWarn: false,
     expandedNo: '',
     detail: null,
     detailLoading: false,
@@ -84,10 +86,13 @@ Page({
     return admin.listRecognitionFailures(this.buildParams()).then((result) => {
       const rows = vm.decorateList((result && result.list) || [], this.data.expandedNo);
       const counts = (result && result.counts) || null;
+      const aiStatus = (result && result.aiStatus) || null;
       this.setData({
         list: reset ? rows : this.data.list.concat(rows),
         nextCursor: (result && result.nextCursor) || '',
         counts: counts,
+        aiStatusText: vm.buildAiStatusText(aiStatus),
+        aiStatusWarn: !!aiStatus && (aiStatus.enabled !== true || aiStatus.hasKey !== true),
         statusTabs: vm.buildStatusTabs(this.data.activeStatus, counts || this.data.counts),
         emptyText: vm.buildEmptyText(this.data.activeStatus),
         loading: false,
@@ -308,6 +313,10 @@ Page({
 
   onViewImage() {
     if (!this.data.detail) return;
+    if (this.data.detail.hasImage !== true) {
+      feedback.toast('该记录没有关联原图，无法查看。');
+      return;
+    }
     this.setData({ showImage: true, imageFailureNo: this.data.detail.failureNo });
   },
 

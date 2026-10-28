@@ -4,6 +4,7 @@
 const store = require('../../store/index');
 const ids = require('../../utils/ids');
 const session = require('../../utils/session');
+const sharePlatform = require('../../utils/share/platform');
 
 const ROLE_LABEL = { CUSTOMER: '顾客', PARTNER: '兼职' };
 const TICK_DEFAULT_MINUTES = 30;
@@ -65,6 +66,8 @@ Component({
   methods: {
     refresh() {
       const view = store.getViewContext();
+      // O3/M-33：切换会话禁分享——进入会话隐藏右上角转发/朋友圈菜单，退出恢复（唯一收口点）
+      sharePlatform.syncSession(!!(view && view.viewMode));
       if (!view || !view.viewMode) {
         this.stopTick();
         if (this.data.visible) {

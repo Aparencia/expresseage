@@ -1,6 +1,6 @@
 // config/defaults.js · 全局配置出厂值（唯一默认值来源；admin.bootstrap 种子、admin 范围校验、公开子集）
-// 契约：docs/V4_CONTRACT.md v1.0 §2/§4 config 行（含 orderMergeWindowMinutes，D23）；docs/V4_DATA_MODEL.md §2.10。
-//       docs/ENGINEERING §3.6（键与默认/范围）。
+// 契约：docs/V4_CONTRACT.md v1.1 §2/§4 config 行（含 orderMergeWindowMinutes，D23；stations，D32）；
+//       docs/V4_DATA_MODEL.md §2.10。docs/ENGINEERING §3.6（键与默认/范围）。
 // 纪律：值只含布尔/字符串/整数次数与毫秒；无 Key、无第三方服务标识（客户端包内零外呼痕迹）。
 //       `aiFallback.model` 的出厂模型名由云函数 lib/ai 自持（本文件留空串表示"用云侧默认模型"）。
 // 调用方：云函数 admin.bootstrap（种子）、admin.updateConfig（CONFIG_LIMITS 范围）、
@@ -9,6 +9,7 @@
 
 const enums = require('../shared/enums');
 const zones = require('../shared/zones');
+const stations = require('../shared/stations');
 
 const PROMISE_RETENTION_DAYS = {
   screenshot: 7,
@@ -26,6 +27,8 @@ const DEFAULT_CONFIG = {
   },
   // 服务类型目录：只有类型名与说明（CONTRACT §6）
   serviceCatalog: enums.SERVICES.map((item) => ({ code: item.code, name: item.name, desc: item.desc })),
+  // v1.1（D32）：站点正式名（固定 P1~P8；名称非空、1~20 字、唯一；后台可改，进公开子集）
+  stations: stations.stationsFromConfig(null),
   announcement: { enabled: false, title: '', text: '', updatedAt: 0 },
   maintenance: { enabled: false, text: '' },
   orderTimeoutMinutes: 120,
@@ -66,6 +69,7 @@ const CONFIG_LIMITS = {
 // config.getPublic 下发的公开子集（模板 ID / aiFallback / 治理参数一律不下发）
 const PUBLIC_CONFIG_KEYS = [
   'zoneLabels',
+  'stations',
   'serviceCatalog',
   'announcement',
   'maintenance',
@@ -102,6 +106,8 @@ function pickPublicConfig(config) {
   PUBLIC_CONFIG_KEYS.forEach((key) => {
     out[key] = source[key] === undefined ? DEFAULT_CONFIG[key] : source[key];
   });
+  // stations 按配置净化（缺省/非法条目回退内置默认；输出固定 8 条、名称唯一），避免把脏配置下发端侧
+  out.stations = stations.stationsFromConfig(source);
   out.subscribeEnabled = !!(source.subscribeTemplates && source.subscribeTemplates.enabled);
   return out;
 }

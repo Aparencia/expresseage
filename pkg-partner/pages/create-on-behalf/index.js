@@ -11,6 +11,7 @@ const formModel = require('./parts/form-model');
 const payloadModel = require('./parts/payload-model');
 const presetModel = require('./parts/preset-model');
 const resultModel = require('./parts/result-model');
+const share = require('../../../utils/share/handlers');
 
 const BINDING_OPTIONS_LIMIT = 50;
 
@@ -345,5 +346,9 @@ Page({
       return;
     }
     wx.navigateTo({ url: '/pkg-partner/pages/order-detail/index?orderNo=' + encodeURIComponent(orderNo) });
+  },
+
+  onShareAppMessage() {
+    return share.appMessage();
   }
 });

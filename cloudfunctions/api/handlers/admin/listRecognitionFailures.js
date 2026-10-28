@@ -77,7 +77,13 @@ async function handler(ctx, payload) {
       orderNo: orderNo
     }));
   }
-  return { list: list, nextCursor: result.nextCursor, counts: await countsOf(scope) };
+  return {
+    list: list,
+    nextCursor: result.nextCursor,
+    counts: await countsOf(scope),
+    // 只读 AI 状态（开关/Key/模型），供开发者判断 DEEPSEEK_API_KEY 未配、开关关或超时配额等环境问题
+    aiStatus: review.aiStatusOf(scope.ctx, scope.config, scope.now)
+  };
 }
 
 module.exports = handler;

@@ -20,7 +20,7 @@ const CLEANUP = path.join(ROOT, 'cloudfunctions/cleanup');
 const { createDao } = require(path.join(API, 'db/dao.js'));
 const { COLLECTIONS } = require(path.join(API, 'shared/collections.js'));
 const { ACTION_MAP, CLIENT_ACTIONS } = require(path.join(API, 'shared/actions.js'));
-const { ROLES, USER_STATUS, ORDER_STATUS, VIEW_MODE, PARTNER_STATUS, BINDING_STATUS } = require(path.join(API, 'shared/enums.js'));
+const { ROLES, USER_STATUS, ORDER_STATUS, VIEW_MODE, PARTNER_STATUS, BINDING_STATUS, GENDER } = require(path.join(API, 'shared/enums.js'));
 const { AUDIT_ACTIONS } = require(path.join(API, 'shared/audit-actions.js'));
 const { baseIdentity } = require(path.join(API, 'app.js'));
 const auth = require(path.join(API, 'middleware/auth.js'));
@@ -34,7 +34,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const ADMIN_OPENID = 'openid-admin-dev01';
 const ADMIN_ENV = { ADMIN_OPENIDS: JSON.stringify({ [ADMIN_OPENID]: 'DEV-01' }) };
 
-const EXPECTED_ASSERTIONS = 174;
+const EXPECTED_ASSERTIONS = 179;
 
 const API_PENDING_ASSERTS = 22;
 const CLEANUP_PENDING_ASSERTS = 14;
@@ -135,8 +135,7 @@ function register(h) {
     const counter = await dao.findOne(COLLECTIONS.COUNTERS, { where: { key: 'orderNo:test' } });
     await dao.update(COLLECTIONS.COUNTERS, counter._id, { seq: dao.inc(2), updatedAt: NOW });
     t.eq((await dao.get(COLLECTIONS.COUNTERS, counter._id)).seq, 3, 'update + inc 原子自增');
-    // 写入语义：对象字段 = 整值替换（dao 包 command.set），标量与既有指令透传。
-    // 真实 wx-server-sdk 会把嵌套对象拍平成点路径 $set；父字段为 null 时报 -502001（2026-10-22 隐私同意事故）。
+    // 写入语义：对象字段 = 整值替换（dao 包 command.set），标量与既有指令透传；真实 wx-server-sdk 会把嵌套对象拍平成点路径 $set，父字段为 null 时报 -502001（2026-10-22 隐私同意事故）。
     const probe = createUpdateProbeDb();
     const probeDao = createDao(probe.db);
     await probeDao.update(COLLECTIONS.USERS, 'u-1', {
@@ -621,8 +620,7 @@ function register(h) {
     t.check(riskyProfile.ok === false && riskyProfile.code === 'VALIDATION_FAILED',
       '命中 msgSecCheck（suggest=risky）→ VALIDATION_FAILED（不落库）');
 
-    // 角色授予：auth 对全新用户懒建 users 时 roles=[]；全仓没有别的入口写 CUSTOMER，
-    // customer.saveProfile 首存成功即 union 授予 CUSTOMER（二次保存幂等，不重复授予）。
+    // 角色授予：auth 对全新用户懒建 users 时 roles=[]；全仓没有别的入口写 CUSTOMER，customer.saveProfile 首存成功即 union 授予 CUSTOMER（二次保存幂等，不重复授予）。
     const roleDb = createTestDb();
     roleDb.seed('users', [{ _id: 'openid-newbie', roles: [], status: USER_STATUS.ACTIVE, isTestAccount: false, privacyConsent: { version: 'v4.0', at: NOW } }]);
     const newbieApi = app.createApi({ db: roleDb, now: () => NOW, openid: 'openid-newbie', env: ADMIN_ENV, cloud: cloudStub('pass') });
@@ -657,8 +655,7 @@ function register(h) {
     t.eq(dualRoles.slice().sort(), [ROLES.CUSTOMER, ROLES.PARTNER],
       '§7.3 PARTNER-only 首存后 roles 同时含 PARTNER+CUSTOMER（原角色不被覆盖）');
 
-    // bind.create 幂等重放：去重键 = bindings.activeKey（同顾客）；同顾客+同兼职重复提交
-    // 返回 ok:true + 当前对象 + duplicated=true（不写第二条、不报 CONFLICT）；换另一兼职仍 CONFLICT。
+    // bind.create 幂等重放：去重键 = bindings.activeKey（同顾客）；同顾客+同兼职重复提交返回 ok:true + 当前对象 + duplicated=true（不写第二条、不报 CONFLICT）；换另一兼职仍 CONFLICT。
     const bindDb = createTestDb();
     bindDb.seed('users', [
       { _id: 'openid-bind-c', roles: [ROLES.CUSTOMER], status: USER_STATUS.ACTIVE, isTestAccount: false, privacyConsent: { version: 'v4.0', at: NOW } },
@@ -682,8 +679,7 @@ function register(h) {
     t.check(rebind.ok === false && rebind.code === 'CONFLICT',
       '§7.3 bind.create 换另一兼职再绑定 → CONFLICT（换绑需先 release）');
 
-    // order.listPartner DTO 铁律（task-47）：曾把 raw order 文档塞进 groups[].orders（泄露 _id/openid/requestKey）；
-    // 修复后响应 = {list,nextCursor,counts} 且列表逐条递归不含 raw 文档敏感键。先证扫描有牙，再扫响应。
+    // order.listPartner DTO 铁律（task-47）：曾把 raw order 文档塞进 groups[].orders（泄露 _id/openid/requestKey）；修复后响应 = {list,nextCursor,counts} 且列表逐条递归不含 raw 文档敏感键。先证扫描有牙，再扫响应。
     const SENSITIVE_ORDER_KEYS = ['_id', 'customerOpenid', 'partnerOpenid', 'customerId', 'partnerId',
       'clientRequestId', 'requestKey', 'cloudPath', 'claimTokenHash', 'batchActionId'];
     function hasSensitiveKeyDeep(value, keys) {
@@ -867,7 +863,7 @@ function register(h) {
     // 2) user.acceptPrivacy：版本闸 / 同版本幂等 / users.privacyConsent 落库（与 saveProfile/upload 共用一库）
     const sDb = createTestDb();
     sDb.seed('config', [{ _id: 'global', privacyVersion: 'v4.0', avatarMaxBytes: 102400 }]);
-    sDb.seed('users', [userOf('openid-privacy', [], { privacyConsent: null }), userOf('openid-sp-a'), userOf('openid-sp-b'), userOf('openid-up-c', [ROLES.CUSTOMER]), userOf('openid-up-p', [ROLES.PARTNER]), userOf('openid-up-victim'), userOf('openid-up-lim', [ROLES.CUSTOMER])]);
+    sDb.seed('users', [userOf('openid-privacy', [], { privacyConsent: null }), userOf('openid-sp-a'), userOf('openid-sp-b'), userOf('openid-sp-g'), userOf('openid-sp-h'), userOf('openid-up-c', [ROLES.CUSTOMER]), userOf('openid-up-p', [ROLES.PARTNER]), userOf('openid-up-victim'), userOf('openid-up-lim', [ROLES.CUSTOMER])]);
     sDb.seed('partners', [{ _id: 'partner-up-p', openid: 'openid-up-p', partnerNo: 'PABC23', displayName: '小李', status: PARTNER_STATUS.ACTIVE, serviceConfig: { acceptingOrders: true } }]);
     sDb.seed('upload_tickets', [{ _id: 'ut-victim', ticket: 'VICTIMTICKET00000000000000000001', openid: 'openid-victim', purpose: 'AVATAR', cloudPath: 'avatars/customer/victimavatar00000000.jpg', size: 1000, contentType: 'image/jpeg', expiresAt: NOW + 60000, usedAt: null, createdAt: NOW },
       { _id: 'ut-used', ticket: 'USEDTICKET0000000000000000000001', openid: 'openid-up-c', purpose: 'AVATAR', cloudPath: 'avatars/customer/usedavatar000000000000.jpg', usedAt: NOW, expiresAt: NOW + 60000, createdAt: NOW }]);
@@ -901,6 +897,17 @@ function register(h) {
     const spUsedAtMs = spTicketUsedAt instanceof Date ? spTicketUsedAt.getTime() : spTicketUsedAt;
     t.eq([spTicketUsedAt instanceof Date, spUsedAtMs], [true, NOW], '§7.3 头像票据消费后写 usedAt=Date（与订单截图票据 usedAt 同字段口径；一次性）');
     t.eq((await sApi.call('customer.saveProfile', { displayName: spDoc().displayName, avatarTicket: spPrep.data.ticket, avatarFileId: spFile }, { clientRequestId: 'sp-replay-000000000006' })).code, 'INVALID_STATE', '§7.3 头像票据二次消费 → INVALID_STATE（票据一次性）');
+    // §2.2 顾客性别（task-1）：东苑楼栋推断/手改保留/未知不阻塞/DTO 字段（saveProfile 云端口径）
+    const gSave = (openid, payload, id) => apiOf(sDb, openid).call('customer.saveProfile', Object.assign({ displayName: '小性', zone: 'D', buildingNo: 4, room: '522' }, payload), { clientRequestId: 'sp-gender-' + id }), g1 = await gSave('openid-sp-g', {}, '000000000001');
+    t.eq([g1.data.profile.gender, g1.data.profile.genderManual, g1.data.profile.profileCompleted], [GENDER.FEMALE, false, true], '§2.2 首存未给 gender：东苑 D4 推断女、genderManual=false、不阻塞资料完成');
+    const g2 = await gSave('openid-sp-g', { buildingNo: 5 }, '000000000002'), g3 = await gSave('openid-sp-g', { gender: GENDER.UNKNOWN, buildingNo: 10 }, '000000000003');
+    const g4 = await gSave('openid-sp-g', { buildingNo: 1 }, '000000000004'), g5 = await gSave('openid-sp-h', { zone: 'X', buildingNo: 4 }, '000000000005');
+    t.check(g2.data.profile.gender === GENDER.MALE && g3.data.profile.genderManual === true && g4.data.profile.gender === GENDER.UNKNOWN, '§2.2 未手改换到 D5 栋 → 跟随推断男；手改未知后 genderManual=true、再换宿舍保留手改值');
+    t.check(g5.data.profile.gender === GENDER.UNKNOWN && g5.data.profile.profileCompleted === true, '§2.2 其他苑默认未知且未知不阻塞资料保存');
+    const g6 = await gSave('openid-sp-g', { gender: 'BOY' }, '000000000006');
+    t.check(g6.ok === false && g6.code === 'VALIDATION_FAILED' && g6.data.field === 'gender', '§2.2 非法 gender → VALIDATION_FAILED(data.field=gender)，不落脏值');
+    const g7 = await apiOf(sDb, 'openid-sp-g').call('customer.getProfile', {}), g8 = await apiOf(sDb, 'openid-sp-g').call('user.bootstrap', {});
+    t.eq([g7.data.gender, g7.data.genderManual, g8.data.customer.gender, g8.data.customer.genderManual], [GENDER.UNKNOWN, true, GENDER.UNKNOWN, true], '§2.2 getProfile 与 bootstrap 顾客摘要均下发 gender/genderManual');
     // 4) partner.activate：邀请码状态机 / 角色追加 / 开发者与切换会话分流 / 内容安全零消耗
     const aDb = createTestDb();
     const actIds = ['openid-act-fmt', 'openid-act-nf', 'openid-act-used', 'openid-act-rev', 'openid-act-exp', 'openid-act-ok', 'openid-act-dual', 'openid-act-risky', 'openid-act-limit', 'openid-act-closed'];

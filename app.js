@@ -6,6 +6,7 @@ const store = require('./store/index');
 const userModule = require('./api/modules/user');
 const bindModule = require('./api/modules/bind');
 const configModule = require('./api/modules/config');
+const sharePlatform = require('./utils/share/platform');
 
 // 首页首次 onShow 复用启动期绑定结果的窗口（超过窗口视为过期，自行重拉）
 const BIND_REUSE_WINDOW_MS = 30 * 1000;
@@ -17,7 +18,9 @@ App({
     startedAt: 0,
     bindingStartedAt: 0,
     bindingFetchedAt: 0,
-    bindingConsumed: false
+    bindingConsumed: false,
+    // 朋友圈单页模式（scene=1154）：无登录态、云资源不可用，不做云初始化与 bootstrap
+    singlePage: false
   },
 
   BIND_REUSE_WINDOW_MS: BIND_REUSE_WINDOW_MS,
@@ -25,8 +28,13 @@ App({
   onLaunch() {
     this.globalData.startedAt = Date.now();
     this.globalData.envVersion = this.readEnvVersion();
+    this.globalData.singlePage = sharePlatform.singlePageNow();
     this.bindingPromise = null;
-    this.startupPromise = this.startup();
+    // 朋友圈单页模式：wx.login 不可用、云开发资源需未登录访问（本仓没有），
+    // 因此不做云初始化与 bootstrap；落地页按静态预览渲染（D36），点「前往小程序」后正常启动。
+    this.startupPromise = this.globalData.singlePage
+      ? Promise.resolve({ ok: false, code: 'SINGLE_PAGE' })
+      : this.startup();
   },
 
   readEnvVersion() {

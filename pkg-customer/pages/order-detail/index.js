@@ -10,6 +10,7 @@ const view = require('../../parts/status-view');
 const flow = require('../../parts/order-detail-flow');
 const format = require('../../parts/format');
 const parcelView = require('./parts/parcel-view');
+const share = require('../../../utils/share/handlers');
 
 const CREATE_PAGE = '/pkg-customer/pages/order-create/index';
 const ORDERS_PAGE = '/pages/customer/orders/index';
@@ -358,5 +359,9 @@ Page({
     }).catch((err) => {
       wx.showToast({ title: (err && err.message) || '留言失败，请重试', icon: 'none' });
     });
+  },
+
+  onShareAppMessage() {
+    return share.appMessage();
   }
 });

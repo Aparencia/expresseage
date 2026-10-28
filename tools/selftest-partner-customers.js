@@ -456,13 +456,14 @@ async function sectionD(h) {
     t.eq(b5After.status, ACTIVE,
       'D6 他人（C3）有进行中单不影响本顾客解绑（守卫口径=该 binding.customerId，不是兼职全量）');
 
-    const updatesBefore = db.stats.updates;
+    const businessBefore = { bindings: db.dump('bindings'), orders: db.dump('orders'), messages: db.dump('order_messages') };
     await expectCode(t, pApi.call('partner.unbindCustomer',
       { bindingId: B1, reason: 'PARTNER_INITIATED' }, { clientRequestId: nextCrid('unbind-blocked') }),
     'INVALID_STATE', 'D7 该顾客有进行中单 → INVALID_STATE');
     const b1After = rowsOf(db, 'bindings').filter((row) => row._id === B1)[0];
-    t.eq([b1After.status, db.stats.updates], [ACTIVE, updatesBefore],
-      'D8 拦截路径零落库（绑定仍 ACTIVE，无写入）');
+    const businessAfter = { bindings: db.dump('bindings'), orders: db.dump('orders'), messages: db.dump('order_messages') };
+    t.eq([b1After.status, businessAfter], [ACTIVE, businessBefore],
+      'D8 拦截路径零业务落库（绑定仍 ACTIVE；仅安全基线限流计数会写 counters，业务集合零写入）');
     await expectCode(t, pApi.call('partner.unbindCustomer',
       { bindingId: B7, reason: 'PARTNER_INITIATED' }, { clientRequestId: nextCrid('unbind-other') }),
     'FORBIDDEN', 'D9 他人 bindingId → FORBIDDEN（不泄露绑定存在性）');

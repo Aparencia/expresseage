@@ -10,6 +10,7 @@ const partnerApi = require('../../../api/modules/partner');
 const ids = require('../../../utils/ids');
 const rebind = require('../../../utils/rebind');
 const autoQuery = require('./parts/auto-query');
+const share = require('../../../utils/share/handlers');
 
 const HOME_PAGE = '/pages/customer/home/index';
 const PROFILE_PAGE = '/pages/profile/index';
@@ -267,5 +268,9 @@ Page({
 
   onRetry() {
     this.onQuery();
+  },
+
+  onShareAppMessage() {
+    return share.appMessage();
   }
 });

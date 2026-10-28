@@ -4,6 +4,7 @@
 > 范围：`pkg-admin` 分包（**10 个后台功能页 + 后台消息，共 11 页**，v0.9 用「账号切换」替换原「视角切换」页），以及**切换会话**（真实账号只读 / 测试账号可写）在顾客端/兼职端页面上的表现与退出；顾客端细节见 `docs/V4_UX_CUSTOMER.md`，兼职端见 `docs/V4_UX_PARTNER.md`。
 > 优先级：**CONTRACT > 本文 > 其他**；页面路径、字段、动作名、错误码、限额逐字引用 CONTRACT §1.1/§1.2/§1.3/§3/§4/§4.3/§5.3/§7/§8/§10/§11；API 字段级细节以 `docs/V4_DATA_MODEL.md` 定稿为准。
 > **v0.9 新增（D18~D21）**：①**账号切换**页两 tab——真实账号（**只读**，黄条+拒写+审计）与测试账号（**可写**，蓝条+`TEST` 角标，单机验收两端；测试数据隔离/标记/排除统计/30 天清理）；②**多开发者账号**（`DEV-01`/`DEV-02…`，各自微信登录、会话与审计隔离；**小程序不能切换微信登录账号本身**）；③绑定只能顾客发起（后台无任何「绑定顾客」入口）；④`roomTag` 恒大写（`D4-522A`）；⑤头像/昵称仅绑定双方可见，**后台列表/详情不展示头像、昵称脱敏**。
+> **v1.2 增补（D36 分享与朋友圈，2026-10-28 用户指令）**：后台 11 页**零分享入口**；切换会话统一隐藏右上角「转发/分享到朋友圈」菜单（`wx.hideShareMenu`，退出恢复；O3/M-33 关闭）；好友转发覆盖 19 个业务页、朋友圈仅 role/home/help 三页（落地=单页模式 scene=1154，静态降级）；卡片只有绑定卡/通用邀请卡两种、固定中性封面、**禁止页面截图、卡片零 L3**。后台侧约束与判据见本文 §6.11/§9。
 > **v0.8 继续有效（D16/D17）**：识别失败时由云函数调 **DeepSeek API** 对去敏 OCR 文本做结构化兜底；后台只承接「失败入队 → 复核 → 补录/忽略/通知」，**不调用任何第三方 AI、不展示/下发 Key**；失败**原图**仅复核页**按单**临时查看（5 分钟 URL + 每次 `FAILURE_IMAGE_VIEW` 审计），**不批量/不下载/不导出**。
 > 本文只写设计与验收，不写实现代码；正文不藏未决项，未决项集中本文 §10，跨文档回写项见本文 §10.4；本文自身章节一律用「本文 §x」引用。
 > 关联：`docs/V4_DATA_MODEL.md`（API 契约/字段分级）、`docs/V4_ENGINEERING.md`（白名单/门禁/账号切换与头像昵称门禁/AI 兜底门禁）、`docs/QA_CHECKLIST.md`（真机点检，人执行）、`docs/privacy/`（第三方 AI、复核原图、头像昵称与账号切换披露）。
@@ -269,14 +270,15 @@ wx 启动 → pages/launch/index → user.bootstrap
 ```
 [← 总览] 全局配置  [保存]
 服务类型模板：PICKUP_STD 标准代取 / PICKUP_DOOR 送寝上门 / …（改名称/说明）
-苑名：东苑 / 西苑 / 南苑 / 北苑 / 翠苑（D8 已裁决，可改） | 公告：[开关] 标题（≤30）正文（≤500）
+苑名：东苑 / 西苑 / 南苑 / 北苑 / 翠苑（D8 已裁决，可改）
+站点名称：P1 西苑顺丰快递（西苑五食堂） / P2 …（固定 8 条，可改名称；保存前变更清单） | 公告：[开关] 标题（≤30）正文（≤500）
 超时 120 分钟 · 自动完成 24 小时 · 截图留存 7 天（≤7）· 识别失败留存 30 天（7~30）
 切换会话 30 分钟（5~60）· 头像大小上限 200KB（≤200KB）
 测试账号上限 3/角色（合计 ≤6）· 测试数据保留 30 天（默认 30）
 [维护模式：关闭] 维护说明 {text}
 ```
-**组件/数据来源**：分组表单、开关、数字输入、文本域、保存按钮、二次确认框、脏数据返回拦截；读= `admin.stats` 配置区块（公开子集可由 `config.getPublic` 校对），写= `admin.updateConfig`。
-**状态/交互校验**：加载=表单骨架；错误=错误条+保留输入；保存中=按钮 loading+全表单禁用；无权限=回总览；维护态=顶部状态条。字段与值域见本文 §7.4；保存前展示变更清单并二次确认；未保存返回需确认；配置页不含隐私版本号、`aiFallback` 内部参数与任何交易项。
+**组件/数据来源**：分组表单、开关、数字输入、文本域、**站点名称 8 行（固定 id + 名称输入；v1.1/D32）**、保存按钮、二次确认框、脏数据返回拦截；读= `admin.stats` 配置区块（公开子集可由 `config.getPublic` 校对），写= `admin.updateConfig`。
+**状态/交互校验**：加载=表单骨架；错误=错误条+保留输入；保存中=按钮 loading+全表单禁用；无权限=回总览；维护态=顶部状态条。字段与值域见本文 §7.4；保存前展示变更清单并二次确认；未保存返回需确认；配置页不含隐私版本号、`aiFallback` 内部参数与任何交易项；**站点名称仅可改 8 条固定 id 的名称（1~20 字、唯一），不允许新增/删除站点**。
 **文案/跳转**：见本文 §11.6；保存成功留在本页，返回总览。
 
 ### 3.9 账号切换 `pkg-admin/pages/account-switch/index`（v0.9，替代原「视角切换」页）
@@ -336,7 +338,8 @@ wx 启动 → pages/launch/index → user.bootstrap
 筛选：[全部失败码 ▾] [顾客][兼职] [近 7 天 ▾]      首屏默认 status=PENDING
 行：{failureNo} · {失败码中文} · {来源角色} · {上传人编号} · {createdAt} · {status} [复核]
 详情（MVP 用行展开半屏）：
-  原图：[查看原图（临时 5 分钟，记审计）]      ← 不自动加载、列表无缩略图
+  AI 状态：{已开启 · model / 未开启 / 凭据未配置}（只读；不显示 Key 值）
+  原图：[查看原图（临时 5 分钟，记审计）]      ← 不自动加载、列表无缩略图；hasImage=false 时显示「无关联原图」并禁用
   OCR 文本（已去敏）：{ocrTextMasked ≤2000，超长折叠}
   规则结果：{ruleResult 摘要}     DeepSeek 尝试：{aiTried/aiModel/aiResult/aiErrorCode}
   关联订单：{orderNo 或 未关联订单}      上传时间 {createdAt}      复核时间 {reviewedAt}
@@ -347,10 +350,10 @@ wx 启动 → pages/launch/index → user.bootstrap
 **组件/数据来源**：状态筛选 tab（含计数）、失败码筛选、来源角色筛选、日期筛选、分页、行卡、详情展开区、原图查看按钮、补录表单（站点选择器 + 取件码输入）、忽略备注、通知按钮、时间线；数据= `admin.listRecognitionFailures({status?,failureCode?,sourceRole?,dateFrom?,dateTo?,cursor,limit})`、`admin.getRecognitionFailure({failureNo})`（字段 + 原图临时 URL，**每次调用落 `FAILURE_IMAGE_VIEW`**）、`admin.fixRecognitionFailure`、`admin.ignoreRecognitionFailure`；**「通知上传者」已定稿为 `fix/ignore` 的可选参数 `notifyUploader:true`，不单拆动作**（CONTRACT §4.3）。
 **列表字段（全部脱敏）**：`failureNo`（等宽展示）、`failureCode`（中文文案见本文 §11.8）、`sourceRole`（顾客/兼职）、上传人（**只给编号 + 脱敏昵称**：顾客上传给顾客编号、兼职上传给兼职编号，**不显示 openid、不展示头像**）、`createdAt`（服务端时间格式化）、`status` 标签、关联 `orderNo`（若有，可跳 `order-detail`）；**原图不出现在列表**（无缩略图/无预览/无自动加载）。
 **筛选/分页**：状态三档 `PENDING`/`FIXED`/`IGNORED`（默认 `PENDING`，首屏即待复核）；失败码五值；来源角色两值；日期默认「近 7 天」、可选「近 30 天/全部」；分页 20、按 `createdAt` 倒序、下拉刷新；筛选只影响列表，tab 计数由服务端返回、不前端推算。
-**详情字段**：①原图入口（`fileId` 引用，按钮式，点开才取临时 URL，5 分钟有效，页面不留 URL、不写缓存/日志）；②`ocrTextMasked`（≤2000，已去敏，超长折叠，**不提供复制按钮**）；③`ruleResult` 摘要（规则识别的站点/取件码候选；空则 `规则未识别到站点或取件码`）；④AI 尝试：`aiTried`、`aiModel`、`aiResult`（只读摘要：识别到的站点/取件码/置信度）、`aiErrorCode`（有则映射文案，如 `智能识别超时`/`配额已用完`/`返回格式不可解析`）；⑤关联订单（`orderId/orderNo`，有则深链 `order-detail`，无则 `未关联订单`，**不显示订单其它 L3**；失败记录以**订单 × 截图**为粒度：同一截图拆多单时**每张缺码/缺站点订单各一条**记录、共享同一 `fileId`，未建单保留 `orderId=''`，建单后回填对应 `orderId/failureId`）；⑥时间与状态（`createdAt`/`reviewedAt`/`status`）；⑦时间线（入队 + 每次原图查看 + 补录/忽略，均来自记录/审计，不含 openid）。
+**详情字段**：①原图入口（`fileId` 引用，按钮式，点开才取临时 URL，5 分钟有效，页面不留 URL、不写缓存/日志；**`hasImage=false` 显示「无关联原图」且不写审计**）；②`ocrTextMasked`（≤2000，已去敏，超长折叠，**不提供复制按钮**）；③`ruleResult` 摘要（规则识别的站点/取件码候选；空则 `规则未识别到站点或取件码`）；④AI 尝试：`aiTried`、`aiModel`、`aiResult`（只读摘要：识别到的站点/取件码/运单尾号/柜号/置信度）、`aiErrorCode`（有则映射文案，如 `智能识别超时`/`配额已用完`/`返回格式不可解析`）；**只读 AI 状态 `aiStatus{enabled,hasKey,model}`**（未开启/凭据未配置时页头标黄，便于区分「开关关/Key 未配/模型正常」；Key 只显示是否配置）；⑤关联订单（`orderId/orderNo`，有则深链 `order-detail`，无则 `未关联订单`，**不显示订单其它 L3**；失败记录以**订单 × 截图**为粒度：同一截图拆多单时**每张缺码/缺站点订单各一条**记录、共享同一 `fileId`，未建单保留 `orderId=''`，建单后回填对应 `orderId/failureId`）；⑥时间与状态（`createdAt`/`reviewedAt`/`status`）；⑦时间线（入队 + 每次原图查看 + 补录/忽略，均来自记录/审计，不含 openid）。
 **动作与校验**：
 - **查看原图**：仅白名单开发者、仅单条；点按 → `admin.getRecognitionFailure` → 临时 URL 5 分钟 → 全屏预览（可缩放，**无保存/分享/转发/长按菜单**）；每次查看都取新 URL 并落 `FAILURE_IMAGE_VIEW`；失败（`fileId` 过期或已被 `cleanup` 删除）→ `NOT_FOUND` 文案见本文 §11.8 并给「刷新」。
-- **补录站点/取件码**：站点必须 ∈ P1~P8（选择器，不允许自由文本）；取件码走与端侧同一条码格式闸（去空格/连字符、长度与字符集上限 ≤40）；保存 → `admin.fixRecognitionFailure({failureNo,stationId,pickupCode,notifyUploader?})`；**只回填关联订单 `parcel.stationId/stationName/pickupCode` 三个识别字段**，不改订单状态/不代确认/不创建订单/不改归属，除这三个字段外不改订单其它字段；无关联订单（含未建单 `orderId=''`）时只更新复核记录并提示「已补录；该记录没有关联订单，未回填订单。」；成功 → `status=FIXED` + `reviewedAt` + `resolution`，审计 `FAILURE_FIX`（detail 只记 `failureNo`/字段名/是否关联订单，**不记原图/OCR 全文/openid**）。
+- **补录站点/取件码**：站点必须 ∈ P1~P8（选择器**显示 `config.stations` 当前名称、id 固定**，不允许自由文本；管理员改名后同步）；取件码走与端侧同一条码格式闸（去空格/连字符、长度与字符集上限 ≤40）；保存 → `admin.fixRecognitionFailure({failureNo,stationId,pickupCode,notifyUploader?})`；**只回填关联订单 `parcel.stationId/stationName/pickupCode` 三个识别字段**，不改订单状态/不代确认/不创建订单/不改归属，除这三个字段外不改订单其它字段；无关联订单（含未建单 `orderId=''`）时只更新复核记录并提示「已补录；该记录没有关联订单，未回填订单。」；成功 → `status=FIXED` + `reviewedAt` + `resolution`，审计 `FAILURE_FIX`（detail 只记 `failureNo`/字段名/是否关联订单，**不记原图/OCR 全文/openid**）。
 - **标记忽略**：备注必填（≤100），写 `resolution.note`；调 `admin.ignoreRecognitionFailure({failureNo,note,notifyUploader?})`；记录置 `IGNORED`；审计 `FAILURE_IGNORE`；忽略 ≠ 删除，记录与原图引用仍保留至保留期；MVP 不可撤销（P1 再议恢复）。
 - **通知上传者**：**不单拆动作**（CONTRACT §4.3 已定稿）——作为 `fixRecognitionFailure`/`ignoreRecognitionFailure` 的 `notifyUploader` 参数；补录/忽略确认弹层默认勾选「同时站内通知上传者」；站内消息必做（订阅消息 P1）；消息只含「你的截图识别失败，开发者已处理/请补充取件码」类下一步指引，**不含原图、失败码内部细节、AI 结果**；同一记录同日重复通知幂等（只发一条）。
 **防误操作（硬）**：补录只回填识别字段，**不改订单状态、不代顾客/兼职确认、不创建订单、不改归属**；无批量选择/批量补录/批量忽略；无下载/导出（原图与其他记录都不行）；无「显示全部原图」；补录/忽略均二次确认（本文 §11.8）；已 `FIXED`/`IGNORED` 记录再操作 → `INVALID_STATE`「该记录已处理，不能重复操作。」；关联订单已终态时仍可补录识别字段（只影响展示与历史，不推进状态）。
@@ -538,6 +541,13 @@ USED / REVOKED / EXPIRED = 终态；不存在「重新生效」，需要时重�
 - **`VIEW_AS_*` 审计名已作废**（CONTRACT v0.9 统一为 `ACCOUNT_SWITCH_*`）；历史文档/代码若仍出现 `VIEW_AS_*` 视为缺陷（回写清单见本文 §10.4 第 2 条）。
 - 本文按「真实账号只读 + 测试账号可写（隔离）」设计（D14/D18 推荐项）；若用户改口径，必须同步修改 CONTRACT §1.2/§1.3、本文 §6/§10 与 DATA_MODEL 写权限口径，不可只改前端。
 
+### 6.11 分享与朋友圈的开发者侧约束（v1.2/D36）
+- **后台零分享**：`pkg-admin/**` 的 11 个后台页**不挂** `onShareAppMessage`/`onShareTimeline`、无 `open-type="share"` 入口——治理数据不外传（ENGINEERING §8.2 #33③；`selftest-admin-pages` 同口径）。
+- **切换会话禁分享（O3/M-33 关闭）**：`components/switch-bar` 统一调 `utils/share/platform.syncSession(inSession)`——进入 `READONLY`/`TEST_WRITE` 调 `wx.hideShareMenu()` 隐藏右上角「转发/分享到朋友圈」菜单，退出 `showShareMenu({withShareTicket:false})` 恢复（仅状态变化时调 API）；首页/我的/帮助页内分享按钮在 `viewSession` 时不渲染。
+- **卡片中性**：好友转发卡片只有两种、构造单源 `utils/share/index.js`（页面零自拼）——①兼职绑定卡（兼职身份 + 非切换会话 + 有 `partnerNo`，`path=/pages/role/index?bind={partnerNo}`，只带编号）；②通用邀请卡（`path=/pages/role/index`，零 query）。朋友圈卡片 `query` 恒空。一律显式固定中性封面 `/assets/share/cover.png`（5:4）与 `/assets/share/cover-timeline.png`（1:1），**禁止页面截图**——平台默认截图会把取件码/宿舍/尾号等 L3 带进卡片；卡片不含订单号/取件码/站点/宿舍/尾号/头像/昵称/截图/票据/识别原文。
+- **范围与平台事实**：好友转发覆盖顾客/兼职 19 个业务页；朋友圈仅 `pages/role`、`pages/customer/home`、`pkg-customer/pages/help` 三页——朋友圈落地=当前页**单页模式**（scene=1154：无登录态、不能跳页、tabBar 不渲染、云资源不可用），故 `app.js` 启动识别后跳过云初始化与 `user.bootstrap`，三页只做静态预览与「前往小程序」提示；朋友圈为平台 Beta（基础库 ≥2.11.3，支持范围以官方文档为准）、只能经右上角菜单触发、不得诱导分享。
+- **判据与取数**：`node tools/check.js` #33（19 页转发/3 页朋友圈/后台 11 页零分享/固定封面/会话收口/单页模式）+ `node tools/selftest-share.js`（断言数以命令真实输出为准；2026-10-28 实测 **182/182 PASS**）；页面清单单源 `tools/lib/share-pages.js`；真机分享/朋友圈效果属人项（`docs/QA_CHECKLIST.md` §X），agent 不代勾。开发者后台不提供任何分享/转发入口，也不因治理动作产生外发卡片。
+
 ---
 
 ## 7. 治理动作
@@ -573,6 +583,7 @@ USED / REVOKED / EXPIRED = 终态；不存在「重新生效」，需要时重�
 | :-- | :-- | :-- | :-- |
 | 服务类型模板 | `serviceCatalog[{code,name,desc}]` | 固定 5 个 code（§6），可改名称/说明；**不含启用开关**（结构只有 code/name/desc，不新增 code、不设交易字段） | 下一请求 |
 | 苑名 | `zoneLabels` | D/X/N/B/C 五个；默认东苑/西苑/南苑/北苑/翠苑（D8 已裁决，可改） | 下一请求 |
+| 站点名称（v1.1/D32） | `stations[{id,name}]` | 固定 8 个 id（P1~P8）；名称非空、1~20 字、唯一；默认取 `shared/stations.js`；保存整表校验（缺/多/重复 id 拒绝） | 下一请求（识别/选择器/AI prompt 用新名） |
 | 公告 | `announcement{enabled,title,text}` | 标题 ≤30、正文 ≤500（设计上限，DATA_MODEL 定稿） | 端侧 `onShow`/60 秒内 |
 | 超时 / 自动完成 | `orderTimeoutMinutes`/`autoCompleteHours` | 默认 120 分钟 / 24 小时；整数正数（建议 10~1440 / 1~168） | 新判定 |
 | 截图留存 | `screenshotRetentionDays` | 默认 7；**上限 7**（不高于隐私承诺 §11.1/D9） | cleanup 下一轮 |
@@ -582,7 +593,7 @@ USED / REVOKED / EXPIRED = 终态；不存在「重新生效」，需要时重�
 | 测试数据保留 | `testDataRetentionDays` | 默认 30 天；`cleanup` 清理超期未使用测试账号**数据**（账号保留） | `cleanup` 下一轮 |
 | 识别失败保留 | `recognitionFailureRetentionDays` | 默认 30 天；**7~30**（长于订单截图 7 天，§4.1/§11.1） | `cleanup` 下一轮 |
 | 维护模式 | `maintenance{enabled,text}` | 关闭/开启；开启需二次确认 | 下一请求 |
-> 配置页不含隐私版本号（由隐私定稿流程单独更新），不含任何交易项；保存前展示变更清单并二次确认；失败保留输入；服务端每次读 config 为准；`config.aiFallback`（enabled/model/timeoutMs/maxPerUserPerDay/dailyQuota/cooldownMinutes）属云函数侧兜底参数，**MVP 不在后台开放编辑**（防误关兜底/误改配额），配置页只读展示总开关状态；**v0.9 新增可编辑项以 CONTRACT §1.1 白名单为准（切换会话时长/头像大小/留存期限）**，`testAccountMaxPerRole`/`testDataRetentionDays` 本期只读展示；若要开放编辑须先改 CONTRACT §1.1 并单独立项（本文 §10.4 第 5 条）。
+> 配置页不含隐私版本号（由隐私定稿流程单独更新），不含任何交易项；保存前展示变更清单并二次确认；失败保留输入；服务端每次读 config 为准；`config.aiFallback`（enabled/model/timeoutMs/maxPerUserPerDay/dailyQuota/cooldownMinutes）属云函数侧兜底参数，**MVP 不在后台开放编辑**（防误关兜底/误改配额），配置页只读展示总开关状态；**v0.9 新增可编辑项以 CONTRACT §1.1 白名单为准（切换会话时长/头像大小/留存期限）**，`testAccountMaxPerRole`/`testDataRetentionDays` 本期只读展示；若要开放编辑须先改 CONTRACT §1.1 并单独立项（本文 §10.4 第 5 条）。**v1.1/D32 新增「站点名称」可编辑（8 条固定 id、名称 1~20 字唯一；改名校验/审计 `CONFIG_UPDATE` 前后值）**。
 
 ### 7.5 维护模式与二次确认纪律
 - 维护开启：二次确认；顾客/兼职端全屏公告 `系统维护中，预计 {time} 恢复；急单请留言或联系开发者。`；写接口拒绝（`INVALID_STATE`，admin 与 cleanup 除外）；读与切换会话不受影响、后台可用；关闭后立即恢复写。开启/关闭均记 `CONFIG_UPDATE`。
@@ -629,7 +640,7 @@ USED / REVOKED / EXPIRED = 终态；不存在「重新生效」，需要时重�
 
 ---
 
-## 9. 验收清单 AC-D-01…AC-D-33（机器 + 人）
+## 9. 验收清单 AC-D-01…AC-D-35（机器 + 人）
 | 编号 | 方式 | 验收点 | 通过判据 |
 | :-- | :-- | :-- | :-- |
 | AC-D-01 | 机器+人 | launch 分流：`user.bootstrap.isDeveloper=true` → `reLaunch('/pkg-admin/pages/overview/index')`；非开发者无后台页可达 | 不依赖 `?admin=1`；**11 个后台页（10 功能页 + 后台消息）** 路径与 CONTRACT §7 逐字一致（含 `account-switch`、**无 `view-as`**）、无 tabBar |
@@ -665,6 +676,8 @@ USED / REVOKED / EXPIRED = 终态；不存在「重新生效」，需要时重�
 | AC-D-31 | 机器+人 | 统计与红点排除：`admin.stats`/兼职单量统计/红点不含测试账号与 `isTest`；订单列表默认过滤、可切换「含测试数据」并带「测试」标签 | 造 1 真实 + 1 测试单对照计数；开关只影响列表、不影响统计 |
 | AC-D-32 | 机器+人 | 测试账号管理：新建额度（≤3/角色、≤6/开发者）；删除级联删数据+头像并使活跃会话 `endedAt`；`purgeTestData` dry-run 计数 + 双条件 + 审计前后条数；`cleanup` 30 天清理测试数据 | 超额 `INVALID_STATE`/`VALIDATION_FAILED`；审计 `TEST_ACCOUNT_CREATE/DELETE`、`TEST_DATA_PURGE` |
 | AC-D-33 | 机器+人 | 头像/昵称最小展示：后台列表/详情无头像位、DTO 无 `avatarFileId`、昵称脱敏；复核页不展示上传者头像；解绑/停用/注销后绑定双方不再互见头像昵称；分享卡片不含头像昵称 | 机器断言 DTO；端侧在真实只读会话对照；隐私声明已勾选头像/昵称 |
+| AC-D-34 | 机器+人 | 后台零分享与门禁 #33：11 个后台页无分享钩子/入口；19 个顾客/兼职业务页挂 `onShareAppMessage`、仅 role/home/help 三页挂 `onShareTimeline`；卡片构造单源、固定中性封面、页面零自绘 | `node tools/check.js` #33 与 `node tools/selftest-share.js` 全绿；清单外页面私挂分享判红（新增页面须同步 `tools/lib/share-pages.js`） |
+| AC-D-35 | 机器+人 | 切换会话禁分享 + 单页模式降级：进入 `READONLY`/`TEST_WRITE` 后右上角「转发/分享到朋友圈」菜单隐藏、退出恢复；页内分享按钮隐藏；scene=1154 启动跳过云初始化与 `user.bootstrap`，三页静态预览 | 机器断言 `syncSession` 调用与单页模式分支；真机单页预览与卡片截图（QA §X） |
 > 取数方法：机器=`node tools/check.js`/`check-docs.js`/`selftest*.js` 与 `check.ps1` 退出码 0+真实输出（ENGINEERING §8），页面路径与 CONTRACT §7 对账（含 `account-switch`、无 `view-as`）、动作名与 §5.3 双向对账；**v0.8 增**：客户端与后台页面目录扫描 `DEEPSEEK_API_KEY|api.deepseek.com` 零命中、外发键集合白名单断言、失败必入队断言、原图访问必落 `FAILURE_IMAGE_VIEW` 断言；**v0.9 增**：`ACCOUNT_SWITCH_*` 审计断言、`VIEW_AS_*` 零命中、`TEST_WRITE` 双校验断言、`isTest/impersonatedBy` 断言、统计排除断言、后台 DTO 无 `avatarFileId` 断言（CONTRACT §12 账号切换门禁/头像昵称门禁）；人=按 `docs/QA_CHECKLIST.md` 后台/只读视角/测试账号分区执行（真实只读会话 + 测试可写单机 + 双机第二微信号，agent 不代宣布通过），**识别失败复核执行 QA `R` 分区、账号切换与测试账号执行 QA `T` 分区**（以 QA 定稿为准，本文 §10.4 第 3 条）；证据=截图/录屏（脱敏界面、黄条/蓝条、`TEST` 角标、拒绝 toast、审计条目），审计以 `stats`/`listAudit` 真实查询为证；不写死测试条数与性能承诺。
 
 ---
@@ -686,6 +699,7 @@ USED / REVOKED / EXPIRED = 终态；不存在「重新生效」，需要时重�
 | D19 头像昵称 | 顾客/兼职采集 `chooseAvatar` + 昵称（必填可改、头像可拒绝→默认头像）；仅绑定对方可见；后台不展示头像、昵称脱敏 | 改为强制头像/不可改昵称 → 违反"用户主动选择"；只采昵称 → 不满足需求 |
 | D20 绑定方向 | **只能顾客发起**；兼职无绑定入口；代客单不产生绑定；解绑后互不可见头像昵称 | 已定（用户四次修订），无备选 |
 | D21 roomTag | **恒大写** `A…Z/AA…`（展示 `D4-522A`） | 已定（用户四次修订），小写视为缺陷 |
+| D36 分享与朋友圈 | 19 页好友转发；朋友圈仅 role/home/help 三页（单页模式静态降级）；两种中性卡片、固定封面、卡片零 L3；切换会话隐藏分享；后台 11 页零分享（§6.11） | 已实现（v1.2，2026-10-28）；若调整范围须先改 CONTRACT §8/§13-D36，再同步门禁 #33、`tools/lib/share-pages.js` 与 QA §X |
 > 关联裁决（2026-10-22 全部闭环）：D8 苑名=东苑/西苑/南苑/北苑/翠苑（默认值进 `shared/zones.js`，后台仍可改）；D13 主体/类目=个人主体+工具类目（提审前确认类目可选，与后台功能无关）；**D22 已改判 B（见 D24：取件码截图自愿、允许无截图手填提交，每件仍需站点+取件码或运单尾号；旧 A 作废，留痕见 CONTRACT §13 与 `docs/V4_DECISIONS.md` D22）**；D6 零交易已定，后台无待决交易项；真实操作现可用**测试账号单机**完成，额外微信号仅作补充验收。
 
 ### 10.3 P1 / 不做清单
@@ -695,7 +709,7 @@ USED / REVOKED / EXPIRED = 终态；不存在「重新生效」，需要时重�
 ### 10.4 回写清单（交 lead / DATA_MODEL / ENGINEERING / QA / privacy）
 1. `docs/V4_DATA_MODEL.md`：v0.7/v0.8 项继续（邀请码/票据/读白名单/DTO 分级/识别失败复核；`notifyUploader` 已定稿内联、失败记录以「订单 × 截图」为粒度）；**v0.9 新增**：`users.isTestAccount/createdByDeveloperNo/testLastUsedAt`（**合成 `openid='TEST-<random>'`，非空串**）、`orders.isTest/impersonatedBy`、`order_events.impersonatedBy`、`admin_view_sessions.viewMode/targetIsTest/targetAvatarFileId`、`config.avatarMaxBytes/testAccountMaxPerRole/testDataRetentionDays`、`customers/partners.displayName(必填)/avatarFileId`、`roomTag` 大写规则；**admin 动作表 23 个**（`viewAsStart({role,targetNo,mode})`/`viewAsEnd` + `createTestAccount/listTestAccounts/deleteTestAccount/purgeTestData` 等）；审计名统一 `ACCOUNT_SWITCH_START/END/EXPIRED` + `TEST_ACCOUNT_CREATE/TEST_ACCOUNT_DELETE/TEST_DATA_PURGE`（**`VIEW_AS_*` 作废**）；`purgeTestData` 的 dry-run 计数字段与审计 `before/after` 条数字段。仍需确认：后台消息聚合视图数据源、兼职切换会话配置读取承载、停用兼职名下订单转异常的具体处理（沿用 v0.7 待确认，不阻塞本文）。
 2. `docs/V4_ENGINEERING.md`：v0.8 项继续（`ADMIN_OPENIDS` JSON 映射/只读视角云侧/AI 兜底门禁）；**v0.9 需补** 账号切换门禁（`TEST_WRITE` 仅测试账号、真实×测试 `FORBIDDEN`、统计/红点/邀请码排除测试、测试写带 `impersonatedBy`、票据内存态）、头像昵称门禁（后台 DTO 无 `avatarFileId`、昵称脱敏、`avatars/` 路径与 ≤200KB）、后台页面清单 11 页（`account-switch` 替代 `view-as`）、check-docs 页面/动作/审计名对账（**`VIEW_AS_*` 零命中**）。
-3. `docs/QA_CHECKLIST.md`：后台/只读视角 G/V 与识别失败 R 分区继续；**v0.9 新增 `T`（账号切换与测试账号）分区**，与本文 AC-D-28…AC-D-33 对应（蓝条/角标、`TEST_WRITE` 越权、真实×测试隔离、统计排除、测试账号管理/级联删除、头像昵称不展示）。
+3. `docs/QA_CHECKLIST.md`：后台/只读视角 G/V 与识别失败 R 分区继续；**v0.9 新增 `T`（账号切换与测试账号）分区**，与本文 AC-D-28…AC-D-33 对应（蓝条/角标、`TEST_WRITE` 越权、真实×测试隔离、统计排除、测试账号管理/级联删除、头像昵称不展示）；**v1.2 增补** QA §X（D36 分享与朋友圈人项，判据见本文 §6.11）。
 4. `docs/V4_UX_CUSTOMER.md` / `docs/V4_UX_PARTNER.md`：目标端需实现「真实=黄条+拒写 / 测试=蓝条+`TEST` 角标+测试可写 / 隐藏分享 / `viewTicket` 注入」的统一组件契约（以本文 §6.4/§6.6 为源，两端不得各自另定）；端侧还须实现头像/昵称展示与默认头像兜底、解绑后互不可见；识别失败兜底文案（失败码五值）以 UX_CUSTOMER/UX_PARTNER 为准，后台复核文案（本文 §11.8）只做后台侧对齐。
 5. `docs/privacy/`：v0.8 两项披露（第三方 AI 去敏文本、复核原图）+ **v0.9 两项披露（微信头像/昵称采集与可见范围、账号切换/测试账号）**；微信后台按官方模板声明「昵称、头像」（同一项）及「剪切板」「选中的照片或视频信息」等实际接口项，并把 DeepSeek 对外提供写进用途 /「信息对外提供」（如可编辑）/ 补充文档（人执行）；`config.aiFallback` 维持后台只读（CONTRACT §4.3）。
 6. `docs/V4_DECISIONS.md`：记录 D14/D15/D16/D17/D18/D19/D20/D21 用户裁决结果；D18 若改为"真实账号可写"需回写 CONTRACT §1.2/§1.3 与本文 §6/§10；D19 若改采集方式需回写本文 §8.3/§8.5 与隐私文本。
@@ -747,6 +761,8 @@ USED / REVOKED / EXPIRED = 终态；不存在「重新生效」，需要时重�
 | 目标不可查看 | `该用户当前不可查看，请确认对方账号处于正常状态后再试。` |
 
 ### 11.6 治理确认与结果
+
+**站点名称（v1.1/D32）**：「站点名称」/ 说明「固定 8 个取件站点；名称用于识别、选择器与 AI 提示，保存后下一请求生效；不允许新增或删除站点」/ 校验「名称需为 1~20 字且不能重复」/ 变更清单按「旧名称 → 新名称」逐行展示。
 | 场景 | 文案 |
 | :-- | :-- |
 | 停用确认 | `停用后，{displayName}（{partnerNo}）将无法登录兼职端，名下未完成订单转异常待处理，绑定顾客暂时不能向他下单。历史订单与编号保留。确定停用？` |

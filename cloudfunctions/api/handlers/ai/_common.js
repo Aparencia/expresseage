@@ -12,10 +12,18 @@ const aiParse = require('../../lib/ai/parse');
 const { errors } = require('../../lib/errors');
 
 const MAX_OCR_TEXT_LENGTH = 2000;
+const MAX_FILE_ID_LENGTH = 512;
 const CONFLICT_STATION_MISMATCH = 'STATION_MISMATCH';
 const CONFLICT_CODE_CONFLICT = 'CODE_CONFLICT';
 const DEFAULT_RETENTION_DAYS = 30;
-const CODE_CANDIDATE_RE = /[0-9A-Za-z]{4,12}/g;
+// 取件码候选 token：支持 207-3-1014 这类连字符/分隔符组；掩码片段（含 *）与运单上下文先剔除，避免把 JT22 当码
+const CODE_TOKEN_RE = /[0-9A-Za-z]+(?:[-—–_#][0-9A-Za-z]+)*/g;
+const MASKED_TOKEN_RE = /[0-9A-Za-z]*\*[0-9A-Za-z*]*/g;
+const CODE_SEPARATOR_RE = /[\s\-—–_#·]/g;
+const CODE_CONTEXT_RESET_RE = /(?:取件码|取货码|提货码|取件|提货)/;
+const CODE_CONTEXT_SKIP_RE = /(?:运单|快递|物流|包裹|单号|尾号)/;
+const CARRIER_PREFIX_RE = /^(?:JT|SF|YT|JD)/;
+const DIGIT_RE = /\d/;
 
 // identity.roles = auth 按 users.roles 归一出的业务角色集（双角色 [CUSTOMER,PARTNER]）；
 // 切换会话/手工注入 ctx 只有 role 时回落单元素集，保持单角色语义不变。
@@ -97,6 +105,8 @@ function normalizePayload(payload, scope) {
   }
   // 票据归属/有效期校验失败不拒绝（记 ruleResult.ticketInvalid=true 供后台排查），只要求是字符串
   const uploadTicketId = typeof input.uploadTicketId === 'string' ? input.uploadTicketId.trim() : '';
+  // 原图 fileId 只作入队关联（绝不进外发 payload）；归属校验在 handler 用上传票据完成，校验失败静默置 ''
+  const fileId = typeof input.fileId === 'string' ? input.fileId.trim().slice(0, MAX_FILE_ID_LENGTH) : '';
   let hintTrackingTail = '';
   if (input.hintTrackingTail !== undefined && input.hintTrackingTail !== null && input.hintTrackingTail !== '') {
     const tailCheck = validate.validateTrackingTail(input.hintTrackingTail);
@@ -109,6 +119,7 @@ function normalizePayload(payload, scope) {
     ocrTextMasked: rawText,
     hintTrackingTail,
     uploadTicketId,
+    fileId,
     role
   };
 }
@@ -145,9 +156,9 @@ function ticketStatusOf(ticket, scope, nowMs) {
 }
 
 // 服务端规则快照（入队 ruleResult）：输入只有去敏文本与尾号提示，故由服务端在同一文本上重跑规则归一。
-function buildRuleResult(maskedText, hintTrackingTail, ticketStatus) {
+function buildRuleResult(maskedText, hintTrackingTail, ticketStatus, config) {
   const conflicts = [];
-  const station = normalizeStationFromText(maskedText);
+  const station = normalizeStationFromText(maskedText, config);
   if (station.conflict) {
     conflicts.push(CONFLICT_STATION_MISMATCH);
   }
@@ -169,7 +180,15 @@ function buildRuleResult(maskedText, hintTrackingTail, ticketStatus) {
   };
 }
 
-function normalizeStationFromText(text) {
+function normalizeStationFromText(text, config) {
+  // 新版共享站点表（task-3）：多说法命中 + config.stations 自定义正式名；旧副本无该 API 时回落静态归一。
+  if (typeof stations.matchStationInText === 'function') {
+    const options = typeof stations.stationsFromConfig === 'function'
+      ? { stations: stations.stationsFromConfig(config) }
+      : {};
+    const hit = stations.matchStationInText(text, options) || {};
+    return { id: typeof hit.id === 'string' ? hit.id : '', name: typeof hit.name === 'string' ? hit.name : '', conflict: hit.conflict === true };
+  }
   const hits = [];
   stations.STATIONS.forEach((station) => {
     if (text.indexOf(station.name) >= 0 && hits.indexOf(station.id) < 0) {
@@ -187,16 +206,36 @@ function normalizeStationFromText(text) {
   return { id: '', name: '', conflict: hits.length > 1 };
 }
 
+// 候选 token 归一：去分隔符转大写、必须含数字、4~12 位、排除运单号前缀；上下文（运单/快递/单号/尾号）整段跳过。
+function acceptCodeToken(token, linePrefix) {
+  const value = token.replace(CODE_SEPARATOR_RE, '').toUpperCase();
+  if (value.length < 4 || value.length > 12 || !DIGIT_RE.test(value)) {
+    return '';
+  }
+  if (CARRIER_PREFIX_RE.test(value)) {
+    return '';
+  }
+  const segments = String(linePrefix || '').split(CODE_CONTEXT_RESET_RE);
+  if (CODE_CONTEXT_SKIP_RE.test(segments[segments.length - 1])) {
+    return '';
+  }
+  return value;
+}
+
 function normalizeCodeFromText(text) {
-  const merged = text.replace(/[\s\-_#]/g, '');
-  const matches = merged.match(CODE_CANDIDATE_RE) || [];
+  // 含 * 的掩码片段整段剔除（JT22****25 不是取件码，也不能与真码冲突）
+  const cleaned = String(text || '').replace(MASKED_TOKEN_RE, ' ');
   const accepted = [];
-  matches.forEach((token) => {
-    const code = aiParse.normalizePickupCode(token);
+  CODE_TOKEN_RE.lastIndex = 0;
+  let match = CODE_TOKEN_RE.exec(cleaned);
+  while (match) {
+    const lineStart = cleaned.lastIndexOf('\n', match.index) + 1;
+    const code = acceptCodeToken(match[0], cleaned.slice(lineStart, match.index));
     if (code && accepted.indexOf(code) < 0) {
       accepted.push(code);
     }
-  });
+    match = CODE_TOKEN_RE.exec(cleaned);
+  }
   if (accepted.length === 1) {
     return { value: accepted[0], conflict: false };
   }
@@ -277,7 +316,7 @@ async function recordFailure(ctx, input) {
     sourceRole: scope.role,
     uploaderOpenid: scope.openid,
     uploadTicketId: input.uploadTicketId || '',
-    fileId: '',
+    fileId: typeof input.fileId === 'string' ? input.fileId : '',
     orderId: '',
     ocrTextMasked: typeof input.ocrTextMasked === 'string'
       ? input.ocrTextMasked.slice(0, MAX_OCR_TEXT_LENGTH)

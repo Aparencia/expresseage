@@ -22,7 +22,7 @@ const ocr = require(path.join(ROOT, 'utils/ocr/index.js'));
 const sharedStations = require(path.join(ROOT, 'shared/stations.js'));
 const sharedValidate = require(path.join(ROOT, 'shared/validate.js'));
 
-const EXPECTED_ASSERTIONS = 214; // 改为实际断言数时同步核对 `node tools/selftest-recognize.js` 读数
+const EXPECTED_ASSERTIONS = 250; // 243 + 7：D35 条带裁剪/RGBA 精确切片/errno 分类/条带索引
 
 // v3 真机语料（sha256 指纹钉：改动语料必须同步改这里的期望与解析断言）
 const CORPUS_ONE = [
@@ -88,7 +88,7 @@ function sectionTrackingTail(h) {
 
 // ---------------------------------------------------------------- 站点
 function sectionStation(h) {
-  h.section('§3/§4.2 站点归一（单源 shared/stations：P1~P8 正式名 + 别名）', (t) => {
+  h.section('§3/§4.2 站点归一（单源 shared/stations：P1~P8 正式名 + 别名 + 多说法命中，D32）', (t) => {
     const list = station.listStations();
     t.eq(list.length, 8, '§4.2 站点恰好 P1~P8 八个');
     t.eq(list.map((item) => item.id), ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8'],
@@ -119,10 +119,41 @@ function sectionStation(h) {
     t.eq(station.matchStation('西苑一栋南面快递中心 与 西苑一栋邮政'), null,
       '§4.3 同时命中两个正式名判歧义返回 null');
     t.eq(station.matchStation('西苑邮政 与 北苑食堂三楼'), null, '§4.3 两个别名指向不同站点判歧义');
-    t.eq(station.matchStation('西苑顺丰 到件通知'), null,
-      '§4.3 别名表未登记（单源=shared）不猜，留空手选');
+    // D32 新口径：未登记为正式名/别名的真实说法走「关键词命中」（不再只认全名）
+    const byKeyword = station.matchStation('西苑顺丰 到件通知');
+    t.eq([byKeyword.id, byKeyword.by], ['P1', 'keyword'], '§4.3 未登记别名的真实说法走关键词命中（D32）');
+    const REAL_PHRASES = [
+      ['湖工大西苑一栋南面菜鸟驿站', 'P3'],
+      ['西苑一栋南面', 'P3'],
+      ['五食堂21栋楼下', 'P3'],
+      ['西苑菜鸟驿站', 'P5'],
+      ['北苑食堂三楼', 'P4'],
+      ['南苑菜鸟驿站', 'P6']
+    ];
+    t.eq(REAL_PHRASES.map((pair) => [station.matchStation(pair[0]).id, station.matchStation(pair[0]).by]),
+      [['P3', 'alias'], ['P3', 'alias'], ['P3', 'alias'], ['P5', 'keyword'], ['P4', 'alias'], ['P6', 'name']],
+      '§4.3 真实截图六种说法全部命中（别名/关键词/正式名三条路径）');
+    t.eq(station.matchStation('西苑一栋'), null, '§4.3 跨站点共有片段（P3/P7）判歧义不猜');
+    t.eq(station.matchStation('菜鸟驿站'), null, '§4.3 只命中品牌词（多站点共有）不猜');
     t.eq(station.matchStation('自建驿站到件'), null, '§4.3 未登记站点不猜');
     t.eq(station.matchStation(''), null, '§4.3 空文本不猜');
+    // 识别链路端到端：OCR 文本 → 关键词命中 → stationId
+    const keywordParsed = recognize.parseOcrText('取件码：A12345 西苑菜鸟驿站');
+    t.eq([keywordParsed.station.id, keywordParsed.items[0].stationId], ['P5', 'P5'],
+      '§4.3 OCR 文本「西苑菜鸟驿站」经关键词命中落到 P5（D32 端到端）');
+    // 配置注入：改名后按配置名命中，缺省仍回退内置默认（旧调用零破坏）
+    const renamed = sharedStations.listStations().map((item) => ({
+      id: item.id,
+      name: item.id === 'P6' ? '南苑东门驿站' : item.name
+    }));
+    t.eq(station.matchStation('南苑东门驿站取件通知', { stations: renamed }).id, 'P6',
+      '§4.3 options.stations 可注入配置站点表（改名后按新名称命中）');
+    t.eq([station.listStations({ stations: renamed })[5].name, station.stationName('P6', { stations: renamed })],
+      ['南苑东门驿站', '南苑东门驿站'], '§4.3 选择器/名称查询支持配置站点表');
+    t.eq(station.stationIdOfName('南苑东门驿站', { stations: renamed }), 'P6',
+      '§4.3 手输回查支持配置站点表');
+    t.eq(recognize.parseOcrText('取件码：A12345 南苑东门驿站', { stations: renamed }).station.id,
+      'P6', '§4.3 parseOcrText 可传配置站点表（缺省回退默认）');
   });
 }
 
@@ -424,6 +455,15 @@ function sectionFrame(h) {
     t.eq(frame.bandRanges(9).length, 4, '§7 条带数上限 4');
     t.check(frame.bandRanges(2).every((range) => range.from >= 0 && range.to <= 1 && range.to > range.from),
       '§7 条带区间合法');
+    // D35：条带重试必须先裁原图再缩放（不是缩小整图后取顶部）；RGBA buffer 按 byteOffset 精确切片
+    t.eq(frame.bandSourceOf(1000, 2000, 2, 0), { ok: true, x: 0, y: 0, width: 1000, height: 1000 },
+      '§7 条带 0 源矩形=上半（原图坐标，先裁后缩）');
+    t.eq(frame.bandSourceOf(1000, 2001, 4, 3), { ok: true, x: 0, y: 1500, width: 1000, height: 501 },
+      '§7 最后一条带取到图片边界（不丢像素）');
+    const pool = new ArrayBuffer(24);
+    const view = new Uint8ClampedArray(pool, 8, 8);
+    t.eq(frame.rgbaBufferOf(view).byteLength, 8, '§7 RGBA buffer 按 byteOffset 精确切片（不把内存池当图像）');
+    t.check(frame.rgbaBufferOf(new Uint8ClampedArray(0)) === null, '§7 空像素返回 null（不送空帧识别）');
   });
 }
 
@@ -431,12 +471,14 @@ function sectionFrame(h) {
 function sectionVision(h) {
   h.section('§7 端侧识别阶梯内核（注入 deps，零 wx）', async (t) => {
     t.eq(vision.LADDER.map((step) => step.bands), [1, 2, 4], '§7 阶梯先整图再 2/4 条带');
-    t.check(vision.IDLE_MS > 0 && vision.MAX_WAIT_MS > 0 && vision.FRAME_TIMEOUT_MS > 0
-      && vision.OCR_MAX_MS > 0, '§7 识别预算常量齐全');
+    t.check(vision.IDLE_MS > 0 && vision.MAX_WAIT_MS > 0 && vision.BAND_MAX_WAIT_MS > 0
+      && vision.FRAME_TIMEOUT_MS > 0 && vision.OCR_MAX_MS > 0, '§7 识别预算常量齐全（含条带重试预算）');
     t.eq(vision.fail('NO_TEXT').ok, false, '§7 fail 统一失败形状');
 
     t.eq(vision.classifyStartErrno(112).reason, 'VK_INIT_FAILED', '§7 未声明隐私指引判初始化失败');
     t.eq(vision.classifyStartErrno(2000002).reason, 'VK_UNSUPPORTED', '§7 设备不支持判不支持');
+    t.eq(vision.classifyStartErrno(2000003).reason, 'VK_UNSUPPORTED', '§7 系统不支持（2000003）判不支持而非权限问题');
+    t.eq(vision.classifyStartErrno(1025).reason, 'VK_INIT_FAILED', '§7 隐私接口被封禁（1025）判初始化失败');
     t.eq(vision.classifyStartErrno(999).reason, 'VK_INIT_FAILED', '§7 未知 errno 保守判初始化失败');
     t.notEmpty(Object.keys(vision.classifyStartErrno(104)), '§7 errno 分类带 reason/detail');
 
@@ -480,8 +522,9 @@ function sectionVision(h) {
     t.eq(runFail.code, 'NO_TEXT', '§7 识别内核失败码透传');
 
     let calls = 0;
+    const bandArgs = [];
     const ladder = await vision.recognizeImage({
-      loadFrame: async () => ({ ok: true, frame: {} }),
+      loadFrame: async (filePath, band) => { bandArgs.push(band); return { ok: true, frame: {} }; },
       runVision: async () => {
         calls += 1;
         return calls === 1 ? { ok: true, texts: [] } : { ok: true, texts: ['分段文字'] };
@@ -490,7 +533,9 @@ function sectionVision(h) {
     t.check(ladder.ok === true, '§7 整图无字时降级条带重试成功');
     t.eq(ladder.texts, ['分段文字'], '§7 条带结果合并输出');
     t.eq(ladder.partial, true, '§7 降级结果标 partial');
-    t.eq(calls, 3, '§7 阶梯逐级重试（整图+2条带+4条带）');
+    t.eq(calls, 2, '§7 阶梯整图无字后按条带顺序重试（首个出字即收口，不白跑 4 带）');
+    t.check(JSON.stringify(bandArgs[1]) === JSON.stringify({ bands: 2, index: 0 }),
+      '§7 条带重试下发 {bands,index}（先第 0 带，可真正救回下半屏）');
   });
 }
 
@@ -543,6 +588,57 @@ function sectionMergeParcels(h) {
   });
 }
 
+// ---------------------------------------------------------------- D35 取件码回填修复
+function sectionD35(h) {
+  h.section('D35 真机取件码 207-3-1014 回填（连写/空格分组/标签粘连/跨行 + 去敏保留）', (t) => {
+    // ① 日期启发式不再误杀 8 位取件码
+    t.check(codes.isPlausibleCode('20731014'), 'D35 连写 8 位码不再被日期启发式误杀');
+    t.check(codes.isFillableCode('20731014') && codes.isFillableCode('207-3-1014'),
+      'D35 连写/带连字符码都过可回填闸（与服务端紧凑闸同判）');
+    t.check(!codes.isPlausibleCode('2026-01-05') && !codes.isPlausibleCode('20260105'),
+      'D35 真日期（带分隔符/8 位现实年份）仍挡，不误填');
+    // ② 四种 OCR 形态都能出码
+    const hyphen = recognize.parseOcrText('湖工大西苑一栋南面菜鸟驿站\n取件码：207-3-1014');
+    t.eq(hyphen.items[0].pickupCode, '207-3-1014', 'D35 连字符形态原样回填');
+    t.eq(recognize.parseOcrText('取件码：20731014').items[0].pickupCode, '20731014',
+      'D35 OCR 丢连字符（连写）也能回填');
+    t.eq(recognize.parseOcrText('取件码：2 0 7 3 1 0 1 4').items[0].pickupCode, '20731014',
+      'D35 OCR 逐字空格分组也能拼回');
+    t.eq(recognize.parseOcrText('取件码20731014').items[0].pickupCode, '20731014',
+      'D35 标签与码粘连也能回填');
+    t.eq(recognize.parseOcrText('取件码：\n207\n3\n1014').items[0].pickupCode, '20731014',
+      'D35 OCR 把码拆成多行（标签行+片段行）也能拼回');
+    t.eq(recognize.parseOcrText('取件码：207\n3\n1014').items[0].pickupCode, '20731014',
+      'D35 标签行带半截码 + 后续片段行也能拼回');
+    t.eq(codes.pickCodes(['取件码：207-3-1014']).length, 1, 'D35 同一码不因连写/连字符重复出件');
+    t.eq(codes.pickCodes(['取件码：JT22****25']).length, 0, 'D35 掩码运单前缀仍不进自动填候选');
+    t.check(recognize.parseOcrText('取件码：JT22****25').unalignedCodes.indexOf('JT22****25') >= 0,
+      'D35 掩码运单候选进「认出但不像」池（不进码输入框）');
+    // ③ AI 返回服务端归一后的 20731014，客户端必须能写入（此前被日期启发式丢弃）
+    const high = recognize.applyAiSuggestion(recognize.makeEmptyParcel(),
+      { stationId: 'P3', pickupCode: '20731014', confidence: 'HIGH', source: 'DEEPSEEK', recognized: true });
+    t.eq(high.parcel.pickupCode, '20731014', 'D35 AI 归一码 20731014 能写入（不再被客户端丢弃）');
+    const low = recognize.applyAiSuggestion(recognize.makeEmptyParcel(),
+      { stationId: 'P3', pickupCode: '20731014', confidence: 'LOW', source: 'DEEPSEEK', recognized: true });
+    t.eq(low.suggestion && low.suggestion.pickupCode, '20731014',
+      'D35 D29 低置信建议条也带上真实取件码（可采纳）');
+    const adopted = recognize.adoptAiSuggestion(recognize.makeEmptyParcel(), low.suggestion || {});
+    t.eq(adopted.parcel.pickupCode, '20731014', 'D35 采纳建议后码写入');
+    const form = recognize.validateParcel({ stationId: 'P1', pickupCode: '20731014' });
+    t.check(form.ok === true && !form.errors.pickupCode, 'D35 形态闸不再把 20731014 判成不像取件码');
+    t.eq(codes.deriveCodeStatus('20731014', ''), 'OK', 'D35 codeStatus 按服务端紧凑闸派生');
+    // ④ 去敏保留取件码行里的码（否则 AI 只能看到 20****14）
+    t.eq(text.maskSensitive('取件码：20731014'), '取件码:20731014',
+      'D35 去敏保留取件码行 8 位码（不再是 20****14）');
+    t.eq(text.maskSensitive('取件码：2 0 7 3 1 0 1 4'), '取件码:2 0 7 3 1 0 1 4',
+      'D35 去敏保留空格分组码');
+    t.eq(text.maskSensitive('取件码：20731014 运单 2216865664225'), '取件码:20731014 运单 22****25',
+      'D35 码保留、同行的 ≥13 位运单长数字仍打码');
+    t.eq(text.maskSensitive('单号 12345678'), '单号 12****78',
+      'D35 非取件码行去敏口径不变（长数字仍打码）');
+  });
+}
+
 function register(h) {
   sectionText(h);
   sectionMask(h);
@@ -558,6 +654,7 @@ function register(h) {
   sectionVision(h);
   sectionOcrEntry(h);
   sectionMergeParcels(h);
+  sectionD35(h);
 }
 
 module.exports = { EXPECTED_ASSERTIONS, register };

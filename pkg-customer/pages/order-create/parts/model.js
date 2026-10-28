@@ -60,8 +60,9 @@ function appointmentSlots(now) {
   });
 }
 
-function stationOptions() {
-  return recognize.station.listStations();
+// 站点选择器数据源（D32）：优先用 config.getPublic.stations 的后台配置名，缺省回退内置正式名
+function stationOptions(config) {
+  return recognize.station.listStations({ stations: config && config.stations });
 }
 
 function stationName(id) {
@@ -259,11 +260,11 @@ const LOW_SUGGESTION_COPY = {
 
 /**
  * 逐件 AI 兜底（DATA_MODEL §4.9「同图多单按单调用」）：只对缺站点/缺码的件各调一次 aiCall
- * （同一 uploadTicketId、各自独立 failureId），只填该件空字段；某件失败只降级该件。
+ * （同一 uploadTicketId/fileId、各自独立 failureId），只填该件空字段；某件失败只降级该件。
  * D29：LOW + source=DEEPSEEK 不写字段，只挂可采纳建议 aiSuggestion（suggested 计数），
  * failed 只计真失败（TIMEOUT/CLOSED），不与「待采纳建议」混。
  * @param {object[]} items 规则解析后的件
- * @param {object} context {ocrTextMasked, hintTrackingTail, uploadTicketId, role}
+ * @param {object} context {ocrTextMasked, hintTrackingTail, uploadTicketId, fileId?, role, requestIdOf?}
  * @param {function} aiCall payload → Promise<suggestion>（页面传 aiApi.parseParcel）
  * @returns {Promise<{items:object[],called:number,changed:number,failed:number,suggested:number}>}
  */
@@ -282,13 +283,16 @@ async function applyAiFallbacks(items, context, aiCall) {
     }
     called += 1;
     let suggestion = null;
+    // 同一张图重试复用确定性幂等键（避免同图重复入队）；无派生键时退回 client 自生成
+    const requestId = typeof ctx.requestIdOf === 'function' ? ctx.requestIdOf(i) : '';
     try {
       suggestion = (await aiCall({
         ocrTextMasked: ctx.ocrTextMasked || '',
         hintTrackingTail: item.trackingTail || ctx.hintTrackingTail || '',
         uploadTicketId: ctx.uploadTicketId || '',
+        fileId: ctx.fileId || '',
         role: ctx.role || 'CUSTOMER'
-      })) || {};
+      }, requestId ? { clientRequestId: requestId } : {})) || {};
     } catch (err) {
       suggestion = { error: true };
     }

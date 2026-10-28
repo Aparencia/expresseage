@@ -1,4 +1,5 @@
-// middleware/index.js · 中间件链装配（auth → switch-session → guard-bind → validate → ratelimit → idempotency → audit）
+// middleware/index.js · 中间件链装配（request-guard → auth → switch-session → guard-bind → validate → ratelimit → idempotency → audit）
+const requestGuard = require('./request-guard');
 const auth = require('./auth');
 const switchSession = require('./switch-session');
 const guardBind = require('./guard-bind');
@@ -8,6 +9,7 @@ const idempotency = require('./idempotency');
 const audit = require('./audit');
 
 const CHAIN = Object.freeze([
+  requestGuard.middleware,
   auth.middleware,
   switchSession.middleware,
   guardBind.middleware,
@@ -19,6 +21,7 @@ const CHAIN = Object.freeze([
 
 module.exports = {
   CHAIN,
+  requestGuard,
   auth,
   switchSession,
   guardBind,

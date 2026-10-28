@@ -10,6 +10,7 @@ const {
   MAX_SCAN
 } = require('./_common');
 const dto = require('./_dto');
+const review = require('./_review');
 const time = require('../../lib/time');
 
 const RANGE_DAYS = { today: 0, '7d': 7, '30d': 30 };
@@ -147,6 +148,8 @@ async function handler(ctx, payload) {
     test: { testAccounts: test.total, testOrders: testOrders, testCustomers: test.customer, testPartners: test.partner },
     recentAudit: recentAuditRows.map(dto.auditBrief),
     config: dto.configForAdmin(scope.config),
+    // 只读 AI 兜底状态（enabled/hasKey/model；Key 只回布尔），用于总览判断环境是否配好
+    aiStatus: review.aiStatusOf(scope.ctx, scope.config, scope.now),
     inviteBatches: invites.inviteBatches,
     recentCodes: invites.recentCodes
   };

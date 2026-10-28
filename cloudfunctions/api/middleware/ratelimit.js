@@ -11,16 +11,30 @@ const SUBJECT_ACTOR = 'actor';
 const SUBJECT_ORDER = 'order';
 
 // 配额表（scope / limit / 主体 / 条件）；upload.prepare 按用途拆两条。
+// v1.1/D34 安全基线增补：资料保存/服务配置/解绑/异常上报/临时 URL 签发/后台补录与配置写均限流，
+// 防止刷写、头像反复替换、截图 URL 枚举与后台误操作轰炸；数值取「不伤正常 UX」的日额度。
 const RATE_RULES = Object.freeze([
   { action: 'bind.create', scope: 'bind', limit: 5, subject: SUBJECT_IDENTITY },
+  { action: 'bind.release', scope: 'bindRelease', limit: 10, subject: SUBJECT_IDENTITY },
   { action: 'partner.getPublic', scope: 'partnerPublic', limit: 5, subject: SUBJECT_IDENTITY },
   { action: 'partner.activate', scope: 'activate', limit: 5, subject: SUBJECT_IDENTITY, refundOnSuccess: true },
+  { action: 'partner.saveProfile', scope: 'partnerProfileSave', limit: 30, subject: SUBJECT_IDENTITY },
+  { action: 'partner.saveServiceConfig', scope: 'serviceConfigSave', limit: 30, subject: SUBJECT_IDENTITY },
+  { action: 'partner.unbindCustomer', scope: 'partnerUnbind', limit: 10, subject: SUBJECT_IDENTITY },
+  { action: 'customer.saveProfile', scope: 'profileSave', limit: 30, subject: SUBJECT_IDENTITY },
   { action: 'order.create', scope: 'order', limit: 20, subject: SUBJECT_IDENTITY },
+  { action: 'order.imageUrl', scope: 'imageUrl', limit: 200, subject: SUBJECT_IDENTITY },
   { action: 'message.send', scope: 'message', limit: 30, subject: SUBJECT_ORDER },
   { action: 'order.correct', scope: 'orderCorrect', limit: 20, subject: SUBJECT_ORDER },
+  { action: 'order.reportException', scope: 'orderException', limit: 10, subject: SUBJECT_ORDER },
+  { action: 'order.resolveException', scope: 'orderResolve', limit: 10, subject: SUBJECT_ORDER },
   { action: 'upload.prepare', scope: 'upload', limit: 30, subject: SUBJECT_IDENTITY, purpose: 'TICKET' },
   { action: 'upload.prepare', scope: 'avatarUpload', limit: 5, subject: SUBJECT_IDENTITY, purpose: 'AVATAR' },
-  { action: 'admin.viewAsStart', scope: 'accountSwitch', limit: 20, subject: SUBJECT_ACTOR }
+  { action: 'admin.viewAsStart', scope: 'accountSwitch', limit: 20, subject: SUBJECT_ACTOR },
+  { action: 'admin.updateConfig', scope: 'adminConfig', limit: 20, subject: SUBJECT_ACTOR },
+  { action: 'admin.getRecognitionFailure', scope: 'failureView', limit: 100, subject: SUBJECT_ACTOR },
+  { action: 'admin.fixRecognitionFailure', scope: 'failureFix', limit: 50, subject: SUBJECT_ACTOR },
+  { action: 'admin.ignoreRecognitionFailure', scope: 'failureIgnore', limit: 50, subject: SUBJECT_ACTOR }
 ]);
 
 function rulesOf(action, payload) {

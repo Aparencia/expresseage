@@ -4,6 +4,7 @@
 
 const mask = require('../../db/dto/mask');
 const enums = require('../../shared/enums');
+const sharedStations = require('../../shared/stations');
 const { AUDIT_ACTIONS } = require('../../shared/audit-actions');
 // v1.0 订单聚合字段只读归一（新 parcels[]/images[]，历史 parcel{}/image{} 单元素回退）唯一解析口径在
 // order/_store.js（Lead 裁决：直接用后端解析接口，后台不另写一份归一）。
@@ -356,6 +357,8 @@ function configForAdmin(config) {
   const source = config || {};
   return {
     zoneLabels: source.zoneLabels || {},
+    // v1.1（D32）：站点正式名（固定 P1~P8；缺省/非法条目回退内置默认，后台配置页据此回填 8 行输入）
+    stations: sharedStations.stationsFromConfig(source),
     serviceCatalog: Array.isArray(source.serviceCatalog) ? source.serviceCatalog.slice() : [],
     announcement: source.announcement,
     maintenance: source.maintenance || { enabled: false, text: '' },

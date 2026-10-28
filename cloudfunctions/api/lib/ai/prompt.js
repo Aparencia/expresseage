@@ -62,12 +62,14 @@ function buildSystemPrompt(stations) {
     }
     lines.push('   - ' + parts.join('｜'));
   });
-  lines.push('2. pickupCode 去掉空格与连字符后应满足 4~12 位字母数字；不满足就输出空字符串，不要猜测或编造。');
+  lines.push('2. pickupCode 是取件码/提货码，可能被写成带连字符的分组（如 207-3-1014）；去掉分隔符后应为 4~12 位字母数字，输出时去掉分隔符。');
+  lines.push('   运单号、快递单号（常见以 JT/SF/YT/JD 开头）不是取件码，即使残缺或用 * 掩码过也不能当取件码输出。');
   lines.push('3. trackingTail 必须是恰好 5 位数字，否则输出空字符串。');
   lines.push('4. lockerNo 是柜号，最多 10 个字符，识别不到就输出空字符串。');
   lines.push('5. recognized 只有在站点与取件码都可信时才为 true。');
-  lines.push('6. 文本里出现的手机号、姓名、详细门牌与站点/取件码无关，一律忽略。');
-  lines.push('7. 不要输出任何交易类字段或说明。');
+  lines.push('6. confidence 必须输出 HIGH/MEDIUM/LOW 之一；不确定时输出 LOW，不要省略该字段。');
+  lines.push('7. 文本里出现的手机号、姓名、详细门牌与站点/取件码无关，一律忽略。');
+  lines.push('8. 不要输出任何交易类字段或说明。');
   return lines.join('\n');
 }
 

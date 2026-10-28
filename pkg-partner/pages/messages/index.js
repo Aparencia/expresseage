@@ -8,6 +8,7 @@ const store = require('../../../store/index');
 const modeGuard = require('../../../api/mode-guard');
 const route = require('../../../config/route');
 const view = require('./parts/message-view');
+const share = require('../../../utils/share/handlers');
 
 const PAGE_SIZE = 30;
 const POLL_MS = 30000;
@@ -217,5 +218,9 @@ Page({
 
   onRetry() {
     this.loadList(true);
+  },
+
+  onShareAppMessage() {
+    return share.appMessage();
   }
 });

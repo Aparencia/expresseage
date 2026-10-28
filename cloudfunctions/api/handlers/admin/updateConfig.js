@@ -5,6 +5,7 @@
 //     zoneLabels/serviceCatalog/announcement/maintenance；
 //   · v1.0（D23）：orderMergeWindowMinutes 合并窗口 0~60（整数，默认 10，0=关闭；DATA_MODEL §2.10），
 //     仅服务端判定、不进 config.getPublic 公开子集；
+//   · v1.1（D32）：stations 站点正式名整表提交（固定 8 个 id、名称 1~20 字且唯一；进公开子集）；
 //   · avatarMaxBytes 上限 = 200KB（DATA_MODEL §2.10「默认 200KB；102400~204800」，隐私承诺不得放宽）；
 //   · privacyVersion 是文本键（非空 ≤32 字，隐私文本定稿流程用，审计 CONFIG_UPDATE）；
 //   · 仅 aiFallback 不在白名单（只读展示；写入走部署配置脚本/控制台，DATA_MODEL §2.10）。
@@ -12,6 +13,7 @@
 
 const { COLLECTIONS, CONFIG_DOC_ID } = require('../../shared/collections');
 const { AUDIT_ACTIONS } = require('../../shared/audit-actions');
+const sharedStations = require('../../shared/stations');
 const {
   enums,
   errors,
@@ -38,7 +40,7 @@ const NUMBER_RULES = {
   orderMergeWindowMinutes: { min: 0, max: 60 }
 };
 const TEXT_KEYS = ['privacyVersion'];
-const OBJECT_KEYS = ['zoneLabels', 'serviceCatalog', 'announcement', 'maintenance'];
+const OBJECT_KEYS = ['zoneLabels', 'serviceCatalog', 'announcement', 'maintenance', 'stations'];
 const WHITELIST = Object.keys(NUMBER_RULES).concat(TEXT_KEYS, OBJECT_KEYS);
 
 function normalizeText(key, value) {
@@ -132,6 +134,38 @@ function normalizeMaintenance(value) {
   return { enabled: value.enabled === true, text: text };
 }
 
+// v1.1（D32）：站点名称整表提交——固定 8 个 P1~P8、名称非空去空白 1~20 字、名称唯一（不增删站点 id）
+function normalizeStations(value) {
+  if (!Array.isArray(value) || value.length !== sharedStations.STATION_COUNT) {
+    throw errors.validation('stations', '站点名称需覆盖全部 8 个站点');
+  }
+  const byId = {};
+  value.forEach((item) => {
+    if (!item || typeof item !== 'object' || sharedStations.STATION_IDS.indexOf(item.id) < 0) {
+      throw errors.validation('stations', '站点编码不正确（只允许 P1~P8）');
+    }
+    if (byId[item.id] !== undefined) {
+      throw errors.validation('stations', '站点编码重复');
+    }
+    const name = typeof item.name === 'string' ? item.name.trim() : '';
+    if (name.length < sharedStations.STATION_NAME_MIN || name.length > sharedStations.STATION_NAME_MAX) {
+      throw errors.validation('stations', '站点名称需为 1~20 字');
+    }
+    byId[item.id] = name;
+  });
+  const seen = {};
+  sharedStations.STATION_IDS.forEach((id) => {
+    if (byId[id] === undefined) {
+      throw errors.validation('stations', '站点名称需覆盖全部 8 个站点');
+    }
+    if (seen[byId[id]]) {
+      throw errors.validation('stations', '站点名称不能重复');
+    }
+    seen[byId[id]] = true;
+  });
+  return sharedStations.STATION_IDS.map((id) => ({ id: id, name: byId[id] }));
+}
+
 function normalizePatch(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
     throw errors.validation('config', '配置格式不正确');
@@ -154,6 +188,8 @@ function normalizePatch(input) {
       patch[key] = normalizeAnnouncement(value);
     } else if (key === 'maintenance') {
       patch[key] = normalizeMaintenance(value);
+    } else if (key === 'stations') {
+      patch[key] = normalizeStations(value);
     }
   });
   if (Object.keys(patch).length === 0) {

@@ -57,3 +57,9 @@
 .version-card {
   text-align: center;
 }
+
+/* 分享提示（朋友圈入口只能走右上角菜单，平台限制见 D36） */
+.share-line {
+  margin-top: 12rpx;
+  line-height: 1.6;
+}

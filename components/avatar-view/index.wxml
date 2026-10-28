@@ -1,6 +1,6 @@
 <view class="avatar-wrap" style="width:{{size}}rpx;height:{{size}}rpx;">
   <image wx:if="{{!view.isDefault}}" class="avatar-img" src="{{view.fileId}}" mode="aspectFill" binderror="onError" />
-  <view wx:else class="avatar-default" style="background-color:{{view.backgroundColor}};color:{{view.color}};">
+  <view wx:else class="avatar-default" style="background-color:{{view.backgroundColor}};color:{{view.color}};font-size:{{size * 0.42}}rpx;">
     <text class="avatar-initial">{{view.initial}}</text>
   </view>
 </view>

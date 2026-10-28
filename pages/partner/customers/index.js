@@ -42,6 +42,7 @@ Page({
   },
 
   onShow() {
+    this.syncTabBar();
     // 解绑/顾客新绑定后回来自动刷新（服务端已排序分页，不依赖本地缓存）
     this.setData({
       session: !!store.getViewContext(),
@@ -49,6 +50,14 @@ Page({
       partnerNo: this.partnerNoOf()
     });
     this.load(true);
+  },
+
+  // custom-tab-bar 每页一份实例：本页 onShow 显式同步选中格（客户=1）
+  syncTabBar() {
+    const tabBar = typeof this.getTabBar === 'function' ? this.getTabBar() : null;
+    if (tabBar) {
+      tabBar.setData({ selected: 1 });
+    }
   },
 
   onUnload() {

@@ -116,3 +116,7 @@
 .link {
   color: var(--v4-brand);
 }
+
+.ai-status {
+  margin-top: 12rpx;
+}

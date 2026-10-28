@@ -124,7 +124,7 @@
 | 隐私与同意 | `utils/privacy.js`（`ensureMediaAccess`/`ensureCameraAccess`）；`docs/privacy/隐私保护指引.md` | `api/privacy.js`（三类隐私接口/拒绝降级）、launch 同意弹窗、`pkg-customer/pages/help` 隐私全文；`user.acceptPrivacy`；`config.getPublic.privacyVersion` | 改进 | `selftest-privacy-text`、`selftest-profile`；check #24 窄豁免；QA §P | 相册/摄像头/头像/昵称逐项声明；隐私文本定稿候选 v1.0；版本升级可重同意 |
 | 注销与数据删除 | 无（本机档案可恢复/彻底删除；件级硬删 `utils/parcel-remove.js`） | `user.deleteAccount` + `cleanup.accountDeletion`（两阶段匿名化）；兼职 `admin.setPartnerStatus(CLOSED)`（匿名化+删头像文件+邀请码 `usedBy` 置空）；头像文件删除；订单 `order.deleteRecord`（只软删记录，不删单） | 新增 | `selftest-deletion`（批 9 端到端 89 断言，含 14 条缺陷首红修复）、`selftest-cleanup`、`selftest-cloud`；QA §P/§E15 | v3 数据不迁（D11）；注销后双方互不可见；订单/事件按留存策略清理；两阶段时点见 DATA_MODEL §10.4 |
 | cleanup 定时清理 | 无（无服务端，无定时任务） | 独立云函数 `cleanup` + 单定时触发器；13 个幂等 sweep（邀请码过期、票据、截图 7 天、自动完成、注销、测试数据等） | 新增 | `selftest-cleanup`；运行项在云控制台（用户执行） | 可注入执行器 + 部分失败隔离 + 每轮 `CLEANUP` 汇总审计（E8 口径） |
-| 分享 | `pages/recognize/share-flow.js:shareCard`（中性封面、零业务值） | 绑定卡片 `pages/profile/parts/share-card.js`（只带 `partnerNo`、无头像昵称）；切换会话隐藏分享 | 改进 | `selftest-bind`（静态扫描）、`selftest-switch`；QA §V | 分享面收窄到「邀请顾客自己绑定」；只读/测试会话禁分享（O3） |
+| 分享 | `pages/recognize/share-flow.js:shareCard`（中性封面、零业务值） | 19 个顾客/兼职业务页好友转发（卡片构造单源 `utils/share/index.js`：兼职绑定卡只带 `partnerNo`、其余通用邀请卡零 query；固定中性封面、禁止页面截图）；朋友圈仅 `pages/role`、`pages/customer/home`、`pkg-customer/pages/help` 三页（单页模式静态降级）；切换会话隐藏转发/朋友圈入口（`wx.hideShareMenu`） | 改进 | `selftest-share`（断言数以 `node tools/selftest-share.js` 真实输出为准）、`selftest-bind`、`selftest-switch`；check #33；QA §V/§X | 分享面=邀请顾客自己绑定 + 通用邀请；卡片零 L3、禁止页面截图；朋友圈 Beta 只能右上角菜单触发；只读/测试会话禁分享（O3/M-33 关闭，D36） |
 | 数据载体与迁移 | `utils/storage-core.js`（`STORE_KEY`）+ `utils/migrate.js`（`SCHEMA_VERSION`）本机存储 | 云 DB 14 集合，唯一出口 `db/dao.js`；本机只留会话提示键 | 取舍不迁 | check #12/#14/#15；`docs/V4_DATA_MODEL.md` §11 | D1/D2/D11：新 appid 空库起，**不迁移**、不读旧键；v3 字段映射仅作文档对照 |
 | 费用类能力 | v3 无费用类能力；若历史文档提到，口径「已废弃（v0.7）」 | v4 全链路零金额（D5/D6） | 取舍不迁 | check #22、`check-docs #7`；零金额扫描 0 命中 | 不迁移、不新增字段/动作/文案/验收；服务类型只表达类型 |
 
@@ -215,6 +215,7 @@
 | ☐ | 真机 QA §F（工作台/客户档案/统计） | 同上 |
 | ☐ | 真机 QA §G/§V/§T（后台、只读视角、切换会话与测试账号） | 同上 |
 | ☐ | 真机 QA §R/§S/§P/§M（识别兜底、隔离负向、隐私、零金额巡检） | 同上 |
+| ☐ | 真机 QA §X（v1.2/D36 分享与朋友圈：转发/朋友圈单页模式/卡片中性/切换会话隐藏） | `docs/QA_CHECKLIST.md` §X |
 | ☐ | 发布前 §H + 隐私文本 13 项填写 | 同上 + `docs/privacy/发布前填写清单.md` |
 | ☐ | D1/D2/D3/D8/D13/D22 裁决与确认（2026-10-22 已全部裁决，待用户最终勾选归档） | §5.2 #1~#6 |
 
@@ -240,6 +241,7 @@ node -e "const P=require('./tools/lib/project');console.log(P.ALL_PAGES.length);
 node tools/check.js
 node tools/check-docs.js
 node tools/selftest.js
+node tools/selftest-share.js   # v1.2/D36 分享/朋友圈（断言数以真实输出为准）
 node tools/zero-money-scan.js
 powershell -File check.ps1
 

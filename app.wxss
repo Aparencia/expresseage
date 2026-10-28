@@ -147,8 +147,18 @@ page {
   color: #FFFFFF;
 }
 
-.btn-block {
+/* 微信原生 button 默认规则 button:not([size='mini']) { width: 184px }（特异性 0,1,1）
+   会压过单类 .btn-block(0,1,0)，使整宽 CTA 变窄且被原生 margin auto 居中。
+   这里用叠加 class 提高特异性（0,2,0），整宽/自适应窄按钮不再被原生宽度压回 184px。 */
+.btn.btn-block {
   width: 100%;
+}
+
+/* 窄按钮（换绑/重试/分享/去完善等）：宽度随内容自适应，行内不被压扁 */
+.btn.btn-small,
+.btn.mini-btn {
+  width: auto;
+  flex-shrink: 0;
 }
 
 .tag {

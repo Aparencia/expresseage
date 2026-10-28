@@ -10,6 +10,7 @@
  *   §4.2 昵称（必填、≤20 字符、超长截断而非报错、去首尾空白）
  *   §4.1 上传票据形态（avatarTicket 入参键；32 位不可猜票据）
  *   §4.1 AVATAR 云存储路径模板（服务端唯一构造点：avatars/{role}/{random}.jpg，零 openid）
+ *   §2.2 顾客性别（2026-10-27 用户口径：东苑楼栋推断/手改标记/未知不阻塞保存、页面接线）
  *
  * 纪律：不 mock 全局 wx（storage 走注入的内存 platform，avatar 只测纯函数）；
  *       云路径期望串用拼接构造，避免"路径模板字面量"误命中门禁口径；
@@ -23,12 +24,14 @@ const avatar = require(path.join(ROOT, 'utils/avatar.js'));
 const storage = require(path.join(ROOT, 'utils/storage.js'));
 const privacy = require(path.join(ROOT, 'utils/privacy-policy.js'));
 const validate = require(path.join(ROOT, 'shared/validate.js'));
+const enums = require(path.join(ROOT, 'shared/enums.js'));
+const gender = require(path.join(ROOT, 'shared/gender.js'));
 const launchRoute = require(path.join(ROOT, 'config/route.js'));
 const uploadCommon = require(path.join(ROOT, 'cloudfunctions/api/handlers/upload/_common.js'));
 const profileVm = require(path.join(ROOT, 'pages/profile/parts/view-model.js'));
 const avatarSave = require(path.join(ROOT, 'pages/profile/parts/avatar-save.js'));
 
-const EXPECTED_ASSERTIONS = 130;
+const EXPECTED_ASSERTIONS = 154;
 
 const TOKEN = 'T'.repeat(32);
 const CONSENT_AT = 1700000000000;
@@ -263,6 +266,8 @@ function register(h) {
     t.check(activateJs.indexOf('setLastRole') !== -1, 'activate 成功进入兼职身份后写 lastRole（生产调用点 5）');
     t.check(!/wx\.(get|set|remove)StorageSync/.test(pageJs),
       '页面不直接摸平台 storage API（只经 utils/storage 唯一写口，门禁 #15 的判据侧）');
+    t.check(/typeof this\.getTabBar === 'function'/.test(profileJs) && /selected:\s*2/.test(profileJs),
+      '「我的」tab 页 onShow 同步 tabBar 选中态 index=2（防切角色/会话后高亮错格；其余 tab 页由顾客端 UI 任务处理）');
     t.check(!/privacyVersion/.test(launchJs),
       'launch 不在页面里比较隐私版本（状态机只在 utils/privacy-policy 纯件）');
     t.check(launchJs.indexOf('decideLaunchRoute') !== -1,
@@ -410,6 +415,76 @@ function register(h) {
       '展开判定只经纯件 + 每页面实例一次标记（页面零业务判据）');
     t.check(/_openEdit = false;/.test(profileJs) && /maybeOpenEditForm\(\)/.test(profileJs),
       '?edit=1 只消费一次（消费后清标记，不反复展开）');
+  });
+
+  // ---------------------------------------------------------------- §2.2 顾客性别（东苑楼栋推断/手改标记/未知不阻塞）
+  h.section('§2.2 顾客性别（东苑楼栋推断/手改标记/未知不阻塞保存）', (t) => {
+    t.check([1, 2, 5, 6, 7, 8].every((no) => gender.deriveGender('D', no) === enums.GENDER.MALE),
+      '东苑 1/2/5/6/7/8 栋推断为男（用户 2026-10-27 口径）');
+    t.check([3, 4, 9, 10].every((no) => gender.deriveGender('D', no) === enums.GENDER.FEMALE),
+      '东苑 3/4/9/10 栋推断为女');
+    t.check([1, 2, 3, 4, 5, 6, 7, 8, 9, 10].every((no) => gender.deriveGender('D', no) !== enums.GENDER.UNKNOWN),
+      '东苑 1~10 栋全覆盖（10 个楼栋都有男/女映射，不落未知）');
+    t.check(['X', 'N', 'B', 'C'].every((zone) => gender.deriveGender(zone, 4) === enums.GENDER.UNKNOWN),
+      '其他苑（X/N/B/C）→ 未知（映射只对东苑，不猜）');
+    t.check(gender.deriveGender('D', 11) === enums.GENDER.UNKNOWN
+      && gender.deriveGender('', 4) === enums.GENDER.UNKNOWN
+      && gender.deriveGender('D', undefined) === enums.GENDER.UNKNOWN
+      && gender.deriveGender('Z', 4) === enums.GENDER.UNKNOWN,
+    '非法苑/楼栋 → 未知且不抛错（默认值兜底）');
+    t.check(gender.isGender(enums.GENDER.MALE) && gender.isGender(enums.GENDER.FEMALE)
+      && gender.isGender(enums.GENDER.UNKNOWN),
+    'isGender 认三个规范字面量（服务端入参校验口径）');
+    t.check(!gender.isGender('male') && !gender.isGender('M') && !gender.isGender('') && !gender.isGender(undefined),
+      'isGender 不猜大小写/别名/空值（脏值拒绝，不静默改写）');
+    t.eq([gender.normalizeGender(' female '), gender.normalizeGender('BOY'),
+      gender.normalizeGender(undefined), gender.normalizeGender(null)],
+    [enums.GENDER.FEMALE, enums.GENDER.UNKNOWN, enums.GENDER.UNKNOWN, enums.GENDER.UNKNOWN],
+    'normalizeGender 读路径容错：合法归一、非法/缺失一律未知');
+    t.eq([gender.genderLabel(enums.GENDER.MALE), gender.genderLabel(enums.GENDER.FEMALE),
+      gender.genderLabel(enums.GENDER.UNKNOWN), gender.genderLabel('BOY')],
+    ['男', '女', '未知', '未知'], 'genderLabel 中文 男/女/未知（非法按未知展示，不隐藏该行）');
+    t.eq(profileVm.GENDER_LABELS, ['男', '女', '未知'],
+      '页面性别选择项文案来自枚举单源（顺序 = GENDER_LIST 男/女/未知）');
+
+    const cardFemale = profileVm.buildVm({ roles: [enums.ROLES.CUSTOMER], activeRole: enums.ROLES.CUSTOMER, customer: { gender: enums.GENDER.FEMALE } });
+    const cardMissing = profileVm.buildVm({ roles: [enums.ROLES.CUSTOMER], activeRole: enums.ROLES.CUSTOMER, customer: {} });
+    const cardPartner = profileVm.buildVm({ roles: [enums.ROLES.PARTNER], activeRole: enums.ROLES.PARTNER, partner: {} });
+    t.eq([cardFemale.profileCard.genderText, cardMissing.profileCard.genderText, cardPartner.profileCard.genderText],
+      ['女', '未知', ''], '资料卡性别文案：女 / 未知（缺省兜底）/ 兼职端不配置性别（空）');
+    const form = profileVm.buildForm({ displayName: '阿杰', zone: 'D', buildingNo: 4, room: '522', gender: enums.GENDER.FEMALE }, true);
+    t.eq([form.genderIndex, form.genderDirty], [1, false],
+      '编辑表单：按已存性别定位 picker（D4 推断为女=下标 1），初始未手改');
+    t.eq(profileVm.buildForm({}, true).genderIndex, 2, '缺少性别时表单定位「未知」（未知也能保存）');
+    const switched = profileVm.applyDormPatch(form, { buildingIndex: 4 });
+    t.eq([switched.genderIndex, switched.dormPreview], [0, 'D5-522'],
+      '未手改时改楼栋 → 性别跟随推断（D5=男）且宿舍预览同步刷新');
+    const manual = profileVm.applyGenderChoice(form, 2);
+    t.eq([manual.genderIndex, manual.genderDirty], [2, true], '用户手动选「未知」→ genderDirty=true（保存才上报）');
+    const afterManualDorm = profileVm.applyDormPatch(manual, { buildingIndex: 7 });
+    t.eq([afterManualDorm.genderIndex, afterManualDorm.genderDirty], [2, true],
+      '手改后再改宿舍 → 选择不被推断覆盖（保留手改值）');
+    t.eq(profileVm.applyGenderChoice(form, 9).genderIndex, form.genderIndex, '非法性别下标不生效（纯件防御）');
+    const autoPayload = profileVm.buildSavePayload({ isCustomer: true, form: form });
+    t.check(autoPayload.ok === true && autoPayload.payload.gender === undefined,
+      '未手改性别 → 保存 payload 不带 gender（交给服务端推断/跟随宿舍，不误置 genderManual）');
+    const manualPayload = profileVm.buildSavePayload({ isCustomer: true, form: manual });
+    t.check(manualPayload.ok === true && manualPayload.payload.gender === enums.GENDER.UNKNOWN,
+      '手改性别 → 保存 payload 带 gender=UNKNOWN（服务端据此置 genderManual=true）');
+    const invalidGenderForm = Object.assign({}, form, { genderDirty: true, genderIndex: 99 });
+    t.check(profileVm.buildSavePayload({ isCustomer: true, form: invalidGenderForm }).ok === false,
+      '手改下标非法 → 保存前拦下（不把脏值发给服务端）');
+    const profileJs = readSource('pages/profile/index.js');
+    const profileWxml = readSource('pages/profile/index.wxml');
+    t.check(profileJs.indexOf('vm.applyGenderChoice') !== -1 && profileJs.indexOf('onGenderChange') !== -1
+      && profileWxml.indexOf('bindchange="onGenderChange"') !== -1
+      && profileWxml.indexOf('genderLabels') !== -1,
+    '页面接线：性别 picker → parts 纯件（页面零判据、不写性别枚举字面量）');
+    t.check(!/MALE|FEMALE/.test(profileJs) && !/MALE|FEMALE/.test(profileWxml),
+      '页面/模板零性别枚举字面量（枚举只在 shared/enums 单源；页面经纯件取文案）');
+    t.check(profileWxml.indexOf('性别默认按苑/楼栋推断，可修改') !== -1
+      && profileWxml.indexOf('profileCard.genderText') !== -1,
+    '表单提示「默认按苑/楼栋推断，可修改」+ 资料卡展示性别行');
   });
 
   // ---------------------------------------------------------------- §4.10 P1-10 头像票据自愈

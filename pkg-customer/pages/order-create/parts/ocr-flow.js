@@ -8,27 +8,27 @@
 'use strict';
 
 const aiApi = require('../../../../api/modules/ai');
+const configApi = require('../../../../api/modules/config');
 const ocr = require('../../../../utils/ocr/index');
 const recognize = require('../../../../utils/recognize/index');
 const model = require('./model');
+const aiFallback = require('./ai-fallback');
+const {
+  AI_SUGGESTION_HINT,
+  AI_FALLBACK_COPY,
+  LOW_CODE_MISSING_COPY,
+  aiFallbackCopy,
+  contentHashOf,
+  failureRequestIdOf,
+  failureCopyFor,
+  failureResultOf,
+  failureRowsOf
+} = aiFallback;
 
 const OCR_TIMEOUT_MS = 40000;
 const VISION_MAX_EDGE = 1440;
 const MAX_PARCELS = recognize.MAX_PARCELS_PER_ORDER;
 const MAX_IMAGES = recognize.MAX_IMAGES_PER_ORDER;
-
-// §4.3.1 AI 兜底三态文案（关闭/超时/低置信；超限与关闭同句、不提示配额；用户取消 = 静默降级）
-const AI_FALLBACK_COPY = {
-  CLOSED: { text: '没识别出来，已反馈开发者复核，可手动填写。', next: '也可以换一张更清晰的图。' },
-  TIMEOUT: { text: '智能识别超时，已反馈开发者复核，可手动填写或换一张图。', next: '手动填写不影响下单。' },
-  LOW: { text: '识别结果不太确定，没自动填。', next: '已反馈开发者复核，可手动填写。' },
-  USER_CANCEL: { text: '已取消智能识别，可以手动填写。', next: '也可以换一张更清晰的图。' }
-};
-
-/** 三态文案选择（纯函数；state 非法按关闭处理，不装懂） */
-function aiFallbackCopy(state) {
-  return AI_FALLBACK_COPY[state] || AI_FALLBACK_COPY.CLOSED;
-}
 
 function hasVision() {
   return typeof wx !== 'undefined' && typeof wx.createVKSession === 'function';
@@ -42,23 +42,6 @@ function frameSizeOf(img, maxEdge) {
   const width = img && img.width;
   const height = img && img.height;
   return ocr.frame.frameSize(width, height, maxEdge || VISION_MAX_EDGE);
-}
-
-/**
- * 失败态兜底文案（纯函数）：只有真的入队拿到 failureId 才敢说「已反馈开发者复核」；
- * 没入队（无票据/AI 调用异常）时用 OCR 单源文案，不撒谎。
- */
-function failureCopyFor(code, fallback) {
-  const info = fallback || {};
-  const base = ocr.failureCopy(code);
-  if (!info.failureId) {
-    return base;
-  }
-  const aiCopy = aiFallbackCopy(info.aiState);
-  return {
-    text: base.text,
-    next: aiCopy.text.indexOf('已反馈') >= 0 ? '已反馈开发者复核，也可以手动填写后提交。' : base.next
-  };
 }
 
 function imageInfo(filePath) {
@@ -75,14 +58,25 @@ function imageInfo(filePath) {
   });
 }
 
-// P0-10：画布按降采样后的尺寸创建（长边 ≤VISION_MAX_EDGE），不再按原图全尺寸取像素。
-function canvasFrame(img, band) {
+/** 帧计划（条带裁剪矩形 + 输出尺寸）：纯计算，便于排错与复用 */
+function framePlanOf(img, band) {
+  const spec = band || {};
+  const count = Math.max(1, Math.min(4, Number(spec.bands) || 1));
+  const index = Math.max(0, Math.min(count - 1, Number(spec.index) || 0));
+  const src = ocr.frame.bandSourceOf(img.width, img.height, count, index);
+  if (!src.ok) return { ok: false, code: src.code, detail: src.detail };
+  const sized = count === 1
+    ? frameSizeOf(img)
+    : ocr.frame.frameSize(src.width, src.height, VISION_MAX_EDGE);
+  if (!sized.ok) return { ok: false, code: sized.code, detail: sized.detail };
+  return { ok: true, src: src, sized: sized, count: count, index: index };
+}
+
+/** 把「原图条带」画到离屏画布并取精确 RGBA 像素（D35：先裁后缩 + buffer 精确切片） */
+function drawFrame(imageSrc, plan) {
   return new Promise(function executor(resolve) {
-    const sized = frameSizeOf(img);
-    if (!sized.ok) {
-      resolve({ ok: false, code: sized.code, detail: sized.detail });
-      return;
-    }
+    const sized = plan.sized;
+    const src = plan.src;
     let canvas = null;
     try {
       canvas = wx.createOffscreenCanvas({ type: '2d', width: sized.width, height: sized.height });
@@ -94,11 +88,24 @@ function canvasFrame(img, band) {
     const image = canvas.createImage();
     image.onload = function onload() {
       try {
-        ctx.drawImage(image, 0, 0, sized.width, sized.height);
-        const bands = (band && band.bands) || 1;
-        const height = Math.max(1, Math.floor(sized.height / bands));
-        const data = ctx.getImageData(0, 0, sized.width, height);
-        resolve({ ok: true, frame: { width: sized.width, height: height, data: data.data, bandCount: bands } });
+        ctx.drawImage(image, src.x, src.y, src.width, src.height, 0, 0, sized.width, sized.height);
+        const data = ctx.getImageData(0, 0, sized.width, sized.height);
+        const buffer = ocr.frame.rgbaBufferOf(data.data);
+        if (!buffer) {
+          resolve({ ok: false, code: 'IMAGE_DECODE_FAILED', detail: '画布取像素为空' });
+          return;
+        }
+        resolve({
+          ok: true,
+          frame: {
+            width: sized.width,
+            height: sized.height,
+            data: data.data,
+            buffer: buffer,
+            bandCount: plan.count,
+            bandIndex: plan.index
+          }
+        });
       } catch (err) {
         resolve({ ok: false, code: 'IMAGE_DECODE_FAILED', detail: '画布取像素失败' });
       }
@@ -106,8 +113,17 @@ function canvasFrame(img, band) {
     image.onerror = function onerror() {
       resolve({ ok: false, code: 'IMAGE_DECODE_FAILED', detail: '图片解码失败' });
     };
-    image.src = img.path || img.src;
+    image.src = imageSrc;
   });
+}
+
+// P0-10 + D35：按条带从原图裁剪再缩放到长边 ≤VISION_MAX_EDGE（先裁后缩，条带重试才有放大收益）
+function canvasFrame(img, band) {
+  const plan = framePlanOf(img, band);
+  if (!plan.ok) {
+    return Promise.resolve({ ok: false, code: plan.code, detail: plan.detail });
+  }
+  return drawFrame(img.path || img.src, plan);
 }
 
 function runVision(frame, opts) {
@@ -160,7 +176,7 @@ function runVision(frame, opts) {
       }
       try {
         session.runOCR({
-          frameBuffer: frame.data.buffer || frame.data,
+          frameBuffer: frame.buffer || (frame.data && frame.data.buffer) || frame.data,
           width: frame.width,
           height: frame.height
         });
@@ -182,12 +198,11 @@ function ocrDeps(img) {
   };
 }
 
-// AI 兜底成功态提示（§4.3.1 ④：只填空字段、手填优先，仍需人核对）
-const AI_SUGGESTION_HINT = '智能识别建议，请核对';
+// AI 兜底成功态提示（§4.3.1 ④：只填空字段、手填优先，仍需人核对；AI_SUGGESTION_HINT 单源在 ai-fallback）
 
 /**
  * OCR 失败/无文本时也调一次 AI 兜底接口（CONTRACT §4.3 v1.0）：
- * ocrTextMasked 可为空串——服务端 branch① 直接入队 NO_TEXT、不外呼；返回 failureId 供建单回填。
+ * ocrTextMasked 可为空串——服务端 branch① 直接入队 NO_TEXT、不外呼；带 fileId/uploadTicketId 供复核页看原图。
  * 无票据（上传就失败）时无处关联，返回 null（页面只给手填引导，不谎称已反馈）。
  */
 async function queueFailure(file, ocrTextMasked) {
@@ -196,11 +211,14 @@ async function queueFailure(file, ocrTextMasked) {
     return null;
   }
   try {
+    const text = String(ocrTextMasked || '');
+    const requestId = failureRequestIdOf(ticket, 0, text);
     const suggestion = await aiApi.parseParcel({
-      ocrTextMasked: String(ocrTextMasked || ''),
+      ocrTextMasked: text,
+      fileId: (file && file.fileId) || '',
       uploadTicketId: ticket,
       role: 'CUSTOMER'
-    });
+    }, requestId ? { clientRequestId: requestId } : {});
     const value = suggestion || {};
     const failureId = typeof value.failureId === 'string' ? value.failureId : '';
     return {
@@ -222,29 +240,12 @@ async function identify(file, onState) {
   const notify = typeof onState === 'function' ? onState : function noop() {};
   const localPath = (file && file.localPath) || '';
   if (!localPath) {
-    const queued = await queueFailure(file, '');
-    return {
-      ok: false,
-      file: file || {},
-      failureCode: 'IMAGE_UNREADABLE',
-      failureCopy: failureCopyFor('IMAGE_UNREADABLE', queued || {}),
-      failureId: (queued && queued.failureId) || '',
-      aiTried: !!(queued && queued.failureId)
-    };
+    return failureResultOf(file, null, 'IMAGE_UNREADABLE', await queueFailure(file, ''), '');
   }
   const info = await imageInfo(localPath);
   if (!info.ok) {
     // 认不到图也补一次 AI（服务端负责入队；不外呼空文本），不让「失败=静默」
-    const queued = await queueFailure(file, '');
-    return {
-      ok: false,
-      file: file,
-      failureCode: info.code,
-      failureCopy: failureCopyFor(info.code, queued || {}),
-      failureId: (queued && queued.failureId) || '',
-      aiTried: !!(queued && queued.failureId),
-      detail: info.detail
-    };
+    return failureResultOf(file, null, info.code, await queueFailure(file, ''), info.detail);
   }
   const image = { fileId: (file && file.fileId) || '', width: info.width, height: info.height };
   if (file && typeof file.size === 'number' && file.size > 0) image.size = file.size;
@@ -258,20 +259,12 @@ async function identify(file, onState) {
     })
   ]);
   if (!result.ok) {
-    const queued = await queueFailure(file, '');
-    return {
-      ok: false,
-      file: file,
-      image: image,
-      ocrText: '',
-      failureCode: result.code,
-      failureCopy: failureCopyFor(result.code, queued || {}),
-      failureId: (queued && queued.failureId) || '',
-      aiTried: !!(queued && queued.failureId),
-      detail: result.detail
-    };
+    return failureResultOf(file, image, result.code, await queueFailure(file, ''), result.detail);
   }
-  const parsed = recognize.parseOcrText(result.joined || '');
+  const maskedText = recognize.maskForAi(result.joined || '');
+  const ticket = (file && file.uploadTicketId) || '';
+  const stationsOption = (configApi.getCachedPublic() || {}).stations;
+  const parsed = recognize.parseOcrText(result.joined || '', { stations: stationsOption });
   let items = parsed.items;
   let aiTried = false;
   let aiUsed = false;
@@ -292,10 +285,14 @@ async function identify(file, onState) {
     // 规则已填好的件不外呼；某件失败只降级该件（applyAiFallbacks 为纯件，外呼经 api/modules 注入）
     const seeds = items.length > 0 ? items : [recognize.makeEmptyParcel()];
     const fallback = await model.applyAiFallbacks(seeds, {
-      ocrTextMasked: recognize.maskForAi(result.joined || ''),
+      ocrTextMasked: maskedText,
       hintTrackingTail: parsed.trackingTail || '',
-      uploadTicketId: (file && file.uploadTicketId) || '',
-      role: 'CUSTOMER'
+      uploadTicketId: ticket,
+      fileId: (file && file.fileId) || '',
+      role: 'CUSTOMER',
+      requestIdOf: function requestIdOf(index) {
+        return failureRequestIdOf(ticket, index, maskedText);
+      }
     }, aiApi.parseParcel);
     items = fallback.items;
     aiUsed = fallback.changed > 0;
@@ -303,7 +300,7 @@ async function identify(file, onState) {
     aiFallbackState = (items[0] && items[0].aiState) || '';
     items.forEach(function label(item) {
       if (item.aiPickupCodeUnaligned) unalignedCode = item.aiPickupCodeUnaligned;
-      if (!item.aiSuggestion && item.aiState && item.aiState !== 'OK') item.aiHint = aiFallbackCopy(item.aiState).text;
+      if (!item.aiSuggestion && item.aiState && item.aiState !== 'OK') item.aiHint = aiFallbackCopy(item.aiState, item).text;
     });
   }
   if (unalignedCode) unaligned = recognize.FORM_ERROR.pickupCode;
@@ -402,16 +399,7 @@ async function identifyMany(files, onState) {
       failureCode: result.failureCode || ''
     };
   });
-  const failures = results.filter(function failed(result) {
-    return !!result.failureId || !!result.failureCode;
-  }).map(function brief(result) {
-    return {
-      imageIndex: result.imageIndex,
-      failureCode: result.failureCode || '',
-      failureId: result.failureId || '',
-      copy: result.failureCopy || null
-    };
-  });
+  const failures = failureRowsOf(results);
   const ocrText = results.map(function text(result) { return result.ocrText || ''; })
     .filter(function nonEmpty(value) { return !!value; })
     .join('\n');
@@ -486,7 +474,12 @@ module.exports = {
   MAX_IMAGES,
   AI_FALLBACK_COPY,
   AI_SUGGESTION_HINT,
+  LOW_CODE_MISSING_COPY,
   aiFallbackCopy,
+  contentHashOf,
+  failureRequestIdOf,
+  failureResultOf,
+  failureRowsOf,
   failureCopyFor,
   frameSizeOf,
   hasVision,

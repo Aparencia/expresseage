@@ -29,6 +29,20 @@ const PARTNER_STATUS_LABELS = {
   CLOSED: '已注销'
 };
 
+// ── 顾客性别（2026-10-27 用户口径：按「苑+楼栋」推断 + 支持手动修改；未知不阻塞资料保存）──
+// 推断规则与读写容错在 shared/gender.js；枚举字面量与中文标签只登记在本文件（唯一来源）。
+const GENDER = {
+  MALE: 'MALE',
+  FEMALE: 'FEMALE',
+  UNKNOWN: 'UNKNOWN'
+};
+const GENDER_LIST = [GENDER.MALE, GENDER.FEMALE, GENDER.UNKNOWN];
+const GENDER_LABELS = {
+  MALE: '男',
+  FEMALE: '女',
+  UNKNOWN: '未知'
+};
+
 // ── 订单七状态（CONTRACT §5 唯一口径）────────────────────────────────────────
 const ORDER_STATUS = {
   SUBMITTED: 'SUBMITTED',
@@ -369,6 +383,9 @@ module.exports = {
   ROLES,
   ROLE_LIST,
   ROLE_LABELS,
+  GENDER,
+  GENDER_LIST,
+  GENDER_LABELS,
   USER_STATUS,
   PARTNER_STATUS,
   PARTNER_STATUS_LIST,

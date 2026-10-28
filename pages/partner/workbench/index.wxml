@@ -8,7 +8,7 @@
     <view class="title">工作台</view>
     <view class="row">
       <view class="mini-btn btn btn-ghost" bindtap="onRefreshTap">刷新</view>
-      <view wx:if="{{!readonly}}" class="mini-btn btn btn-primary" bindtap="onToggleSelecting">{{selecting ? '退出多选' : '多选'}}</view>
+      <view wx:if="{{!readonly && (selecting || hasRows)}}" class="mini-btn btn btn-primary" bindtap="onToggleSelecting">{{selecting ? '退出多选' : '多选'}}</view>
     </view>
   </view>
 

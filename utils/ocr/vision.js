@@ -4,6 +4,7 @@
 
 const IDLE_MS = 300; // 收到文字后多久没有新文字就收口
 const MAX_WAIT_MS = 8000; // 首个文字到达前的最长等待
+const BAND_MAX_WAIT_MS = 3000; // 条带重试的单带等待（整图已失败，不重复等 8s；控制总预算）
 const FRAME_TIMEOUT_MS = 8000; // 取像素硬超时
 const OCR_MAX_MS = 40000; // 单张截图识别总预算（v3 阶梯预算）
 
@@ -17,20 +18,32 @@ function fail(code, detail) {
   return { ok: false, code: code, detail: detail || '' };
 }
 
-/** 平台 start 回调 errno → 统一失败码 */
+/** 平台 start 回调 errno → 统一失败码（覆盖官方 start status 表；detail 保真，便于真机取证） */
 function classifyStartErrno(errno) {
   const code = Number(errno);
+  if (code === 104) {
+    return { reason: 'VK_INIT_FAILED', detail: '用户取消了授权（errno=104）' };
+  }
   if (code === 112) {
-    return { reason: 'VK_INIT_FAILED', detail: '识别服务未在隐私指引中声明（errno=112）' };
+    return { reason: 'VK_INIT_FAILED', detail: 'VKSession 未在隐私协议中声明摄像头（errno=112）' };
+  }
+  if (code === 1025) {
+    return { reason: 'VK_INIT_FAILED', detail: '小程序隐私接口被封禁（errno=1025）' };
+  }
+  if (code === 1026) {
+    return { reason: 'VK_UNSUPPORTED', detail: '小游戏环境不支持该能力（errno=1026）' };
   }
   if (code === 2003001 || code === 2003002) {
     return { reason: 'VK_INIT_FAILED', detail: '识别需要相机权限（errno=' + code + '）' };
   }
-  if (code === 104) {
-    return { reason: 'VK_INIT_FAILED', detail: '用户取消了授权（errno=104）' };
+  if (code === 2000002 || code === 2000003 || code === 2000004) {
+    return { reason: 'VK_UNSUPPORTED', detail: '当前设备/系统不支持端侧识别（errno=' + code + '）' };
   }
-  if (code === 2000002 || code === 2000004) {
-    return { reason: 'VK_UNSUPPORTED', detail: '当前设备不支持端侧识别（errno=' + code + '）' };
+  if (code === 2003000) {
+    return { reason: 'VK_INIT_FAILED', detail: '会话不可用（errno=2003000，可重试）' };
+  }
+  if (code === 2000000 || code === 2000001) {
+    return { reason: 'VK_INIT_FAILED', detail: '识别初始化失败（errno=' + code + '）' };
   }
   return { reason: 'VK_INIT_FAILED', detail: '识别启动失败（errno=' + code + '）' };
 }
@@ -88,7 +101,9 @@ function runVisionOnce(deps, frame, idleMs, maxWaitMs) {
 
 /**
  * 端侧识别主入口。
- * deps = { hasVision:boolean, loadFrame(filePath, band), runVision(frame, opts), now() }
+ * 阶梯（v1.1/D35 补）：先整图一次；NO_TEXT 时**逐条带裁原图并放大到长边 ≤ maxEdge** 重试
+ * （bands=2 两带、bands=4 四带）；任一带出字即收口返回（partial=true），避免白等 3 档。
+ * deps = { hasVision:boolean, loadFrame(filePath, {bands,index}), runVision(frame, opts), now() }
  * options = { filePath, maxEdge, startedAt }
  */
 async function recognizeImage(deps, options) {
@@ -100,7 +115,7 @@ async function recognizeImage(deps, options) {
   if (typeof deps.loadFrame !== 'function' || typeof deps.runVision !== 'function') {
     return fail('VK_INIT_FAILED', '识别能力未注入');
   }
-  const first = await withTimeout(deps.loadFrame(opts.filePath, { bands: 1 }),
+  const first = await withTimeout(deps.loadFrame(opts.filePath, { bands: 1, index: 0 }),
     FRAME_TIMEOUT_MS, 'IMAGE_DECODE_FAILED', '读取图片超时');
   if (!first || first.ok === false) return first || fail('IMAGE_DECODE_FAILED');
 
@@ -110,28 +125,29 @@ async function recognizeImage(deps, options) {
     return { ok: true, texts: firstRun.texts, partial: !!firstRun.partial };
   }
 
-  const collected = [];
   for (let i = 1; i < LADDER.length; i += 1) {
-    if (Date.now() - startedAt > OCR_MAX_MS) break;
     const step = LADDER[i];
-    const loaded = await withTimeout(deps.loadFrame(opts.filePath, { bands: step.bands }),
-      FRAME_TIMEOUT_MS, 'IMAGE_DECODE_FAILED', '读取图片超时');
-    if (!loaded || loaded.ok === false) continue;
-    const result = await runVisionOnce(deps, loaded.frame);
-    if (result && result.ok && result.texts && result.texts.length > 0) {
-      result.texts.forEach(function push(text) { collected.push({ texts: [text] }); });
+    for (let band = 0; band < step.bands; band += 1) {
+      if (Date.now() - startedAt > OCR_MAX_MS) {
+        return fail('NO_TEXT', '图里没认出文字（重试超时）');
+      }
+      const loaded = await withTimeout(deps.loadFrame(opts.filePath, { bands: step.bands, index: band }),
+        FRAME_TIMEOUT_MS, 'IMAGE_DECODE_FAILED', '读取图片超时');
+      if (!loaded || loaded.ok === false) continue;
+      const result = await runVisionOnce(deps, loaded.frame, IDLE_MS, BAND_MAX_WAIT_MS);
+      const texts = mergeTexts([{ texts: (result && result.texts) || [] }]);
+      if (result && result.ok && texts.length > 0) {
+        return { ok: true, texts: texts, partial: true };
+      }
     }
   }
-  const merged = mergeTexts(collected);
-  if (merged.length === 0) {
-    return fail('NO_TEXT', '图里没认出文字');
-  }
-  return { ok: true, texts: merged, partial: true };
+  return fail('NO_TEXT', '图里没认出文字');
 }
 
 module.exports = {
   IDLE_MS,
   MAX_WAIT_MS,
+  BAND_MAX_WAIT_MS,
   FRAME_TIMEOUT_MS,
   OCR_MAX_MS,
   LADDER,

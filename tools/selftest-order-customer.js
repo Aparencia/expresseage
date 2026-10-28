@@ -45,7 +45,7 @@ const client = require(path.join(ROOT, 'api/client.js'));
 const orderApi = require(path.join(ROOT, 'api/modules/order.js'));
 const serverDto = require(path.join(ROOT, 'cloudfunctions/api/handlers/order/_dto.js'));
 
-const EXPECTED_ASSERTIONS = 228; // 实际断言总数（少算/多算都判红）
+const EXPECTED_ASSERTIONS = 255; // 实际断言总数（少算/多算都判红）
 
 const STATUS = orderState.STATUS;
 const ACTION_KEYS = view.ACTION_KEYS;
@@ -822,6 +822,94 @@ function register(h) {
     t.check(/clearGuideSeen/.test(textOf('pages/profile/index.js')),
       'J25 「我的→重新看新手引导」仍走 clearGuideSeen（portal 未改，与新引导联动）');
     t.notEmpty(home, 'J 组样本非空');
+  });
+
+  // ── K. 顾客端 UI 修复：兼职卡重排 / 服务范围中文名 / 服务类型截断 / 头像兜底 / tab 居中 / tabBar 选中态
+  h.section('K. 顾客端 UI 修复（兼职卡/服务范围/服务类型/头像兜底/tab 居中/tabBar 选中态）', (t) => {
+    const homeWxml = textOf(PAGES.homeWxml);
+    const home = textOf(PAGES.home);
+    const ordersWxml = textOf(PAGES.ordersWxml);
+    const ordersWxss = textOf('pages/customer/orders/index.wxss');
+    const orders = textOf(PAGES.orders);
+    const tabBar = textOf('custom-tab-bar/index.js');
+
+    // 服务范围：中文苑名（config.zoneLabels 覆盖 shared 默认），不再暴露 D/X/N/B/C 原始代号
+    t.eq([homeView.scopeTextOf({ zones: ['D', 'X'] }), homeView.scopeTextOf({ zones: ['N', 'B', 'C'] })],
+      ['东苑 / 西苑', '南苑 / 北苑 / 翠苑'], 'K1 服务范围用中文苑名（D/X/N/B/C → 东/西/南/北/翠苑）');
+    t.eq(homeView.scopeTextOf({ zones: ['D'] }, { D: '东区' }), '东区', 'K2 config.zoneLabels 可覆盖默认苑名');
+    t.eq([homeView.scopeTextOf(null), homeView.scopeTextOf({ zones: [] })], ['全部苑', '全部苑'],
+      'K3 无服务范围配置=全部苑（不显示原始代号）');
+    t.check(!/[A-Z]/.test(homeView.scopeTextOf({ zones: ['D', 'X', 'N', 'B', 'C'] })),
+      'K4 五苑全配置时输出不含任何原始大写代号');
+    t.eq([
+      homeView.zoneAllowedOf({ zones: ['D'] }, '东苑'),
+      homeView.zoneAllowedOf({ zones: ['东苑'] }, 'D'),
+      homeView.zoneAllowedOf({ zones: ['D'] }, 'X'),
+      homeView.zoneAllowedOf({ zones: ['D'] }, '')
+    ], [true, true, false, true], 'K5 服务范围预检兼容代号/中文苑名（D 与 东苑 同苑；未知苑不误拦）');
+
+    // 服务类型：只列已启用项；超过 3 项截断「等 N 项」（不撑高卡片）
+    const catalog = enums.SERVICES;
+    t.eq(homeView.serviceTextOf({ services: [{ code: 'PICKUP_STD' }, { code: 'DROP_OFF', enabled: false }] }, catalog),
+      '标准代取', 'K6 服务类型只列已启用项（enabled:false 不展示）');
+    t.eq(homeView.serviceTextOf({ services: enums.SERVICES.map((item) => ({ code: item.code })) }, catalog),
+      '标准代取 / 送寝上门 / 加急代取 等 5 项', 'K7 超过 3 项截断为前 3 +「等 N 项」（N=已启用总数）');
+    t.eq(homeView.serviceTextOf({ services: [{ code: 'PICKUP_STD' }, { code: 'PICKUP_DOOR' }, { code: 'DROP_OFF' }] }, catalog),
+      '标准代取 / 送寝上门 / 代寄快递', 'K8 恰好 3 项不截断（边界）');
+    t.eq([homeView.serviceTextOf(null, catalog), homeView.serviceTextOf({ services: [] }, catalog)], ['', ''],
+      'K9 无启用服务类型 → 空串（页面显示「暂未设置」）');
+
+    // 兼职卡展示模型：partnerPublic 优先，未返回前用 store.binding 启动期字段兜底（头像错误根因）
+    const card = homeView.partnerCardOf(
+      { partnerDisplayName: '旧名', partnerAvatarFileId: 'cloud://old.jpg', partnerNo: 'POLDOLD' },
+      { displayName: '小王', avatarFileId: 'cloud://new.jpg', partnerNo: 'PNEWNEW', acceptingOrders: true }
+    );
+    t.eq([card.name, card.avatarFileId, card.partnerNo, card.acceptingText],
+      ['小王', 'cloud://new.jpg', 'PNEWNEW', '接单中'], 'K10 partnerPublic 返回后覆盖启动期字段（新结果优先）');
+    const bootCard = homeView.partnerCardOf(
+      { partnerDisplayName: '小王', partnerAvatarFileId: 'cloud://bootstrap.jpg', partnerNo: 'PABC23' }, null);
+    t.eq([bootCard.name, bootCard.avatarFileId, bootCard.partnerNo, bootCard.loaded],
+      ['小王', 'cloud://bootstrap.jpg', 'PABC23', false],
+      'K11 根因：partnerPublic 未到达时头像/昵称/编号用 store.binding 的 bootstrap 水合字段兜底（首帧不再空白/默认「代」）');
+    const paused = homeView.partnerCardOf({ partnerDisplayName: '小王' }, { displayName: '小王', acceptingOrders: false });
+    t.eq([paused.accepting, paused.acceptingText], [false, '暂停接单'], 'K12 暂停接单=独立状态标签文案（贴昵称旁）');
+    t.eq(homeView.partnerCardOf(null, null).avatarFileId, '', 'K13 未绑定/无数据不崩溃（空卡片模型）');
+    t.check(home.indexOf('customer.avatarFileId') === -1 && homeWxml.indexOf('customer.avatarFileId') === -1,
+      'K14 兼职卡绝不引用顾客自己的头像字段（只显示对方头像/昵称）');
+
+    // 静态接线：移除楼栋标签行；状态标贴昵称；展示语义全部走纯件
+    t.check(homeWxml.indexOf('room-tag-text') === -1 && homeWxml.indexOf('roomTag') === -1,
+      'K15 兼职卡移除 room-tag-text 楼栋行（不再与「接单中」同排造成「兼职楼栋」误解）');
+    t.check(homeWxml.indexOf('partnerCard.avatarFileId') >= 0 && homeWxml.indexOf('partnerCard.acceptingText') >= 0,
+      'K16 WXML 头像/接单状态取自 partnerCard（状态标在昵称旁）');
+    t.check(home.indexOf('roomTag') === -1 && home.indexOf('dormKey') === -1,
+      'K17 首页 vm 移除 roomTag/dormKey（不再向兼职卡下发楼栋）');
+    t.check(home.indexOf('homeView.partnerCardOf(') >= 0 && home.indexOf('homeView.serviceTextOf(') >= 0
+      && home.indexOf('homeView.scopeTextOf(') >= 0 && home.indexOf('function serviceText(') === -1,
+      'K18 兼职卡展示语义全部走纯件（页面零判据、不在页面里截断服务类型）');
+    t.check(homeWxml.indexOf('order-empty-card') >= 0, 'K19 无进行中订单卡压缩为一行提示（卡片高度收口）');
+    t.check(homeWxml.indexOf('name="{{partnerCard.name}}"') >= 0,
+      'K20 头像 name 传对方昵称（无头像时显示对方昵称首字，不回落「代」）');
+
+    // 订单页 tab 文案居中：.tab-item 需自成 flex 容器（.center 类才生效）
+    t.check(/\.tab-item\s*\{[^}]*display:\s*flex[^}]*justify-content:\s*center/.test(ordersWxss),
+      'K21 订单页 .tab-item 加 display:flex + justify-content:center（「进行中/已完成/已取消」居中）');
+    t.check(ordersWxml.indexOf('class="tab-item flex-1 center') >= 0,
+      'K22 tab 子项保留 center 布局类（文案不改、只修布局）');
+
+    // custom-tab-bar 选中态：4 个 tab 页 onShow 显式同步 + tabbar 自身兜底不重置成首页
+    t.check(home.indexOf('getTabBar()') >= 0 && /setData\(\{\s*selected:\s*0/.test(home),
+      'K23 首页 onShow 同步选中格=0');
+    t.check(orders.indexOf('getTabBar()') >= 0 && /setData\(\{\s*selected:\s*1/.test(orders),
+      'K24 订单页 onShow 同步选中格=1（不再高亮「首页」）');
+    const workbench = textOf('pages/partner/workbench/index.js');
+    const customers = textOf('pages/partner/customers/index.js');
+    t.check(/setData\(\{\s*selected:\s*0/.test(workbench) && /setData\(\{\s*selected:\s*1/.test(customers),
+      'K25 工作台/客户页 onShow 同步选中格=0/1（tabBar per-page 同步）');
+    t.check(tabBar.indexOf('current.selected === selected') >= 0,
+      'K26 tabbar 路径未命中时保留页面显式设置（不回落首页造成错格）');
+
+    t.notEmpty([homeWxml, ordersWxss, tabBar], 'K27 K 组静态样本非空');
   });
 }
 

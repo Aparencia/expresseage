@@ -965,13 +965,16 @@ check(32, '单函数行数', '生产源码单函数 ≤50 行（全文本口径�
   return r.problems.length ? shortList(r.problems, 12) : null;
 });
 
+// ---------------------------------------------------------------- #33
+check(33, '分享卡口中性', '19 页挂好友转发/3 页朋友圈/后台零分享；卡片单源 utils/share；固定中性封面；会话禁分享收口 switch-bar', () => require('./lib/check-share').run());
+
 // ---------------------------------------------------------------- 输出
 const opts = process.argv.slice(2);
 const failOnly = opts.includes('--fail-only');
 let pass = 0;
 let failed = 0;
 let skipped = 0;
-console.log('== tools/check.js · v4 门禁（ENGINEERING §8.2 · 32 条）==');
+console.log('== tools/check.js · v4 门禁（ENGINEERING §8.2 · 33 条）==');
 for (const r of results) {
   const id = '#' + String(r.no).padStart(2, '0');
   if (r.pass) {

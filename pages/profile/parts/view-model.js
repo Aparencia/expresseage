@@ -5,6 +5,7 @@
 
 const enums = require('../../../shared/enums');
 const zones = require('../../../shared/zones');
+const gender = require('../../../shared/gender');
 const validate = require('../../../shared/validate');
 const ids = require('../../../utils/ids');
 const roomTagUtil = require('../../../utils/room-tag');
@@ -28,9 +29,19 @@ const ZONE_OPTIONS = zones.ZONES.map(function mapZone(code) {
 const ZONE_LABELS = ZONE_OPTIONS.map(function labelOf(item) {
   return item.label;
 });
+// 性别选择项中文标签与 shared/enums（枚举单源）一一对应；顺序 = GENDER_LIST（男/女/未知）。
+const GENDER_LABELS = enums.GENDER_LIST.map(function labelOfGender(code) {
+  return gender.genderLabel(code);
+});
 
 function textOf(value) {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+// 性别 picker 下标：非法/缺失按「未知」定位（展示与保存入参同一归一规则）。
+function genderIndexOf(value) {
+  const index = enums.GENDER_LIST.indexOf(gender.normalizeGender(value));
+  return index >= 0 ? index : 0;
 }
 
 function releaseReasonOf(code) {
@@ -123,6 +134,7 @@ function buildProfileCard(isCustomer, customer, binding) {
     complete: doc.profileComplete === true,
     dormText: isCustomer ? dormTextOf(doc) : '',
     tailText: isCustomer ? tailText(doc.phoneTail) : '',
+    genderText: isCustomer ? gender.genderLabel(doc.gender) : '',
     roomTag: isCustomer ? roomTagOf(doc, binding) : null
   };
   return card;
@@ -229,21 +241,58 @@ function buildForm(profile, isCustomer) {
     buildingIndex: buildingIndex,
     room: textOf(doc.room),
     phoneTail: textOf(doc.phoneTail),
+    genderIndex: genderIndexOf(doc.gender),
+    // false=未手动改过性别：保存时不上报，由服务端按苑/楼栋推断并随宿舍变化跟随；
+    // 用户一动 picker 即置 true，保存 payload 才带 gender（服务端置 genderManual）。
+    genderDirty: false,
     dormPreview: ''
   };
   form.dormPreview = isCustomer ? previewDorm(form) : '';
   return form;
 }
 
+// 表单里的苑/楼栋/宿舍号三元组（越界下标回空值，不做前端合法值表）
+function formDorm(form) {
+  const source = form || {};
+  const zoneOption = ZONE_OPTIONS[source.zoneIndex];
+  const buildingLabel = BUILDING_LABELS[source.buildingIndex];
+  return {
+    zone: zoneOption ? zoneOption.code : '',
+    buildingNo: buildingLabel === undefined ? undefined : Number(buildingLabel),
+    room: zones.canonicalRoom(source.room)
+  };
+}
+
 // 实时预览「你的宿舍：D4-522」（值域以 zones 单源为准，不做前端合法值表）
 function previewDorm(form) {
-  const zoneOption = ZONE_OPTIONS[form.zoneIndex];
-  const buildingLabel = BUILDING_LABELS[form.buildingIndex];
-  const room = zones.canonicalRoom(form.room);
-  if (!zoneOption || !buildingLabel || !room) {
+  const dorm = formDorm(form);
+  if (!dorm.zone || !zones.isBuildingNo(dorm.buildingNo) || !dorm.room) {
     return '';
   }
-  return zones.dormKey(zoneOption.code, Number(buildingLabel), room);
+  return zones.dormKey(dorm.zone, dorm.buildingNo, dorm.room);
+}
+
+// 苑/楼栋/宿舍号改动：刷新宿舍预览；性别未手动改过时跟随「苑+楼栋」推断值（改宿舍后界面先显示新推断）。
+function applyDormPatch(form, partial) {
+  const next = Object.assign({}, form || {}, partial || {});
+  next.dormPreview = previewDorm(next);
+  if (next.genderDirty !== true) {
+    const dorm = formDorm(next);
+    next.genderIndex = genderIndexOf(gender.deriveGender(dorm.zone, dorm.buildingNo));
+  }
+  return next;
+}
+
+// 性别选择：用户显式选择后置 genderDirty=true（保存时才上报 payload.gender，服务端置 genderManual）；
+// 非法下标不改（picker 只会给合法下标，防纯件被误用）。
+function applyGenderChoice(form, index) {
+  const next = Object.assign({}, form || {});
+  if (enums.GENDER_LIST[index] === undefined) {
+    return next;
+  }
+  next.genderIndex = index;
+  next.genderDirty = true;
+  return next;
 }
 
 // 昵称输入即截断（UX_CUSTOMER §7.2：截断 + toast，不做超长报错）
@@ -261,6 +310,46 @@ function digitsOnly(value, maxLength) {
   return maxLength ? digits.slice(0, maxLength) : digits;
 }
 
+// 顾客资料字段（宿舍身份/手机尾号/性别）注入 payload；失败回 {ok:false,message}（纯件不抛错）。
+function applyCustomerFields(payload, form) {
+  const zoneOption = ZONE_OPTIONS[form.zoneIndex];
+  const buildingLabel = BUILDING_LABELS[form.buildingIndex];
+  if (!zoneOption) {
+    return { ok: false, message: '请选择苑/楼区' };
+  }
+  if (!buildingLabel) {
+    return { ok: false, message: '请选择楼栋号（1~10）' };
+  }
+  const dorm = validate.validateDormIdentity({
+    zone: zoneOption.code,
+    buildingNo: Number(buildingLabel),
+    room: form.room
+  });
+  if (!dorm.ok) {
+    return {
+      ok: false,
+      message: dorm.field === 'room' ? '宿舍号要填 3 位以上数字（如 522）' : '请选择苑/楼区和楼栋号（1~10）'
+    };
+  }
+  const tail = validate.validatePhoneTail(form.phoneTail);
+  if (!tail.ok) {
+    return { ok: false, message: '手机尾号写后 4 位数字，不知道就留空' };
+  }
+  payload.zone = dorm.zone;
+  payload.buildingNo = dorm.buildingNo;
+  payload.room = dorm.room;
+  payload.phoneTail = tail.value;
+  // 只有用户手动选过性别才上报（服务端据此置 genderManual）；没动过交给服务端推断/跟随宿舍。
+  if (form.genderDirty === true) {
+    const selectedGender = enums.GENDER_LIST[form.genderIndex];
+    if (!selectedGender) {
+      return { ok: false, message: '请选择性别（男、女或未知）' };
+    }
+    payload.gender = selectedGender;
+  }
+  return { ok: true, payload: payload };
+}
+
 // 保存入参：页面只把表单交给这里；校验规则与错误文案口径来自 shared/validate。
 function buildSavePayload(options) {
   const opts = options || {};
@@ -271,33 +360,10 @@ function buildSavePayload(options) {
   }
   const payload = { displayName: nickname.value };
   if (opts.isCustomer) {
-    const zoneOption = ZONE_OPTIONS[form.zoneIndex];
-    const buildingLabel = BUILDING_LABELS[form.buildingIndex];
-    if (!zoneOption) {
-      return { ok: false, message: '请选择苑/楼区' };
+    const built = applyCustomerFields(payload, form);
+    if (!built.ok) {
+      return built;
     }
-    if (!buildingLabel) {
-      return { ok: false, message: '请选择楼栋号（1~10）' };
-    }
-    const dorm = validate.validateDormIdentity({
-      zone: zoneOption.code,
-      buildingNo: Number(buildingLabel),
-      room: form.room
-    });
-    if (!dorm.ok) {
-      return {
-        ok: false,
-        message: dorm.field === 'room' ? '宿舍号要填 3 位以上数字（如 522）' : '请选择苑/楼区和楼栋号（1~10）'
-      };
-    }
-    const tail = validate.validatePhoneTail(form.phoneTail);
-    if (!tail.ok) {
-      return { ok: false, message: '手机尾号写后 4 位数字，不知道就留空' };
-    }
-    payload.zone = dorm.zone;
-    payload.buildingNo = dorm.buildingNo;
-    payload.room = dorm.room;
-    payload.phoneTail = tail.value;
   }
   if (form.avatarAction === 'replace' && form.avatarTicket) {
     payload.avatarTicket = form.avatarTicket;
@@ -339,10 +405,13 @@ module.exports = {
   DEFAULT_ORDER_SUMMARY,
   BUILDING_LABELS,
   ZONE_LABELS,
+  GENDER_LABELS,
   buildVm,
   shouldAutoOpenEdit,
   buildForm,
   previewDorm,
+  applyDormPatch,
+  applyGenderChoice,
   clampNickname,
   digitsOnly,
   buildSavePayload,
