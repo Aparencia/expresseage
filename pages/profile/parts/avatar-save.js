@@ -1,9 +1,10 @@
 // pages/profile/parts/avatar-save.js · 头像票据过期的保存自愈（纯件：零 wx；save/reupload 由页面注入）
-// 口径：CONTRACT §4.2/§5.3、D19、docs/TECH_DEBT.md TD-027（头像票据一次性：过期/已消费重放 → INVALID_STATE）、
-//       V4_UX_CUSTOMER §4.10；批 10 A 批 P1-10。
+// 口径：CONTRACT §4.2/§5.3、D19、D42、docs/TECH_DEBT.md TD-027（头像票据一次性：过期/已消费重放 → INVALID_STATE）、
+//       V4_UX_CUSTOMER §4.10；批 10 A 批 P1-10；2026-10-28 D42 改判保底语义。
 // 阶梯（不无限重试、不重复消费票据、不掩盖其它错误）：
 //   ① 保存失败且错误指向头像上传凭证 → 重新 prepare+上传 1 次换新票后重试保存；
-//   ② 换票或第二次保存仍失败 → 退化为「只清空头像后保存」（avatarFileId=''，服务端清空头像）并如实提示；
+//   ② 换票或第二次保存仍失败 → 退化为「不改头像、其余资料照常保存」（去掉票据与本次新 fileId，
+//      服务端保留已有 avatarFileId）并如实提示可稍后重选——**不得清空已有头像**（D42 口径变更）；
 //   ③ 非凭证类错误（网络/维护/进行中订单等）原样抛出，不重试、不改写文案。
 'use strict';
 
@@ -34,11 +35,12 @@ function withUploadedAvatar(payload, uploaded) {
   return next;
 }
 
-// 退化为「只清空头像后保存」：无票据 + avatarFileId='' 是服务端清空头像的既有语义
-function clearAvatar(payload) {
+// 退化为「不改头像、其余资料照常保存」（D42）：去掉本次票据与本次新 fileId，
+// 服务端 saveProfile 见「无票据 + 无 avatarFileId」= 不动头像（保留已有 avatarFileId），不清空。
+function keepAvatar(payload) {
   const next = Object.assign({}, payload || {});
   delete next.avatarTicket;
-  next.avatarFileId = '';
+  delete next.avatarFileId;
   return next;
 }
 
@@ -48,19 +50,19 @@ function resultCopy(result) {
   if (value.mode === 'refreshed') {
     return '资料已保存，头像已更新';
   }
-  if (value.mode === 'cleared') {
+  if (value.mode === 'kept') {
     const reason = typeof value.reason === 'string' ? value.reason : '';
     return '资料已保存；头像没换上' + (reason ? '（' + reason + '）' : '')
-      + '，已用默认头像，可稍后在「编辑资料」重新选择头像';
+      + '，仍用原来的头像，可稍后在「编辑资料」重新选择头像';
   }
   return '资料已保存';
 }
 
-function fallbackToDefaultAvatar(options, reason) {
-  return Promise.resolve().then(function saveWithoutAvatar() {
-    return options.save(clearAvatar(options.payload));
-  }).then(function cleared(saved) {
-    return { mode: 'cleared', saved: saved, reason: (reason && reason.message) || '' };
+function fallbackKeepAvatar(options, reason) {
+  return Promise.resolve().then(function saveWithoutAvatarChange() {
+    return options.save(keepAvatar(options.payload));
+  }).then(function kept(saved) {
+    return { mode: 'kept', saved: saved, reason: (reason && reason.message) || '' };
   });
 }
 
@@ -78,7 +80,7 @@ function refreshTicketThenRetry(options) {
     if (stage === 'save' && !isAvatarTicketFailure(error)) {
       return Promise.reject(error);
     }
-    return fallbackToDefaultAvatar(options, error);
+    return fallbackKeepAvatar(options, error);
   });
 }
 
@@ -99,7 +101,7 @@ function saveWithRecovery(options) {
 module.exports = {
   isAvatarTicketFailure,
   withUploadedAvatar,
-  clearAvatar,
+  keepAvatar,
   resultCopy,
   saveWithRecovery
 };

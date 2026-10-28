@@ -29,16 +29,17 @@
       <view
         wx:for="{{services}}"
         wx:key="code"
-        class="service-row"
+        class="service-row {{item.legacy ? 'service-row-disabled' : ''}}"
         data-index="{{index}}"
         bindtap="onServiceToggle"
       >
-        <checkbox checked="{{item.enabled}}" disabled="{{readonly}}" />
+        <checkbox checked="{{item.enabled}}" disabled="{{readonly || item.legacy}}" />
         <view class="flex-1 service-main">
           <view class="strong">{{item.name}}</view>
           <view class="small">{{item.desc}}</view>
         </view>
       </view>
+      <view wx:if="{{hasLegacy}}" class="small service-legacy-tip">灰显的「送寝上门（已停用）」是历史类型，只用于历史订单展示，不能再启用。</view>
     </view>
 
     <view class="card">

@@ -1,9 +1,12 @@
 // pkg-partner/pages/service-settings/index.js · 服务类型与范围（真实 DTO：partner.serviceConfig{services,zones,acceptingOrders}；不含费用字段）
+// D41（2026-10-28 用户拍板）：目录固定 5 类（STD 送寝室门口 / LOW 送至楼下 / URGENT / DROP_OFF / CUSTOM）；
+// 旧配置里的已停用 PICKUP_DOOR 只作「已停用」灰显行，不可勾选、不提交（行模型在 parts/service-model.js）。
 const partnerApi = require('../../../api/modules/partner');
 const configApi = require('../../../api/modules/config');
 const store = require('../../../store/index');
 const modeGuard = require('../../../api/mode-guard');
 const share = require('../../../utils/share/handlers');
+const serviceModel = require('./parts/service-model');
 
 function arr(value) {
   return Array.isArray(value) ? value : [];
@@ -22,6 +25,7 @@ Page({
     readonly: false,
     acceptingOrders: false,
     services: [],
+    hasLegacy: false,
     zones: [],
     errorText: ''
   },
@@ -46,18 +50,7 @@ Page({
         const partner = store.get('partner') || {};
         this.partner = partner;
         const current = partner.serviceConfig || {};
-        const enabledMap = {};
-        arr(current.services).forEach((item) => {
-          if (item && item.code) {
-            enabledMap[item.code] = item.enabled === true;
-          }
-        });
-        const services = arr(publicConfig.serviceCatalog).map((item) => ({
-          code: item.code,
-          name: item.name,
-          desc: item.desc || '',
-          enabled: enabledMap[item.code] === true
-        }));
+        const services = serviceModel.rowsOf(publicConfig.serviceCatalog, arr(current.services));
         const zoneLabels = publicConfig.zoneLabels || {};
         const selectedZones = arr(current.zones);
         const zones = Object.keys(zoneLabels).map((key) => ({
@@ -67,6 +60,7 @@ Page({
         }));
         this.setData({
           services: services,
+          hasLegacy: serviceModel.hasLegacy(services),
           zones: zones,
           acceptingOrders: current.acceptingOrders === true || partner.acceptingOrders === true,
           loading: false
@@ -110,12 +104,11 @@ Page({
       return;
     }
     const index = Number(event.currentTarget.dataset.index);
-    const services = this.data.services.map((item, position) => {
-      if (position !== index) {
-        return item;
-      }
-      return Object.assign({}, item, { enabled: !item.enabled });
-    });
+    // 已停用类型（PICKUP_DOOR 历史配置）不可勾选：toggleRow 返回 null 时不动数据、不报错
+    const services = serviceModel.toggleRow(this.data.services, index);
+    if (!services) {
+      return;
+    }
     this.setData({ services: services });
   },
 
@@ -133,9 +126,10 @@ Page({
     this.setData({ zones: zones });
   },
 
-  // 只提交服务端真正持久化的三键（services/zones/acceptingOrders）；不夹带客户端保留字段
+  // 只提交服务端真正持久化的三键（services/zones/acceptingOrders）；不夹带客户端保留字段。
+  // D41：已停用类型不进 services（行模型过滤），服务端对目录外 code 也是忽略不报错。
   buildPayload() {
-    const services = this.data.services.map((item) => ({ code: item.code, enabled: item.enabled === true }));
+    const services = serviceModel.buildPayload(this.data.services).services;
     const zones = this.data.zones.filter((item) => item.selected).map((item) => item.key);
     return {
       services: services,

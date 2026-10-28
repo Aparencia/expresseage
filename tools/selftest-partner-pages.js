@@ -43,12 +43,13 @@ const formModel = require(path.join(ROOT, 'pkg-partner/pages/create-on-behalf/pa
 const resultModel = require(path.join(ROOT, 'pkg-partner/pages/create-on-behalf/parts/result-model.js'));
 const payloadModel = require(path.join(ROOT, 'pkg-partner/pages/create-on-behalf/parts/payload-model.js'));
 const presetModel = require(path.join(ROOT, 'pkg-partner/pages/create-on-behalf/parts/preset-model.js'));
+const serviceSettingsModel = require(path.join(ROOT, 'pkg-partner/pages/service-settings/parts/service-model.js'));
 const shareCard = require(path.join(ROOT, 'pages/profile/parts/share-card.js'));
 const codeInput = require(path.join(ROOT, 'pkg-partner/pages/activate/parts/code-input-model.js'));
 
 // 注意：F 段（异步 fake transport）必须注册在最后——harness 的异步断言在 await 之后才计入，
 // 若后面再注册同步段，console 的节标题会被后注册的段名覆盖。
-const EXPECTED_ASSERTIONS = 184; // 实际断言总数（少算/多算都判红）
+const EXPECTED_ASSERTIONS = 194; // 184 + 10（D41 服务类型目录/停用 PICKUP_DOOR 行模型）；实际断言总数（少算/多算都判红）
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
@@ -57,17 +58,20 @@ const BOUND_MS = new Date(2026, 9, 18, 14, 20, 0).getTime();
 
 const CONFIG = {
   zoneLabels: { D: 'D 区', X: 'X 区', N: 'N 区', B: 'B 区', C: 'C 区' },
+  // D41（2026-10-28 用户拍板）：目录固定 5 类，CUSTOM 仍末项
   serviceCatalog: [
-    { code: 'PICKUP_STD', name: '标准代取' },
-    { code: 'PICKUP_DOOR', name: '送寝上门' },
-    { code: 'DROP_OFF', name: '代寄快递' }
+    { code: 'PICKUP_STD', name: '标准代取', desc: '驿站取件送到寝室门口（上楼）' },
+    { code: 'PICKUP_LOW', name: '送至楼下', desc: '驿站取件送到宿舍楼下/约定地点（不上楼）' },
+    { code: 'PICKUP_URGENT', name: '加急代取', desc: '优先处理，承诺更快时效' },
+    { code: 'DROP_OFF', name: '代寄快递', desc: '顾客把件交给兼职，兼职送驿站寄出' },
+    { code: 'CUSTOM', name: '其他代办', desc: '需备注说明；兼职可拒单' }
   ]
 };
 const PARTNER = {
   serviceConfig: {
     services: [
       { code: 'PICKUP_STD', enabled: true },
-      { code: 'PICKUP_DOOR', enabled: true },
+      { code: 'PICKUP_LOW', enabled: true },
       { code: 'DROP_OFF', enabled: false }
     ],
     zones: ['D', 'X'],
@@ -347,8 +351,8 @@ function register(h) {
 
   // ------------------------------------------------------------------ D 代客下单两路径
   h.section('D. 代客下单：bindingId vs guest 互斥/逐件 batch/幂等键/识别预填/结果块（§3.4、§7.5）', (t) => {
-    t.eq(formModel.serviceOptionsOf(CONFIG, PARTNER).map((item) => item.code), ['PICKUP_STD', 'PICKUP_DOOR'],
-      'D1 服务类型只列本人已启用（未启用 DROP_OFF 不出现，§6/§8）');
+    t.eq(formModel.serviceOptionsOf(CONFIG, PARTNER).map((item) => item.code), ['PICKUP_STD', 'PICKUP_LOW'],
+      'D1 服务类型只列本人已启用（未启用 DROP_OFF 不出现；D41 新目录，§6/§8）');
     t.eq(formModel.serviceOptionsOf(CONFIG, { serviceConfig: { services: [] } }), [],
       'D2 未启用任何服务时返回空（fail closed，不给默认兜底服务）');
     t.eq(formModel.zoneOptionsOf(CONFIG, PARTNER).map((item) => item.key), ['D', 'X'],
@@ -696,6 +700,46 @@ function register(h) {
     t.check(createWxml.indexOf('反馈开发者复核') >= 0 && createWxml.indexOf('手填优先') >= 0
       && createWxml.indexOf('识别失败兜底') === -1, 'I13 入口文案改为「反馈开发者复核」+ 手填优先（不再叫识别兜底）');
   });
+  // ------------------------------------------------------------------ J 服务类型目录（D41）
+  h.section('J. 服务类型目录 D41：新 5 类/停用 PICKUP_DOOR 灰显不可选/保存载荷只含目录内 code', (t) => {
+    const rows = serviceSettingsModel.rowsOf(CONFIG.serviceCatalog, [
+      { code: 'PICKUP_STD', enabled: true },
+      { code: 'PICKUP_LOW', enabled: false },
+      { code: 'PICKUP_DOOR', enabled: true }
+    ]);
+    t.eq(rows.map((item) => item.code),
+      ['PICKUP_STD', 'PICKUP_LOW', 'PICKUP_URGENT', 'DROP_OFF', 'CUSTOM', 'PICKUP_DOOR'],
+      'J1 目录固定 5 类（新顺序，CUSTOM 末项）+ 旧配置里的停用类型排最后');
+    t.check(rows[0].desc.indexOf('寝室门口') >= 0 && rows[1].desc.indexOf('楼下') >= 0,
+      'J2 D41 说明区分两档：标准代取=送到寝室门口，送至楼下=宿舍楼下/约定地点');
+    t.eq([rows[5].name, rows[5].desc, rows[5].enabled, rows[5].legacy],
+      ['送寝上门（已停用）', serviceSettingsModel.LEGACY_DESC, false, true],
+      'J3 停用 PICKUP_DOOR：历史展示名、灰显、不启用');
+    t.eq(serviceSettingsModel.toggleRow(rows, 5), null,
+      'J4 停用类型不可勾选（toggle 返回 null，不报错、不改数据）');
+    t.eq(serviceSettingsModel.toggleRow(rows, 1).map((item) => item.enabled),
+      [true, true, false, false, false, false], 'J5 目录内类型可正常勾选（LOW 反转）');
+    t.eq(serviceSettingsModel.buildPayload(rows).services,
+      [{ code: 'PICKUP_STD', enabled: true }, { code: 'PICKUP_LOW', enabled: false },
+        { code: 'PICKUP_URGENT', enabled: false }, { code: 'DROP_OFF', enabled: false },
+        { code: 'CUSTOM', enabled: false }],
+      'J6 保存载荷只含目录内 5 类 code（停用 PICKUP_DOOR 不提交）');
+    t.check(serviceSettingsModel.hasLegacy(rows) === true, 'J7 有停用历史类型时页面给说明条');
+    const legacyRows = serviceSettingsModel.catalogRowsOf([
+      { code: 'PICKUP_STD', name: '标准代取', desc: '驿站取件送到宿舍楼下/约定地点' },
+      { code: 'PICKUP_DOOR', name: '送寝上门', desc: '送到寝室门口（上楼）' },
+      { code: 'DROP_OFF', name: '代寄快递', desc: '顾客把件交给兼职，兼职送驿站寄出' }
+    ]);
+    t.eq(legacyRows.map((item) => item.code), enums.SERVICE_CODES.slice(),
+      'J8 旧目录整表回退新 5 类（不把旧目录原样渲染）');
+    t.check(legacyRows[0].desc.indexOf('寝室门口') >= 0,
+      'J9 旧目录回退后标准代取说明为新语义（不是旧的楼下说明）');
+    const servicePageJs = textOfRel('pkg-partner/pages/service-settings/index.js');
+    const servicePageWxml = textOfRel('pkg-partner/pages/service-settings/index.wxml');
+    t.check(servicePageJs.indexOf("'./parts/service-model'") >= 0
+      && servicePageWxml.indexOf('service-row-disabled') >= 0 && servicePageWxml.indexOf('hasLegacy') >= 0,
+    'J10 服务设置页接线行模型：停用类型灰显且不可勾选（页面不另写判据）');
+  });
   // ------------------------------------------------------------------ F READONLY/TEST_WRITE + transport
   h.section('F. READONLY/TEST_WRITE 与 fake transport：包络/零请求/票据/分享（§6.3、§6.4）', async (t) => {
     const captured = [];
@@ -785,9 +829,9 @@ function register(h) {
 
     t.eq(shareCard.buildShareMessage({
       isCustomer: false, viewSession: true, partnerCard: { partnerNo: 'P8F3K2M' }
-    }).path, '/pages/role/index', 'F15 切换会话隐藏分享（回通用首页分享，不外发他人页面）');
+    }).path, '/pages/launch/index', 'F15 切换会话隐藏分享（回通用入口页分享，不外发他人页面）');
     const share = shareCard.buildShareMessage({ isCustomer: false, viewSession: false, partnerCard: { partnerNo: 'P8F3K2M' } });
-    t.check(share.path === '/pages/role/index?bind=P8F3K2M'
+    t.check(share.path === '/pages/launch/index?bind=P8F3K2M'
       && share.title === '我在做校园代取，凭兼职编号找我下单',
     'F16 分享绑定卡片只带兼职编号（不带昵称/头像/宿舍/尾号，§7）；顾客自己发起绑定');
     t.eq(formModel.MODE_LABEL.BOUND, '已绑定（对方发起）', 'F17 两条顾客路径文案单源（已绑定/新顾客）');

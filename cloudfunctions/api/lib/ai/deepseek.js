@@ -64,7 +64,7 @@ function normalizeAiConfig(config) {
       model: DEFAULT_MODEL,
       timeoutMs: DEFAULT_TIMEOUT_MS,
       cooldownMinutes: DEFAULT_COOLDOWN_MINUTES,
-      maxPerUserPerDay: 5,
+      maxPerUserPerDay: 0, // D40：缺省不设 per-user 上限（字段保留，避免 config 形状变化）
       dailyQuota: 200,
     };
   }
@@ -77,7 +77,8 @@ function normalizeAiConfig(config) {
     model: typeof fallback.model === 'string' && fallback.model ? fallback.model : DEFAULT_MODEL,
     timeoutMs: Number.isFinite(timeout) && timeout > 0 ? Math.min(timeout, MAX_TIMER_MS) : DEFAULT_TIMEOUT_MS,
     cooldownMinutes: Number.isFinite(cooldown) && cooldown > 0 ? cooldown : DEFAULT_COOLDOWN_MINUTES,
-    maxPerUserPerDay: Number.isFinite(perUser) && perUser > 0 ? Math.floor(perUser) : 5,
+    // D40：per-user 字段归一 0 = 不设每人每日上限（缺键/缺对象/非法值都归一 0；字段保留避免 config 形状变化）
+    maxPerUserPerDay: Number.isFinite(perUser) && perUser >= 0 ? Math.floor(perUser) : 0,
     dailyQuota: Number.isFinite(quota) && quota > 0 ? Math.floor(quota) : 200,
   };
 }

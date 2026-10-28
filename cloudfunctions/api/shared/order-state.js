@@ -94,9 +94,9 @@ const RESOLVE_ALLOWED_FROM = [STATUS.ACCEPTED, STATUS.PICKED, STATUS.DELIVERED];
 const RESOLVE_FALLBACK_STATUS = STATUS.ACCEPTED;
 
 // ── v1.0 一单多包裹（D23/D24）────────────────────────────────────────────────
-// 一个订单 = 1~10 件包裹；0~5 张截图（一张截图一个 ticket，一图多码拆成多件）；0 张截图 = 无截图手填。
+// 一个订单 = 1~10 件包裹；0~10 张截图（一张截图一个 ticket，一图多码拆成多件；D40）；0 张截图 = 无截图手填。
 const MAX_PARCELS_PER_ORDER = 10;
-const MAX_IMAGES_PER_ORDER = 5;
+const MAX_IMAGES_PER_ORDER = 10;
 // 合并窗口追加包裹事件（D23；枚举单源 = shared/enums.js ORDER_EVENTS，本常量供 order 域引用）
 const EVENT_PARCELS_APPENDED = 'PARCELS_APPENDED';
 

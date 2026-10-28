@@ -17,7 +17,7 @@ function toMs(value) {
   return value === undefined || value === null ? 0 : time.toMs(value);
 }
 
-function buildCustomerBlock(customer, binding) {
+function buildCustomerBlock(customer, binding, avatarUrl) {
   if (!customer) {
     return null;
   }
@@ -35,18 +35,22 @@ function buildCustomerBlock(customer, binding) {
     genderManual: customer.genderManual === true,
     roomTag: binding ? binding.roomTag || '' : ''
   };
+  // D42：本人头像 5 分钟临时 URL（私有存储不直读 cloud://）；签发失败不下发，客户端回退 avatarFileId/默认头像。
+  if (avatarUrl) {
+    block.avatarUrl = avatarUrl;
+  }
   if (binding && binding.dormSnapshot) {
     block.buildingText = binding.dormSnapshot.buildingText || '';
   }
   return block;
 }
 
-function buildPartnerBlock(partner) {
+function buildPartnerBlock(partner, avatarUrl) {
   if (!partner) {
     return null;
   }
   const serviceConfig = partner.serviceConfig || {};
-  return {
+  const block = {
     status: partner.status || '',
     profileComplete: typeof partner.displayName === 'string' && partner.displayName !== '',
     partnerNo: partner.partnerNo || '',
@@ -59,9 +63,13 @@ function buildPartnerBlock(partner) {
       acceptingOrders: serviceConfig.acceptingOrders === true
     }
   };
+  if (avatarUrl) {
+    block.avatarUrl = avatarUrl;
+  }
+  return block;
 }
 
-function buildBindingBlock(binding, partner) {
+function buildBindingBlock(binding, partner, partnerAvatarUrl) {
   if (!binding || !partner) {
     return null;
   }
@@ -75,16 +83,17 @@ function buildBindingBlock(binding, partner) {
   };
   if (partner.avatarFileId) {
     block.partnerAvatarFileId = partner.avatarFileId;
+    // D42：绑定对方头像临时 URL（仅当前 ACTIVE 绑定下发；解绑后 bootstrap.binding 为 null，URL 一并消失）
+    if (partnerAvatarUrl) {
+      block.partnerAvatarUrl = partnerAvatarUrl;
+    }
   }
   return block;
 }
 
-async function handler(ctx) {
-  const scope = identity.scopeOf(ctx);
-  const nowMs = identity.nowMs(ctx);
-  const nowDate = identity.nowDate(ctx);
-  // P0-4：会话/用户/顾客/兼职/绑定五读互不依赖 → 一次 Promise.all 并行（少 4 个串行 DB RTT）；
-  // boundPartner 依赖 binding 结果仍在之后取；任一读失败与旧实现同路径抛错（不新增降级分支）。
+// P0-4：会话/用户/顾客/兼职/绑定五读互不依赖 → 一次 Promise.all 并行（少 4 个串行 DB RTT）；
+// boundPartner 依赖 binding 结果仍在之后取；任一读失败与旧实现同路径抛错（不新增降级分支）。
+async function loadBootState(ctx, scope) {
   const [viewSession, user, customer, partner, binding] = await Promise.all([
     identity.loadViewSession(ctx),
     identity.loadUser(ctx, scope.openid),
@@ -92,38 +101,66 @@ async function handler(ctx) {
     identity.loadPartnerByOpenid(ctx, scope.openid),
     identity.getActiveBinding(ctx, scope.openid)
   ]);
-  const viewContext = identity.buildViewContext(viewSession);
-  const isSwitchView = viewContext !== null;
   const boundPartner = binding && binding.partnerId ? await identity.loadPartnerById(ctx, binding.partnerId) : null;
+  return { viewSession, user, customer, partner, binding, boundPartner };
+}
 
-  let roles = [];
-  let activeRole = null;
-  let isDeveloper = false;
-  if (isSwitchView) {
-    roles = scope.role ? [scope.role] : [];
-    activeRole = scope.role || null;
-  } else {
-    const rawRoles = user && Array.isArray(user.roles) ? user.roles : [];
-    roles = rawRoles.filter((item) => item === enums.ROLES.CUSTOMER || item === enums.ROLES.PARTNER);
-    activeRole = roleLib.pickActiveRole(roles);
-    isDeveloper = !!scope.developerNo;
-    try {
-      await ctx.dao.update(COLLECTIONS.USERS, scope.openid, { lastLoginAt: nowDate, updatedAt: nowDate });
-    } catch (error) {
-      console.warn('[api] 登录时间更新失败', ctx.requestId);
-    }
+// 角色解析（切换会话=票据角色；真实会话=users.roles，双角色兼职优先）并记一次 lastLoginAt（失败只告警）
+async function resolveRoleState(ctx, scope, user, viewContext) {
+  if (viewContext) {
+    return { roles: scope.role ? [scope.role] : [], activeRole: scope.role || null, isDeveloper: false };
   }
+  const rawRoles = user && Array.isArray(user.roles) ? user.roles : [];
+  const roles = rawRoles.filter((item) => item === enums.ROLES.CUSTOMER || item === enums.ROLES.PARTNER);
+  const nowDate = identity.nowDate(ctx);
+  try {
+    await ctx.dao.update(COLLECTIONS.USERS, scope.openid, { lastLoginAt: nowDate, updatedAt: nowDate });
+  } catch (error) {
+    console.warn('[api] 登录时间更新失败', ctx.requestId);
+  }
+  return { roles, activeRole: roleLib.pickActiveRole(roles), isDeveloper: !!scope.developerNo };
+}
 
-  const customerBlock = buildCustomerBlock(customer, binding);
-  const partnerBlock = buildPartnerBlock(partner);
-  const bindingBlock = activeRole === enums.ROLES.CUSTOMER || !activeRole
-    ? buildBindingBlock(binding, boundPartner)
+function avatarFileIdOf(doc) {
+  return doc && typeof doc.avatarFileId === 'string' ? doc.avatarFileId : '';
+}
+
+// D42：一次批量签发 本人（顾客/兼职）与当前绑定对方头像的 5 分钟临时 URL（单次 getTempFileURL，无头像=零外呼）。
+// 失败只降级为「不下发 URL」，不回退整个启动水合（页面回退 avatarFileId，读失败不阻断首屏）。
+async function signBootAvatarUrls(ctx, customer, partner, boundPartner) {
+  const ids = {
+    customer: avatarFileIdOf(customer),
+    partner: avatarFileIdOf(partner),
+    boundPartner: avatarFileIdOf(boundPartner)
+  };
+  const urls = await identity.signAvatarUrls(ctx, [ids.customer, ids.partner, ids.boundPartner]);
+  return {
+    customer: urls[ids.customer] || '',
+    partner: urls[ids.partner] || '',
+    boundPartner: urls[ids.boundPartner] || ''
+  };
+}
+
+async function handler(ctx) {
+  const scope = identity.scopeOf(ctx);
+  const nowMs = identity.nowMs(ctx);
+  const state = await loadBootState(ctx, scope);
+  const user = state.user;
+  const customer = state.customer;
+  const viewContext = identity.buildViewContext(state.viewSession);
+  const roleState = await resolveRoleState(ctx, scope, user, viewContext);
+  const avatarUrls = await signBootAvatarUrls(ctx, customer, state.partner, state.boundPartner);
+
+  const customerBlock = buildCustomerBlock(customer, state.binding, avatarUrls.customer);
+  const partnerBlock = buildPartnerBlock(state.partner, avatarUrls.partner);
+  const bindingBlock = roleState.activeRole === enums.ROLES.CUSTOMER || !roleState.activeRole
+    ? buildBindingBlock(state.binding, state.boundPartner, avatarUrls.boundPartner)
     : null;
-  const meSource = activeRole === enums.ROLES.PARTNER ? (partnerBlock || {}) : (customerBlock || {});
+  const meSource = roleState.activeRole === enums.ROLES.PARTNER ? (partnerBlock || {}) : (customerBlock || {});
 
   return {
     // DATA_MODEL §7.1 平铺 DTO
-    roles,
+    roles: roleState.roles,
     status: user ? user.status || enums.USER_STATUS.ACTIVE : enums.USER_STATUS.ACTIVE,
     privacyConsent: user && user.privacyConsent
       ? { version: user.privacyConsent.version || '', at: toMs(user.privacyConsent.at) }
@@ -133,14 +170,16 @@ async function handler(ctx) {
     customerNo: customer ? customer.customerNo || '' : '',
     displayName: meSource.displayName || '',
     avatarFileId: meSource.avatarFileId || '',
-    partnerStatus: partner ? partner.status || '' : '',
-    partnerNo: partner ? partner.partnerNo || '' : '',
-    isDeveloper,
+    // D42：当前使用角色（me）的头像临时 URL；无头像/签发失败为空串（客户端回退默认头像）
+    avatarUrl: meSource.avatarUrl || '',
+    partnerStatus: state.partner ? state.partner.status || '' : '',
+    partnerNo: state.partner ? state.partner.partnerNo || '' : '',
+    isDeveloper: roleState.isDeveloper,
     viewContext,
     configPublic: await configCommon.loadPublicConfig(ctx),
     serverTime: nowMs,
     // 页面子块（嵌套不替代平铺字段）
-    activeRole,
+    activeRole: roleState.activeRole,
     customer: customerBlock,
     partner: partnerBlock,
     binding: bindingBlock,

@@ -1,6 +1,6 @@
 // handlers/order/_create.js · 下单引擎（v1.0 单入口 order.create：一单多包裹 / 多截图 / 本单配送地址 / 无截图手填）
 // 口径：CONTRACT v1.0 §4/§4.1/§5.2/§5.3（D23/D24/D25）；DATA_MODEL §4.8/§7.5。
-// 一单 1~10 件包裹 + 0~5 张截图；合并窗口内追加同单（PARCELS_APPENDED）。
+// 一单 1~10 件包裹 + 0~10 张截图（D40）；合并窗口内追加同单（PARCELS_APPENDED）。
 'use strict';
 
 const { COLLECTIONS } = require('../../shared/collections');

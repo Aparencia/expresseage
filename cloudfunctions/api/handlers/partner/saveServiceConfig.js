@@ -1,5 +1,8 @@
 // handlers/partner/saveServiceConfig.js · partner.saveServiceConfig（服务类型启用/服务范围/接单开关）
-// 口径：CONTRACT v0.9 §6（只有类型，不含任何交易语义）；DATA_MODEL §2.3.1（MVP 实现 services/zones/acceptingOrders）。
+// 口径：CONTRACT v0.9 §6 / v1.3 §13 D41（只有类型，不含任何交易语义）；DATA_MODEL §2.3.1（MVP 实现 services/zones/acceptingOrders）。
+// D41（2026-10-28 用户拍板）：可选目录只认现行 5 类（shared/enums.SERVICE_CODES）。
+// 旧配置里的已停用码（如 PICKUP_DOOR）在网络/旧客户端载荷里出现时**静默忽略、不报错**；
+// 保存后 partners.serviceConfig.services 只剩现行 code，停用码自然不再出现在兼职端。
 'use strict';
 
 const { COLLECTIONS } = require('../../shared/collections');
@@ -17,6 +20,7 @@ function normalizeServiceConfig(raw) {
   const services = [];
   servicesInput.forEach((item) => {
     const code = item && typeof item.code === 'string' ? item.code : '';
+    // 目录外 code（D41 停用的 PICKUP_DOOR 等）：忽略，不算非法、不报错（历史配置兼容）
     if (enums.SERVICE_CODES.indexOf(code) < 0 || seen[code]) {
       return;
     }

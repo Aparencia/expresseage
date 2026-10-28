@@ -14,6 +14,15 @@
   border-bottom: 1rpx solid #EEEEEE;
 }
 
+/* D41：已停用类型（历史 PICKUP_DOOR）灰显但保留可读，不可勾选 */
+.service-row-disabled {
+  opacity: 0.5;
+}
+
+.service-legacy-tip {
+  margin-top: 8rpx;
+}
+
 .service-main {
   margin-left: 16rpx;
 }

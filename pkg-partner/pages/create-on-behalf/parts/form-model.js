@@ -65,7 +65,7 @@ function serviceOptionsOf(config, partner) {
   const enabledCodes = listOf(partnerConfig.services)
     .filter((item) => item && item.enabled === true)
     .map((item) => textOf(item.code))
-    .filter((code) => code !== '');
+    .filter((code) => code !== '' && enums.SERVICE_CODES.indexOf(code) >= 0);
   if (!enabledCodes.length) {
     return [];
   }

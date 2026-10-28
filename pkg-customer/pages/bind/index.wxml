@@ -10,7 +10,7 @@
 
   <view class="card">
     <view class="section-title">输入完整兼职编号</view>
-    <view class="muted">向兼职要完整编号（P 开头，如 P-7K2-M9X），每天最多尝试 5 次。</view>
+    <view class="muted">向兼职要完整编号（P 开头，如 P-7K2-M9X），每分钟最多尝试 5 次。</view>
     <view class="form-row">
       <input
         class="form-input"
@@ -22,7 +22,7 @@
     </view>
     <view class="row bind-actions">
       <button class="btn btn-ghost btn-half" bindtap="onPaste">粘贴</button>
-      <button class="btn btn-primary btn-half" bindtap="onQuery">{{loading ? '查询中…' : '查询'}}</button>
+      <button class="btn btn-primary btn-half" bindtap="onQuery" disabled="{{loading || readonly}}">{{loading ? '查询中' : '查询'}}</button>
     </view>
     <view class="small hint-text" wx:if="{{hint}}">{{hint}}</view>
     <view class="small error-text" wx:if="{{error}}">{{error}}</view>
@@ -34,7 +34,7 @@
     <button class="btn btn-primary btn-block" bindtap="onRetryBind" disabled="{{readonly}}">{{retryLabel}}</button>
   </view>
 
-  <view class="card" wx:if="{{preview}}">
+  <view class="card" wx:if="{{preview && !boundSame}}">
     <view class="section-title">{{labels.previewTitle}}</view>
     <view class="row">
       <view class="col flex-1">
@@ -45,7 +45,18 @@
     <view class="muted">服务类型：{{servicesText}}</view>
     <view class="muted">服务范围：{{zonesText}}</view>
     <view class="muted" wx:if="{{!preview.acceptingOrders}}">这位兼职暂停接单，绑定后暂时不能下单。</view>
-    <button class="btn btn-primary btn-block" bindtap="onConfirm" disabled="{{readonly}}">{{submitting ? labels.submitting : labels.confirm}}</button>
+    <button
+      class="btn btn-primary btn-block"
+      wx:if="{{!boundSame}}"
+      bindtap="onConfirm"
+      disabled="{{readonly || submitting || autoBinding}}"
+    >{{autoBinding ? autoLoadingText : (submitting ? labels.submitting : labels.confirm)}}</button>
+  </view>
+
+  <view class="card" wx:if="{{boundSame}}">
+    <view class="section-title">{{alreadyBoundText}}</view>
+    <view class="muted">你已经绑定这位兼职，不用重复绑定，可以直接去下单。</view>
+    <button class="btn btn-primary btn-block" bindtap="onGoOrder" disabled="{{readonly}}">{{goOrderText}}</button>
   </view>
 
   <view class="card" wx:if="{{roomTag}}">

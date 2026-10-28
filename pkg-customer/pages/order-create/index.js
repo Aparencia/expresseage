@@ -1,5 +1,5 @@
 // pkg-customer/pages/order-create/index.js · 下单四步（截图 → 核对 → 服务/地址 → 提交）
-// v1.0（D23/D24/D25）：0~5 张截图 → 1~10 件包裹合成**一张订单**；无截图可手填（manualEntry）；
+// v1.0（D23/D24/D25，D40 截图 0~10）：0~10 张截图 → 1~10 件包裹合成**一张订单**；无截图可手填（manualEntry）；
 // Step3 加整单配送地址（默认本人宿舍，可改他人+收件人称呼）；提交按 order.create 单入口载荷。
 // 页面只做取参/调 api/setData/事件转发；识别/模型/步骤细节在 parts/。
 'use strict';
@@ -27,12 +27,14 @@ Page({
     readonly: false,
     profileReady: false,
     bindingReady: false,
-    // 截图与识别（多图 0~5）
+    // 截图与识别（多图 0~10，D40）
     files: [],
     perImage: [],
     images: [],
     tickets: [],
     ocrState: 'idle',
+    ocrIndex: 0,
+    ocrTotal: 0,
     ocrError: '',
     failureCode: '',
     failureText: '',
@@ -138,7 +140,7 @@ Page({
     this.setData(patch);
   },
 
-  // ── Step1：截图（多图 0~5，逐图识别合并；失败也有手填支路）─────────────────
+  // ── Step1：截图（多图 0~10，逐图识别合并；失败也有手填支路）─────────────────
   onPickFile(e) {
     return filesFlow.onPickFile(this, e);
   },
@@ -151,10 +153,12 @@ Page({
     // 组件已 toast 明确文案（已添加 n/max）；页面不再重复
   },
 
+  // D40：逐图识别进度（第 n/N 张）——n/total 由 identifyMany 在每张开始时注入
   onOcrPhase(state) {
-    if (state && state.phase === 'upload') this.setData({ ocrState: 'upload' });
-    if (state && state.phase === 'ocr') this.setData({ ocrState: 'ocr' });
-    if (state && state.phase === 'ai') this.setData({ ocrState: 'ai' });
+    if (!state) return;
+    if (state.phase === 'upload') this.setData({ ocrState: 'upload' });
+    if (state.phase === 'ocr') this.setData({ ocrState: 'ocr', ocrIndex: state.index || 0, ocrTotal: state.total || 0 });
+    if (state.phase === 'ai') this.setData({ ocrState: 'ai', ocrIndex: state.index || 0, ocrTotal: state.total || 0 });
   },
 
   // P1-4：无本地图 → 打开选择器（不空转）；有图 → 原地重识别（复用已上传 fileId/票据，不重复上传）

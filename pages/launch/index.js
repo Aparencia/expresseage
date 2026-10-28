@@ -1,6 +1,8 @@
-// pages/launch/index.js · 启动分流（唯一启动页：登录 → 隐私同意闸 → 按快照分流）
-// 口径：V4_CONTRACT §7/§11、V4_UX_CUSTOMER §1.2/§3.1/§9.1；页面只做取数 → 调 api → setData → reLaunch，
-// 分流判定用 config/route.js 纯函数、隐私判定用 utils/privacy-policy.js 纯件（不写业务判据）。
+// pages/launch/index.js · 启动分流（唯一启动页：登录 → 隐私同意闸 → 按快照/入口参数分流）
+// 口径：V4_CONTRACT §7/§11、V4_UX_CUSTOMER §1.2/§3.1/§9.1；D37（分享卡统一经 launch 落地）：
+//   onLoad(options) 只认 bind/orderNo 白名单（归一/丢弃非法值，纯件 config/route.entryOf），
+//   **先过隐私同意闸**，同意后再按 decideEntryRoute 分流（bind→role 邀请卡；orderNo→订单详情；否则常规分流）。
+// 页面只做取数 → 调 api → setData → reLaunch，分流/参数判定都在 config/route.js 纯函数里。
 'use strict';
 
 const store = require('../../store/index');
@@ -9,6 +11,7 @@ const configApi = require('../../api/modules/config');
 const privacy = require('../../utils/privacy-policy');
 const launchRoute = require('../../config/route');
 const storage = require('../../utils/storage');
+const pendingInvite = require('../../utils/share/pending-invite');
 
 const HELP_PRIVACY_PAGE = '/pkg-customer/pages/help/index?doc=privacy';
 const MAX_ATTEMPTS = 3;
@@ -23,7 +26,7 @@ const VERSION_CHANGED_LEAD = '隐私政策已更新，请重新阅读并同意�
 // 弹窗条目口径：docs/privacy/隐私保护指引.md（定稿候选 v1.0）§一/§三/§四/§六 + CONTRACT §11.1
 // 特别注意：兼职昵称凭完整编号预览即可见、头像绑定成功后才可见（不得写回「头像与昵称只向当前绑定对方展示」）
 const PRIVACY_ITEMS = [
-  '我们收集：微信账号标识、唯一编号、微信昵称（必填）、微信头像（可选，可拒绝→默认头像）、宿舍信息、可选手机尾号、订单信息，以及取件码截图（自愿：每单 0~5 张，也可不传截图直接手填——每件仍需站点 + 取件码或运单尾号，无截图单显示「无截图·手填」、不进入识别链路）和本单配送地址与收件人称呼（可选，默认本人宿舍、仅本单有效、不写回资料、不采集任何设备定位）；复制/粘贴只在你主动操作时使用剪贴板，不保存、不上传。',
+  '我们收集：微信账号标识、唯一编号、微信昵称（必填）、微信头像（可选，可拒绝→默认头像）、宿舍信息、可选手机尾号、订单信息，以及取件码截图（自愿：每单 0~10 张，也可不传截图直接手填——每件仍需站点 + 取件码或运单尾号，无截图单显示「无截图·手填」、不进入识别链路）和本单配送地址与收件人称呼（可选，默认本人宿舍、仅本单有效、不写回资料、不采集任何设备定位）；复制/粘贴只在你主动操作时使用剪贴板，不保存、不上传。',
   '头像与昵称的可见边界：兼职昵称在你凭完整兼职编号预览时即可看到；头像要绑定成功后才显示；解绑、停用或注销后立即不再展示；后台列表不展示头像、昵称脱敏，分享卡片与通知不含头像/昵称。',
   '识别失败时，只把去敏后的截图文字发给第三方 AI 服务辅助识别（不含原图、账号标识、联系方式、头像与昵称，不用于训练）；原图不出本程序云存储；失败原图可能进入开发者复核（临时查看、每次审计、默认 30 天删除）。完整披露与第三方服务名称见隐私政策全文。',
   '开发者账号可切换账号查看：真实账号只能只读查看、不能代操作并留审计；测试账号为后台创建的合成账号（不含真实用户资料），数据独立标记、不计入统计并按期清理。',
@@ -50,7 +53,9 @@ Page({
     privacyItems: PRIVACY_ITEMS
   },
 
-  onLoad() {
+  // D37：只解析白名单入口参数；隐私闸在 start() 里先跑，route() 只在闸通过后才被调用。
+  onLoad(options) {
+    this._entry = launchRoute.entryOf(options);
     this.start();
   },
 
@@ -196,17 +201,28 @@ Page({
     });
   },
 
-  // 进入角色：分流只用 config/route.js 纯函数；角色与落地页由纯件判定，页面只做 reLaunch。
+  // 进入角色：分流只用 config/route.js 纯函数；入口参数（bind/orderNo）优先于常规分流（D37）。
   // 顺便把「本次进入的角色」记到本地偏好 lastRole（utils/storage 白名单；双角色下次在角色页给建议）。
-  // 切换会话/开发者不进业务角色，不写 lastRole（票据与视角一律不落盘，ENGINEERING §5.6）。
+  // 切换会话/开发者/纯入口跳转不写 lastRole（票据与视角一律不落盘，ENGINEERING §5.6）。
   route() {
     const snapshot = store.snapshot();
-    const decision = launchRoute.decideLaunchRoute(snapshot);
+    const entry = this._entry || { bind: '', orderNo: '' };
+    const decision = launchRoute.decideEntryRoute(entry, snapshot);
     const url = decision && decision.url ? decision.url : launchRoute.ROLE_PAGE;
     const sessionOrAdmin = !!(snapshot.viewContext || snapshot.isDeveloper);
     const enteredRole = sessionOrAdmin ? '' : launchRoute.roleOfDecision(decision);
     if (enteredRole) {
       storage.setLastRole(enteredRole);
+    }
+    // D38：隐私闸通过后才记录待绑定邀请（未同意隐私不落任何会话状态）；
+    // 已绑定同一兼职时清掉邀请，避免资料保存后重复 create（已绑定·去下单在 role 页提示）。
+    if (entry.bind) {
+      const binding = snapshot.binding || {};
+      if (binding.partnerNo === entry.bind) {
+        pendingInvite.clear();
+      } else {
+        pendingInvite.remember(entry.bind);
+      }
     }
     wx.reLaunch({ url: url });
   }

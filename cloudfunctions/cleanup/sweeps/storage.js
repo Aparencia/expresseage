@@ -1,5 +1,5 @@
 // cloudfunctions/cleanup/sweeps/storage.js · 截图文件引用计数清理 + 过期上传票据清理（批 100）
-// 口径：ENGINEERING §4.7 files/tickets；DATA_MODEL §10.1/§10.2 步骤 3/4（v1.0/D23：images[] 0~5 张逐张清）。
+// 口径：ENGINEERING §4.7 files/tickets；DATA_MODEL §10.1/§10.2 步骤 3/4（v1.0/D23/D40：images[] 0~10 张逐张清）。
 //   files：终态超 screenshotRetentionDays（默认 7）→ 逐张清订单截图引用（images[].cleanedAt）→ 引用计数归零删云文件；
 //          历史单 image{} 与 v1.0 images[] 同一口径；manualEntry 无截图单不命中；
 //          查询必须带"仍有 fileId 非空"条件（逐下标），否则已清引用的旧单占满批 100 导致后面的截图永不清理（隐私留存超标）。

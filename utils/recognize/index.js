@@ -2,7 +2,7 @@
 // 页面只消费本模块输出；失败不阻断手填（NEED_CODE 允许提交）。
 // 三处口径（task-45）：①自动填只认服务端同款紧凑码（4~12），超长候选标"认出但不像"不填；
 // ②柜号先判原长 ≤10 再归一（不截断放行）；③站点归一单源 = shared/stations（本层不复制站点表）。
-// v1.0（D23）：一单多包裹（≤10 件）+ 多图（≤5 张）——多图识别结果由 mergeParcels 汇总去重后交给页面。
+// v1.0（D23）：一单多包裹（≤10 件）+ 多图（≤10 张，D40）——多图识别结果由 mergeParcels 汇总去重后交给页面。
 'use strict';
 
 const orderState = require('../../shared/order-state');
@@ -10,10 +10,9 @@ const text = require('./text');
 const codes = require('./codes');
 const station = require('./station');
 
-// 一单上限（CONTRACT §5.2/D23）。task-21 落地 MAX_PARCELS_PER_ORDER/MAX_IMAGES_PER_ORDER 后自动取共享常量，
-// 未落地前按 CONTRACT 定值兜底（测试断言锁定 CONTRACT 值 10/5，不抄现状）。
+// 一单上限（CONTRACT §5.2/D23/D40）。常量单源 shared/order-state；这里只兜底缺导出（值同 CONTRACT 10/10）。
 const MAX_PARCELS_PER_ORDER = orderState.MAX_PARCELS_PER_ORDER || 10;
-const MAX_IMAGES_PER_ORDER = orderState.MAX_IMAGES_PER_ORDER || 5;
+const MAX_IMAGES_PER_ORDER = orderState.MAX_IMAGES_PER_ORDER || 10;
 
 const FORM_ERROR = {
   station: '请选择去哪取（按驿站站点）',

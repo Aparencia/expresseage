@@ -1,7 +1,7 @@
 // pkg-customer/pages/order-create/parts/ocr-flow.js · 截图识别编排（页面零件，允许 wx 能力）
 // 上传由 <image-picker> 完成（唯一上传路径 api/upload）；本零件只做 端侧识别 → AI 兜底 → 文本解析。
 // v1.0（D23/D24/C2/P0-10）：
-//   ① 多图 0~5 张逐张识别后由 recognize.mergeParcels 汇总（件上限 10），每件带 imageIndex 指向来源图；
+//   ① 多图 0~10 张逐张识别后由 recognize.mergeParcels 汇总（件上限 10），每件带 imageIndex 指向来源图；
 //   ② AI 兜底口径（CONTRACT §4.3 v1.0）：规则解析任一包裹缺站点/码即调 AI 兜底接口（经 api/modules/ai）；
 //      端侧 OCR 失败/无文本也**一定**调一次（ocrTextMasked 可为空串）——服务端负责入队 NO_TEXT、不外呼；
 //   ③ OCR 画布帧按 frameSize 降采样到长边 ≤1440 再取像素（P0-10，降低大图内存峰值）。
@@ -351,7 +351,7 @@ async function identify(file, onState) {
 }
 
 /**
- * 多图识别汇总（0~5 张 → 总包裹 ≤10）。
+ * 多图识别汇总（0~10 张 → 总包裹 ≤10）。
  * 逐张跑 identify（含逐图 AI 兜底），再按图序合并去重；每件补 imageIndex 指向来源图。
  * 失败图不影响成功图；全部失败时给第一张失败的人话文案。
  */
@@ -375,7 +375,10 @@ async function identifyMany(files, onState) {
   }
   const results = [];
   for (let i = 0; i < list.length; i += 1) {
-    const one = await identify(list[i], onState);
+    // D40：逐图进度「第 n/N 张」——每张开始时把序号/总数随 phase 一起通知页面
+    const one = await identify(list[i], function phase(state) {
+      if (typeof onState === 'function') onState(Object.assign({}, state || {}, { index: i + 1, total: list.length }));
+    });
     results.push(Object.assign({ imageIndex: i }, one));
   }
   const itemLists = results.map(function map(result, index) {

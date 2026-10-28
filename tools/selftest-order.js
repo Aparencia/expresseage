@@ -50,7 +50,7 @@ const DAY_KEY = '20261022';
 const ORDER_NO_RE = /^\d{8}-\d{4}$/;
 const CLIENT_ID_RE = /^[A-Za-z0-9_-]{16,32}$/;
 
-const EXPECTED_ASSERTIONS = 137;
+const EXPECTED_ASSERTIONS = 140; // 137 + 3：D40 10 张截图合法 / 11 张截图拒绝 / 合并追加将超 10 张不并入
 
 const ALL_COLLECTION_NAMES = Object.keys(COLLECTIONS).map((key) => COLLECTIONS[key]);
 
@@ -543,7 +543,7 @@ function register(h) {
       db.dump('upload_tickets').filter((row) => row.ticket === ticket.ticket)[0].usedAt instanceof Date], [1, false, true],
       'D5b 订单 images[]=1、manualEntry=false、共用票据事务内消费一次');
     t.eq(rows[0].parcels.every((parcel) => parcel.imageIndex === 0), true,
-      'D5c 三件共享同一张截图：imageIndex 均=0（一图多码口径）');
+      'D5c 三件共享同一张截图：imageIndex 均=0（一图多码口径）'); const d40Tickets = Array.from({ length: 10 }, () => seedTicket(db, world.customerOpenid)); const d40Crid = nextCrid('d40-img10'); const d40Created = await cApi.call('order.create', { parcels: [{ parcel: parcelOf({ pickupCode: 'D40IMG' }) }], images: d40Tickets.map((row) => imageOf(row)), tickets: d40Tickets.map((row) => row.ticket), serviceCode: 'PICKUP_STD' }, { clientRequestId: d40Crid }); t.eq({ ok: d40Created.ok, images: d40Created.ok && db.dump('orders').filter((row) => row.requestKey === world.customerOpenid + ':' + d40Crid)[0].images.length }, { ok: true, images: 10 }, 'D40 10 张截图合法建单（服务端上限取共享常量 MAX_IMAGES_PER_ORDER=10）'); const d40OverTickets = Array.from({ length: 11 }, () => seedTicket(db, world.customerOpenid)); await expectField(t, cApi.call('order.create', { parcels: [{ parcel: parcelOf({ pickupCode: 'D40X' }) }], images: d40OverTickets.map((row) => imageOf(row)), tickets: d40OverTickets.map((row) => row.ticket), serviceCode: 'PICKUP_STD' }, { clientRequestId: nextCrid('d40-img11') }), 'VALIDATION_FAILED', 'images', 'D40 11 张截图 > 上限 10 → VALIDATION(data.field=images)');
     const before = [db.dump('orders').length, db.dump('order_events').length];
     const emptyTicket = seedTicket(db, world.customerOpenid);
     await expectField(t, cApi.call('order.create', {
@@ -623,6 +623,7 @@ function register(h) {
     t.eq([rollbackDb.dump('counters').filter((row) => row.key === 'orderNo:' + DAY_KEY).length,
       rollbackDb.dump('upload_tickets').filter((row) => row.ticket === rollbackTicket.ticket)[0].usedAt], [0, null],
     'D17 回滚不消耗当日序号、不消费票据');
+    const mergeBaseTickets = Array.from({ length: 6 }, () => seedTicket(db, world.customerOpenid)); const mergeBase = await cApi.call('order.create', { parcels: [{ parcel: parcelOf({ pickupCode: 'M60001' }) }], images: mergeBaseTickets.map((row) => imageOf(row)), tickets: mergeBaseTickets.map((row) => row.ticket), serviceCode: 'PICKUP_STD', appoint: { type: 'ASAP' } }, { clientRequestId: nextCrid('d40-merge-base') }); const mergeMoreTickets = Array.from({ length: 5 }, () => seedTicket(db, world.customerOpenid)); const mergeMore = await cApi.call('order.create', { parcels: [{ parcel: parcelOf({ pickupCode: 'M60002' }) }], images: mergeMoreTickets.map((row) => imageOf(row)), tickets: mergeMoreTickets.map((row) => row.ticket), serviceCode: 'PICKUP_STD', appoint: { type: 'ASAP' } }, { clientRequestId: nextCrid('d40-merge-more') }); const mergeBaseRow = db.dump('orders').filter((row) => (row.parcels || []).some((parcel) => parcel.pickupCode === 'M60001'))[0]; t.eq([mergeBase.ok, mergeMore.ok, mergeMore.data && mergeMore.data.merged === true, mergeBaseRow.images.length], [true, true, false, 6], 'D40 合并窗口：6 图单 + 5 图追加将超 10 张 → 不并入（另建新单），原单 images 保持 6');
     t.notEmpty(db.dump('orders'), 'D 组样本非空');
   });
 

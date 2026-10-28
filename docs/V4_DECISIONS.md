@@ -1,4 +1,4 @@
-# V4_DECISIONS · v4 开工裁决清单（D1~D35）
+# V4_DECISIONS · v4 开工裁决清单（D1~D42）
 
 > 版本：v1.4（2026-10-27 **批 11 追记 D35 取件码回填修复**：真实截图 207-3-1014 在连写/空格分组/标签粘连/跨行 OCR 形态下都要自动回填；AI 归一码不得被客户端启发式丢弃；去敏保留取件码行 4~12 位码）
 > 状态：**D1~D26、D28~D35 已裁决**（§0 台账 + §0.1 用户原文 +「批 10 方案采纳记录」；本文件为留痕卡：选了什么/为什么/被否什么/代价什么/落点在哪）；**A 批 P1 十项按推荐采纳并已实现（2026-10-23）**；D27 待定（定位可行性研究 v2 已交付，等用户裁决）
@@ -44,6 +44,13 @@
 | D33 | **识别失败原图与 AI 诊断回传开发者**：任何识别未成功都必须调用一次 `ai.parseParcel`（无文本只入队不外呼）；失败记录落真实截图 `fileId`，复核页可临时查看原图；复核页/后台展示 AI 排障信息（是否调用/错误码/模型/建议/去敏文本）与只读 AI 状态（开关、Key 是否存在、模型名，绝不下发 Key） | 用户明确要求（2026-10-27） | ✅ 已定；详见 D33 留痕 |
 | D34 | **本批范围（2026-10-27 用户补充）**：①收费文案按 D30；②AI 兜底与失败回传修复按 D33；③新增性别按 D31；④站点改名+命中匹配按 D32；⑤顾客端 UI（兼职卡压缩、宿舍标识防误解、订单 tab 居中、头像修复、全局按钮宽度）与卡顿治理；⑥后端安全建设；⑦A2（预约时段）、A3（手机尾号进下单）、A7（无截图手填与规定冲突）、A8（站点默认正式名）明确**不处理**；A1/A4/A5/A6 维持后置 | 用户明确要求 + Lead 复核 | ✅ 已定；详见 D34 留痕 |
 | D35 | **取件码自动填充修复（D33 真机复验暴露）**：真实截图 `取件码：207-3-1014` 在 OCR 输出连写 `20731014`/逐字空格/标签粘连/拆多行时都必须自动回填；AI 兜底归一后的 `20731014` 不得被客户端日期启发式丢弃；外发 AI 的去敏文本保留取件码行 4~12 位码（手机号/门牌/运单长数字仍打码） | 用户 2026-10-27 真机复验「取件码依旧无法自动填充」 | ✅ 已定；详见 D35 留痕 |
+| D36 | **分享与朋友圈**：19 业务页转发 + role/home/help 三页朋友圈；卡片只两种、固定中性封面、零 L3；切换会话隐藏分享 | 用户 2026-10-28 指令 | ✅ 已定；详见 D36 留痕 |
+| D37 | **分享卡经 launch 落地 + 隐私闸（拍板 1=A）**：path 统一 `/pages/launch/index`；launch 读 `bind`/`orderNo` 白名单 → 先隐私同意闸 → 再分流 | 用户 2026-10-28 拍板 | ✅ 已定；详见 D37~D42 留痕 |
+| D38 | **绑定自动化（拍板 3）**：隐私同意 + 资料补齐完成后自动 `bind.create`，不再要求手动确认；成熟用户从邀请卡直接自动发起 | 用户 2026-10-28 拍板 | ✅ 已定；详见 D37~D42 留痕 |
+| D39 | **绑定限流改时间窗（拍板 2）**：预览+提交同一桶，60 秒分片窗口最多 5 次（UTC+8 分钟分片）；取消每日总量；「查询中」按钮态；客户端预览禁用自动重试 | 用户 2026-10-28 拍板 | ✅ 已定；详见 D37~D42 留痕 |
+| D40 | **截图上限 10 张 + AI 不限额（拍板 4）**：`MAX_IMAGES_PER_ORDER` 5→10、清理槽 5→10、`maxPerUserPerDay=0` 不限、`upload.prepare` 60/日 | 用户 2026-10-28 拍板 | ✅ 已定；详见 D37~D42 留痕 |
+| D41 | **服务类型重定义（拍板 5）**：标准代取=送寝室门口；新增 `PICKUP_LOW` 送至楼下；`PICKUP_DOOR` 停用仅历史展示 | 用户 2026-10-28 拍板 | ✅ 已定；详见 D37~D42 留痕 |
+| D42 | **头像显示修复（拍板 6）**：`user.avatarUrl` 临时 URL 通道 + 绑定对方 `avatarUrl`；不直读 `cloud://`；票据失效保留旧头像；修 `file-id` 驼峰 | 用户 2026-10-28 拍板 | ✅ 已定；详见 D37~D42 留痕 |
 
 > **开工门 = D1 / D2 / D3 / D13 —— 已全部闭环（2026-10-22）**；D5、D6、D20、D21 早前已关闭，不再是开工门。D2 与推荐不同（沿用 v3 appid），相关代价与本条落地见下方 D2 留痕。
 
@@ -155,7 +162,7 @@ A、B 按照推荐进行采纳
 
 **背景**：用户 2026-10-21 二次修订明确：本程序只负责顾客下单、兼职接单、信息整理（取件码与站点），**不负责运费计算、价格表等一切**。原 v0.6 的"兼职定价/金额快照/分存"方案作废。
 **选项**
-- **A（已定）只定义服务类型**：开发者给默认 5 类模板（标准代取/送寝上门/加急代取/代寄/其他代办），兼职启用/停用并设接单范围；订单只快照 `service{code,name}`；**无价格字段、无金额计算、无报价**。
+- **A（已定）只定义服务类型**：开发者给默认 5 类模板（标准代取/送寝上门/加急代取/代寄/其他代办），兼职启用/停用并设接单范围；订单只快照 `service{code,name}`；**无价格字段、无金额计算、无报价**。**D41 已修订（2026-10-28）：标准代取=送寝室门口、新增「送至楼下」、送寝上门停用仅历史展示**。
 - B 平台统一定价：与"不负责价格表"直接冲突，作废。
 - C 顾客自由出价/议价：与零金钱口径冲突，作废。
 **结论**：A（用户已定）。
@@ -310,7 +317,7 @@ A、B 按照推荐进行采纳
 
 **背景**：用户三次修订要求"引入 deepseek api 在 ocr 识别站点、取件码失败时作为备选，并格式化返回"。端侧 OCR（v3 阶梯）受截图质量/字体/版式影响，站点或取件码识别失败时只能手填；DeepSeek 文本模型可对 OCR 文本做结构化抽取。
 **选项**
-- **A（推荐）云函数调 DeepSeek**：客户端在本地规则解析失败后调 `ai.parseParcel`；服务端二次去敏，只发 OCR 文本（≤2000 字，不含原图/openid）；`deepseek-chat` + `response_format=json_object` + `temperature=0`；8s 超时、重试 1 次、熔断、限流 5 次/人/日 + 全局日配额；失败静默降级并写复核队列；返回统一 DTO（`recognized/stationId/stationName/pickupCode/trackingTail/lockerNo/confidence/source/needsReview/failureId`）；AI 只做预填建议，不覆盖用户手填。
+- **A（推荐）云函数调 DeepSeek**：客户端在本地规则解析失败后调 `ai.parseParcel`；服务端二次去敏，只发 OCR 文本（≤2000 字，不含原图/openid）；`deepseek-chat` + `response_format=json_object` + `temperature=0`；8s 超时、重试 1 次、熔断、限流 5 次/人/日（**D40 已取消每人每日次数，保留全局日配额**）+ 全局日配额；失败静默降级并写复核队列；返回统一 DTO（`recognized/stationId/stationName/pickupCode/trackingTail/lockerNo/confidence/source/needsReview/failureId`）；AI 只做预填建议，不覆盖用户手填。
 - B 客户端直连 DeepSeek：Key 必须下发到客户端，**禁止**。
 - C 不用 AI：识别失败只能手填/人工复核，体验最差（保留为兜底开关关闭时的降级路径）。
 **推荐**：A。
@@ -400,7 +407,7 @@ A、B 按照推荐进行采纳
 
 **用户原文**：「需要做截图批量下单，多图合为一单，（单数应该取决于下单间隔，短间隔应该归为一单）」；口径追问回复选择 **B：一次多选截图合成一单 + 短间隔再次提交自动并入同一订单（合并窗口可配默认 10 分钟）**。
 **裁决**：
-1. **一单多包裹**：`orders.parcels[]`（1~10 件）、`orders.images[]`（0~5 张）；一张截图可拆多件，多张截图可合并为同一单。原「一个订单 = 一张截图」口径作废。
+1. **一单多包裹**：`orders.parcels[]`（1~10 件）、`orders.images[]`（0~5 张；**D40 已修订为 0~10 张**）；一张截图可拆多件，多张截图可合并为同一单。原「一个订单 = 一张截图」口径作废。
 2. **批次下单**：`order.create` 为唯一下单入口，入参 `{parcels[], images[], ticket?/tickets?, serviceCode, appoint, note, delivery?, guest?/bindingId?, clientRequestId}`；`order.createBatch` 移除（其能力并入 `create`）。
 3. **合并窗口**：`config.orderMergeWindowMinutes`（默认 10，0=关闭，0~60）。同一顾客+同一绑定兼职，若存在 `status=SUBMITTED` 且 `createdAt` 在窗口内且 `delivery` 相同的订单 → 新提交包裹**追加到该订单**（`PARCELS_APPENDED` 事件、`version+1`、状态不变）；否则新建订单。**已接单（ACCEPTED 及之后）后的新提交不合并**；上限（10 件/5 图）超出另建新单；兼职代客单不参与合并。
 4. **动作与统计**：订单级动作作用于全部包裹（接单/取件/送达/取消/超时）；`order.correct` 按 `itemIndex` 逐件纠正；确认送达一次确认整单；**单量统计按订单计**（合并单=1 单），不做包裹级状态。
@@ -562,6 +569,21 @@ C中的隐私合规中的C1 见上文
 - 代价：朋友圈是平台 Beta、不能自定义落地页、只能菜单触发；卡片无个性化信息；真机分享/朋友圈效果只能用户点检（QA §V/W 新增人项）。
 
 **落点**：`utils/share/{index,handlers,platform}.js`；`assets/share/*.png`；`app.js`；`components/switch-bar/index.js`；19 页 `onShareAppMessage` + 3 页 `onShareTimeline`；`tools/selftest-share.js`（182 断言）；`tools/check.js` #33；`tools/lib/share-pages.js`；QA/UX 文档回写（见 CHANGELOG）。
+
+## D37~D42 · 2026-10-28 用户反馈拍板（分享/绑定/限流/截图/AI/服务类型/头像）
+
+**来源**：用户 2026-10-28 对 `docs/reviews/2026-10-28_USER_FEEDBACK_TRIAGE.md` 两批 11 项反馈的逐条拍板（原文见会话，用户消息 7 条）。
+
+- **D37（拍板 1=A）分享卡经 `launch` 落地 + 隐私闸**：`utils/share` 卡片 path 改 `/pages/launch/index`（绑定卡带 `bind`）；`pages/launch` 新增 `onLoad(options)` 读 `bind`/`orderNo` 白名单 → 隐私同意闸 → 分流 `role`/订单详情/常规；`config/route` 增 `LAUNCH_PAGE` 常量。判据：`tools/selftest-share.js` path 断言、`tools/check.js` #33 分享页清单、`tools/selftest-privacy-text.js`/`selftest-order-flow` 启动链不回归。
+- **D38（拍板 3）绑定自动化**：`pages/profile/parts/save-flow` 保存成功且存在待绑定邀请 → 自动 `bind.create`；`pkg-customer/pages/bind` 支持 `?auto=1` 落地即绑定（loading「正在绑定…」），失败给单步恢复；`pages/role` 邀请卡主 CTA 直达 bind（auto）。已绑定同号 → 「已绑定·去下单」。
+- **D39（拍板 2）限流时间窗**：`cloudfunctions/api/middleware/ratelimit.js` 绑定相关合并桶 = `rl:bind:{openid}:{60s 分片}`，窗口内 5 次；`shared/error-copy.js` 与云端 message 统一「操作太频繁，请 1 分钟后再试」；`pkg-customer/pages/bind` 查询按钮 loading「查询中」+ 禁用、同编号 60 秒去重。
+- **D40（拍板 4）截图 10 张 + AI 不限额**：`shared/order-state.js` 5→10 + `tools/sync-cloud-shared.js`；`cloudfunctions/cleanup/sweeps/_util.js` `IMAGE_INDEX_SLOTS` 5→10；`config/defaults.js` `aiFallback.maxPerUserPerDay` 5→0（0=不限）；`cloudfunctions/api/handlers/ai/_common.js` + `lib/ai/deepseek.js` 支持 0=不限；`ratelimit.js` `upload.prepare` 30→60；下单/识别/清理/帮助/隐私文案与 6 套断言同批。
+- **D41（拍板 5）服务类型**：`shared/enums.js` SERVICES＝`PICKUP_STD`（送寝室门口）/`PICKUP_LOW`（送至楼下）/`PICKUP_URGENT`/`DROP_OFF`/`CUSTOM`；`PICKUP_DOOR` 移出目录、保留名称「送寝上门（已停用）」用于历史订单；`config/defaults.js` serviceCatalog 随 enums 派生；兼职服务配置与激活默认目录、顾客端选择器层级说明、地址卡说明、帮助 FAQ 同批。
+- **D42（拍板 6）头像**：新增 action `user.avatarUrl`（`shared/actions.js` + `cloudfunctions/api/handlers/user/avatarUrl.js` + `api/modules/user.js`）；`bind.getCurrent`/`user.bootstrap` 返回 `partnerAvatarUrl`/`avatarUrl`（仅 ACTIVE）；`components/avatar-view` 增 `src?` 与重试；`pages/profile/**` 与两端「我的」onShow 刷新；`pages/customer/home/index.wxml`、`pkg-customer/pages/order-detail/index.wxml` 的 `file-id` → `fileId`；`pages/profile/parts/avatar-save.js` 票据失效保留旧头像。ARCHITECTURE 冻结接口同步。
+
+**代价/被否**：①分享多一跳（首屏闪一下）——否：role 直落继续无隐私闸（新用户死路）；②自动绑定取消确认页——否：保留逐次确认会让新用户继续「不会绑定」，但保留服务端全部前置校验；③限流不设每日总量——否：每天 5 次（现状不合理）或完全不限（枚举风险）；④AI 不限额靠全局日配额——否：每人 5 次（10 图场景一单即打光）；⑤服务类型重定义——否：只补层级说明不改标准语义（用户已拍板要重定义）；⑥头像临时 URL ——否：放开云存储公共读（私有文件暴露面扩大）。
+
+**真机项（用户点检，agent 不代勾）**：分享卡新用户落地（同意入口出现）→ 资料保存后自动绑定成功；已绑定异号落地提示去下单；限流连点文案；10 张截图上传/识别进度/7 天后清理；服务类型选择器两档文案；两端「我的」头像更换后立即显示 + 杀进程重进仍显示。
 
 ---
 

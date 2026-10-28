@@ -33,7 +33,7 @@ const privacyText = require(path.join(__dirname, '..', 'pkg-customer/parts/priva
 const defaults = require(path.join(__dirname, '..', 'config/defaults.js'));
 
 const ROOT = path.resolve(__dirname, '..');
-const EXPECTED_ASSERTIONS = 217; // 实跑读数：node tools/selftest-privacy-text.js
+const EXPECTED_ASSERTIONS = 246; // 实跑读数：node tools/selftest-privacy-text.js
 
 const PART_FILE = 'pkg-customer/parts/privacy-text.js';
 const HELP_JS = 'pkg-customer/pages/help/index.js';
@@ -58,8 +58,9 @@ const DATA_ITEMS = [
 ];
 
 // 批 10（D24/D25）关键句：端内全文 + 定稿文档 + 补充文档派生物三处必须同时出现（文本一致性）
+// 2026-10-28 D40 修订：截图上限 0~5 → 0~10 张（旧口径仅允许在「已修订/留痕」上下文出现）
 const BATCH10_SENTENCES = [
-  '0~5 张',
+  '0~10 张',
   '无截图·手填',
   '仅本单有效',
   '不写回',
@@ -178,10 +179,10 @@ function register(h) {
       '第 6 条：注销路径「我的 → 账号 → 注销账号」+ 解绑后互不可见');
     t.check(/未满 14 周岁/.test(item(6)) && /监护人/.test(item(6)),
       '第 7 条：未成年人保护提示（未满 14 周岁 + 监护人）');
-    t.check(/0~5 张/.test(item(0)) && /自愿/.test(item(0)) && /手填/.test(item(0))
+    t.check(/0~10 张/.test(item(0)) && /自愿/.test(item(0)) && /手填/.test(item(0))
       && /每件仍需站点/.test(item(0)) && /取件码或运单尾号/.test(item(0))
       && /不进入识别链路/.test(item(0)),
-    '批 10 摘要·第 1 条：取件码截图自愿 0~5 张、可无截图手填（每件仍需站点+取件码或尾号）、无截图单不进入识别链路（D24 改判 B）');
+    '批 10/D40 摘要·第 1 条：取件码截图自愿 0~10 张（D40 修订；原 0~5 已作废）、可无截图手填（每件仍需站点+取件码或尾号）、无截图单不进入识别链路（D24 改判 B）');
     t.check(/本单配送地址/.test(item(0)) && /收件人称呼/.test(item(0)) && /仅本单有效/.test(item(0))
       && /不写回/.test(item(0)) && /不采集任何设备定位/.test(item(0)),
     '批 10 摘要·第 1 条：本单配送地址与收件人称呼可选/仅本单有效/不写回资料/不采集定位（D25）');
@@ -272,7 +273,7 @@ function register(h) {
 
   // ------------------------------------------------------------ F. help FAQ / 口径说明同口径
   h.section('F help 页 FAQ / 口径说明与全文同口径', (t) => {
-    t.eq((faqs || []).length, 13, 'FAQ 13 条（批 10 增「可以不上传截图吗」「可以让兼职送到其他宿舍吗」两条）');
+    t.eq((faqs || []).length, 14, 'FAQ 14 条（批 10 增 2 条；2026-10-28 D41 增「标准代取 vs 送至楼下」1 条）');
     const answer = (keyword) => {
       const hit = (faqs || []).filter((item) => String(item.q).indexOf(keyword) !== -1)[0];
       return hit ? String(hit.a) : '';
@@ -281,6 +282,17 @@ function register(h) {
     t.check(avatarFaq.indexOf('完整兼职编号') !== -1 && avatarFaq.indexOf('预览') !== -1
       && avatarFaq.indexOf('绑定成功后才显示') !== -1 && avatarFaq.indexOf('只向当前绑定') === -1,
     'FAQ 头像昵称：兼职昵称凭完整编号预览、头像绑定成功后才显示（与 launch 第 2 条同口径）');
+    t.check(avatarFaq.indexOf('临时链接') !== -1 && avatarFaq.indexOf('可重试') !== -1,
+      'FAQ 头像（D42）：头像经约 5 分钟临时链接展示、加载失败可重试（不永久默认头像）');
+    t.check(answer('怎么绑定兼职').indexOf('分享绑定卡片') !== -1
+      && answer('怎么绑定兼职').indexOf('自动完成绑定') !== -1
+      && answer('怎么绑定兼职').indexOf('滚动 60 秒') !== -1,
+    'FAQ 绑定（D37/D38/D39）：分享卡经隐私同意闸 + 资料完整自动完成绑定 + 绑定限流滚动 60 秒/5 次');
+    t.check(answer('标准代取').indexOf('寝室门口') !== -1 && answer('标准代取').indexOf('楼下') !== -1
+      && answer('标准代取').indexOf('送寝上门') !== -1,
+    'FAQ 服务类型（D41）：标准代取=寝室门口 / 送至楼下=楼下、原「送寝上门」停用；两档可区分');
+    t.check(answer('识别失败').indexOf('不设每人每日次数') !== -1,
+      'FAQ AI（D40）：不设每人每日次数、保留全应用日配额与静默降级');
     t.check(answer('截图和资料').indexOf('7 天') !== -1 && answer('截图和资料').indexOf('180 天') !== -1
       && answer('截图和资料').indexOf('30 天') !== -1,
     'FAQ 留存：截图 7 天 / 订单 180+30 天（与全文一致）');
@@ -296,10 +308,10 @@ function register(h) {
     t.check(answer('信息可以查').indexOf('解绑') !== -1 && answer('信息可以查').indexOf('唯一编号') !== -1,
       'FAQ 用户权利：查改删/解绑/编号作废说明');
     const noShotFaq = answer('不上传截图');
-    t.check(noShotFaq.indexOf('0~5 张') !== -1 && noShotFaq.indexOf('自愿') !== -1
+    t.check(noShotFaq.indexOf('0~10 张') !== -1 && noShotFaq.indexOf('自愿') !== -1
       && noShotFaq.indexOf('手填') !== -1 && noShotFaq.indexOf('无截图·手填') !== -1
       && noShotFaq.indexOf('不进入识别链路') !== -1,
-    '批 10 FAQ：截图自愿 0~5 张、可无截图手填「无截图·手填」、不进入识别链路（D24）');
+    '批 10/D40 FAQ：截图自愿 0~10 张（D40 修订）、可无截图手填「无截图·手填」、不进入识别链路（D24）');
     const deliveryFaq = answer('其他宿舍');
     t.check(deliveryFaq.indexOf('本单配送地址') !== -1 && deliveryFaq.indexOf('默认') !== -1
       && deliveryFaq.indexOf('仅本单有效') !== -1 && deliveryFaq.indexOf('不写回') !== -1
@@ -392,6 +404,31 @@ function register(h) {
     '定稿文档同步删除旧「不采集微信头像以外的微信资料（如性别…）」表述（三处同口径）');
     t.check(privacyTextDocCache.indexOf('性别') !== -1 && privacyTextDocCache.indexOf('D31') !== -1,
       '定稿文档登记性别条款（D31 可追溯到 CONTRACT/DECISIONS）');
+  });
+
+  // ------------------------------------------------------------ J. 2026-10-28 D37~D42 文本校准
+  h.section('J 2026-10-28 D37~D42 文本校准（截图 10 / AI 不设每人每日 / 头像临时 URL / 服务类型两档 / 绑定限流）', (t) => {
+    const supplementFile = 'docs/privacy/补充文档.txt';
+    const supplement = exists(supplementFile) ? readSource(supplementFile) : '';
+    const sides = [['端内全文', TEXT], ['定稿文档', privacyTextDocCache], ['补充文档派生物', supplement]];
+    const SENTENCES = ['0~10 张', '不设每人每日', '临时链接', '送至楼下', '寝室门口'];
+    SENTENCES.forEach((term) => {
+      sides.forEach((pair) => {
+        t.check(pair[1].indexOf(term) !== -1, pair[0] + '覆盖 D37~D42 关键句「' + term + '」');
+      });
+    });
+    t.check(TEXT.indexOf('0~5 张') === -1, '反例锁定：端内全文无「0~5 张」旧截图上限（D40 已修订为 0~10）');
+    t.check(supplement.indexOf('0~5 张') === -1, '反例锁定：补充文档派生物无「0~5 张」旧上限');
+    t.check(privacyTextDocCache.indexOf('原口径 0~5 张保留留痕') !== -1,
+      '定稿文档以「已修订/留痕」保留旧 0~5 张证据行（不删证据）');
+    t.check(TEXT.indexOf('每账号每日最多 5 次') === -1 && privacyTextDocCache.indexOf('每账号每日最多 5 次') === -1,
+      '反例锁定：端内/定稿文本不得回归「每账号每日最多 5 次」旧 AI 配额（D40 取消每人每日次数）');
+    t.check(TEXT.indexOf('滚动 1 分钟窗口内最多 5 次尝试') !== -1, '端内全文：绑定限流=滚动 1 分钟最多 5 次（D39）');
+    t.check(privacyTextDocCache.indexOf('滚动 60 秒') !== -1, '定稿文档：绑定限流=滚动 60 秒/5 次（D39）');
+    t.check(TEXT.indexOf('约 5 分钟有效的临时链接') !== -1, '端内全文：头像经约 5 分钟临时链接展示（D42）');
+    t.check(TEXT.indexOf('不会清空你已有的头像') !== -1, '端内全文：头像票据失效不清空已有头像（D42）');
+    t.check(supplement.indexOf(TEXT) !== -1, '补充文档派生物仍为端内全文逐字节派生物（随文本重新生成）');
+    t.check(stripComments(partSource).indexOf('0~5 张') === -1, '纯文本件正文无「0~5 张」旧上限（注释留痕不计；单源=CONTRACT D40）');
   });
 }
 

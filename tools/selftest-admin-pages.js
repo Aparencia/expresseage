@@ -41,7 +41,7 @@ const accountSwitchVm = require(path.join(ROOT, 'pkg-admin/pages/account-switch/
 const reviewVm = require(path.join(ROOT, 'pkg-admin/pages/recognition-review/parts/view-model.js'));
 const messagesVm = require(path.join(ROOT, 'pkg-admin/pages/messages/parts/view-model.js'));
 
-const EXPECTED_ASSERTIONS = 154 + 22; // +16：v1.1/D32 站点名称编辑卡；+6：反馈④ applyExpanded 回归 3+2+页面方法完整性 1
+const EXPECTED_ASSERTIONS = 154 + 22 + 3; // +16：v1.1/D32 站点名称编辑卡；+6：反馈④ applyExpanded 回归 3+2+页面方法完整性 1；+3：D41 服务目录 5 类迁移
 
 const ADMIN_PAGES = ['overview', 'invite-codes', 'customers', 'customer-detail', 'partners', 'orders',
   'order-detail', 'config', 'account-switch', 'messages', 'recognition-review'];
@@ -87,9 +87,13 @@ function pageMethodGaps(relPath) {
 function sampleConfig() {
   return {
     zoneLabels: { D: 'D 区', X: 'X 区', N: 'N 区', B: 'B 区', C: 'C 区' },
+    // D41（2026-10-28 用户拍板）：目录固定 5 类（名称/说明可改，不新增/不删除）
     serviceCatalog: [
-      { code: 'PICKUP_STD', name: '标准代取', desc: '到站取件送寝', enabled: true },
-      { code: 'PICKUP_DOOR', name: '送寝上门', desc: '', enabled: false }
+      { code: 'PICKUP_STD', name: '标准代取', desc: '驿站取件送到寝室门口（上楼）' },
+      { code: 'PICKUP_LOW', name: '送至楼下', desc: '驿站取件送到宿舍楼下/约定地点（不上楼）' },
+      { code: 'PICKUP_URGENT', name: '加急代取', desc: '优先处理，承诺更快时效' },
+      { code: 'DROP_OFF', name: '代寄快递', desc: '顾客把件交给兼职，兼职送驿站寄出' },
+      { code: 'CUSTOM', name: '其他代办', desc: '需备注说明；兼职可拒单' }
     ],
     announcement: { enabled: true, title: '开学通知', text: '请关注取件时间' },
     maintenance: { enabled: false, text: '维护说明' },
@@ -443,7 +447,9 @@ function register(h) {
       zones: form.zones.length,
       firstZone: form.zones[0].value,
       services: form.services.length,
+      serviceCodes: form.services.map((item) => item.code),
       serviceName: form.services[0].name,
+      serviceLowDesc: form.services[1].desc.indexOf('楼下') >= 0,
       serviceKeys: Object.keys(form.services[0]),
       announcement: form.announcement.title,
       ttl: form.ttlMinutes,
@@ -453,15 +459,32 @@ function register(h) {
     }, {
       zones: 5,
       firstZone: 'D 区',
-      services: 2,
+      services: 5,
+      serviceCodes: ['PICKUP_STD', 'PICKUP_LOW', 'PICKUP_URGENT', 'DROP_OFF', 'CUSTOM'],
       serviceName: '标准代取',
+      serviceLowDesc: true,
       serviceKeys: ['code', 'name', 'desc'],
       announcement: '开学通知',
       ttl: '45',
       recognition: '30',
       avatarKb: '200',
       screenshot: '7'
-    }, '配置表单回填：苑名/服务模板（仅 code/name/desc）/公告/切换会话/识别失败留存/头像KB/截图留存');
+    }, '配置表单回填：苑名/服务模板固定 5 类（D41 新顺序，仅 code/name/desc）/公告/切换会话/识别失败留存/头像KB/截图留存');
+    // D41：旧目录（含已停用 PICKUP_DOOR / 缺新码）整表回退新默认；后台保存一次即完成存量迁移
+    const legacyForm = configVm.buildForm({
+      zoneLabels: sampleConfig().zoneLabels,
+      serviceCatalog: [
+        { code: 'PICKUP_STD', name: '标准代取', desc: '驿站取件送到宿舍楼下/约定地点' },
+        { code: 'PICKUP_DOOR', name: '送寝上门', desc: '送到寝室门口（上楼）' },
+        { code: 'DROP_OFF', name: '代寄快递', desc: '顾客把件交给兼职，兼职送驿站寄出' }
+      ]
+    });
+    t.eq(legacyForm.services.map((item) => item.code), enums.SERVICE_CODES.slice(),
+      'H1b 旧目录（含停用 PICKUP_DOOR）整表回退新 5 类（保存一次即迁移，D41）');
+    t.check(legacyForm.services[0].desc.indexOf('寝室门口') >= 0,
+      'H1c 旧目录回退后标准代取说明为新语义（不沿用旧的楼下说明）');
+    t.eq(configVm.buildPayload(configVm.buildForm(sampleConfig())).serviceCatalog.map((item) => item.code),
+      enums.SERVICE_CODES.slice(), 'H1d 上行载荷整表 5 类（后台保存一次即把存量目录迁移到新 5 类）');
     const readonly = configVm.buildReadonlyInfo(sampleConfig());
     t.check(readonly.aiFallbackText.indexOf('只读') >= 0 && readonly.testAccountMaxPerRole === '3',
       'aiFallback 与测试账号上限只读展示（不在本页开放编辑）');

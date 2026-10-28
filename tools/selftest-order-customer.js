@@ -45,7 +45,7 @@ const client = require(path.join(ROOT, 'api/client.js'));
 const orderApi = require(path.join(ROOT, 'api/modules/order.js'));
 const serverDto = require(path.join(ROOT, 'cloudfunctions/api/handlers/order/_dto.js'));
 
-const EXPECTED_ASSERTIONS = 255; // 实际断言总数（少算/多算都判红）
+const EXPECTED_ASSERTIONS = 259; // 实际断言总数（255 + 4：D40 截图上限/逐图进度 + D41 层级说明/服务文案 config 下发）
 
 const STATUS = orderState.STATUS;
 const ACTION_KEYS = view.ACTION_KEYS;
@@ -853,9 +853,9 @@ function register(h) {
     t.eq(homeView.serviceTextOf({ services: [{ code: 'PICKUP_STD' }, { code: 'DROP_OFF', enabled: false }] }, catalog),
       '标准代取', 'K6 服务类型只列已启用项（enabled:false 不展示）');
     t.eq(homeView.serviceTextOf({ services: enums.SERVICES.map((item) => ({ code: item.code })) }, catalog),
-      '标准代取 / 送寝上门 / 加急代取 等 5 项', 'K7 超过 3 项截断为前 3 +「等 N 项」（N=已启用总数）');
-    t.eq(homeView.serviceTextOf({ services: [{ code: 'PICKUP_STD' }, { code: 'PICKUP_DOOR' }, { code: 'DROP_OFF' }] }, catalog),
-      '标准代取 / 送寝上门 / 代寄快递', 'K8 恰好 3 项不截断（边界）');
+      '标准代取 / 送至楼下 / 加急代取 等 5 项', 'K7 超过 3 项截断为前 3 +「等 N 项」（N=已启用总数；D41 第 2 类=送至楼下）');
+    t.eq(homeView.serviceTextOf({ services: [{ code: 'PICKUP_STD' }, { code: 'PICKUP_LOW' }, { code: 'DROP_OFF' }] }, catalog),
+      '标准代取 / 送至楼下 / 代寄快递', 'K8 恰好 3 项不截断（边界；D41 新服务码 PICKUP_LOW）');
     t.eq([homeView.serviceTextOf(null, catalog), homeView.serviceTextOf({ services: [] }, catalog)], ['', ''],
       'K9 无启用服务类型 → 空串（页面显示「暂未设置」）');
 
@@ -908,6 +908,18 @@ function register(h) {
       'K25 工作台/客户页 onShow 同步选中格=0/1（tabBar per-page 同步）');
     t.check(tabBar.indexOf('current.selected === selected') >= 0,
       'K26 tabbar 路径未命中时保留页面显式设置（不回落首页造成错格）');
+
+    // D40/D41：下单页截图上限 10 张、逐图进度、送达层级说明、服务类型文案来自 config（页面零业务判据）
+    const createWxml = textOf('pkg-customer/pages/order-create/index.wxml');
+    t.check(/0~\{\{maxImages\}\} 张/.test(createWxml) && /maxImages:\s*MAX_IMAGES/.test(textOf(PAGES.create)),
+      'K28 D40 下单页截图上限 10 张由共享常量渲染（0~{{maxImages}} 张）');
+    t.check(/\{\{ocrIndex\}\}\/\{\{ocrTotal\}\}/.test(createWxml) && /ocrTotal/.test(textOf(PAGES.create)),
+      'K29 D40 逐图识别进度「第 n/N 张」接线（wxml + 页面 onOcrPhase）');
+    t.check(createWxml.indexOf('标准代取送到寝室门口（上楼）') >= 0
+      && createWxml.indexOf('需要楼下自取请选『送至楼下』') >= 0,
+    'K30 D41 地址卡送达层级说明（标准代取=楼上；楼下自取需选送至楼下）');
+    t.check(createWxml.indexOf('range-key="name"') >= 0 && createWxml.indexOf('services[serviceIndex].name') >= 0,
+      'K31 D41 服务类型选择器文案由 config.services 下发（order-create 不写死服务名）');
 
     t.notEmpty([homeWxml, ordersWxss, tabBar], 'K27 K 组静态样本非空');
   });

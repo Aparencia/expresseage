@@ -19,6 +19,7 @@ function defineRules(visibility, pairs) {
 const CLIENT_RULES = defineRules('client', [
   // user
   ['user.bootstrap', false],
+  ['user.avatarUrl', false],
   ['user.acceptPrivacy', true],
   ['user.deleteAccount', true],
   // customer

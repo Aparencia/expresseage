@@ -6,6 +6,7 @@
 const store = require('../../../store/index');
 const orderApi = require('../../../api/modules/order');
 const messageApi = require('../../../api/modules/message');
+const bindApi = require('../../../api/modules/bind');
 const view = require('../../parts/status-view');
 const flow = require('../../parts/order-detail-flow');
 const format = require('../../parts/format');
@@ -49,7 +50,9 @@ Page({
     messageText: '',
     readonly: false,
     config: {},
-    cancelReasons: []
+    cancelReasons: [],
+    // D42：对方（当前绑定兼职）头像的 5 分钟临时 URL（bind.getCurrent 下发；无则组件回退默认头像）
+    partnerAvatarUrl: ''
   },
 
   onLoad(options) {
@@ -71,7 +74,38 @@ Page({
     }
     // 可见即恢复轮询（失败退避计数归零），onHide/onUnload 停
     this._session = flow.startPoll(this._session);
+    this.syncPartnerAvatar();
     this.refresh();
+  },
+
+  // D42：对方（当前绑定兼职）头像走 5 分钟临时 URL。优先复用 store.binding 已签发 URL；
+  // 深链进入（store 未水合）时补拉一次 bind.getCurrent；失败静默保留默认头像（不直塞 cloud://）。
+  syncPartnerAvatar() {
+    const binding = store.get('binding') || null;
+    const partnerPublic = (binding && binding.partnerPublic) || null;
+    const ready = (binding && binding.partnerAvatarUrl)
+      || (partnerPublic && partnerPublic.avatarUrl) || '';
+    if (ready) {
+      this.setData({ partnerAvatarUrl: ready });
+      return Promise.resolve();
+    }
+    if (!binding) {
+      this.setData({ partnerAvatarUrl: '' });
+      return Promise.resolve();
+    }
+    const page = this;
+    return bindApi.getCurrent().then(function signed(current) {
+      const partner = (current && current.partnerPublic) || {};
+      page.setData({ partnerAvatarUrl: partner.avatarUrl || '' });
+    }).catch(function ignore() {
+      // 重签失败不打断订单详情：保留默认头像
+    });
+  },
+
+  // 头像加载失败/过期重试：清旧 URL 再签一次
+  onPartnerAvatarRetry() {
+    this.setData({ partnerAvatarUrl: '' });
+    return this.syncPartnerAvatar();
   },
 
   onHide() {

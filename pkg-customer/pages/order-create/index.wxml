@@ -28,8 +28,8 @@
       <view class="muted">可一次多选，也可分几次添加；多张截图会合并成同一张订单。截图仅用于识别取件码与兼职核对；订单完成或取消后 7 天删除。</view>
       <image-picker id="ticketPicker" purpose="TICKET" max-count="{{maxImages}}" disabled="{{readonly}}" bind:change="onPickFile" bind:error="onPickError" bind:limit="onPickLimit" />
       <view class="muted upload-state" wx:if="{{ocrState === 'upload'}}">正在上传…</view>
-      <view class="muted upload-state" wx:if="{{ocrState === 'ocr'}}">正在识别截图里的取件码…（通常 3~10 秒）</view>
-      <view class="muted upload-state" wx:if="{{ocrState === 'ai'}}">正在智能识别…（最多 8 秒）</view>
+      <view class="muted upload-state" wx:if="{{ocrState === 'ocr'}}">正在识别第 {{ocrIndex}}/{{ocrTotal}} 张截图里的取件码…（通常每张 3~10 秒）</view>
+      <view class="muted upload-state" wx:if="{{ocrState === 'ai'}}">正在智能识别第 {{ocrIndex}}/{{ocrTotal}} 张…（每张最多 8 秒）</view>
       <!-- §4.3.1 ③：兜底中可「取消」/「先手动填写」（不阻塞手填；之后迟到的建议不再覆盖） -->
       <view class="actions-row" wx:if="{{ocrState === 'ai'}}">
         <button class="btn btn-ghost btn-inline" bindtap="onCancelAi">取消</button>
@@ -192,6 +192,8 @@
         <label class="radio-row"><radio value="SELF" checked="{{delivery.mode === 'SELF'}}" />本人宿舍</label>
         <label class="radio-row"><radio value="OTHER" checked="{{delivery.mode === 'OTHER'}}" />送给别人</label>
       </radio-group>
+      <!-- D41 顾客侧说明：送达到哪一档由服务类型决定；标准代取已明确为送门口（上楼），楼下自取需选「送至楼下」 -->
+      <view class="muted small">标准代取送到寝室门口（上楼）；需要楼下自取请选『送至楼下』。</view>
       <view class="muted small" wx:if="{{delivery.mode === 'SELF'}}">{{deliverySelfText}}</view>
       <block wx:if="{{delivery.mode === 'OTHER'}}">
         <picker range="{{deliveryZones}}" range-key="label" bindchange="onDeliveryZoneChange">

@@ -1,7 +1,9 @@
 // utils/share/index.js · 分享卡片纯件（零 wx、零 setData、零业务写；单测直测）
-// 口径（CONTRACT §8/§11、D36）：
+// 口径（CONTRACT §8/§11、D36、D37）：
 //   ① 好友转发：兼职身份 + 非切换会话 + 有兼职编号 → 绑定卡（path 只带 partnerNo，
-//      不带头像/昵称/宿舍/尾号/订单/票据）；其余一律回通用邀请卡（path=/pages/role/index）。
+//      不带头像/昵称/宿舍/尾号/订单/票据）；其余一律回通用邀请卡。
+//      两种卡 path 统一落 `/pages/launch/index`（D37）：先过启动页隐私同意闸，再分流到邀请卡/常规；
+//      卡片不直接落业务页（否则新用户/版本变更会被隐私闸绕过）。
 //   ② 朋友圈：onShareTimeline 只能分享当前页（平台不允许自定义 path），卡片 = 固定标题 +
 //      固定中性封面，query 恒为空串，不把任何页面参数/业务值带进卡片。
 //   ③ 所有卡片使用固定中性封面，禁止使用页面截图（否则会把取件码/宿舍/尾号等 L3 截进卡片）。
@@ -36,11 +38,11 @@ function buildAppMessage(input) {
   // 只有明确「兼职」身份才放行；isCustomer 缺省/切换会话/无编号一律回通用卡
   const shareBind = source.isCustomer === false && source.viewSession !== true && partnerNo !== '';
   if (!shareBind) {
-    return { title: TITLES.GENERIC, path: route.ROLE_PAGE, imageUrl: COVER };
+    return { title: TITLES.GENERIC, path: route.LAUNCH_PAGE, imageUrl: COVER };
   }
   return {
     title: TITLES.BIND,
-    path: route.ROLE_PAGE + '?bind=' + encodeURIComponent(partnerNo),
+    path: route.LAUNCH_PAGE + '?bind=' + encodeURIComponent(partnerNo),
     imageUrl: COVER
   };
 }

@@ -230,6 +230,46 @@ async function tryDeleteFile(ctx, fileId) {
   }
 }
 
+// D42 头像临时 URL：私有存储不可直读，展示统一由服务端签发 5 分钟 URL（URL 不落库、不进日志）。
+// 批量签发（一次 getTempFileURL 可含多个 fileID）；任一步失败/环境缺能力 → 返回空 map，
+// 调用方回退 avatarFileId（客户端再退默认头像），读失败不得让页面整体失败。
+const AVATAR_URL_TTL_SECONDS = 300;
+
+async function signAvatarUrls(ctx, fileIds) {
+  const out = {};
+  const list = [];
+  (Array.isArray(fileIds) ? fileIds : []).forEach((value) => {
+    const fileId = typeof value === 'string' ? value.trim() : '';
+    if (fileId && list.indexOf(fileId) < 0) {
+      list.push(fileId);
+    }
+  });
+  if (list.length === 0) {
+    return out;
+  }
+  const cloud = ctx && ctx.cloud;
+  if (!cloud || typeof cloud.getTempFileURL !== 'function') {
+    return out;
+  }
+  try {
+    const result = await cloud.getTempFileURL({
+      fileList: list.map((fileID) => ({ fileID: fileID, maxAge: AVATAR_URL_TTL_SECONDS }))
+    });
+    const rows = result && Array.isArray(result.fileList) ? result.fileList : [];
+    rows.forEach((row) => {
+      if (!row || typeof row.fileID !== 'string') {
+        return;
+      }
+      if (typeof row.tempFileURL === 'string' && row.tempFileURL) {
+        out[row.fileID] = row.tempFileURL;
+      }
+    });
+  } catch (error) {
+    console.warn('[api] 头像临时地址签发失败', ctx.requestId);
+  }
+  return out;
+}
+
 function isSameTestSide(a, b) {
   return (a === true) === (b === true);
 }
@@ -256,6 +296,8 @@ module.exports = {
   buildViewContext,
   assertTextSafe,
   tryDeleteFile,
+  signAvatarUrls,
+  AVATAR_URL_TTL_SECONDS,
   isSameTestSide,
   isActivePartnerDoc
 };

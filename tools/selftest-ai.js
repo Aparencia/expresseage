@@ -29,7 +29,7 @@ const ocrFlow = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/o
 const orderModel = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/model.js'));
 const reviewVm = require(path.join(ROOT, 'pkg-admin/pages/recognition-review/parts/view-model.js'));
 
-const EXPECTED_ASSERTIONS = 253;
+const EXPECTED_ASSERTIONS = 251; // 255 − 4：D40 彻底不按人拦截（per-user 边界/降级队列断言合并为残留 5 仍放行 4 条）
 
 const NOW = Date.parse('2026-10-21T12:00:00+08:00');
 const CUSTOMER_OPENID = 'openid-customer-ai';
@@ -457,11 +457,11 @@ async function gateConfigGroup(t) {
   t.eq(Object.keys(deepseek.AI_ERROR_CODES).length, 6, '内部排障码 6 个（不占业务错误码）');
   const def = deepseek.normalizeAiConfig(undefined);
   t.eq({ enabled: def.enabled, model: def.model, timeoutMs: def.timeoutMs }, { enabled: false, model: 'deepseek-chat', timeoutMs: 8000 }, '缺省关闭 + 默认模型 + 8s 超时（应用可正常启动）');
-  t.eq({ maxPerUserPerDay: def.maxPerUserPerDay, dailyQuota: def.dailyQuota, cooldownMinutes: def.cooldownMinutes }, { maxPerUserPerDay: 5, dailyQuota: 200, cooldownMinutes: 10 }, '缺省配额/熔断参数对齐 DATA_MODEL §2.10');
+  t.eq({ maxPerUserPerDay: def.maxPerUserPerDay, dailyQuota: def.dailyQuota, cooldownMinutes: def.cooldownMinutes }, { maxPerUserPerDay: 0, dailyQuota: 200, cooldownMinutes: 10 }, 'D40 缺省 per-user 归一 0（字段保留、不参与拦截）+ 全局配额/熔断参数对齐');
   t.eq(deepseek.normalizeAiConfig({ aiFallback: { timeoutMs: 1e12 } }).timeoutMs, 2147483647, '超时上限截断到定时器上限（防 setTimeout 溢出）');
   t.eq(deepseek.normalizeAiConfig({ aiFallback: { timeoutMs: -1 } }).timeoutMs, 8000, '反例：非法超时回落 8000');
   t.eq(deepseek.normalizeAiConfig({ aiFallback: { model: '' } }).model, 'deepseek-chat', 'model 空串由 lib/ai 解析默认模型');
-  t.eq(deepseek.normalizeAiConfig({ aiFallback: { enabled: false } }).enabled, false, 'enabled=false 透传');
+  t.eq(deepseek.normalizeAiConfig({ aiFallback: { enabled: false } }).enabled, false, 'enabled=false 透传'); t.eq([deepseek.normalizeAiConfig({ aiFallback: {} }).maxPerUserPerDay, deepseek.normalizeAiConfig({ aiFallback: { maxPerUserPerDay: 5 } }).maxPerUserPerDay], [0, 5], 'D40 缺键归一 0、存量残留 5 原样保留（字段仅历史，不参与拦截）');
 }
 
 async function gateDisabledKeyGroup(t) {
@@ -580,22 +580,21 @@ async function gateBodyPromptGroup(t) {
 
 // ---------------------------------------------------------------- B 配额
 async function quotaBoundaryGroup(t) {
+  // D40：存量 config 残留 maxPerUserPerDay=5 也不得再按人拦截（aiFallbackOf 缺省即 5，模拟存量环境）
   const db = createDb();
   db.seed('counters', [{ _id: 'q-user', key: quotaKey(CUSTOMER_OPENID, NOW), seq: 4, updatedAt: NOW }]);
   const api = apiOf(db);
   const stub = okFetch({ stationId: 'P3', pickupCode: 'A123', confidence: 'HIGH' });
   const fifth = await withFetchStub(stub, () => api.call('ai.parseParcel', basicPayload(), { clientRequestId: rid() }));
-  t.eq({ ok: fifth.ok, recognized: fifth.data.recognized, calls: stub.callCount() }, { ok: true, recognized: true, calls: 1 }, '配额第 5 次（4→5）：放行并外呼 1 次（边界含 5）');
-  t.eq({ user: counterValue(db, quotaKey(CUSTOMER_OPENID, NOW)), global: counterValue(db, quotaKey('global', NOW)) }, { user: 5, global: 1 }, '第 5 次后个人/全局计数各 +1');
+  t.eq({ ok: fifth.ok, recognized: fifth.data.recognized, calls: stub.callCount() }, { ok: true, recognized: true, calls: 1 }, '残留 per-user=5：第 5 次照常放行并外呼 1 次（历史计数仍 +1）');
   const sixth = await withFetchStub(stub, () => api.call('ai.parseParcel', basicPayload(), { clientRequestId: rid() }));
-  t.eq({ ok: sixth.ok, recognized: sixth.data.recognized, needsReview: sixth.data.needsReview, code: sixth.code }, { ok: true, recognized: false, needsReview: true, code: undefined }, '第 6 次：静默降级（无 RATE_LIMITED）+ 需复核');
-  t.check(!!sixth.data.failureId, '第 6 次返回 failureId（仍入队）');
-  t.eq(stub.callCount(), 1, '超限零外呼（fetch 调用数仍为 1）');
-  const quotaRec = lastFailure(db);
-  t.eq({ failureCode: quotaRec.failureCode, aiErrorCode: quotaRec.aiErrorCode, aiTried: quotaRec.aiTried, aiModel: quotaRec.aiModel },
-    { failureCode: 'LLM_ERROR', aiErrorCode: 'QUOTA_EXCEEDED', aiTried: false, aiModel: '' },
-    '超限入队：LLM_ERROR + QUOTA_EXCEEDED + 未外呼 + 无模型快照');
-  t.eq({ user: counterValue(db, quotaKey(CUSTOMER_OPENID, NOW)), global: counterValue(db, quotaKey('global', NOW)) }, { user: 5, global: 1 }, '超限请求不再重复计数');
+  t.eq({ ok: sixth.ok, recognized: sixth.data.recognized, calls: stub.callCount() }, { ok: true, recognized: true, calls: 2 }, '残留 per-user=5：第 6 次仍放行并外呼（不再 per-user 拒）');
+  t.eq({ user: counterValue(db, quotaKey(CUSTOMER_OPENID, NOW)), global: counterValue(db, quotaKey('global', NOW)) }, { user: 6, global: 2 }, 'per-user 计数仍累加（仅观测/排障，不参与拦截）');
+  const d40Db = createDb({ aiFallback: { maxPerUserPerDay: 5 } });
+  d40Db.seed('counters', [{ _id: 'q-d40', key: quotaKey(CUSTOMER_OPENID, NOW), seq: 9, updatedAt: NOW }]);
+  const d40Stub = okFetch({ stationId: 'P3', pickupCode: 'A123', confidence: 'HIGH' });
+  const tenth = await withFetchStub(d40Stub, () => apiOf(d40Db).call('ai.parseParcel', basicPayload(), { clientRequestId: rid() }));
+  t.eq({ recognized: tenth.data.recognized, calls: d40Stub.callCount(), user: counterValue(d40Db, quotaKey(CUSTOMER_OPENID, NOW)) }, { recognized: true, calls: 1, user: 10 }, '残留 per-user=5：个人计数 seq=9 第 10 次仍外呼成功（无 per-user 拒）');
 }
 
 async function quotaWindowGroup(t) {
@@ -612,14 +611,14 @@ async function quotaWindowGroup(t) {
   const gAllowed = await withFetchStub(gstub2, () => apiOf(gdb2).call('ai.parseParcel', basicPayload(), { clientRequestId: rid() }));
   t.eq({ recognized: gAllowed.data.recognized, calls: gstub2.callCount(), global: counterValue(gdb2, quotaKey('global', NOW)) }, { recognized: true, calls: 1, global: 2 }, '全局配额边界：未满放行并自增到上限');
 
-  const ddb = createDb();
-  ddb.seed('counters', [{ _id: 'q-day1', key: quotaKey(CUSTOMER_OPENID, NOW), seq: 5, updatedAt: NOW }]);
+  const ddb = createDb({ aiFallback: { dailyQuota: 1 } });
+  ddb.seed('counters', [{ _id: 'q-day1', key: quotaKey('global', NOW), seq: 1, updatedAt: NOW }]);
   const dstub = okFetch({ stationId: 'P3', pickupCode: 'A123', confidence: 'HIGH' });
   const dapi = apiOf(ddb);
   const day1 = await withFetchStub(dstub, () => dapi.call('ai.parseParcel', basicPayload(), { clientRequestId: rid(), now: NOW }));
   const day2 = await withFetchStub(dstub, () => dapi.call('ai.parseParcel', basicPayload(), { clientRequestId: rid(), now: NOW + 86400000 }));
-  t.eq({ day1: day1.data.recognized, day2: day2.data.recognized, calls: dstub.callCount() }, { day1: false, day2: true, calls: 1 }, '跨自然日重置：当日打满次日恢复外呼');
-  t.eq({ day1: counterValue(ddb, quotaKey(CUSTOMER_OPENID, NOW)), day2: counterValue(ddb, quotaKey(CUSTOMER_OPENID, NOW + 86400000)) }, { day1: 5, day2: 1 }, '跨日计数分键：旧日不动、新日从 0 起算');
+  t.eq({ day1: day1.data.recognized, day2: day2.data.recognized, calls: dstub.callCount() }, { day1: false, day2: true, calls: 1 }, '跨自然日重置（全局日配额）：当日打满次日恢复外呼（per-user 不参与）');
+  t.eq({ day1: counterValue(ddb, quotaKey('global', NOW)), day2: counterValue(ddb, quotaKey('global', NOW + 86400000)) }, { day1: 1, day2: 1 }, '跨日全局计数分键：旧日不动、新日从 0 起算');
 
   const rdb = createDb();
   const rApi = apiOf(rdb);

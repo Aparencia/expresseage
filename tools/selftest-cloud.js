@@ -349,14 +349,14 @@ function register(h) {
     const ctx = makeCtx(dao, { openid: 'openid-rate' });
     let rateError = null;
     for (let i = 0; i < 6; i += 1) {
-      const state = makeState(ctx, 'bind.create', {}, Object.assign(writeAction(), { clientRequestId: 'F'.repeat(24) }));
+      const state = makeState(ctx, 'bind.create', { partnerNo: 'PABC23X' }, Object.assign(writeAction(), { clientRequestId: 'F'.repeat(24) }));
       try {
         await ratelimit.middleware(state);
       } catch (error) {
         rateError = error;
       }
     }
-    t.eq(rateError && rateError.code, 'RATE_LIMITED', 'bind.create 每日 5 次打满 → RATE_LIMITED');
+    t.eq(rateError && rateError.code, 'RATE_LIMITED', 'bind.create 60 秒分片 5 次打满 → RATE_LIMITED（D39：合法格式才计数）');
     const rateCounters = db.dump('counters').filter((row) => String(row.key).indexOf('rl:bind:openid-rate:d20261021') === 0);
     t.notEmpty(rateCounters, '限流计数落 counters.rl:{scope}:{openid}:{window}');
     t.eq(rateCounters[0].seq, 6, '第 6 次计数已记入（超限尝试不静默）');
@@ -400,7 +400,7 @@ function register(h) {
     let publicError = null;
     for (let i = 0; i < 6; i += 1) {
       try {
-        await ratelimit.middleware(makeState(publicCtx, 'partner.getPublic', { partnerNo: 'PABC23' }, readAction()));
+        await ratelimit.middleware(makeState(publicCtx, 'partner.getPublic', { partnerNo: 'PABC23X' }, readAction()));
       } catch (error) {
         publicError = error;
       }

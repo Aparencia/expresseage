@@ -564,8 +564,8 @@ function sectionOcrEntry(h) {
 
 function sectionMergeParcels(h) {
   h.section('§5.2 多图汇总 mergeParcels（D23：一单 ≤10 件 / 去重 / 截断）', (t) => {
-    t.eq([recognize.MAX_PARCELS_PER_ORDER, recognize.MAX_IMAGES_PER_ORDER], [10, 5],
-      '§5.2 一单上限包裹 10 / 截图 5（CONTRACT §5.2/D23）');
+    t.eq([recognize.MAX_PARCELS_PER_ORDER, recognize.MAX_IMAGES_PER_ORDER], [10, 10],
+      '§5.2 一单上限包裹 10 / 截图 10（CONTRACT §5.2/D40；均取 shared/order-state 常量）');
     const a = recognize.parseOcrText('西苑顺丰快递 取件码 A12345');
     const b = recognize.parseOcrText('西苑顺丰快递 取件码 B23456');
     t.notEmpty(a.items, '§5.2 样本非空（规则解析出件）');

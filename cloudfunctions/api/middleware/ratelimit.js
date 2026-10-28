@@ -1,7 +1,12 @@
 // middleware/ratelimit.js · 限流（counters.rl:{scope}:{subject}:{window}；切换会话按 effectiveOpenid 独立计）
 // 口径：CONTRACT §10、ENGINEERING §4.3 #5/#6.5；配额默认取 CONTRACT §10。
+// D39（2026-10-28 用户拍板「不限总次数、限时间内次数」）：绑定相关「预览 partner.getPublic + 提交
+//   bind.create」合并同一 60 秒分片桶、每片 5 次，取消「每自然日 5 次」总量；失败尝试计入、
+//   格式错在 validate 前拦不计数（手误/错前缀不占额度）；超限文案只取 shared/error-copy 单源。
+// D40：upload.prepare（TICKET）30→60 次/日/人。
 // ai.parseParcel 例外：本层不抛 RATE_LIMITED（handler 内静默降级并入队）。
 const { COLLECTIONS } = require('../db/collections');
+const sharedValidate = require('../shared/validate');
 const time = require('../lib/time');
 const errors = require('../lib/errors');
 
@@ -10,13 +15,20 @@ const SUBJECT_IDENTITY = 'identity';
 const SUBJECT_ACTOR = 'actor';
 const SUBJECT_ORDER = 'order';
 
+// D39：绑定相关合并同一计数桶（scope 保留原值供覆盖断言/日志定位，bucket 才是真实计数键）。
+const BIND_BUCKET = 'bind';
+const BIND_WINDOW_MS = time.MINUTE_MS;
+const WINDOW_MINUTES_PER_DAY = 24 * 60;
+// 格式错不计数：这两类动作的 partnerNo 非法时直接放行本层（handler 仍回 VALIDATION_FAILED）。
+const PARTNER_NO_ACTIONS = ['bind.create', 'partner.getPublic'];
+
 // 配额表（scope / limit / 主体 / 条件）；upload.prepare 按用途拆两条。
 // v1.1/D34 安全基线增补：资料保存/服务配置/解绑/异常上报/临时 URL 签发/后台补录与配置写均限流，
 // 防止刷写、头像反复替换、截图 URL 枚举与后台误操作轰炸；数值取「不伤正常 UX」的日额度。
 const RATE_RULES = Object.freeze([
-  { action: 'bind.create', scope: 'bind', limit: 5, subject: SUBJECT_IDENTITY },
+  { action: 'bind.create', scope: 'bind', bucket: BIND_BUCKET, limit: 5, windowMs: BIND_WINDOW_MS, subject: SUBJECT_IDENTITY },
   { action: 'bind.release', scope: 'bindRelease', limit: 10, subject: SUBJECT_IDENTITY },
-  { action: 'partner.getPublic', scope: 'partnerPublic', limit: 5, subject: SUBJECT_IDENTITY },
+  { action: 'partner.getPublic', scope: 'partnerPublic', bucket: BIND_BUCKET, limit: 5, windowMs: BIND_WINDOW_MS, subject: SUBJECT_IDENTITY },
   { action: 'partner.activate', scope: 'activate', limit: 5, subject: SUBJECT_IDENTITY, refundOnSuccess: true },
   { action: 'partner.saveProfile', scope: 'partnerProfileSave', limit: 30, subject: SUBJECT_IDENTITY },
   { action: 'partner.saveServiceConfig', scope: 'serviceConfigSave', limit: 30, subject: SUBJECT_IDENTITY },
@@ -28,7 +40,7 @@ const RATE_RULES = Object.freeze([
   { action: 'order.correct', scope: 'orderCorrect', limit: 20, subject: SUBJECT_ORDER },
   { action: 'order.reportException', scope: 'orderException', limit: 10, subject: SUBJECT_ORDER },
   { action: 'order.resolveException', scope: 'orderResolve', limit: 10, subject: SUBJECT_ORDER },
-  { action: 'upload.prepare', scope: 'upload', limit: 30, subject: SUBJECT_IDENTITY, purpose: 'TICKET' },
+  { action: 'upload.prepare', scope: 'upload', limit: 60, subject: SUBJECT_IDENTITY, purpose: 'TICKET' },
   { action: 'upload.prepare', scope: 'avatarUpload', limit: 5, subject: SUBJECT_IDENTITY, purpose: 'AVATAR' },
   { action: 'admin.viewAsStart', scope: 'accountSwitch', limit: 20, subject: SUBJECT_ACTOR },
   { action: 'admin.updateConfig', scope: 'adminConfig', limit: 20, subject: SUBJECT_ACTOR },
@@ -58,8 +70,30 @@ function subjectOf(ctx, rule, payload) {
   return ctx.identity.effectiveOpenid || ctx.openid || '';
 }
 
+// 窗口键：日桶=d{YYYYMMDD}；时间窗桶=d{YYYYMMDD}m{HH}{mm}（D39 的 60 秒分片，UTC+8，
+// 跨分片/跨日自动换桶 → 不再有「每日总量」；旧分片由 cleanup 按 updatedAt 过期清理）。
+function windowKeyOf(rule, nowMs) {
+  const dayKey = 'd' + time.dayKey(nowMs);
+  if (!rule.windowMs) {
+    return dayKey;
+  }
+  const perDay = Math.round(time.DAY_MS / rule.windowMs) || WINDOW_MINUTES_PER_DAY;
+  const slot = Math.floor((time.toMs(nowMs) + time.TZ_OFFSET_MS) / rule.windowMs) % perDay;
+  const perHour = Math.round(perDay / 24) || 60;
+  return dayKey + 'm' + time.pad2(Math.floor(slot / perHour)) + time.pad2(slot % perHour);
+}
+
 function counterKey(rule, subject, nowMs) {
-  return 'rl:' + rule.scope + ':' + subject + ':' + 'd' + time.dayKey(nowMs);
+  return 'rl:' + (rule.bucket || rule.scope) + ':' + subject + ':' + windowKeyOf(rule, nowMs);
+}
+
+// D39：格式错（错前缀/长度/字符/非字符串）不占额度——只在 handler 报 VALIDATION_FAILED，不计数。
+function isFormatError(rule, payload) {
+  if (PARTNER_NO_ACTIONS.indexOf(rule.action) < 0) {
+    return false;
+  }
+  const partnerNo = payload && typeof payload === 'object' ? payload.partnerNo : '';
+  return !sharedValidate.validatePartnerNo(partnerNo).ok;
 }
 
 async function increment(ctx, key, delta) {
@@ -116,6 +150,10 @@ async function middleware(state) {
     if (!subject) {
       continue;
     }
+    // D39：格式错不计数（手误/错前缀不白扣额度；存在性校验仍由 handler 负责）
+    if (isFormatError(rule, payload)) {
+      continue;
+    }
     const key = counterKey(rule, subject, ctx.now);
     let used;
     try {
@@ -128,7 +166,8 @@ async function middleware(state) {
       continue;
     }
     if (used > rule.limit) {
-      throw errors.rateLimited('操作太频繁，请明天再试');
+      // 超限文案单源 shared/error-copy（D39：不在此处自写「明天/半小时」等时间承诺）
+      throw errors.rateLimited();
     }
     if (rule.refundOnSuccess) {
       if (!state.meta.rateRefunds) {

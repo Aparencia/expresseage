@@ -153,15 +153,18 @@ const EXCEPTION_CODES = [
 const EXCEPTION_OTHER_CODE = 'OTHER';
 
 // 服务类型 5 类（CONTRACT §6：只写做什么，不含任何交易字段）
+// D41（2026-10-28 用户拍板）：标准代取=送到寝室门口（上楼）；新增「送至楼下」；原「送寝上门」语义重复已停用
+// （PICKUP_DOOR 移出可选目录，仅历史订单按 LEGACY_SERVICE_NAME 展示，不可新启用）。
 const SERVICES = [
-  { code: 'PICKUP_STD', name: '标准代取', desc: '驿站取件送到宿舍楼下/约定地点' },
-  { code: 'PICKUP_DOOR', name: '送寝上门', desc: '送到寝室门口（上楼）' },
+  { code: 'PICKUP_STD', name: '标准代取', desc: '驿站取件送到寝室门口（上楼）' },
+  { code: 'PICKUP_LOW', name: '送至楼下', desc: '驿站取件送到宿舍楼下/约定地点（不上楼）' },
   { code: 'PICKUP_URGENT', name: '加急代取', desc: '优先处理，承诺更快时效' },
   { code: 'DROP_OFF', name: '代寄快递', desc: '顾客把件交给兼职，兼职送驿站寄出' },
   { code: 'CUSTOM', name: '其他代办', desc: '需备注说明；兼职可拒单' }
 ];
+const LEGACY_SERVICE_NAME = { PICKUP_DOOR: '送寝上门（已停用）' };
 const SERVICE_CODES = SERVICES.map((item) => item.code);
-const SERVICE_NAME = {};
+const SERVICE_NAME = Object.assign({}, LEGACY_SERVICE_NAME);
 SERVICES.forEach((item) => {
   SERVICE_NAME[item.code] = item.name;
 });
@@ -468,6 +471,7 @@ module.exports = {
   TOKEN_LENGTH,
   TOKEN_PATTERN,
   NO_KIND,
+  LEGACY_SERVICE_NAME,
   orderStatusText,
   serviceNameOf,
   cancelReasonText,

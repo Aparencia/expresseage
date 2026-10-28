@@ -12,7 +12,7 @@ const CODE_COPY = {
   CONFLICT: '数据已被其他人更新，请刷新页面后重新操作',
   INVALID_TRANSITION: '当前进度不支持该操作，请下拉刷新订单后再试',
   INVALID_STATE: '现在还不能执行该操作，请按提示补全资料或处理进行中的订单后再试',
-  RATE_LIMITED: '操作太频繁，请半小时后再试',
+  RATE_LIMITED: '操作太频繁，请 1 分钟后再试',
   INVITE_EXPIRED: '邀请码已过期，请向开发者索取新的邀请码',
   INVITE_USED: '邀请码已被使用，请向开发者索取新的邀请码',
   VIEW_TICKET_EXPIRED: '切换会话已过期，请回到「切换账号」重新开启',

@@ -25,7 +25,7 @@ const defaults = require(path.join(ROOT, 'config/defaults.js'));
 const statusView = require(path.join(ROOT, 'pkg-customer/parts/status-view.js'));
 const createModel = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/model.js'));
 
-const EXPECTED_ASSERTIONS = 340; // 改为实际断言数时同步核对 `node tools/selftest-state.js` 读数
+const EXPECTED_ASSERTIONS = 342; // D41：+2（服务层级说明 + 停用 PICKUP_DOOR 负例）；改为实际断言数时同步核对 `node tools/selftest-state.js` 读数
 
 const STATUS = state.STATUS;
 const ALL_ROLES = ['CUSTOMER', 'PARTNER', 'SYSTEM', 'ADMIN'];
@@ -221,9 +221,14 @@ function sectionEnumsCopy(h) {
 // ---------------------------------------------------------------- §6 服务类型 / §4.2 公开配置
 function sectionServices(h) {
   h.section('§6 服务类型与 §4.2 公开配置（只表达做什么）', (t) => {
-    t.eq(enums.SERVICES.length, 5, '§6 服务类型 5 类');
+    t.eq(enums.SERVICES.length, 5, '§6 服务类型 5 类（D41：标准代取/送至楼下/加急代取/代寄快递/其他代办）');
     t.eq(enums.SERVICE_CODES.slice(),
-      ['PICKUP_STD', 'PICKUP_DOOR', 'PICKUP_URGENT', 'DROP_OFF', 'CUSTOM'], '§6 服务码与 CONTRACT 一致');
+      ['PICKUP_STD', 'PICKUP_LOW', 'PICKUP_URGENT', 'DROP_OFF', 'CUSTOM'], '§6 服务码与 CONTRACT 一致（D41）');
+    t.check(enums.SERVICES[0].code === 'PICKUP_STD' && enums.SERVICES[0].desc.indexOf('寝室门口') >= 0
+      && enums.SERVICES[1].code === 'PICKUP_LOW' && enums.SERVICES[1].desc.indexOf('楼下') >= 0,
+    '§6 D41：标准代取=送到寝室门口（上楼）、送至楼下=宿舍楼下/约定地点（不上楼）');
+    t.eq([enums.SERVICE_CODES.indexOf('PICKUP_DOOR'), enums.serviceNameOf('PICKUP_DOOR')],
+      [-1, '送寝上门（已停用）'], '§6 D41 负例：PICKUP_DOOR 不在可选目录、仅保留历史订单展示名');
     t.check(enums.SERVICES.every((s) => Object.keys(s).sort().join(',') === 'code,desc,name'),
       '§6 服务项只有 code/name/desc 三键');
     t.check(enums.SERVICES.every((s) => !!s.name && !!s.desc), '§6 服务项名称与说明非空');
@@ -586,7 +591,7 @@ function sectionOrderCreateModel(h) {
     t.eq(createModel.STEP_TITLES.slice(), ['截图', '核对', '服务', '提交'], '§7 下单四步标题');
     t.eq(createModel.stepTitle(1), '截图', '§7 第一步标题');
     t.eq(createModel.stepTitle(9), '', '§7 越界步骤返回空串');
-    t.eq([createModel.MAX_PARCELS, createModel.MAX_IMAGES], [10, 5], '§7 一单上限：包裹 10 / 截图 5（D23）');
+    t.eq([createModel.MAX_PARCELS, createModel.MAX_IMAGES], [10, 10], '§7 一单上限：包裹 10 / 截图 10（D40）');
 
     const now = new Date(2026, 0, 5, 21, 30, 0);
     const slots = createModel.appointmentSlots(now);
@@ -604,7 +609,7 @@ function sectionOrderCreateModel(h) {
 
     const catalog = { serviceCatalog: defaults.DEFAULT_CONFIG.serviceCatalog };
     const filtered = createModel.serviceOptions(catalog, {
-      services: [{ code: 'PICKUP_STD', enabled: true }, { code: 'PICKUP_DOOR', enabled: false }]
+      services: [{ code: 'PICKUP_STD', enabled: true }, { code: 'PICKUP_LOW', enabled: false }]
     });
     t.eq(filtered.length, 1, '§7 只保留兼职开启的服务类型');
     t.eq(filtered[0].code, 'PICKUP_STD', '§7 开启的服务类型 code 正确');

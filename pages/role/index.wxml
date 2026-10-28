@@ -20,7 +20,9 @@
         <view class="muted" wx:if="{{!bindCard.acceptingOrders}}">这个兼职暂停接单，可以稍后再试。</view>
       </view>
     </view>
-    <button class="btn btn-primary btn-block" bindtap="onBindTap">绑定这位兼职</button>
+    <button wx:if="{{!bindBlocked}}" class="btn btn-primary btn-block" bindtap="onBindTap">{{bindBound ? '已绑定·去下单' : '绑定这位兼职'}}</button>
+    <view wx:if="{{bindBlocked}}" class="muted">这是顾客绑定入口，请先进入顾客身份后再绑定。</view>
+    <view wx:if="{{bindBound}}" class="muted">你已绑定这位兼职，点上方按钮直接去下单即可。</view>
   </view>
 
   <view class="card" wx:if="{{bindLoading}}">

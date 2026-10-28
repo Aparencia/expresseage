@@ -35,9 +35,11 @@ const shareCard = require(path.join(ROOT, 'pages/profile/parts/share-card.js'));
 const rebind = require(path.join(ROOT, 'utils/rebind.js'));
 const previewCache = require(path.join(ROOT, 'utils/preview-cache.js'));
 const autoQuery = require(path.join(ROOT, 'pkg-customer/pages/bind/parts/auto-query.js'));
+const autoBind = require(path.join(ROOT, 'pkg-customer/pages/bind/parts/auto-bind.js'));
+const route = require(path.join(ROOT, 'config/route.js'));
 const avatarUtil = require(path.join(ROOT, 'utils/avatar.js'));
 
-const EXPECTED_ASSERTIONS = 169;
+const EXPECTED_ASSERTIONS = 188;
 
 // 异步用例：microtask 全清（client.call → transport → normalizeResult 都是 promise 链）
 function flushAsync() {
@@ -358,10 +360,10 @@ function register(h) {
     t.eq(typeof shareCard.buildShareMessage, 'function', 'share-card 纯件导出 buildShareMessage');
     t.check(noThrow(() => shareCard.buildShareMessage()), '缺省入参不抛错（回通用分享）');
     const generic = shareCard.buildShareMessage();
-    t.eq(generic.path, '/pages/role/index', '缺省入参回通用首页分享');
+    t.eq(generic.path, route.LAUNCH_PAGE, '缺省入参回通用首页分享（D37：先落 /pages/launch/index 隐私闸）');
     const bindMsg = shareCard.buildShareMessage({ isCustomer: false, viewSession: false, partnerCard: card });
-    t.eq(bindMsg.path, '/pages/role/index?bind=' + encodeURIComponent(card.partnerNo),
-      '兼职分享 path 只带编号（/pages/role/index?bind=<编号>）');
+    t.eq(bindMsg.path, route.LAUNCH_PAGE + '?bind=' + encodeURIComponent(card.partnerNo),
+      '兼职分享 path 只带编号（/pages/launch/index?bind=<编号>，D37 隐私闸后分流 role）');
     t.check(bindMsg.path.split('?').length === 2 && bindMsg.path.split('&').length === 1,
       'path 只有一个 bind 查询参数，无其它信息');
     t.check([card.displayName, card.avatarFileId, card.dormKey, card.phoneTail]
@@ -377,7 +379,7 @@ function register(h) {
     const encoded = shareCard.buildShareMessage({
       isCustomer: false, viewSession: false, partnerCard: { partnerNo: 'P 7K2/M9X' }
     });
-    t.eq(encoded.path, '/pages/role/index?bind=P%207K2%2FM9X', 'encodeURIComponent 生效（特殊字符转义，防 path 注入）');
+    t.eq(encoded.path, route.LAUNCH_PAGE + '?bind=P%207K2%2FM9X', 'encodeURIComponent 生效（特殊字符转义，防 path 注入）');
 
     // 顾客 / 切换会话 / 无编号 → 通用分享（不泄露目标账号编号）
     const customerMsg = shareCard.buildShareMessage({ isCustomer: true, viewSession: false, partnerCard: card });
@@ -399,7 +401,7 @@ function register(h) {
     t.check(/require\(['"]\.\/parts\/share-card['"]\)/.test(profileJs), '我的页 require 分享纯件');
     t.check(/onShareAppMessage\(\)\s*\{[\s\S]{0,240}?shareCard\.buildShareMessage\(\{[\s\S]{0,200}?partnerCard: this\.data\.partnerCard/
       .test(profileJs), 'onShareAppMessage 调纯件并传 {isCustomer, viewSession, partnerCard}');
-    t.check(profileJs.indexOf('/pages/role/index?bind=') === -1, '页面不再自拼绑定分享 path（判据只在纯件）');
+    t.check(profileJs.indexOf('?bind=') === -1, '页面不再自拼绑定分享 path（判据只在纯件）');
 
     // 静态：bind 页错误原样展示 + 前缀提示取 message + 编号判据只经 utils/ids
     t.check((bindJs.match(/\(err && err\.message\)/g) || []).length >= 2,
@@ -422,8 +424,8 @@ function register(h) {
 
   // ---------------------------------------------------------------- §6 分享 path 单一来源
   h.section('§6 分享绑定卡 path 单一来源（全页面层扫描 + 客户页接纯件）', (t) => {
-    // 绑定卡分享 path 只有两种写法：字面量 /pages/role/index?bind=… 或纯件里的 route.ROLE_PAGE + '?bind='
-    const SHARE_BIND_PATH_RE = /\/pages\/role\/index\?bind=|\bROLE_PAGE\s*\+\s*['"]\?bind=['"]/;
+    // 绑定卡分享 path 只有两种写法：字面量 /pages/launch/index?bind=… 或纯件里的 route.LAUNCH_PAGE + '?bind='
+    const SHARE_BIND_PATH_RE = /\/pages\/launch\/index\?bind=|\bLAUNCH_PAGE\s*\+\s*['"]\?bind=['"]/;
     // D36：卡片构造单源迁到 utils/share/index.js（页面层只转发）；扫描范围=页面层 + 卡片纯件
     const ALLOWED = 'utils/share/index.js';
     const scanFiles = [];
@@ -440,7 +442,7 @@ function register(h) {
       .map((item) => item.rel);
     t.check(scanFiles.length >= 30 && hits.length === 0,
       '全页面层分享 path 零自拼（扫描 ' + scanFiles.length + ' 个 js，命中 ' + hits.length + '；唯一允许 ' + ALLOWED + '）');
-    t.eq(SHARE_BIND_PATH_RE.test("return { path: '/pages/role/index?bind=' + no };") ? 1 : 0, 1,
+    t.eq(SHARE_BIND_PATH_RE.test("return { path: '/pages/launch/index?bind=' + no };") ? 1 : 0, 1,
       '反例命中 1（同一扫描口径有牙，不靠空集全绿）');
     const allowedFile = scanFiles.filter((item) => item.rel === ALLOWED)[0];
     t.check(!!allowedFile && SHARE_BIND_PATH_RE.test(allowedFile.text), '白名单文件确实构造分享 path（白名单不是空集）');
@@ -452,7 +454,7 @@ function register(h) {
       '客户页 require 分享纯件（相对路径 ../../profile/parts/share-card）');
     t.check(/onShareAppMessage\(\)\s*\{[\s\S]{0,160}?shareCard\.buildShareMessage\(\{[\s\S]{0,200}?partnerCard: \{ partnerNo: this\.data\.partnerNo/
       .test(customersJs), '客户页 onShareAppMessage 调纯件并传 {isCustomer:false, session, partnerNo}');
-    t.check(customersJs.indexOf("'/pages/role/index?bind='") === -1, '客户页零 path 自拼（不复制第二份口径）');
+    t.check(customersJs.indexOf("'/pages/launch/index?bind='") === -1, '客户页零 path 自拼（不复制第二份口径）');
     t.check(/open-type="share"/.test(customersWxml) && /wx:if="\{\{!session\}\}"/.test(customersWxml),
       '客户页分享按钮仅在非切换会话渲染（切换会话不能分享）');
   });
@@ -790,6 +792,136 @@ function register(h) {
     t.check(bindJs.indexOf('preview-cache') === -1, '绑定页不直接碰预览缓存（唯一出口是 auto-query 纯件）');
   });
 
+  // ---------------------------------------------------------------- §3.6 D39/D38 查询去重与邀请卡自动绑定
+  h.section('§3.6 D39/D38 查询去重与邀请卡自动绑定（同编号 60s 复用 / 连点 1 次 / auto=1 只 create 一次）', async (t) => {
+    const clock = createFakeClock(2000000);
+    const calls = [];
+    const ctl = autoQuery.create({
+      query(partnerNo) {
+        calls.push(partnerNo);
+        return Promise.resolve({ partnerNo: partnerNo, displayName: '张同学', services: [], zones: [] });
+      },
+      now: clock.now,
+      schedule: clock.schedule,
+      cancel: clock.cancel
+    });
+    t.eq(autoQuery.SAME_NO_REUSE_MS, 60000, 'D39 同编号预览复用窗口 = 60 秒（与限流 60 秒分片同口径）');
+    ctl.onInput('P-7K2-M9X');
+    clock.advance(300);
+    await flushAsync();
+    t.eq(calls.length, 1, '基线：自动查询 1 次出预览');
+    const reused = await ctl.onManual('P-7K2-M9X');
+    t.eq([calls.length, !!(reused && reused.displayName === '张同学')], [1, true],
+      '同编号 60 秒内再点「查询」复用已有预览：0 请求（不白耗一次尝试额度）');
+    clock.advance(60000);
+    await ctl.onManual('P-7K2-M9X');
+    t.eq(calls.length, 2, '超过 60 秒才允许手动刷新同编号（预览可能过期）');
+
+    // 连点「查询」：请求在途只发 1 次 getPublic（按钮 loading 之外的事件层兜底，D39）
+    const beforeRapid = calls.length;
+    const first = ctl.onManual('P-QQQ-222');
+    const second = ctl.onManual('P-QQQ-222');
+    t.check(first === second, '连点复用同一次在途请求（同一 Promise，不发第二次 getPublic）');
+    await first;
+    t.eq(calls.length - beforeRapid, 1, '连点只发 1 次 getPublic（不多扣尝试次数）');
+
+    // D38 自动绑定决策（纯件 planOf）：前置不满足只等不动作
+    const currentNone = { binding: null, partnerPublic: null };
+    const currentSame = { binding: { bindingId: 'b1' }, partnerPublic: { partnerNo: 'P7K2M9X', displayName: '张同学' } };
+    const currentOther = { binding: { bindingId: 'b2' }, partnerPublic: { partnerNo: 'PAAAAAA' } };
+    t.eq([
+      autoBind.planOf({ auto: false, partnerNo: 'P7K2M9X', hasPreview: true, prechecked: true, current: currentNone }),
+      autoBind.planOf({ auto: true, partnerNo: '', hasPreview: true, prechecked: true, current: currentNone }),
+      autoBind.planOf({ auto: true, partnerNo: 'P7K2M9X', hasPreview: false, prechecked: true, current: currentNone }),
+      autoBind.planOf({ auto: true, partnerNo: 'P7K2M9X', hasPreview: true, prechecked: false, current: currentNone })
+    ], ['none', 'none', 'wait', 'wait'], 'auto=1 前置不满足只等不动作（非邀请卡/无编号/预览未就绪/预检未回）');
+    t.eq([
+      autoBind.planOf({ auto: true, partnerNo: 'P7K2M9X', hasPreview: true, prechecked: true, current: currentNone }),
+      autoBind.planOf({ auto: true, partnerNo: 'P7K2M9X', hasPreview: true, prechecked: true, current: currentSame }),
+      autoBind.planOf({ auto: true, partnerNo: 'P7K2M9X', hasPreview: true, prechecked: true, current: currentOther })
+    ], ['create', 'same', 'rebind'], 'D38 三分支：未绑定=自动 create / 已绑定同号=去下单 / 已绑定异号=D28 确认换绑');
+
+    // 注入式编排：auto=1 只自动 create 一次；重复预览回调不重复动作
+    const autoCalls = [];
+    const runner = autoBind.create({
+      auto: true,
+      current: () => Promise.resolve(currentNone),
+      onCreate: (partnerNo) => autoCalls.push(partnerNo),
+      onSame: () => autoCalls.push('same'),
+      onRebind: () => autoCalls.push('rebind'),
+      onError: () => autoCalls.push('error')
+    });
+    runner.arm();
+    t.eq(runner.previewReady('P-7K2-M9X'), 'wait', '预检未回时预览先到：等预检，不抢跑 create');
+    await flushAsync();
+    t.eq([autoCalls.slice(), runner.previewReady('P-7K2-M9X')], [['P7K2M9X'], 'none'],
+      '预检回来+预览就绪 → 只自动 create 1 次（重复预览回调不再动作）');
+    const sameCalls = [];
+    const sameRunner = autoBind.create({
+      auto: true,
+      current: () => Promise.resolve(currentSame),
+      onCreate: () => sameCalls.push('create'),
+      onSame: () => sameCalls.push('same'),
+      onRebind: () => sameCalls.push('rebind'),
+      onError: () => sameCalls.push('error')
+    });
+    sameRunner.arm();
+    sameRunner.previewReady('P-7K2-M9X');
+    await flushAsync();
+    t.eq(sameCalls, ['same'], '已绑定同号 → 只提示「已绑定·去下单」，零 create（不重复绑定）');
+    const rebindCalls = [];
+    const rebindRunner = autoBind.create({
+      auto: true,
+      current: () => Promise.resolve(currentOther),
+      onCreate: () => rebindCalls.push('create'),
+      onSame: () => rebindCalls.push('same'),
+      onRebind: () => rebindCalls.push('rebind'),
+      onError: () => rebindCalls.push('error')
+    });
+    rebindRunner.arm();
+    rebindRunner.previewReady('P-7K2-M9X');
+    await flushAsync();
+    t.eq(rebindCalls, ['rebind'], '已绑定异号 → 走 D28 一次确认换绑（不静默解绑、不自动 create）');
+    const errCalls = [];
+    const errRunner = autoBind.create({
+      auto: true,
+      current: () => Promise.reject(new Error('网络开小差了')),
+      onCreate: () => errCalls.push('create'),
+      onError: (error) => errCalls.push(error.message)
+    });
+    errRunner.arm();
+    errRunner.previewReady('P-7K2-M9X');
+    await flushAsync();
+    t.eq(errCalls, ['网络开小差了'], '预检失败：不自动 create，错误交页面原样展示（转人工确认）');
+    const offCalls = [];
+    const offRunner = autoBind.create({
+      auto: false,
+      current: () => Promise.resolve(currentNone),
+      onCreate: () => offCalls.push('create')
+    });
+    offRunner.arm();
+    offRunner.previewReady('P-7K2-M9X');
+    await flushAsync();
+    t.eq(offCalls, [], '非邀请卡落地（无 auto=1，含旧 ?bind= 深链）不自动 create（保持手动确认）');
+
+    // 静态接线：选择式按钮态 + auto=1 读参 + 文案单源（页面零判定）
+    const indexJs = fs.readFileSync(path.join(ROOT, 'pkg-customer/pages/bind/index.js'), 'utf8');
+    const indexWxml = fs.readFileSync(path.join(ROOT, 'pkg-customer/pages/bind/index.wxml'), 'utf8');
+    t.check(/require\(['"]\.\/parts\/auto-bind['"]\)/.test(indexJs)
+      && /this\._autoBind\.previewReady\(/.test(indexJs) && /String\(opts\.auto \|\| ''\)/.test(indexJs),
+    '绑定页接 auto-bind 纯件 + 预览就绪回填 + 读 ?auto=1（自动绑定判定不在页面）');
+    t.check(indexWxml.indexOf('disabled="{{loading || readonly}}"') !== -1
+      && indexWxml.indexOf("{{loading ? '查询中' : '查询'}}") !== -1,
+    'D39 查询按钮 loading 文案「查询中」且禁用（防连点重复请求）');
+    t.check(indexWxml.indexOf('每分钟最多尝试 5 次') !== -1 && indexWxml.indexOf('每天最多尝试 5 次') === -1,
+      'D39 页面说明改「每分钟最多尝试 5 次」（不再写「每天」）');
+    t.check(indexWxml.indexOf('disabled="{{readonly || submitting || autoBinding}}"') !== -1,
+      'D38 提交中（含自动绑定）确认按钮禁用');
+    t.check(/onGoOrder/.test(indexJs) && /wx\.switchTab/.test(indexJs)
+      && indexWxml.indexOf('{{alreadyBoundText}}') !== -1 && indexWxml.indexOf('autoLoadingText') !== -1,
+    'D38 已绑定同号「已绑定·去下单」/自动绑定 loading 文案经纯件单源下发（模板不写死第二份）');
+  });
+
   // ---------------------------------------------------------------- §8 头像组件兜底（无头像/加载失败不裂图）
   h.section('§8 头像组件：有头像显示头像、无头像/加载失败显示对方昵称首字', (t) => {
     const named = avatarUtil.viewModelOf('', '小王');
@@ -808,8 +940,8 @@ function register(h) {
     const componentWxss = fs.readFileSync(path.join(ROOT, 'components/avatar-view/index.wxss'), 'utf8');
     t.check(componentWxml.indexOf('binderror="onError"') !== -1 && componentWxml.indexOf('view.initial') !== -1,
       '§8-5 组件图片加载失败回默认头像首字（不出现裂图/空白）');
-    t.check(componentJs.indexOf('_failedFileId') !== -1 && componentJs.indexOf("UNNAMED_INITIAL = '代'") !== -1,
-      '§8-6 失败标记按 fileId 记忆（换头像会重试，坏地址不反复请求）+ 无昵称兜底字');
+    t.check(componentJs.indexOf('_failedKey') !== -1 && componentJs.indexOf("UNNAMED_INITIAL = '代'") !== -1,
+      '§8-6 失败标记按来源键记忆（D42：同源坏地址不反复请求、换头像/换 src 自动重试）+ 无昵称兜底字');
     t.check(/font-size:\s*1em/.test(componentWxss) && componentWxss.indexOf('44%') === -1,
       '§8-7 默认头像首字字号不再用百分比（44% 会相对页面 30rpx 缩成 13rpx）');
     t.check(componentWxml.indexOf('size * 0.42') !== -1,

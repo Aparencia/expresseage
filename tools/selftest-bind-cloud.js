@@ -32,6 +32,7 @@
 const fs = require('fs');
 const path = require('path');
 const fsutil = require('./lib/fsutil');
+const bindLimitCases = require('./lib/bind-limit-cases');
 const { createHarness, installCrashGuard } = require('./selftest');
 const { createFakeDb } = require('./fake-db');
 
@@ -51,7 +52,7 @@ const NOW = Date.parse('2026-10-21T12:00:00+08:00');
 const ADMIN_OPENID = 'openid-admin-dev01';
 const ADMIN_ENV = { ADMIN_OPENIDS: JSON.stringify({ [ADMIN_OPENID]: 'DEV-01' }) };
 
-const EXPECTED_ASSERTIONS = 108;
+const EXPECTED_ASSERTIONS = 108 + bindLimitCases.ASSERTIONS;
 
 const ALL_COLLECTION_NAMES = Object.keys(COLLECTIONS).map((key) => COLLECTIONS[key]);
 
@@ -949,6 +950,23 @@ function register(h) {
     t.check(!!dupCaught && dupCaught.code === 'UNIQUE_CONFLICT' && dupCalls === 1,
       'H19 唯一索引冲突不重试、原样抛出（调用计数=1，幂等分支不被延迟）');
     t.notEmpty(db.dump('users'), 'H 组样本非空');
+  });
+
+  // ---------------------------------------------------------------- I 绑定限流（D39；用例在 tools/lib 守 #18 行数红线）
+  asyncSection('I. 绑定限流 D39（预览+提交合并 60 秒分片/5 次、失败计入、格式错不计、跨片恢复）', async (t) => {
+    await bindLimitCases.run(t, {
+      app,
+      createTestDb,
+      userDoc,
+      customerDoc,
+      partnerDoc,
+      cloudStub,
+      errorCopy,
+      ratelimit: require(path.join(API, 'middleware/ratelimit.js')),
+      NOW,
+      ADMIN_ENV,
+      ROLES
+    });
   });
 }
 

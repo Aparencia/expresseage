@@ -62,7 +62,11 @@ function isWriteAction(action) {
   return !!(meta && meta.write);
 }
 
+// D39：预览（partner.getPublic）按次计入绑定限流桶，网络抖动时读动作自动重试会放大消耗（一次点击=3 次额度）
+// ⇒ 该动作不走自动重试，失败由页面给「再查询一次」的人工续作（按钮 loading/禁用已保证不连点）。
+const NO_AUTO_RETRY_ACTIONS = ['partner.getPublic'];
 function isRetryAction(action) {
+  if (NO_AUTO_RETRY_ACTIONS.indexOf(action) >= 0) return false;
   const meta = ACTIONS.ACTION_MAP && ACTIONS.ACTION_MAP[action];
   return !!(meta && !meta.write);
 }

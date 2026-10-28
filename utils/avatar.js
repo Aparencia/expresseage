@@ -450,12 +450,19 @@ function isDefaultAvatar(fileId) {
   return !(typeof fileId === 'string' && fileId.trim());
 }
 
-// avatar-view 组件的视图模型：无 fileID / 加载失败一律走默认头像，不裂图。
-function viewModelOf(fileId, displayName) {
+// avatar-view 视图模型（D42）：src=服务端临时 URL 优先，fileId 仅回退键；无图/加载失败走默认头像，不裂图。
+// 兼容旧调用：第一个参数传字符串时按 fileId 处理（历史用例/页面）。
+function viewModelOf(source, displayName) {
+  const raw = typeof source === 'string' ? { fileId: source } : (source || {});
+  const src = typeof raw.src === 'string' ? raw.src.trim() : '';
+  const fileId = typeof raw.fileId === 'string' ? raw.fileId.trim() : '';
+  const url = src || fileId;
   const fallback = defaultAvatarOf(displayName);
   return {
-    fileId: isDefaultAvatar(fileId) ? '' : fileId,
-    isDefault: isDefaultAvatar(fileId),
+    src: src,
+    fileId: fileId,
+    url: isDefaultAvatar(url) ? '' : url,
+    isDefault: isDefaultAvatar(url),
     initial: fallback.initial,
     backgroundColor: fallback.backgroundColor,
     color: fallback.color

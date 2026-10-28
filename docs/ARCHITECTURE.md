@@ -64,7 +64,7 @@ const data = await call('order.confirmDelivery', { orderNo }, { expectedVersion:
 
 | 文件 | 导出方法 |
 | :-- | :-- |
-| `api/modules/user.js` | `bootstrap()`、`acceptPrivacy(version)`、`deleteAccount({confirmText:'注销', reason?})` |
+| `api/modules/user.js` | `bootstrap()`、`avatarUrl()`（**D42**：本人头像 5 分钟临时 URL；无头像返回空）、`acceptPrivacy(version)`、`deleteAccount({confirmText:'注销', reason?})` |
 | `api/modules/customer.js` | `saveProfile(payload)`、`getProfile()` |
 | `api/modules/partner.js` | `activate({invitationCode,displayName,avatarTicket})`、`saveProfile`、`saveServiceConfig`、`getPublic({partnerNo})`、`listBindings`、`unbindCustomer({bindingId,reason,note})`、`saveCustomerNote({bindingId,note})` |
 | `api/modules/bind.js` | `create({partnerNo})`、`release({reason,note})`、`getCurrent()` |
@@ -78,7 +78,7 @@ const data = await call('order.confirmDelivery', { orderNo }, { expectedVersion:
 ### 3.3 `api/upload.js`
 
 - `prepareAndUpload({ purpose, filePath })` → `{ uploadTicketId, cloudPath, fileId }`；内部：**本地校验/压缩（头像按 `store.config.avatarMaxBytes`，截图长边 1440/≤500KB，走 `utils/avatar` 纯件）→ `upload.prepare({purpose,size,contentType})`（服务端 size/类型闸必须收到真实入参：AVATAR 传压缩后 size + 派生 contentType；TICKET 只传 size、不传 contentType 以兼容聊天 gif）→ `wx.cloud.uploadFile`（唯一上传出口）**。失败抛 `CallError`，可重试至票据过期。
-- **v1.0 截图（D23/D24）**：下单支持 0~5 张截图（每张一个 ticket），`images[i]` ↔ `tickets[i]` 同序一一对应；截图上传失败/超限仍拒绝单张（不放松 ≤500KB 服务端闸），用户可换图/继续用手填；OCR 帧按 `utils/ocr/frame.js` 长边 ≤1440 降采样后再建画布（P0-10 归 C 批）。0 张=无截图手填（`manualEntry=true`），不产生识别数据。
+- **v1.0 截图（D23/D24）**：下单支持 0~10 张截图（每张一个 ticket，D40），`images[i]` ↔ `tickets[i]` 同序一一对应；截图上传失败/超限仍拒绝单张（不放松 ≤500KB 服务端闸），用户可换图/继续用手填；OCR 帧按 `utils/ocr/frame.js` 长边 ≤1440 降采样后再建画布（P0-10 归 C 批）。0 张=无截图手填（`manualEntry=true`），不产生识别数据。
 - `cancelTicket(uploadTicketId)` 调 `upload.cancel`。
 
 ### 3.4 `store/index.js`（内存快照，唯一全局状态）
@@ -95,10 +95,10 @@ const off = store.subscribe((snapshot) => { this.setData({ vm: snapshot }); });
 {
   roles: ['CUSTOMER'|'PARTNER'], activeRole: 'CUSTOMER'|'PARTNER'|null,
   isDeveloper: false,
-  me: { displayName, avatarFileId? },
-  customer: { profileComplete, customerNo?, displayName?, avatarFileId?, dormKey?, roomTag?, zone?, buildingNo?, room?, phoneTail?, gender?, genderManual? },
-  partner: { status, profileComplete, partnerNo?, displayName?, avatarFileId?, acceptingOrders? },
-  binding: null | { bindingId, partnerNo, partnerDisplayName, partnerAvatarFileId?, roomTag, status, partnerPublic? },
+  me: { displayName, avatarFileId?, avatarUrl? },
+  customer: { profileComplete, customerNo?, displayName?, avatarFileId?, avatarUrl?, dormKey?, roomTag?, zone?, buildingNo?, room?, phoneTail?, gender?, genderManual? },
+  partner: { status, profileComplete, partnerNo?, displayName?, avatarFileId?, avatarUrl?, acceptingOrders? },
+  binding: null | { bindingId, partnerNo, partnerDisplayName, partnerAvatarFileId?, partnerAvatarUrl?, roomTag, status, partnerPublic? },
   config: {}, badges: { workbenchPending: 0, messages: 0, ordersOngoing: 0 },
   viewContext: null | { viewTicket, viewMode, role, targetNo, targetDisplayName, targetAvatarFileId?, targetIsTest, expiresAt },
   serverTimeSkew: 0
@@ -124,7 +124,7 @@ const off = store.subscribe((snapshot) => { this.setData({ vm: snapshot }); });
 - 每个业务页（主包 5 tab + `pkg-customer` 6 页 + `pkg-partner` 7 页）`index.wxml` 根节点第一个子节点必须是 `<switch-bar />`；`pkg-admin` 页面不引用 `switch-bar`/`test-badge`。**v1.0 新增** `pkg-customer/pages/pickup-list/index`（D26 顾客取件清单：独立入口，只读展示本站订单 `parcels[]` 的站点+取件码，本机勾选只经 `utils/storage.pickupChecks`，不回写服务端）。
 - 页面 `.json` 只写 `navigationBarTitleText` 等；组件已在 `app.json` 全局注册，页面无需再 `usingComponents`。
 - **页面纯件（批 6~8 扩展）**：可测的视图模型/表单校验/文案放同页 `parts/*.js`（纯函数、零 `wx`），页面 `index.js` 只做取参→调 `api/`→`setData`→事件转发；`pkg-admin` 11 页均有 `parts/view-model.js` + `common/copy.js`，`pkg-customer/pkg-partner` 部分页有 `parts/*`。例外组件 `components/maintenance-mask`（维护模式全屏公告）与纯件 `utils/maintenance.js` 采用**页面级 `usingComponents` 注册**（不改 `app.json`；仅 `pages/customer/home`、`pages/partner/workbench` 引用）。
-- **分享事件（v1.2/D36）**：页面 `onShareAppMessage`/`onShareTimeline` 只允许 `return` 纯件结果——身份/会话/卡片/封面判据全在 `utils/share/{index,handlers}.js`（页面零自拼 `title/path/imageUrl`、零 `assets/share/` 路径）；朋友圈仅 role/home/help 三页（单页模式静态可自洽）；切换会话禁分享由 `components/switch-bar` 统一调 `utils/share/platform.syncSession`（唯一收口，页面/组件不直写 `wx.hideShareMenu`）；单页模式（scene=1154）启动降级在 `app.js`。判据：`tools/check.js` #33 + `tools/selftest-share.js`。
+- **分享事件（v1.2/D36）**：页面 `onShareAppMessage`/`onShareTimeline` 只允许 `return` 纯件结果——身份/会话/卡片/封面判据全在 `utils/share/{index,handlers}.js`（页面零自拼 `title/path/imageUrl`、零 `assets/share/` 路径）；朋友圈仅 role/home/help 三页（单页模式静态可自洽）；切换会话禁分享由 `components/switch-bar` 统一调 `utils/share/platform.syncSession`（唯一收口，页面/组件不直写 `wx.hideShareMenu`）；**分享卡 path 统一经 `config/route` 指向 `launch`（D37）**；单页模式（scene=1154）启动降级在 `app.js`。判据：`tools/check.js` #33 + `tools/selftest-share.js`。
 - 相对路径深度：`pages/xxx/index.js` 与 `pkg-*/pages/xxx/index.js` 到仓库根都是 `../../../`（`pkg-*/pages/xxx/parts/*` 为 `../../../../../`）；`pages/launch/index.js`、`components/xxx/index.js` 为 `../../`。
 - 组件 props/events（冻结）：
 
@@ -132,7 +132,7 @@ const off = store.subscribe((snapshot) => { this.setData({ vm: snapshot }); });
 | :-- | :-- | :-- |
 | `switch-bar` | 无（读 store；含 `test-badge`，`TEST_WRITE` 渲染蓝条 + 角标，`READONLY` 黄条，无会话不渲染） | `exit` |
 | `test-badge` | 无（读 store，仅 `viewMode=TEST_WRITE` 渲染；`TEST` 字面量只允许在本组件） | — |
-| `avatar-view` | `fileId?`、`name?`（默认头像首字）、`size?`（rpx，默认 64；默认头像首字字号按 `size` 等比 ≈0.42×size 下发，不写死页面字号） | — |
+| `avatar-view` | `src?`（**D42** 临时 URL，优先；加载失败可重试，不永久锁死）、`fileId?`（回退键，仅当 `src` 为空时用）、`name?`（默认头像首字）、`size?`（rpx，默认 64；默认头像首字字号按 `size` 等比 ≈0.42×size 下发，不写死页面字号） | `retry`（用户点默认头像位重试时触发） |
 | `id-text` | `kind`（`CUSTOMER`/`PARTNER`）、`no`（canonical） | `copy` |
 | `room-tag-text` | `dormKey`、`tag` | — |
 | `status-pill` | `status`（七状态之一） | — |

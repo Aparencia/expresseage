@@ -269,8 +269,8 @@ function register(h) {
       .map(() => stationItem({})));
     t.check(tooMany.ok === false && tooMany.reason.indexOf('一单最多 10 件') >= 0,
       'C3 超过上界（MAX_PARCELS+1=11）→ 拒绝且文案带上界 10');
-    t.check(model.MAX_PARCELS === 10 && model.MAX_IMAGES === 5,
-      'C4 页面上界与 CONTRACT §5.2/D23 同值（包裹 ≤10、截图 ≤5）');
+    t.check(model.MAX_PARCELS === 10 && model.MAX_IMAGES === 10,
+      'C4 页面上界与 CONTRACT §5.2/D40 同值（包裹 ≤10、截图 ≤10，取共享常量）');
     const missingStation = model.canSubmit([stationItem({ stationId: '', stationName: '' })]);
     t.check(missingStation.ok === false && missingStation.reason.indexOf('站点') >= 0 && missingStation.index === 0,
       'C5 缺站点 → 拒绝并给件序号（页面可定位到那一件）');

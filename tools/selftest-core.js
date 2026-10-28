@@ -7,6 +7,7 @@
  * 零金额词样本一律用构造串（String.fromCharCode / 拼接），避免本测试文件自身被 #22 扫中。
  */
 const path = require('path');
+const fs = require('fs');
 const project = require('./lib/project');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -19,6 +20,8 @@ const collections = require(path.join(ROOT, 'shared/collections.js'));
 const actions = require(path.join(ROOT, 'shared/actions.js'));
 const stations = require(path.join(ROOT, 'shared/stations.js'));
 const defaults = require(path.join(ROOT, 'config/defaults.js'));
+const route = require(path.join(ROOT, 'config/route.js'));
+const pendingInvite = require(path.join(ROOT, 'utils/share/pending-invite.js'));
 const ZM = require('./zero-money-scan');
 
 // 构造样本（源码中不出现连续词面，防止门禁自命中）
@@ -29,7 +32,7 @@ const SAMPLE_FEN = 'total' + 'Fen';
 const FEE_ACTION_RE = new RegExp(['[Ff]' + 'en', 'pri' + 'ce', 'f' + 'ee'].join('|'));
 const CLEAN_TEXT = '订单状态与取件码信息整理，本程序只做下单/接单/履约与消息通知。';
 
-const EXPECTED_ASSERTIONS = 89; // 57 骨架 + 32 站点名称可配/多说法命中（D32）
+const EXPECTED_ASSERTIONS = 144; // 89 骨架 + 30 D37 入口白名单 + 25 D38 待绑定邀请/接线
 
 function register(h) {
   // ---------------------------------------------------------------- §7.1 编号
@@ -199,6 +202,112 @@ function register(h) {
       '改名后旧说法按「苑 + 专属词」仍归一到同一点（不误配其他苑的站点）');
   });
 
+  // ---------------------------------------------------------------- §7.1/D37 launch 入口白名单与分流
+  h.section('§7.1/D37 launch 入口白名单（分享卡统一经 launch + 隐私闸）', (t) => {
+    t.eq(route.LAUNCH_PAGE, '/pages/launch/index', 'D37 分享落地页 = launch（唯一启动页）');
+    t.eq(route.LAUNCH_PAGE !== route.ROLE_PAGE, true, 'launch 与 role 是两个路径（邀请卡由 launch 分流得到）');
+    t.eq(route.entryOf(null), { bind: '', orderNo: '' }, '缺省入口参数为空（常规分流，不受影响）');
+    t.eq(route.entryOf({ foo: 'x', bind: 'P-7K2-M9X' }).bind, 'P7K2M9X', 'bind 归一为 canonical 兼职编号，未知参数忽略');
+    t.eq(route.entryOf({ bind: 'p7k2m9x' }).bind, 'P7K2M9X', '小写/无分隔统一归一（容错）');
+    t.eq(route.entryOf({ bind: 'C-ABCD-2345' }).bind, '', '顾客编号不得当邀请卡参数（错对象丢弃）');
+    t.eq(route.entryOf({ bind: 'DEV-01' }).bind, '', '开发者编号丢弃（不落到顾客邀请链路）');
+    t.eq(route.entryOf({ bind: 'P-ABC' }).bind, '', '格式不合法的编号丢弃（不报错、不阻断启动）');
+    t.eq(route.entryOf({ orderNo: '20261028-0042' }).orderNo, '20261028-0042', '合法 orderNo 透传');
+    t.eq(route.entryOf({ orderNo: '2026-10-28' }).orderNo, '', '非法 orderNo 丢弃');
+    t.eq(route.entryOf({ orderNo: '' }).orderNo, '', '空 orderNo 丢弃');
+    t.eq(route.entryOf({ bind: 'P-7K2-M9X', orderNo: '20261028-0042' }),
+      { bind: 'P7K2M9X', orderNo: '20261028-0042' }, '双参数都合法时均记录（分流时 bind 优先）');
+    t.eq(route.decideEntryRoute(route.entryOf({ bind: 'P-7K2-M9X' }), { roles: [] }),
+      { url: '/pages/role/index?bind=P7K2M9X', reason: 'BIND_INVITE' }, 'bind → role 邀请卡（canonical 编号）');
+    t.eq(route.decideEntryRoute(route.entryOf({ orderNo: '20261028-0042' }), { roles: ['CUSTOMER'] }),
+      { url: '/pkg-customer/pages/order-detail/index?orderNo=20261028-0042', reason: 'ORDER_DEEP_LINK' },
+      'orderNo → 顾客订单详情（归属校验仍在服务端）');
+    t.eq(route.decideEntryRoute(route.entryOf({ orderNo: '20261028-0042' }),
+      { roles: ['PARTNER'], partner: { profileComplete: true, status: 'ACTIVE' } }),
+    { url: '/pkg-partner/pages/order-detail/index?orderNo=20261028-0042', reason: 'ORDER_DEEP_LINK' },
+    'orderNo → 兼职端订单详情（按当前业务角色）');
+    t.eq(route.decideEntryRoute(route.entryOf({}), { roles: [] }), route.decideLaunchRoute({ roles: [] }),
+      '无入口参数 → 常规分流（与 decideLaunchRoute 完全一致，不改变原行为）');
+    t.eq(route.decideEntryRoute(route.entryOf({ bind: 'P-7K2-M9X', orderNo: '20261028-0042' }), { roles: [] }).reason,
+      'BIND_INVITE', 'bind 优先于 orderNo（邀请卡是分享主场景）');
+    t.eq(route.bindPagePathOf('P7K2M9X', { auto: true }),
+      '/pkg-customer/pages/bind/index?bind=P7K2M9X&auto=1', 'D38 auto=1 绑定页路径单源');
+    t.eq(route.bindPagePathOf('P7K2M9X', { mode: 'rebind' }),
+      '/pkg-customer/pages/bind/index?bind=P7K2M9X&mode=rebind', 'D28 换绑入口路径沿用既有 mode=rebind');
+    t.eq(route.profileEditPathOf('P7K2M9X'), '/pages/profile/index?edit=1&bind=P7K2M9X',
+      '资料不完整 → profile?edit=1&bind=（保存后自动续绑）');
+    t.eq(route.roleBindPathOf('P7K2M9X'), '/pages/role/index?bind=P7K2M9X', 'role 邀请卡路径单源');
+    const launchJs = fs.readFileSync(path.join(ROOT, 'pages/launch/index.js'), 'utf8');
+    t.check(/onLoad\(options\)[\s\S]{0,160}?entryOf\(options\)/.test(launchJs),
+      'launch.onLoad 读入口参数并交 config/route 纯件（页面零参数判据）');
+    t.check(launchJs.indexOf('decideEntryRoute(') !== -1, 'launch 分流走 decideEntryRoute（D37）');
+    t.check(launchJs.indexOf('this.route()') > launchJs.indexOf('applyPrivacyGate(config)'),
+      'launch 隐私同意闸先于分流（同意后才 route）');
+    t.check(launchJs.indexOf('pendingInvite.remember(') > launchJs.indexOf('applyPrivacyGate(config)'),
+      'D38 待绑定邀请在隐私闸通过后才记录（未同意不落会话状态）');
+  });
+
+  // ---------------------------------------------------------------- §7.1/D38 待绑定邀请（会话级 pending）
+  h.section('§7.1/D38 待绑定邀请 pending（会话级 / TTL / 一次消费 / 可取消）', (t) => {
+    const T0 = 1700000000000;
+    pendingInvite.clear();
+    t.eq(pendingInvite.peek(T0), '', '无邀请 → peek 空串（无 bind 不触发续跳）');
+    t.eq(pendingInvite.take(T0), '', '无邀请 → take 空串（保存成功也不跳转）');
+    t.eq(pendingInvite.remember('C-ABCD-2345', T0), false, '错对象编号不记（只认兼职编号）');
+    t.eq(pendingInvite.remember('P-ABC', T0), false, '非法编号不记（不拿脏值兜底）');
+    t.eq(pendingInvite.peek(T0), '', '非法编号后仍无邀请');
+    t.eq(pendingInvite.remember('P-7K2-M9X', T0), true, '合法邀请编号被接受');
+    t.eq(pendingInvite.peek(T0), 'P7K2M9X', 'peek 返回 canonical 且不消费（提示用）');
+    t.eq(pendingInvite.peek(T0 + pendingInvite.TTL_MS - 1), 'P7K2M9X', 'TTL 内仍有效');
+    t.eq(pendingInvite.take(T0 + pendingInvite.TTL_MS), '', '过期后 take 空串（不自动续跳旧邀请）');
+    t.eq(pendingInvite.peek(T0 + pendingInvite.TTL_MS), '', '过期后 peek 空串');
+    pendingInvite.remember('P-AAAAAA', T0);
+    pendingInvite.remember('P-BBBBBB', T0 + 1);
+    t.eq(pendingInvite.take(T0 + 2), 'PBBBBBB', '后一次邀请覆盖前一次（会话内只保留一条）');
+    pendingInvite.remember('P7K2M9X', T0);
+    t.eq(pendingInvite.take(T0 + 1), 'P7K2M9X', 'take 取后即清（自动绑定只触发一次）');
+    t.eq(pendingInvite.peek(T0 + 1), '', 'take 后无残留');
+    pendingInvite.remember('P7K2M9X', T0);
+    pendingInvite.clear();
+    t.eq(pendingInvite.peek(T0), '', 'clear 可取消自动绑定');
+    t.check(pendingInvite.TTL_MS > 0 && pendingInvite.TTL_MS <= 60 * 60 * 1000,
+      'TTL 短时有效（>0 且 ≤60 分钟；实际 ' + pendingInvite.TTL_MS + 'ms）');
+    t.eq(pendingInvite.canonicalOf('P 7K2/M9X'), '', '无法归一的串拒收（路径参数不被当编号）');
+
+    // 静态接线：profile 保存后自动续跳 + 可取消提示 + role 邀请卡三态（D38）
+    const saveFlowJs = fs.readFileSync(path.join(ROOT, 'pages/profile/parts/save-flow.js'), 'utf8');
+    t.check(saveFlowJs.indexOf("require('../../../utils/share/pending-invite')") !== -1,
+      'save-flow 接会话级 pending 邀请纯件');
+    t.check(/pendingInvite\.take\(\)/.test(saveFlowJs) && saveFlowJs.indexOf('if (!partnerNo)') !== -1,
+      '无邀请直接 return（不触发续跳：无 bind 不动作）');
+    t.check(saveFlowJs.indexOf('route.bindPagePathOf(partnerNo, { auto: true })') !== -1,
+      'D38 保存成功后自动续跳 bind?auto=1');
+    const partJs = fs.readFileSync(path.join(ROOT, 'pages/profile/parts/invite-continuation.js'), 'utf8');
+    t.check(partJs.indexOf('pendingInvite') !== -1 && partJs.indexOf('route.entryOf(') !== -1,
+      'profile 续跳 part 只经纯件消费 ?bind=（不手拼）');
+    t.check(partJs.indexOf('wx.showModal(') !== -1 && partJs.indexOf('cancelText') !== -1
+      && partJs.indexOf('pendingInvite.clear()') !== -1, '一次性可取消提示（取消即清 pending）');
+    const profileJs = fs.readFileSync(path.join(ROOT, 'pages/profile/index.js'), 'utf8');
+    t.check(profileJs.indexOf("require('./parts/invite-continuation')") !== -1,
+      'profile 接邀请续跳 part（onLoad/onShow 各一行调用，守住 ≤500 行）');
+    t.check(profileJs.indexOf('inviteFlow.rememberFromOptions(opts)') !== -1,
+      'profile.onLoad 消费 ?bind= 写入会话级 pending');
+    t.check(profileJs.indexOf('inviteFlow.prompt(this)') !== -1, 'profile.onShow 调一次性可取消提示');
+    t.check(profileJs.indexOf("String(opts.bind || '').trim()") === -1,
+      '旧页面自存 _pendingBind 已由会话级 pending 纯件取代（单源）');
+    const roleJs = fs.readFileSync(path.join(ROOT, 'pages/role/index.js'), 'utf8');
+    const roleWxml = fs.readFileSync(path.join(ROOT, 'pages/role/index.wxml'), 'utf8');
+    t.check(roleJs.indexOf('route.bindPagePathOf(canonical, { auto: true })') !== -1,
+      'D38 邀请卡未绑+资料完整 → bind?auto=1（落地自动 create）');
+    t.check(roleJs.indexOf("route.bindPagePathOf(canonical, { mode: 'rebind' })") !== -1,
+      'D38 已绑异号 → D28 换绑一次确认入口（不自动 create）');
+    t.check(roleJs.indexOf('route.profileEditPathOf(canonical)') !== -1,
+      'D38 资料不完整 → profile?edit=1&bind=（保存后自动续绑）');
+    t.check(roleJs.indexOf('binding.partnerNo === canonical') !== -1,
+      'D38 已绑同号兜底：不重复 create（与「已绑定·去下单」同口径）');
+    t.check(roleWxml.indexOf('已绑定·去下单') !== -1, 'D38 已绑同号提示「已绑定·去下单」');
+  });
+
   // ---------------------------------------------------------------- §7.6 零金额扫描器牙口
   h.section('§7.6 零金额扫描器（门禁自测）', (t) => {
     t.check(ZM.scanText(SAMPLE_TRANSPORT).length >= 1, '注入样本 1 必须命中');
@@ -216,3 +325,13 @@ function register(h) {
 }
 
 module.exports = { EXPECTED_ASSERTIONS, register };
+
+if (require.main === module) {
+  const { createHarness, installCrashGuard } = require('./selftest');
+  const h = createHarness({ name: 'selftest-core' });
+  installCrashGuard(() => ({ count: h.count, passed: h.passed, failures: h.failures.length }), 'selftest-core');
+  h.setExpected(EXPECTED_ASSERTIONS);
+  register(h);
+  const ret = h.finish();
+  if (ret && typeof ret.then === 'function') ret.then(() => {});
+}

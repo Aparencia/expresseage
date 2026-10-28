@@ -100,7 +100,7 @@ function imageRowsOf(order) {
   return [imageRowOf(image, 0)];
 }
 
-/** 截图（D23 一单 0~5 张）：全部已清理/部分可看/无图三态 */
+/** 截图（D23/D40 一单 0~10 张）：全部已清理/部分可看/无图三态 */
 function imagesView(order) {
   const rows = imageRowsOf(order);
   const viewable = [];

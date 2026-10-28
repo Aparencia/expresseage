@@ -81,28 +81,49 @@ function normalizeZoneLabels(value) {
   return out;
 }
 
+// D41（2026-10-28 用户拍板）：服务目录固定 5 类（标准代取/送至楼下/加急代取/代寄快递/其他代办，顺序=shared/enums）。
+// 兼容旧库与旧客户端：目录外 code（如已停用 PICKUP_DOOR）忽略不报错；缺失的现行 code 回退出厂默认名称/说明。
+// 于是后台保存一次即可把存量 config.serviceCatalog 迁到新 5 类（读层 configCommon.serviceCatalogOf 也会自动归一）。
+const SERVICE_NAME_MAX = 20;
+const SERVICE_DESC_MAX = 60;
+const SERVICE_CATALOG_COPY = '服务类型固定 5 类（标准代取/送至楼下/加急代取/代寄快递/其他代办），需整表提交';
+
+function defaultServiceEntries() {
+  return (DEFAULT_CONFIG.serviceCatalog || []).map((item) => ({
+    code: item.code,
+    name: item.name,
+    desc: item.desc
+  }));
+}
+
 function normalizeServiceCatalog(value) {
-  if (!Array.isArray(value) || value.length !== enums.SERVICE_CODES.length) {
-    throw errors.validation('serviceCatalog', '服务类型需覆盖全部 5 类');
+  if (!Array.isArray(value)) {
+    throw errors.validation('serviceCatalog', SERVICE_CATALOG_COPY);
   }
+  const defaults = defaultServiceEntries();
+  const codes = defaults.map((item) => item.code);
   const seen = {};
-  const out = value.map((item) => {
+  let accepted = 0;
+  value.forEach((item) => {
     if (!item || typeof item !== 'object') {
       throw errors.validation('serviceCatalog', '服务类型格式不正确');
     }
-    const code = item.code;
-    if (enums.SERVICE_CODES.indexOf(code) < 0 || seen[code]) {
-      throw errors.validation('serviceCatalog', '服务类型编码不正确');
-    }
-    seen[code] = true;
+    const code = typeof item.code === 'string' ? item.code.trim() : '';
+    if (codes.indexOf(code) < 0) return; // 旧目录/已停用 code（PICKUP_DOOR）：忽略，不报错（历史兼容）
     const name = typeof item.name === 'string' ? item.name.trim() : '';
     const desc = typeof item.desc === 'string' ? item.desc.trim() : '';
-    if (!name || name.length > 20 || desc.length > 60) {
+    if (!name || name.length > SERVICE_NAME_MAX || desc.length > SERVICE_DESC_MAX) {
       throw errors.validation('serviceCatalog', '服务名称/说明长度不正确');
     }
-    return { code: code, name: name, desc: desc };
+    if (seen[code]) return;
+    seen[code] = { code: code, name: name, desc: desc };
+    accepted += 1;
   });
-  return out;
+  if (accepted === 0) {
+    throw errors.validation('serviceCatalog', SERVICE_CATALOG_COPY);
+  }
+  // 固定 5 条、顺序=默认目录；缺失项用出厂名称/说明补齐（旧库迁移路径）
+  return defaults.map((item) => seen[item.code] || item);
 }
 
 function normalizeAnnouncement(value) {

@@ -10,10 +10,12 @@ const partnerApi = require('../../../api/modules/partner');
 const ids = require('../../../utils/ids');
 const rebind = require('../../../utils/rebind');
 const autoQuery = require('./parts/auto-query');
+const autoBind = require('./parts/auto-bind');
 const share = require('../../../utils/share/handlers');
 
 const HOME_PAGE = '/pages/customer/home/index';
 const PROFILE_PAGE = '/pages/profile/index';
+const REBIND_TITLE = '换绑兼职';
 
 function serviceNames(services, catalog) {
   return (services || [])
@@ -46,18 +48,27 @@ Page({
     retryVisible: false,
     retryLabel: '',
     retryTitle: '',
-    retryHint: ''
+    retryHint: '',
+    auto: false,
+    autoBinding: false,
+    boundSame: false,
+    autoLoadingText: autoBind.AUTO_LOADING_TEXT,
+    alreadyBoundText: autoBind.ALREADY_BOUND_TEXT,
+    goOrderText: autoBind.GO_ORDER_TEXT
   },
 
   onLoad(options) {
     const opts = options || {};
     const prefill = String(opts.bind || '');
+    const auto = String(opts.auto || '') === '1';
     const mode = rebind.modeOf(opts);
     const snapshot = store.snapshot();
     const readonly = !!(snapshot.viewContext && snapshot.viewContext.viewMode === 'READONLY');
-    this.setData({ mode: mode, readonly: readonly, labels: rebind.labelsOf({ mode: mode }) });
-    if (mode === rebind.MODE.REBIND) wx.setNavigationBarTitle({ title: '换绑兼职' });
+    this.setData({ mode: mode, readonly: readonly, auto: auto, labels: rebind.labelsOf({ mode: mode }) });
+    if (mode === rebind.MODE.REBIND) wx.setNavigationBarTitle({ title: REBIND_TITLE });
     this.createAutoQuery();
+    // D38：邀请卡自动绑定入口（?bind=CODE&auto=1）——预检 + 预览就绪后自动 create 一次，不自动重试
+    if (mode === rebind.MODE.CREATE) this.createAutoBind(auto);
     if (prefill) {
       const parsed = this.handleInput(prefill);
       // P1-2：带合法编号落地即自动出预览（优先角色页预览缓存 → 0 请求；未命中 300ms 防抖自动 query）
@@ -68,6 +79,7 @@ Page({
 
   onUnload() {
     if (this._auto) this._auto.dispose();
+    if (this._autoBind) this._autoBind.dispose();
   },
 
   // 自动查询编排全在 ./parts/auto-query 纯件：本页只注入「真网络 + setData」与结果展示
@@ -82,6 +94,42 @@ Page({
         this.setData({ loading: false, preview: null, error: (err && err.message) || '查询失败，请稍后重试' });
       }
     });
+  },
+
+  // D38 自动绑定编排全在 ./parts/auto-bind 纯件：本页只注入「真网络 + setData/弹窗」
+  createAutoBind(auto) {
+    this._autoBind = autoBind.create({
+      auto: auto === true,
+      current: function current() { return bindApi.getCurrent(); },
+      onCreate: () => {
+        this.setData({ autoBinding: true });
+        this.submit({});
+      },
+      onSame: () => this.setData({
+        boundSame: true, autoBinding: false, error: '', retryVisible: false
+      }),
+      onRebind: (current) => this.startAutoRebind(current),
+      onError: (err) => this.setData({
+        autoBinding: false,
+        error: (err && err.message) || '查询当前绑定失败，请手动确认'
+      })
+    });
+    this._autoBind.arm();
+  },
+
+  // D28：已绑定异号不静默解绑——切 rebind 模式后仍弹一次确认（用户点了才 release→create）
+  startAutoRebind(current) {
+    const binding = (current && current.binding) || null;
+    const partnerPublic = (current && current.partnerPublic) || null;
+    this.setData({
+      mode: rebind.MODE.REBIND,
+      labels: rebind.labelsOf({ mode: rebind.MODE.REBIND }),
+      currentBinding: binding,
+      currentPartnerName: (partnerPublic && partnerPublic.displayName) || '',
+      autoBinding: false
+    });
+    wx.setNavigationBarTitle({ title: REBIND_TITLE });
+    this.onConfirm();
   },
 
   loadCurrent() {
@@ -112,7 +160,8 @@ Page({
       canonical: parsed.ok ? (parsed.canonical || normalized) : '',
       hint: hint,
       error: '',
-      retryVisible: false
+      retryVisible: false,
+      boundSame: false
     });
     if (parsed.ok && this.data.preview && this.data.preview.partnerNo !== parsed.canonical) {
       this.setData({ preview: null });
@@ -158,11 +207,12 @@ Page({
     const config = store.snapshot().config || {};
     const catalog = config.serviceCatalog || [];
     const names = serviceNames(partner.services, catalog);
+    const partnerNo = partner.partnerNo || (meta && meta.partnerNo) || '';
     this.setData({
       loading: false,
       error: '',
       preview: {
-        partnerNo: partner.partnerNo || (meta && meta.partnerNo) || '',
+        partnerNo: partnerNo,
         displayName: partner.displayName || '',
         status: partner.status || '',
         acceptingOrders: partner.acceptingOrders !== false
@@ -170,6 +220,8 @@ Page({
       servicesText: names.length > 0 ? names.join(' / ') : '服务类型加载中',
       zonesText: (partner.zones || []).join(' / ') || '全部苑'
     });
+    // D38：预览就绪是自动绑定的必要前提（预检未回来时纯件会等预检，回来后再触发）
+    if (this._autoBind) this._autoBind.previewReady(partnerNo);
   },
 
   onConfirm() {
@@ -209,7 +261,12 @@ Page({
       this._result = result;
       return this.applyResult(result);
     }).catch((err) => {
-      this.setData({ submitting: false, error: (err && err.message) || '操作失败，请稍后重试' });
+      // D38：自动绑定失败不自动重试——只转人工重试/改编号，错误如实展示（文案来自云端单源）
+      this.setData({
+        submitting: false,
+        autoBinding: false,
+        error: (err && err.message) || '操作失败，请稍后重试'
+      });
     });
   },
 
@@ -218,6 +275,7 @@ Page({
       const failView = rebind.failureView(result);
       this.setData({
         submitting: false,
+        autoBinding: false,
         error: failView.text,
         retryVisible: failView.retryVisible,
         retryLabel: failView.retryLabel,
@@ -236,6 +294,7 @@ Page({
     const displayName = partnerPublic.displayName || '';
     this.setData({
       submitting: false,
+      autoBinding: false,
       error: '',
       retryVisible: false,
       roomTag: binding.roomTag || '',
@@ -264,6 +323,11 @@ Page({
 
   onOpenProfile() {
     wx.switchTab({ url: PROFILE_PAGE });
+  },
+
+  // 「已绑定·去下单」：已绑定同号不再 create，直接回顾客首页下单（D38）
+  onGoOrder() {
+    wx.switchTab({ url: HOME_PAGE });
   },
 
   onRetry() {

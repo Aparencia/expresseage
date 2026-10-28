@@ -14,21 +14,24 @@ const identity = require('../user/_common');
 const uploadCommon = require('../upload/_common');
 const configCommon = require('../config/_common');
 
-function emptyServiceConfig() {
+// D41（2026-10-28 用户拍板）：默认服务目录取运行时 `config.serviceCatalog`（configCommon 读层已按新 5 类归一，
+// 旧库/含已停用 PICKUP_DOOR 的目录会回退新默认），保持既有「全部启用」行为；不在这里另写一份码表。
+function emptyServiceConfig(config) {
+  const catalog = configCommon.serviceCatalogOf(config);
   return {
-    services: enums.SERVICES.map((item) => ({ code: item.code, enabled: true })),
+    services: catalog.map((item) => ({ code: item.code, enabled: true })),
     zones: zones.ZONES.slice(),
     acceptingOrders: true
   };
 }
 
-function buildPartnerDoc(openid, payload, nowDate) {
+function buildPartnerDoc(openid, payload, nowDate, config) {
   return {
     openid,
     displayName: payload.displayName,
     avatarFileId: payload.avatarFileId || '',
     status: enums.PARTNER_STATUS.ACTIVE,
-    serviceConfig: emptyServiceConfig(),
+    serviceConfig: emptyServiceConfig(config),
     stats: { totalOrders: 0, activeOrders: 0, completedOrders: 0, cancelledOrders: 0, todayOrders: 0, updatedAt: nowDate },
     activatedAt: nowDate,
     createdAt: nowDate,
@@ -81,7 +84,7 @@ async function handler(ctx, payload) {
     avatarFileId,
     nowMs,
     nowDate
-  });
+  }, config);
 
   if (avatarTicket) {
     await uploadCommon.consumeTicket(ctx, avatarTicket, nowMs);
@@ -99,7 +102,7 @@ async function handler(ctx, payload) {
   };
 }
 
-async function activateInTransaction(ctx, options) {
+async function activateInTransaction(ctx, options, runtimeConfig) {
   const opts = options;
   const attempt = async (tries) => {
     try {
@@ -118,7 +121,7 @@ async function activateInTransaction(ctx, options) {
         if (invitation.status === enums.INVITATION_STATUS.EXPIRED || (expiresAtMs > 0 && expiresAtMs <= opts.nowMs)) {
           throw errors.inviteExpired('邀请码已过期，请向开发者索取新的邀请码');
         }
-        const doc = buildPartnerDoc(opts.scope.openid, { displayName: opts.displayName, avatarFileId: opts.avatarFileId }, opts.nowDate);
+        const doc = buildPartnerDoc(opts.scope.openid, { displayName: opts.displayName, avatarFileId: opts.avatarFileId }, opts.nowDate, runtimeConfig);
         const inserted = await insertUnique(trx, COLLECTIONS.PARTNERS, {
           field: 'partnerNo',
           generate: () => (ctx.ids && typeof ctx.ids.partnerNo === 'function' ? ctx.ids.partnerNo() : generatePartnerNo()),

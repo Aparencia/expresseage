@@ -41,7 +41,7 @@ const DEFAULT_CONFIG = {
     enabled: true,
     model: '',
     timeoutMs: 8000,
-    maxPerUserPerDay: 5,
+    maxPerUserPerDay: 0, // D40：0=不设每人每日次数上限（用户 2026-10-28 拍板「AI 不限额」）；全局日配额仍由 dailyQuota 兜底
     dailyQuota: 200,
     cooldownMinutes: 10
   },

@@ -256,7 +256,7 @@ function normalizeTailFromText(text) {
   return matches.length > 0 ? matches[0] : '';
 }
 
-// 配额：rl:ai:{openid}:d{day} 5 次/人/日 + rl:ai:global:d{day} 全局日配额（超限不外呼、静默降级）
+// 配额：rl:ai:{openid}:d{day} 历史 per-user 计数（D40：不参与拦截，仅观测）+ rl:ai:global:d{day} 全局日配额（超限不外呼、静默降级）
 function aiQuotaKeys(openid, nowMs) {
   const day = time.dayKey(nowMs);
   return {
@@ -284,9 +284,10 @@ async function bumpCounter(ctx, key, nowMs) {
 
 async function checkQuota(ctx, openid, nowMs, aiConfig) {
   const keys = aiQuotaKeys(openid, nowMs);
-  const userUsed = await readCounter(ctx, keys.user);
   const globalUsed = await readCounter(ctx, keys.global);
-  if (userUsed >= aiConfig.maxPerUserPerDay || globalUsed >= aiConfig.dailyQuota) {
+  // D40：per-user 次数仅为历史字段（仍计数供排障），不参与拦截——存量 config 残留 maxPerUserPerDay=5 也不再生效；
+  // 全局日配额、熔断、8s 超时降级保留。
+  if (globalUsed >= aiConfig.dailyQuota) {
     return { allowed: false, keys };
   }
   return { allowed: true, keys };

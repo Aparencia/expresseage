@@ -1,11 +1,14 @@
 // pkg-admin/pages/config/parts/view-model.js · 全局配置视图模型（纯件，零 wx）
 // 口径：V4_UX_DEVELOPER §3.8/§7.4——可编辑白名单字段（识别失败留存 7~30、站点名称 1~20 字唯一）、
 //       只读项、变更清单与二次确认。站点名称单源 = shared/stations（默认名与 id 不复制第二份）。
+// D41（2026-10-28 用户拍板）：服务目录固定 5 类，顺序/默认名称单源 = shared/enums；
+//       旧目录（含已停用 PICKUP_DOOR 或缺新码 PICKUP_LOW）整表回退新默认，后台保存一次即完成迁移。
 'use strict';
 
 const C = require('../../../common/constants');
 const F = require('../../../common/format');
 const stationsLib = require('../../../../shared/stations');
+const enums = require('../../../../shared/enums');
 
 const FIELD_LABELS = {
   zoneLabels: '苑名',
@@ -33,6 +36,41 @@ function toInt(value) {
 function stationRowsOf(stations) {
   return stationsLib.stationsFromConfig({ stations: stations }).map(function mapStation(item) {
     return { id: item.id, name: item.name, defaultName: stationsLib.stationNameOf(item.id) };
+  });
+}
+
+// D41：目录是否「D41 之前」形态（空/含目录外 code/缺现行 code）→ 整表回退新默认；已迁移则保留后台改名。
+function isLegacyServiceCatalog(list) {
+  const stored = Array.isArray(list) ? list : [];
+  if (!stored.length) return true;
+  const codes = [];
+  stored.forEach(function collect(item) {
+    const code = item && typeof item.code === 'string' ? item.code : '';
+    if (code && codes.indexOf(code) < 0) codes.push(code);
+  });
+  if (!codes.length) return true;
+  return codes.some(function unknown(code) { return enums.SERVICE_CODES.indexOf(code) < 0; })
+    || enums.SERVICE_CODES.some(function missing(code) { return codes.indexOf(code) < 0; });
+}
+
+// 服务类型编辑行：固定 5 行、顺序 = shared/enums；只有 code/name/desc（无启用开关）。
+function serviceRowsOf(catalog) {
+  const stored = Array.isArray(catalog) ? catalog : [];
+  const legacy = isLegacyServiceCatalog(stored);
+  const byCode = {};
+  if (!legacy) {
+    stored.forEach(function collect(item) {
+      if (!item || enums.SERVICE_CODES.indexOf(item.code) < 0 || byCode[item.code]) return;
+      byCode[item.code] = item;
+    });
+  }
+  return enums.SERVICES.map(function mapService(item) {
+    const hit = byCode[item.code];
+    return {
+      code: item.code,
+      name: hit && typeof hit.name === 'string' && hit.name ? hit.name : item.name,
+      desc: hit && typeof hit.desc === 'string' ? hit.desc : item.desc
+    };
   });
 }
 
@@ -64,14 +102,8 @@ function buildForm(config) {
     };
   });
   form.stations = stationRowsOf(source.stations);
-  form.services = (source.serviceCatalog || []).map(function mapService(item) {
-    // 契约口径（CONTRACT §6 / DATA_MODEL §2.10）：serviceCatalog 只有 {code,name,desc}，无展示开关
-    return {
-      code: item.code,
-      name: item.name || '',
-      desc: item.desc || ''
-    };
-  });
+  // D41：服务类型固定 5 类（名称/说明可改，不新增/不删除）；旧目录回退新默认（保存一次即迁移）
+  form.services = serviceRowsOf(source.serviceCatalog);
   const announcement = source.announcement || {};
   form.announcement = {
     enabled: announcement.enabled === true,
@@ -237,6 +269,7 @@ module.exports = {
   toInt,
   emptyForm,
   buildForm,
+  serviceRowsOf,
   buildReadonlyInfo,
   buildPayload,
   validatePayload,

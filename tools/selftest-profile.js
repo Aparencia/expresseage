@@ -12,6 +12,7 @@
  *   §4.1 AVATAR 云存储路径模板（服务端唯一构造点：avatars/{role}/{random}.jpg，零 openid）
  *   §2.2 顾客性别（2026-10-27 用户口径：东苑楼栋推断/手改标记/未知不阻塞保存、页面接线）
  *   §3.5 P1-1 资料自动展开（2026-10-28 反馈②：完成度按当前角色取——纯兼职默认摘要态、顾客未完善仍展开）
+ *   §4.2/D42 头像临时 URL（user.avatarUrl 无参数/无头像空/越权无通道；绑定对方仅 ACTIVE 下发；file-id 零命中）
  *
  * 纪律：不 mock 全局 wx（storage 走注入的内存 platform，avatar 只测纯函数）；
  *       云路径期望串用拼接构造，避免"路径模板字面量"误命中门禁口径；
@@ -32,7 +33,7 @@ const uploadCommon = require(path.join(ROOT, 'cloudfunctions/api/handlers/upload
 const profileVm = require(path.join(ROOT, 'pages/profile/parts/view-model.js'));
 const avatarSave = require(path.join(ROOT, 'pages/profile/parts/avatar-save.js'));
 
-const EXPECTED_ASSERTIONS = 163;
+const EXPECTED_ASSERTIONS = 194;
 
 const TOKEN = 'T'.repeat(32);
 const CONSENT_AT = 1700000000000;
@@ -271,8 +272,8 @@ function register(h) {
       '「我的」tab 页 onShow 同步 tabBar 选中态 index=2（防切角色/会话后高亮错格；其余 tab 页由顾客端 UI 任务处理）');
     t.check(!/privacyVersion/.test(launchJs),
       'launch 不在页面里比较隐私版本（状态机只在 utils/privacy-policy 纯件）');
-    t.check(launchJs.indexOf('decideLaunchRoute') !== -1,
-      'launch 分流走 config/route.js 纯函数（页面零业务判据）');
+    t.check(/decideEntryRoute\(|decideLaunchRoute\(/.test(launchJs),
+      'launch 分流走 config/route.js 纯函数（页面零业务判据；D37 入口决策 decideEntryRoute 可回落 decideLaunchRoute）');
   });
 
   // ---------------------------------------------------------------- §11 隐私同意
@@ -547,8 +548,247 @@ function register(h) {
     '表单提示「默认按苑/楼栋推断，可修改」+ 资料卡展示性别行');
   });
 
+  // ---------------------------------------------------------------- §4.2/D42 头像临时 URL 通道
+  h.section('§4.2/D42 头像临时 URL（user.avatarUrl 无参数/无头像空/越权无通道；绑定对方仅 ACTIVE；file-id 零命中）', async (t) => {
+    const userAvatarUrl = require(path.join(ROOT, 'cloudfunctions/api/handlers/user/avatarUrl.js'));
+    const bindGetCurrent = require(path.join(ROOT, 'cloudfunctions/api/handlers/bind/getCurrent.js'));
+    const fullDto = require(path.join(ROOT, 'cloudfunctions/api/db/dto/full.js'));
+
+    // fake ctx：业务身份只经 identity.effectiveOpenid（无参数通道）；cloud.getTempFileURL 可注入成功/失败/缺失
+    function rowsOf(docs, collection) {
+      const table = docs[collection] || {};
+      return Object.keys(table).map((key) => table[key]).filter((row) => row && typeof row === 'object');
+    }
+    function makeCtx(options) {
+      const opts = options || {};
+      const docs = opts.docs || {};
+      const signed = [];
+      const cloud = opts.cloud === undefined ? {
+        getTempFileURL(request) {
+          signed.push(request);
+          return Promise.resolve({
+            fileList: (request.fileList || []).map((item) => ({
+              fileID: item.fileID,
+              tempFileURL: 'https://tmp.example/' + encodeURIComponent(item.fileID)
+            }))
+          });
+        }
+      } : opts.cloud;
+      return {
+        signed: signed,
+        dao: {
+          get(collection, id) { return Promise.resolve((docs[collection] || {})[id] || null); },
+          findOne(collection, query) {
+            const where = (query && query.where) || {};
+            const hit = rowsOf(docs, collection)
+              .filter((row) => Object.keys(where).every((key) => row[key] === where[key]))[0];
+            return Promise.resolve(hit || null);
+          },
+          update() { return Promise.resolve({}); },
+          find() { return Promise.resolve([]); },
+          count() { return Promise.resolve(0); }
+        },
+        cloud: cloud,
+        identity: {
+          effectiveOpenid: opts.openid || 'openid-self',
+          actorOpenid: opts.openid || 'openid-self',
+          role: opts.role || ''
+        },
+        now: 1700000000000,
+        requestId: 'req-avatar-d42'
+      };
+    }
+    const CUSTOMER_A = 'cloud://env/avatars/customer/a.jpg';
+
+    // ① 无头像 → 空 + 零外呼（不拿空 fileID 去要 URL）
+    const emptyCtx = makeCtx({ docs: { customers: { 'openid-self': { _id: 'openid-self', avatarFileId: '' } } } });
+    const emptyData = await userAvatarUrl.handler(emptyCtx);
+    t.check(emptyData.customer.avatarUrl === '' && emptyData.partner.avatarUrl === ''
+      && emptyCtx.signed.length === 0, '无头像：返回空 URL 且零 getTempFileURL 外呼（D42 无头像返回空）');
+
+    // ② 本人头像 → 临时 URL；TTL = maxAge 300 秒
+    const selfCtx = makeCtx({ docs: { customers: { 'openid-self': { _id: 'openid-self', avatarFileId: CUSTOMER_A } } } });
+    const selfData = await userAvatarUrl.handler(selfCtx);
+    t.check(selfData.customer.avatarUrl === 'https://tmp.example/' + encodeURIComponent(CUSTOMER_A)
+      && selfData.customer.avatarFileId === CUSTOMER_A,
+    '本人有头像：下发临时 URL 且保留 avatarFileId（回退键）');
+    t.eq(selfCtx.signed.length === 1 && selfCtx.signed[0].fileList[0].maxAge, 300,
+      '临时 URL TTL = maxAge 300 秒（5 分钟，D42）');
+
+    // ③ 无参数通道：伪造 openid/fileId 入参不读他人头像（越权面为零）
+    const forgeCtx = makeCtx({ docs: { customers: {
+      'openid-self': { _id: 'openid-self', avatarFileId: '' },
+      'openid-victim': { _id: 'openid-victim', avatarFileId: 'cloud://env/avatars/customer/victim.jpg' }
+    } } });
+    const forgeData = await userAvatarUrl.handler(forgeCtx, {
+      openid: 'openid-victim',
+      fileId: 'cloud://env/avatars/customer/victim.jpg'
+    });
+    t.check(forgeData.customer.avatarUrl === '' && JSON.stringify(forgeData).indexOf('victim') === -1,
+      '入参伪造 openid/fileId 无效：只读 effectiveOpenid 本人（越权读他人头像无通道）');
+
+    // ④ 平台失败/未注入 → 不抛错、URL 空、fileId 保留（读失败不影响页面）
+    const failCtx = makeCtx({
+      cloud: { getTempFileURL() { return Promise.reject(new Error('platform down')); } },
+      docs: { customers: { 'openid-self': { _id: 'openid-self', avatarFileId: CUSTOMER_A } } }
+    });
+    const failData = await userAvatarUrl.handler(failCtx);
+    t.check(failData.customer.avatarUrl === '' && failData.customer.avatarFileId === CUSTOMER_A,
+      'getTempFileURL 失败：不抛错、URL 空、avatarFileId 保留（页面回退默认头像）');
+    const noCloudCtx = makeCtx({
+      cloud: null,
+      docs: { partners: { p1: { _id: 'p1', openid: 'openid-self', avatarFileId: 'cloud://env/avatars/partner/b.jpg' } } }
+    });
+    const noCloudData = await userAvatarUrl.handler(noCloudCtx);
+    t.check(noCloudData.partner.avatarUrl === '' && noCloudData.partner.avatarFileId === 'cloud://env/avatars/partner/b.jpg',
+      '平台能力缺失（单测无 cloud）：同样不抛错，回退 avatarFileId');
+
+    // ⑤ 切换会话：effectiveOpenid=目标 → 签目标本人头像（只读视角可展示，不越权他人）
+    const viewCtx = makeCtx({
+      openid: 'openid-target',
+      docs: { partners: { p2: { _id: 'p2', openid: 'openid-target', avatarFileId: 'cloud://env/avatars/partner/t.jpg' } } }
+    });
+    const viewData = await userAvatarUrl.handler(viewCtx);
+    t.check(viewData.partner.avatarUrl.indexOf('t.jpg') >= 0 && viewCtx.signed.length === 1,
+      '切换会话：按 effectiveOpenid 签目标本人头像（只读视角能看头像，仍不越权他人）');
+
+    // ⑥ 双角色：一次调用同时签顾客/兼职两种本人头像（服务端不依赖客户端 activeRole）
+    const dualCtx = makeCtx({ docs: {
+      customers: { 'openid-self': { _id: 'openid-self', avatarFileId: 'cloud://env/avatars/customer/c.jpg' } },
+      partners: { p3: { _id: 'p3', openid: 'openid-self', avatarFileId: 'cloud://env/avatars/partner/p.jpg' } }
+    } });
+    const dualData = await userAvatarUrl.handler(dualCtx);
+    t.check(dualData.customer.avatarUrl.indexOf('c.jpg') >= 0 && dualData.partner.avatarUrl.indexOf('p.jpg') >= 0
+      && dualCtx.signed.length === 1,
+    '双角色一次批量签发两个角色头像（单次 getTempFileURL，服务端不依赖 activeRole）');
+
+    // ⑦ 绑定对方 DTO：仅 bound=true 才有头像；绑定前预览不回头像（CONTRACT §11.1）
+    const boundDto = fullDto.partnerPublic({ displayName: '阿杰', avatarFileId: 'cloud://env/avatars/partner/x.jpg' },
+      { bound: true, avatarUrl: 'https://tmp.example/x' });
+    t.check(boundDto.avatarFileId === 'cloud://env/avatars/partner/x.jpg'
+      && boundDto.avatarUrl === 'https://tmp.example/x',
+    'partnerPublic(bound=true)：avatarFileId + avatarUrl 同时下发（D42）');
+    const previewDto = fullDto.partnerPublic({ displayName: '阿杰', avatarFileId: 'cloud://env/avatars/partner/x.jpg' },
+      { bound: false, avatarUrl: 'https://tmp.example/x' });
+    t.check(previewDto.avatarFileId === undefined && previewDto.avatarUrl === undefined,
+      '反例：绑定前预览（bound=false）不返回头像 fileId/URL');
+
+    // ⑧ bind.getCurrent：仅 ACTIVE 绑定下发 partnerPublic.avatarUrl；无绑定/兼职视角不返回且零外呼
+    const bindDocs = {
+      bindings: { b1: { _id: 'b1', customerId: 'openid-c', partnerId: 'p1', status: 'ACTIVE', roomTag: 'A1' } },
+      partners: { p1: { _id: 'p1', openid: 'openid-p', displayName: '阿杰', avatarFileId: 'cloud://env/avatars/partner/act.jpg' } }
+    };
+    const currentCtx = makeCtx({ openid: 'openid-c', docs: bindDocs, role: 'CUSTOMER' });
+    const currentData = await bindGetCurrent.handler(currentCtx, {});
+    t.check(currentData.partnerPublic && currentData.partnerPublic.avatarUrl.indexOf('act.jpg') >= 0
+      && currentData.partnerPublic.avatarFileId === 'cloud://env/avatars/partner/act.jpg',
+    'bind.getCurrent：ACTIVE 绑定下发 partnerPublic.avatarUrl（DTO 保留 avatarFileId）');
+    t.eq(currentCtx.signed.length === 1 && currentCtx.signed[0].fileList[0].maxAge, 300,
+      'bind.getCurrent 临时 URL 同 TTL=300 秒');
+    const noBindCtx = makeCtx({ openid: 'openid-nobind', docs: { customers: {} }, role: 'CUSTOMER' });
+    const noBindData = await bindGetCurrent.handler(noBindCtx, {});
+    t.check(noBindData.binding === null && noBindData.partnerPublic === null && noBindCtx.signed.length === 0,
+      '无绑定：binding/partnerPublic 均 null 且零外呼（解绑即不返回对方 avatarUrl）');
+    const partnerSideCtx = makeCtx({ openid: 'openid-p', docs: bindDocs, role: 'PARTNER' });
+    const partnerSideData = await bindGetCurrent.handler(partnerSideCtx, {});
+    t.check(partnerSideData.binding === null && partnerSideData.partnerPublic === null
+      && partnerSideCtx.signed.length === 0,
+    '兼职视角调 bind.getCurrent：不返回对方资料、零外呼（绑定方向铁律）');
+
+    // ⑨ avatar-view 纯件：src 优先、fileId 回退、失败可重试（不永久锁死）
+    const srcModel = avatar.viewModelOf({ src: 'https://tmp.example/u?sign=1', fileId: CUSTOMER_A }, '阿杰');
+    t.check(srcModel.isDefault === false && srcModel.url === 'https://tmp.example/u?sign=1',
+      'avatar-view：src 优先于 fileId（临时 URL 主路径，cloud:// 只作回退键）');
+    const fileModel = avatar.viewModelOf({ fileId: CUSTOMER_A }, '阿杰');
+    t.check(fileModel.isDefault === false && fileModel.url === CUSTOMER_A && fileModel.src === '',
+      'src 缺失时 fileId 回退（兼容旧数据/URL 签发失败）');
+    t.check(avatar.viewModelOf({ src: '', fileId: '' }, '').isDefault === true,
+      '无 src/fileId：默认首字色块（不裂图）');
+
+    const avatarViewSrc = readSource('components/avatar-view/index.js');
+    const avatarViewTpl = readSource('components/avatar-view/index.wxml');
+    t.check(/src:\s*\{\s*type:\s*String/.test(avatarViewSrc) && /fileId:\s*\{\s*type:\s*String/.test(avatarViewSrc),
+      'avatar-view 冻结接口：src?（临时 URL 优先）+ fileId?（回退键）');
+    t.check(avatarViewSrc.indexOf("triggerEvent('retry'") !== -1 && /this\._failedKey\s*===\s*sourceKey/.test(avatarViewSrc),
+      'avatar-view：失败态只锁同一来源；点默认头像触发 retry（不永久锁死）');
+    t.check(/_failedKey = '';/.test(avatarViewSrc),
+      'avatar-view：重试时清失败键，可再次尝试加载');
+    t.check(avatarViewTpl.indexOf('view.url') !== -1 && /bindtap="onRetryTap"/.test(avatarViewTpl),
+      'avatar-view 模板：<image src=view.url> + 默认头像位可点重试');
+
+    // ⑩ 页面接线：两端「我的」/首页/订单详情改传 src + retry；fileId 回退键保留
+    const profileWxml = readSource('pages/profile/index.wxml');
+    const homeWxml = readSource('pages/customer/home/index.wxml');
+    const orderWxml = readSource('pkg-customer/pages/order-detail/index.wxml');
+    t.check(profileWxml.indexOf('src="{{profile.avatarUrl}}"') !== -1
+      && homeWxml.indexOf('src="{{partnerCard.avatarUrl}}"') !== -1
+      && orderWxml.indexOf('src="{{partnerAvatarUrl}}"') !== -1,
+    '两端「我的」/首页/订单详情头像改传 src（onShow 重签临时 URL）');
+    t.check(/bindretry="onAvatarRetry"/.test(profileWxml) && /bindretry="onPartnerAvatarRetry"/.test(homeWxml)
+      && /bindretry="onPartnerAvatarRetry"/.test(orderWxml),
+    '页面接收组件 retry 事件并重签 URL（失败可恢复）');
+    t.check(profileWxml.indexOf('fileId="{{profile.avatarFileId}}"') !== -1
+      && homeWxml.indexOf('fileId="{{partnerCard.avatarFileId}}"') !== -1
+      && orderWxml.indexOf('fileId="{{order.counterpart.avatarFileId}}"') !== -1,
+    'fileId 回退键保留（URL 未到达/过期时组件仍可兜底）');
+
+    // ⑪ 全仓 wxml 静态扫描：file-id= 零命中（D42 修 2 处驼峰；其余处原本就是 fileId）
+    const wxmlFiles = [];
+    function collectWxml(dir) {
+      fs.readdirSync(path.join(ROOT, dir)).forEach((name) => {
+        const rel = dir + '/' + name;
+        const full = path.join(ROOT, rel);
+        if (fs.statSync(full).isDirectory()) {
+          collectWxml(rel);
+          return;
+        }
+        if (/\.wxml$/.test(name)) {
+          wxmlFiles.push(rel);
+        }
+      });
+    }
+    ['pages', 'pkg-customer', 'pkg-partner', 'pkg-admin', 'components'].forEach(collectWxml);
+    const camelHits = wxmlFiles.filter((rel) => readSource(rel).indexOf('file-id=') !== -1);
+    t.eq(camelHits, [], '<image> 属性统一 fileId 驼峰（file-id= 全仓 wxml 静态扫描 0 命中）');
+
+    // ⑫ 生产接线：action 注册/客户端出口/临时 URL 签发调用点 + 换头像后旧 URL 作废
+    const userIndexJs = readSource('cloudfunctions/api/handlers/user/index.js');
+    const userApiJs = readSource('api/modules/user.js');
+    t.check(userIndexJs.indexOf("'user.avatarUrl'") !== -1 && userApiJs.indexOf("'user.avatarUrl'") !== -1,
+      'user.avatarUrl 已注册云端 handler + 客户端 api/modules/user 出口（读动作）');
+    t.check(readSource('cloudfunctions/api/handlers/user/bootstrap.js').indexOf('signBootAvatarUrls') !== -1
+      && readSource('cloudfunctions/api/handlers/bind/getCurrent.js').indexOf('signAvatarUrls') !== -1,
+    'bootstrap/bind.getCurrent 生产调用临时 URL 签发（新增导出都有生产调用）');
+    const changedAvatar = profileVm.mergeCustomer(
+      { avatarFileId: 'a.jpg', avatarUrl: 'https://old' }, { profile: { avatarFileId: 'b.jpg' } });
+    t.check(changedAvatar.avatarUrl === undefined,
+      '换头像后旧临时 URL 作废（等 onShow 重签，避免显示已删文件）');
+    const sameAvatar = profileVm.mergeCustomer(
+      { avatarFileId: 'a.jpg', avatarUrl: 'https://old' }, { profile: { avatarFileId: 'a.jpg' } });
+    t.check(sameAvatar.avatarUrl === 'https://old', '头像未变时沿用已签 URL（少一次闪烁）');
+    const vmCustomerAvatar = profileVm.buildVm({
+      roles: ['CUSTOMER'],
+      activeRole: 'CUSTOMER',
+      customer: { avatarFileId: 'c.jpg', avatarUrl: 'https://c' },
+      binding: {
+        _id: 'b1', status: enums.BINDING_STATUS.ACTIVE, partnerNo: 'PABC23D',
+        partnerDisplayName: '阿杰', partnerAvatarFileId: 'p.jpg', partnerAvatarUrl: 'https://p'
+      }
+    });
+    t.check(vmCustomerAvatar.profile.avatarUrl === 'https://c'
+      && vmCustomerAvatar.profileCard.avatarUrl === 'https://c'
+      && vmCustomerAvatar.bindingCard.partnerAvatarUrl === 'https://p',
+    'buildVm：本人/绑定对方 avatarUrl 均透出（页面按角色渲染）');
+    const vmPartnerAvatar = profileVm.buildVm({
+      roles: ['PARTNER'],
+      activeRole: 'PARTNER',
+      partner: { profileComplete: true, avatarFileId: 'p2.jpg', avatarUrl: 'https://p2' }
+    });
+    t.check(vmPartnerAvatar.profile.avatarUrl === 'https://p2', 'buildVm 兼职本人 avatarUrl 取 partner 块');
+  });
+
   // ---------------------------------------------------------------- §4.10 P1-10 头像票据自愈
-  h.section('§4.10 P1-10 头像票据过期自愈（换票 1 次 → 默认头像保底；其它错误不重试不掩盖）', async (t) => {
+  h.section('§4.10 P1-10/D42 头像票据过期自愈（换票 1 次 → 保留旧头像保底；其它错误不重试不掩盖）', async (t) => {
     const OLD_TICKET = 'T'.repeat(32);
     const NEW_TICKET = 'N'.repeat(32);
     const TICKET_ERR = new Error('头像上传凭证已失效，请重新上传');
@@ -605,10 +845,10 @@ function register(h) {
     '第二次保存用新票据/新文件，其它已校验字段原样保留');
     t.eq(avatarSave.resultCopy(refreshed), '资料已保存，头像已更新', '换票成功提示如实（头像确实已更新）');
 
-    // ② 换票后仍票据失败 → 清空头像保底保存（资料不丢）
+    // ② 换票后仍票据失败 → 保留旧头像保底保存（资料不丢、旧头像不清空）
     const clearCalls = [];
     let clearAttempt = 0;
-    const cleared = await avatarSave.saveWithRecovery({
+    const kept = await avatarSave.saveWithRecovery({
       payload,
       save(next) {
         clearCalls.push(next);
@@ -619,14 +859,15 @@ function register(h) {
         return Promise.resolve({ avatarTicket: NEW_TICKET, avatarFileId: 'cloud://env/avatars/customer/c.jpg' });
       }
     });
-    t.eq(cleared.mode, 'cleared', '换票后仍失败 → 退化为「只清空头像后保存」');
-    const clearedPayload = clearCalls[clearCalls.length - 1];
-    t.check(clearedPayload.avatarTicket === undefined && clearedPayload.avatarFileId === ''
-      && clearedPayload.displayName === '阿杰' && clearedPayload.room === '522',
-    '保底保存不带票据、头像置空、其它资料字段不丢（服务端 avatarFileId=\'\' 即清空头像）');
-    const clearedCopy = avatarSave.resultCopy(cleared);
-    t.check(clearedCopy.indexOf('默认头像') !== -1 && clearedCopy.indexOf('重新选择头像') !== -1,
-      '保底提示明确「已用默认头像 + 可重新选择」（说真话给下一步）');
+    t.eq(kept.mode, 'kept', '换票后仍失败 → 退化为「不改头像、其余资料照常保存」');
+    const keptPayload = clearCalls[clearCalls.length - 1];
+    t.check(keptPayload.avatarTicket === undefined && keptPayload.avatarFileId === undefined
+      && keptPayload.displayName === '阿杰' && keptPayload.room === '522',
+    '保底保存不带票据、不带本次新 fileId（服务端保留已有 avatarFileId）、其它资料字段不丢');
+    const keptCopy = avatarSave.resultCopy(kept);
+    t.check(keptCopy.indexOf('仍用原来的头像') !== -1 && keptCopy.indexOf('重新选择头像') !== -1
+      && keptCopy.indexOf('默认头像') === -1,
+    '保底提示明确「仍用原来的头像 + 可重新选择」，不再谎称已换成默认头像（D42 口径变更）');
 
     // ③ 换票失败（5 次/日限额）→ 如实带原因，仍保底保存
     const rateCalls = [];
@@ -640,7 +881,7 @@ function register(h) {
         return Promise.reject(RATE_ERR);
       }
     });
-    t.eq([rateResult.mode, rateCalls.length], ['cleared', 2], '换票被限额拒绝也保底保存资料（不整体失败）');
+    t.eq([rateResult.mode, rateCalls.length], ['kept', 2], '换票被限额拒绝也保底保存资料（不整体失败）');
     t.check(avatarSave.resultCopy(rateResult).indexOf('5 次') !== -1,
       '限额原因如实带给用户（不谎报头像已更新、不吞上传错误）');
 
@@ -686,7 +927,7 @@ function register(h) {
     t.check(secondErrCaught === OTHER_STATE && secondErrSaves === 2,
       '换票后保存遇非票据错误 → 如实抛出（不用清头像掩盖真实原因）');
 
-    // ⑥ 本地预览已失效（无可重传文件）→ 不空转重传，直接清空头像保底
+    // ⑥ 本地预览已失效（无可重传文件）→ 不空转重传，直接保留旧头像保底
     const noPreviewCalls = [];
     let noPreviewReupload = 0;
     const noPreview = await avatarSave.saveWithRecovery({
@@ -700,8 +941,8 @@ function register(h) {
         return Promise.reject(new Error('头像预览已失效，请重新选择头像'));
       }
     });
-    t.eq([noPreview.mode, noPreviewCalls.length, noPreviewReupload], ['cleared', 2, 1],
-      '本地预览失效 → 换票失败即清空头像保底（不重复消费票据、不空转）');
+    t.eq([noPreview.mode, noPreviewCalls.length, noPreviewReupload], ['kept', 2, 1],
+      '本地预览失效 → 换票失败即保留旧头像保底（不重复消费票据、不空转）');
 
     // 静态接线：页面只经 save-flow；自愈纯件与头像重传都有生产调用点
     const profileJs = readSource('pages/profile/index.js');

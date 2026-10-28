@@ -114,12 +114,14 @@ function serviceTextOf(partnerPublic, catalog, limit) {
 // 兼职卡展示模型：头像/昵称/编号优先取 bind.getCurrent 的 partnerPublic，未返回前用 store.binding
 // 的启动期字段兜底（bootstrap 水合带 partnerDisplayName/partnerAvatarFileId）——首帧即显示对方头像/首字，
 // 不出现空白昵称或顾客自己的头像；loaded=false 表示公开档案（服务类型/范围）尚未到达。
+// D42：avatarUrl = 服务端 5 分钟临时 URL（优先展示）；avatarFileId 仅回退键，不直塞 <image>。
 function partnerCardOf(binding, partnerPublic) {
   const bound = binding || {};
   const partner = partnerPublic || {};
   const accepting = partner.acceptingOrders !== false;
   return {
     name: textOf(partner.displayName) || textOf(bound.partnerDisplayName),
+    avatarUrl: textOf(partner.avatarUrl) || textOf(bound.partnerAvatarUrl),
     avatarFileId: textOf(partner.avatarFileId) || textOf(bound.partnerAvatarFileId),
     partnerNo: textOf(partner.partnerNo) || textOf(bound.partnerNo),
     accepting: accepting,

@@ -91,6 +91,7 @@ function add(moduleName, names, write, visibility) {
 const READ = false;
 const WRITE = true;
 add('user', ['bootstrap'], READ);
+add('user', ['avatarUrl'], READ);
 add('user', ['acceptPrivacy', 'deleteAccount'], WRITE);
 add('customer', ['saveProfile'], WRITE);
 add('customer', ['getProfile'], READ);

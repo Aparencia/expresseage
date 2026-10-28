@@ -23,7 +23,7 @@
   <view class="card partner-card" wx:if="{{vm.binding}}">
     <view class="row between partner-head">
       <view class="row flex-1 partner-id">
-        <avatar-view file-id="{{partnerCard.avatarFileId}}" name="{{partnerCard.name}}" size="88" />
+        <avatar-view src="{{partnerCard.avatarUrl}}" fileId="{{partnerCard.avatarFileId}}" name="{{partnerCard.name}}" size="88" bindretry="onPartnerAvatarRetry" />
         <view class="col partner-meta flex-1">
           <view class="row partner-name-row">
             <text class="section-title ellipsis partner-name">我的兼职 · {{partnerCard.name || '资料加载中'}}</text>

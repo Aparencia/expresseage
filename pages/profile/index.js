@@ -5,7 +5,6 @@
 
 const store = require('../../store/index');
 const modeGuard = require('../../api/mode-guard');
-const customerApi = require('../../api/modules/customer');
 const bindApi = require('../../api/modules/bind');
 const userApi = require('../../api/modules/user');
 const uploadApi = require('../../api/upload');
@@ -16,6 +15,8 @@ const vm = require('./parts/view-model');
 const ui = require('./parts/ui');
 const shareCard = require('./parts/share-card');
 const saveFlow = require('./parts/save-flow');
+const avatarRefresh = require('./parts/avatar-refresh');
+const inviteFlow = require('./parts/invite-continuation');
 
 const BIND_PAGE = '/pkg-customer/pages/bind/index';
 const CUSTOMER_ORDERS_PAGE = '/pages/customer/orders/index';
@@ -68,7 +69,7 @@ Page({
 
   onLoad(options) {
     const opts = options || {};
-    this._pendingBind = String(opts.bind || '').trim();
+    this._pendingBind = inviteFlow.rememberFromOptions(opts);
     this._openEdit = String(opts.edit || '') === '1';
     this.refresh();
     this.unsubscribe = store.subscribe(() => this.refresh());
@@ -85,6 +86,7 @@ Page({
     this.refresh();
     this.maybeOpenEditForm();
     this.pullLatest();
+    inviteFlow.prompt(this);
   },
 
   onUnload() {
@@ -129,36 +131,24 @@ Page({
     }));
   },
 
-  // 头像/昵称 onShow 重取（UX_CUSTOMER §3.5 头像缓存口径）；兼职侧无独立读接口，靠 bootstrap 水合。
+  // 头像/昵称 onShow 重取（UX_CUSTOMER §3.5 头像缓存口径）；D42 临时 URL 取数与重签全部在 parts/avatar-refresh.js。
   pullLatest() {
-    const snap = store.snapshot();
-    const role = (snap.viewContext && snap.viewContext.role) || snap.activeRole;
-    if (role !== enums.ROLES.CUSTOMER) {
-      return Promise.resolve();
-    }
-    return Promise.all([
-      customerApi.getProfile().catch(function ignore() { return null; }),
-      bindApi.getCurrent().catch(function ignore() { return null; })
-    ]).then((results) => {
-      const patch = {};
-      const profile = results[0];
-      const current = results[1];
-      if (profile) {
-        patch.customer = vm.mergeCustomer(store.get('customer'), {
-          profile: profile,
-          profileCompleted: profile.profileCompleted === true
-        });
-      }
-      if (current) {
-        patch.binding = vm.normalizeBinding(current);
-      }
-      if (Object.keys(patch).length > 0) {
-        store.patch(patch);
-      }
-      this.refresh();
-    }).catch(function ignore() {
-      // 读刷新失败保留旧数据，页面不打断（错误条由 switch-bar/入口页负责）
-    });
+    return avatarRefresh.pullLatest(this);
+  },
+
+  // D42：头像加载失败/URL 过期时点默认头像位 → 重签本人 URL（组件 retry 事件；新 src 到达自动重试）
+  onAvatarRetry() {
+    return avatarRefresh.pullLatest(this);
+  },
+
+  // 编辑态头像位重试：重签后同步到表单（本地预览仍优先，不改用户已选的新图）
+  onFormAvatarRetry() {
+    return avatarRefresh.retryForm(this);
+  },
+
+  // 绑定对方头像失败 → 重拉 bind.getCurrent 拿新临时 URL（仅 ACTIVE 绑定；解绑后 DTO 不再下发）
+  onBindingAvatarRetry() {
+    return avatarRefresh.retryBinding(this);
   },
 
   onToggleEdit() {

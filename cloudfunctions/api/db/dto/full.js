@@ -3,6 +3,7 @@
 'use strict';
 
 const genderLib = require('../../shared/gender');
+const enums = require('../../shared/enums');
 
 function customerSelf(customer) {
   const doc = customer || {};
@@ -34,6 +35,7 @@ function partnerSelf(partner) {
 }
 
 // bound=true 仅在调用方与目标存在当前 ACTIVE 绑定关系时传；绑定前只回昵称、不回头像。
+// avatarUrl（D42）：服务端签发的 5 分钟临时 URL（仅 ACTIVE 绑定且签发成功时下发），avatarFileId 保留作回退键。
 function partnerPublic(partner, options) {
   const doc = partner || {};
   const opts = options || {};
@@ -42,12 +44,16 @@ function partnerPublic(partner, options) {
     partnerNo: doc.partnerNo || '',
     displayName: doc.displayName || '',
     status: doc.status || '',
-    services: Array.isArray(config.services) ? config.services : [],
+    services: (Array.isArray(config.services) ? config.services : [])
+      .filter((item) => item && enums.SERVICE_CODES.indexOf(item.code) >= 0),
     zones: Array.isArray(config.zones) ? config.zones : [],
     acceptingOrders: !!config.acceptingOrders
   };
   if (opts.bound === true && doc.avatarFileId) {
     out.avatarFileId = doc.avatarFileId;
+    if (typeof opts.avatarUrl === 'string' && opts.avatarUrl) {
+      out.avatarUrl = opts.avatarUrl;
+    }
   }
   return out;
 }

@@ -316,6 +316,21 @@ Page({
     }
   },
 
+  // D42：兼职卡头像 URL 过期/加载失败 → 重拉 bind.getCurrent 拿新 5 分钟临时 URL（只读，失败保留默认头像）
+  onPartnerAvatarRetry() {
+    const page = this;
+    return this.bindingTask().then((data) => {
+      const info = data || {};
+      const binding = info.binding || null;
+      const partnerPublic = info.partnerPublic || null;
+      page.setData({ partnerPublic: partnerPublic });
+      store.patch({ binding: binding ? Object.assign({}, binding, { partnerPublic: partnerPublic }) : null });
+      page.applyDerived();
+    }).catch(function ignore() {
+      // 重签失败不打断首页：保留默认头像/旧 URL
+    });
+  },
+
   startTicker() {
     this.clearTicker();
     this._ticker = setInterval(() => {

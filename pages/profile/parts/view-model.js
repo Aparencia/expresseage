@@ -121,6 +121,8 @@ function normalizeBinding(current) {
   return Object.assign({}, binding, {
     partnerDisplayName: partner.displayName || '',
     partnerAvatarFileId: partner.avatarFileId || '',
+    // D42：绑定对方头像临时 URL（getCurrent.partnerPublic.avatarUrl 仅 ACTIVE 绑定下发）
+    partnerAvatarUrl: textOf(partner.avatarUrl) || textOf(binding.partnerAvatarUrl),
     partnerNo: partner.partnerNo || binding.partnerNo || '',
     status: binding.status || enums.BINDING_STATUS.ACTIVE
   });
@@ -131,6 +133,7 @@ function buildProfileCard(isCustomer, customer, binding) {
   const card = {
     displayName: textOf(doc.displayName),
     avatarFileId: textOf(doc.avatarFileId),
+    avatarUrl: textOf(doc.avatarUrl),
     complete: doc.profileComplete === true,
     dormText: isCustomer ? dormTextOf(doc) : '',
     tailText: isCustomer ? tailText(doc.phoneTail) : '',
@@ -150,6 +153,8 @@ function buildBindingCard(binding) {
   return {
     partnerDisplayName: partnerDisplayName,
     partnerAvatarFileId: partnerAvatarFileId,
+    // D42：绑定对方头像临时 URL（bind.getCurrent/bootstrap.binding 下发，仅 ACTIVE）；无 URL 时组件回退 fileId/默认头像
+    partnerAvatarUrl: textOf(binding.partnerAvatarUrl),
     partnerNo: partnerNo,
     partnerNoDisplay: partnerNo ? ids.displayNo(enums.NO_KIND.PARTNER, partnerNo) : textOf(binding.targetNo),
     hidden: !partnerDisplayName && !partnerAvatarFileId
@@ -193,7 +198,9 @@ function buildVm(snapshot) {
     closed: !isCustomer && status === enums.PARTNER_STATUS.CLOSED,
     profile: {
       displayName: isCustomer ? textOf(customer.displayName) : textOf(partner.displayName),
-      avatarFileId: isCustomer ? textOf(customer.avatarFileId) : textOf(partner.avatarFileId)
+      avatarFileId: isCustomer ? textOf(customer.avatarFileId) : textOf(partner.avatarFileId),
+      // D42：本人头像临时 URL（store 由 bootstrap 水合 / user.avatarUrl onShow 重签）；无 URL 回退默认头像
+      avatarUrl: isCustomer ? textOf(customer.avatarUrl) : textOf(partner.avatarUrl)
     },
     profileCard: buildProfileCard(isCustomer, customer, binding),
     bindingCard: isCustomer ? buildBindingCard(binding) : null,
@@ -249,6 +256,8 @@ function buildForm(profile, isCustomer) {
   const form = {
     displayName: textOf(doc.displayName),
     avatarFileId: textOf(doc.avatarFileId),
+    // D42：编辑态回显走临时 URL（无 URL 由组件回退默认头像）；换头像后 avatarPreview 本地路径优先
+    avatarUrl: textOf(doc.avatarUrl),
     avatarPreview: '',
     avatarTicket: '',
     avatarAction: 'keep',
@@ -389,6 +398,18 @@ function buildSavePayload(options) {
   return { ok: true, payload: payload };
 }
 
+// D42：头像文件变了 → 旧临时 URL 指向已删/旧文件，清掉等 onShow 重签；文件没变则沿用旧 URL（少一次闪烁）。
+function mergeAvatarUrl(next, base) {
+  const previous = base || {};
+  const fileId = next.avatarFileId === undefined ? previous.avatarFileId : next.avatarFileId;
+  if (fileId !== previous.avatarFileId) {
+    delete next.avatarUrl;
+  } else if (!next.avatarUrl && previous.avatarUrl) {
+    next.avatarUrl = previous.avatarUrl;
+  }
+  return next;
+}
+
 // 保存成功后的 store 合并：资料字段 + profileComplete + 绑定 roomTag（改宿舍会重分配）
 function mergeCustomer(previous, saved) {
   const base = previous || {};
@@ -399,7 +420,7 @@ function mergeCustomer(previous, saved) {
   if (!next.customerNo) {
     next.customerNo = base.customerNo || '';
   }
-  return next;
+  return mergeAvatarUrl(next, base);
 }
 
 function mergePartner(previous, saved) {
@@ -410,7 +431,7 @@ function mergePartner(previous, saved) {
   if (next.serviceConfig === undefined) {
     next.serviceConfig = base.serviceConfig || {};
   }
-  return next;
+  return mergeAvatarUrl(next, base);
 }
 
 module.exports = {

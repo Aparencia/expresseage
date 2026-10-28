@@ -22,7 +22,7 @@ const { createHarness, installCrashGuard } = require('./selftest');
 const zeroMoney = require('./zero-money-scan');
 
 const ROOT = path.resolve(__dirname, '..');
-const EXPECTED_ASSERTIONS = 182; // 实跑读数：node tools/selftest-share.js
+const EXPECTED_ASSERTIONS = 194; // 实跑读数：node tools/selftest-share.js（D37 落地判据 +12）
 
 const sharePages = require('./lib/share-pages');
 const share = require(path.join(ROOT, 'utils/share/index.js'));
@@ -80,6 +80,18 @@ function pngSize(rel) {
   return { signatureOk, width, height, bytes: buf.length };
 }
 
+// D37 落地判据（与门禁 #33 同口径）：好友转发卡片只能落 launch（隐私闸入口）——
+// 通用卡 path 必须逐字等于 LAUNCH_PAGE；绑定卡必须 LAUNCH_PAGE + '?bind=' 前缀。
+function landingOk(cardPath) {
+  if (typeof cardPath !== 'string') {
+    return false;
+  }
+  if (cardPath === route.LAUNCH_PAGE) {
+    return true;
+  }
+  return cardPath.indexOf(route.LAUNCH_PAGE + '?bind=') === 0;
+}
+
 function register(h) {
   // ------------------------------------------------------------ A. 好友转发卡片
   h.section('A 好友转发卡片纯件（绑定卡只带编号 / 其余通用 / 零 L3 / 中性封面）', (t) => {
@@ -89,7 +101,9 @@ function register(h) {
       partnerCard: { partnerNo: 'P-7K2-M9X' }
     });
     t.eq(Object.keys(bind).sort(), ['imageUrl', 'path', 'title'], '绑定卡只有 {title,path,imageUrl} 三键');
-    t.eq(bind.path, '/pages/role/index?bind=P-7K2-M9X', '绑定卡 path 只带 partnerNo');
+    t.eq(bind.path, route.LAUNCH_PAGE + '?bind=P-7K2-M9X', 'D37 绑定卡 path=launch?bind=（经隐私闸再分流，不直落业务页）');
+    t.eq(landingOk(bind.path), true, 'D37 绑定卡落地判据：launch 入口（landingOk）放行');
+    t.check(bind.path.indexOf(route.ROLE_PAGE) === -1, 'D37 绑定卡不得直落 role（否则绕过隐私同意闸）');
     t.eq(bind.title, share.TITLES.BIND, '绑定卡标题固定（不含任何业务值）');
     t.eq(bind.imageUrl, share.COVER, '绑定卡使用固定中性封面（不用页面截图）');
 
@@ -98,22 +112,25 @@ function register(h) {
       viewSession: false,
       partnerCard: { partnerNo: 'P 7K2/M9X' }
     });
-    t.eq(encoded.path, '/pages/role/index?bind=P%207K2%2FM9X', '编号经 encodeURIComponent 转义（防 path 注入）');
+    t.eq(encoded.path, route.LAUNCH_PAGE + '?bind=P%207K2%2FM9X', '编号经 encodeURIComponent 转义（防 path 注入）');
 
     const generic = share.buildAppMessage({ isCustomer: true, viewSession: false, partnerCard: { partnerNo: 'P-7K2-M9X' } });
-    t.eq(generic.path, route.ROLE_PAGE, '顾客 → 通用卡 path=/pages/role/index');
+    t.eq(generic.path, route.LAUNCH_PAGE, 'D37 顾客 → 通用邀请卡 path=launch（零 query）');
     t.eq(generic.path.indexOf('?'), -1, '通用卡 path 不带任何 query');
     t.eq(generic.title, share.TITLES.GENERIC, '通用卡标题固定');
-    t.eq(generic.imageUrl, route.ROLE_PAGE === '' ? '' : share.COVER, '通用卡同样使用中性封面');
+    t.eq(generic.imageUrl, share.COVER, '通用卡同样使用中性封面');
 
     const session = share.buildAppMessage({ isCustomer: false, viewSession: true, partnerCard: { partnerNo: 'P-7K2-M9X' } });
     const noCard = share.buildAppMessage({ isCustomer: false, viewSession: false, partnerCard: null });
     const blank = share.buildAppMessage({ isCustomer: false, viewSession: false, partnerCard: { partnerNo: '   ' } });
     const missing = share.buildAppMessage();
     [session, noCard, blank, missing].forEach((msg, index) => {
-      t.eq(msg.path, route.ROLE_PAGE, '切换会话/无编号/缺省（#' + index + '）→ 通用卡，不外发编号');
+      t.eq(msg.path, route.LAUNCH_PAGE, 'D37 切换会话/无编号/缺省（#' + index + '）→ 通用卡（launch 零 query），不外发编号');
       t.eq(msg.title, share.TITLES.GENERIC, '切换会话/无编号/缺省（#' + index + '）→ 通用标题');
     });
+    t.eq(route.LAUNCH_PAGE !== route.ROLE_PAGE, true, 'D37 launch 入口与 role 业务页是两个不同 path（判据不是空集）');
+    t.eq(landingOk('/pages/role/index?bind=P-7K2-M9X'), false, 'D37 反例有牙：直落 role?bind= 的分享 path 必须判红');
+    t.eq(landingOk(route.LAUNCH_PAGE + '?foo=1'), false, 'D37 反例有牙：launch 携带非 bind 参数必须判红');
     t.check(share.TITLES.BIND !== share.TITLES.GENERIC, '绑定卡与通用卡标题不同（不会误导）');
 
     // 恶意多余字段：卡片零业务值（L3 不进分享卡片，CONTRACT §11）
@@ -134,7 +151,7 @@ function register(h) {
     t.check(hostileText.indexOf('P-7K2-M9X') === -1, '无编号时通用卡不带任何编号');
 
     // 有牙：同一判据能抓到被写进卡片体的 L3 示例
-    const badCard = { title: '校园快递代取', path: '/pages/role/index?code=20731014', imageUrl: share.COVER };
+    const badCard = { title: '校园快递代取', path: route.LAUNCH_PAGE + '?code=20731014', imageUrl: share.COVER };
     t.check(JSON.stringify(badCard).indexOf('20731014') !== -1, '反例命中：卡片体写入取件码会被本断言发现');
     t.eq(zeroMoney.scanText([share.TITLES.GENERIC, share.TITLES.BIND, share.TITLES.TIMELINE].join('\n')).length, 0,
       '分享标题零金额词（复用零金额扫描词表单源）');
@@ -256,6 +273,18 @@ function register(h) {
     t.check(appJs.indexOf('SINGLE_PAGE') !== -1, 'app.js 单页模式跳过云初始化与 bootstrap（明确降级码）');
     t.check(switchBarJs.indexOf('syncSession(') !== -1, 'switch-bar 统一收口切换会话禁分享（O3/M-33）');
     t.check(switchBarJs.indexOf('hideShareMenu') === -1, '组件层不直写 wx 分享 API（经 utils/share/platform 注入）');
+
+    // D37：分享卡统一经 launch（隐私闸入口）落地，launch 先隐私闸后按入口参数分流
+    const launchJs = readText('pages/launch/index.js');
+    t.check(cardsJs.indexOf('route.LAUNCH_PAGE') !== -1, 'D37 卡片 path 走 config/route.LAUNCH_PAGE（单源，不写死页面）');
+    t.check(cardsJs.indexOf('ROLE_PAGE') === -1, 'D37 卡片纯件不再引用 ROLE_PAGE（分享不直落业务页）');
+    t.check(/\bonLoad\(options\)\s*\{/.test(launchJs), 'D37 launch 接 onLoad(options) 读入口参数');
+    t.check(launchJs.indexOf('entryOf(options)') !== -1, 'D37 launch 入口参数经纯件 entryOf 归一/丢弃非法');
+    t.check(launchJs.indexOf('decideEntryRoute(') !== -1, 'D37 launch 分流走 config/route.decideEntryRoute');
+    t.check(launchJs.indexOf('this.route()') > launchJs.indexOf('applyPrivacyGate(config)'),
+      'D37 隐私同意闸先于分流（route 只在闸通过/同意后被调用）');
+    t.check(launchJs.indexOf('pendingInvite.remember(') > launchJs.indexOf('applyPrivacyGate(config)'),
+      'D38 待绑定邀请只在隐私闸通过后记录（未同意不落会话状态）');
 
     // 有牙：合成违规钩子必须被判为"自拼卡片"
     const badPage = 'Page({\n  onShareAppMessage() {\n    return { title: "校园快递代取", path: "/pages/role/index?bind=P-7K2-M9X" };\n  }\n});';

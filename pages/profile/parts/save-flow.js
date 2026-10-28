@@ -7,12 +7,12 @@ const store = require('../../../store/index');
 const customerApi = require('../../../api/modules/customer');
 const partnerApi = require('../../../api/modules/partner');
 const uploadApi = require('../../../api/upload');
+const route = require('../../../config/route');
 const enums = require('../../../shared/enums');
+const pendingInvite = require('../../../utils/share/pending-invite');
 const vm = require('./view-model');
 const avatarSave = require('./avatar-save');
 const ui = require('./ui');
-
-const BIND_PAGE = '/pkg-customer/pages/bind/index';
 
 // 保存成功后的 store 合并：资料字段 + profileComplete + 绑定 roomTag（改宿舍会重分配）
 function persist(page, payload) {
@@ -46,14 +46,18 @@ function reuploadAvatar(page) {
   });
 }
 
-// 资料未完成时被绑定卡片/深链引导到本页，保存成功后自动续跳 bind（pendingBind 仅内存，不落盘）
+// D38：资料未完成时被邀请卡引导到本页；保存成功后自动续跳绑定页（?auto=1 落地即自动绑定）。
+// pending 邀请存会话级内存（utils/share/pending-invite，短 TTL/可取消）；无邀请时零跳转。
 function continuePendingBind(page) {
-  const pending = page._pendingBind;
-  if (!pending || !page.data.isCustomer) {
+  if (!page.data.isCustomer) {
     return;
   }
-  page._pendingBind = '';
-  wx.navigateTo({ url: BIND_PAGE + '?bind=' + encodeURIComponent(pending) });
+  const partnerNo = pendingInvite.take();
+  if (!partnerNo) {
+    return;
+  }
+  ui.toast('资料已保存，正在为你自动绑定邀请的兼职…');
+  wx.navigateTo({ url: route.bindPagePathOf(partnerNo, { auto: true }) });
 }
 
 // 唯一保存入口：从「保存」按钮走到这里；自愈与保底都由 avatar-save 纯件编排

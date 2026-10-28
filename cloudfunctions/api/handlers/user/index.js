@@ -2,12 +2,14 @@
 'use strict';
 
 const bootstrap = require('./bootstrap');
+const avatarUrl = require('./avatarUrl');
 const acceptPrivacy = require('./acceptPrivacy');
 const deleteAccount = require('./deleteAccount');
 
 module.exports = {
   actions: {
     'user.bootstrap': bootstrap.handler,
+    'user.avatarUrl': avatarUrl.handler,
     'user.acceptPrivacy': acceptPrivacy.handler,
     'user.deleteAccount': deleteAccount.handler
   }

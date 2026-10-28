@@ -104,7 +104,7 @@
     <view class="card">
       <view class="section-title">对方档案</view>
       <view class="row" wx:if="{{order.counterpart}}">
-        <avatar-view file-id="{{order.counterpart.avatarFileId}}" name="{{order.counterpart.displayName}}" size="96" />
+        <avatar-view src="{{partnerAvatarUrl}}" fileId="{{order.counterpart.avatarFileId}}" name="{{order.counterpart.displayName}}" size="96" bindretry="onPartnerAvatarRetry" />
         <view class="col counterpart-meta">
           <view class="strong">{{order.counterpart.displayName}}</view>
           <id-text kind="PARTNER" no="{{order.partnerNo}}" />

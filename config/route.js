@@ -3,12 +3,22 @@
 // 角色解析口径（批 2）：显式 activeRole 优先 > 单角色直进 > 双角色回角色页由用户选择。
 // 「上次使用」建议由 pages/role 在显示层读 utils/storage 处理（本文件不 require storage、
 // 不接收 lastRole，路由输入保持 ARCHITECTURE §3.6 冻结形状）。
+// D37（2026-10-28 用户拍板 1=A）：分享卡统一落 launch；launch.onLoad 只认 bind/orderNo 白名单，
+// 先过隐私同意闸再按 entryOf/decideEntryRoute 分流（bind→role 邀请卡；orderNo→订单详情；否则原分流）。
+const ids = require('../utils/ids');
+
 const CUSTOMER_HOME = '/pages/customer/home/index';
 const PARTNER_WORKBENCH = '/pages/partner/workbench/index';
 const ADMIN_OVERVIEW = '/pkg-admin/pages/overview/index';
 const ROLE_PAGE = '/pages/role/index';
+const LAUNCH_PAGE = '/pages/launch/index';
 const PROFILE_PAGE = '/pages/profile/index';
+const BIND_PAGE = '/pkg-customer/pages/bind/index';
+const CUSTOMER_ORDER_DETAIL = '/pkg-customer/pages/order-detail/index';
+const PARTNER_ORDER_DETAIL = '/pkg-partner/pages/order-detail/index';
 const PROFILE_EDIT_QUERY = '?edit=1';
+// 入口参数落地 reason（launch 只记录，不据此写 lastRole：未真正进入业务角色）
+const ENTRY_REASON = { BIND_INVITE: 'BIND_INVITE', ORDER_DEEP_LINK: 'ORDER_DEEP_LINK' };
 
 const ROLES = { CUSTOMER: 'CUSTOMER', PARTNER: 'PARTNER' };
 
@@ -61,6 +71,63 @@ function routeOfRole(role, state) {
     return { url: PROFILE_PAGE + PROFILE_EDIT_QUERY, reason: 'CUSTOMER_PROFILE' };
   }
   return { url: CUSTOMER_HOME, reason: 'CUSTOMER_READY' };
+}
+
+function queryTextOf(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+// D37 入口白名单：launch.onLoad 只认 bind/orderNo。
+// bind 归一为合法兼职编号 canonical（P+6，容错空格/连字符/全角；错对象/格式错/开发者编号一律丢弃）；
+// orderNo 只认 shared/enums.ORDER_NO_PATTERN（YYYYMMDD-XXXX）。其它参数/非法值静默丢弃，不阻断启动。
+function entryOf(options) {
+  const opts = options || {};
+  const entry = { bind: '', orderNo: '' };
+  const rawBind = queryTextOf(opts.bind);
+  if (rawBind) {
+    const parsed = ids.parseNo(ids.normalizeInput(rawBind));
+    if (parsed.ok && parsed.kind === ids.NO_KIND.PARTNER) {
+      entry.bind = parsed.canonical;
+    }
+  }
+  const rawOrder = queryTextOf(opts.orderNo).toUpperCase();
+  if (rawOrder && ids.ORDER_NO_PATTERN.test(rawOrder)) {
+    entry.orderNo = rawOrder;
+  }
+  return entry;
+}
+
+// 路径构造单源（页面只调本文件，不自己拼 query）：encodeURIComponent 防 path 注入。
+function roleBindPathOf(partnerNo) {
+  return ROLE_PAGE + '?bind=' + encodeURIComponent(String(partnerNo || ''));
+}
+
+function profileEditPathOf(partnerNo) {
+  return PROFILE_PAGE + PROFILE_EDIT_QUERY + (partnerNo ? '&bind=' + encodeURIComponent(String(partnerNo)) : '');
+}
+
+function bindPagePathOf(partnerNo, options) {
+  const opts = options || {};
+  const path = BIND_PAGE + '?bind=' + encodeURIComponent(String(partnerNo || ''));
+  if (opts.mode === 'rebind') {
+    return path + '&mode=rebind';
+  }
+  return opts.auto === true ? path + '&auto=1' : path;
+}
+
+// D37：入口参数优先于常规角色/资料分流（未带参数时行为与 decideLaunchRoute 完全一致）。
+// orderNo 按当前业务角色落对应端订单详情；页面仍以 order.get 的归属校验为准（失败回列表）。
+function decideEntryRoute(entry, snapshot) {
+  const value = entry || {};
+  if (value.bind) {
+    return { url: roleBindPathOf(value.bind), reason: ENTRY_REASON.BIND_INVITE };
+  }
+  if (value.orderNo) {
+    const role = resolveLaunchRole(snapshot);
+    const page = role === ROLES.PARTNER ? PARTNER_ORDER_DETAIL : CUSTOMER_ORDER_DETAIL;
+    return { url: page + '?orderNo=' + encodeURIComponent(value.orderNo), reason: ENTRY_REASON.ORDER_DEEP_LINK };
+  }
+  return decideLaunchRoute(snapshot);
 }
 
 function decideLaunchRoute(snapshot) {
@@ -122,15 +189,25 @@ function isRolePageAllowed(pagePath, snapshot) {
 
 module.exports = {
   ROLES,
+  ENTRY_REASON,
   isBusinessRole,
   resolveLaunchRole,
   suggestedRoleOf,
   roleOfDecision,
   decideLaunchRoute,
+  entryOf,
+  decideEntryRoute,
+  roleBindPathOf,
+  profileEditPathOf,
+  bindPagePathOf,
   isRolePageAllowed,
   CUSTOMER_HOME,
   PARTNER_WORKBENCH,
   ADMIN_OVERVIEW,
   ROLE_PAGE,
-  PROFILE_PAGE
+  LAUNCH_PAGE,
+  PROFILE_PAGE,
+  BIND_PAGE,
+  CUSTOMER_ORDER_DETAIL,
+  PARTNER_ORDER_DETAIL
 };

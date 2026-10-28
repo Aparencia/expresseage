@@ -32,7 +32,7 @@ const sharedActions = require(path.join(ROOT, 'cloudfunctions/api/shared/actions
 // v1.0（D23/D24/D25）用例表：拆出以控本文件 ≤1000 行（门禁 #18），断言数合并计
 const v1Cases = require(path.join(__dirname, 'lib', 'admin-v1-cases.js'));
 
-const EXPECTED_ASSERTIONS = 220 + v1Cases.EXPECTED_ASSERTIONS + 14; // +14：v1.1/D32 站点名称配置
+const EXPECTED_ASSERTIONS = 220 + v1Cases.EXPECTED_ASSERTIONS + 14 + 5; // +14：v1.1/D32 站点名称配置；+5：D41 服务目录迁移/读层归一/公开子集
 
 const NOW = Date.UTC(2026, 9, 22, 4, 0, 0);
 const MINUTE = 60 * 1000;
@@ -606,6 +606,36 @@ async function sectionD(h) {
     t.eq(keysOf(stats.data.counts), ['activePartners', 'activeSwitchSessions', 'customers', 'exceptions',
       'orders', 'partners', 'pendingOrders', 'pendingRecognitionFailures', 'users'],
     'D38 counts 键集 = DATA_MODEL §7.6 八项 + UX §3.1 识别失败卡（pendingRecognitionFailures），无收入字段');
+    // D41：服务目录固定 5 类（新顺序）；旧载荷里的停用 PICKUP_DOOR 被忽略、缺失的 PICKUP_LOW 补齐默认 → 保存一次即迁移
+    const oldCatalog = [
+      { code: 'PICKUP_STD', name: '标准代取', desc: '驿站取件送到宿舍楼下/约定地点' },
+      { code: 'PICKUP_DOOR', name: '送寝上门', desc: '送到寝室门口（上楼）' },
+      { code: 'PICKUP_URGENT', name: '加急代取', desc: '优先处理，承诺更快时效' },
+      { code: 'DROP_OFF', name: '代寄快递', desc: '顾客把件交给兼职，兼职送驿站寄出' },
+      { code: 'CUSTOM', name: '其他代办', desc: '需备注说明；兼职可拒单' }
+    ];
+    const catalogSaved = await api.call('admin.updateConfig', { config: { serviceCatalog: oldCatalog } },
+      { clientRequestId: nextCrid('d39') });
+    t.eq([catalogSaved.ok, catalogSaved.data.config.serviceCatalog.map((item) => item.code)],
+      [true, ['PICKUP_STD', 'PICKUP_LOW', 'PICKUP_URGENT', 'DROP_OFF', 'CUSTOM']],
+      'D39 D41 服务目录：旧载荷（含停用 PICKUP_DOOR）被忽略并补齐 PICKUP_LOW，落库固定新 5 类（保存一次即迁移）');
+    t.eq([catalogSaved.data.config.serviceCatalog[1].name,
+      catalogSaved.data.config.serviceCatalog[1].desc.indexOf('楼下') >= 0],
+    ['送至楼下', true], 'D40 D41：新增 PICKUP_LOW 缺项回退默认「送至楼下」说明');
+    const publicAfter = await apiOf(db, C1).call('config.getPublic', {});
+    t.eq(publicAfter.data.serviceCatalog.map((item) => item.code),
+      ['PICKUP_STD', 'PICKUP_LOW', 'PICKUP_URGENT', 'DROP_OFF', 'CUSTOM'],
+      'D41 D41 公开子集下发新 5 类（顾客端/兼职端同一出口，CUSTOM 末项）');
+    // 读层归一（config/_common.serviceCatalogOf）：存量 config 目录还是 D41 前的旧 5 类时，
+    // config.getPublic 直接下发新 5 类（部署即迁移，不必先等后台保存）
+    const legacyDb = world({ config: { serviceCatalog: oldCatalog } });
+    const legacyPublic = await apiOf(legacyDb, C1).call('config.getPublic', {});
+    t.eq(legacyPublic.data.serviceCatalog.map((item) => item.code),
+      ['PICKUP_STD', 'PICKUP_LOW', 'PICKUP_URGENT', 'DROP_OFF', 'CUSTOM'],
+      'D42 D41 读层归一：旧目录 config 文档也直接下发新 5 类（部署即生效）');
+    t.check(legacyPublic.data.serviceCatalog[0].desc.indexOf('寝室门口') >= 0
+      && legacyPublic.data.serviceCatalog[1].desc.indexOf('楼下') >= 0,
+    'D43 D41 读层归一后说明为新语义（标准代取=寝室门口、送至楼下=楼下，旧的楼下说明不再下发）');
   });
 }
 

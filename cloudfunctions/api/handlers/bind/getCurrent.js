@@ -26,9 +26,13 @@ async function handler(ctx) {
     return { binding: null, partnerPublic: null, serverTime: identity.nowMs(ctx) };
   }
   const partner = await identity.loadPartnerById(ctx, binding.partnerId);
+  // D42：绑定对方头像 5 分钟临时 URL（仅当前 ACTIVE 绑定且签发成功时下发）；avatarFileId 保留作回退键。
+  // 解绑后本函数回 {binding:null,partnerPublic:null}，URL 随之停发。
+  const partnerFileId = partner && typeof partner.avatarFileId === 'string' ? partner.avatarFileId : '';
+  const urls = await identity.signAvatarUrls(ctx, [partnerFileId]);
   return {
     binding: bindingDto(binding),
-    partnerPublic: partner ? partnerPublic(partner, { bound: true }) : null,
+    partnerPublic: partner ? partnerPublic(partner, { bound: true, avatarUrl: urls[partnerFileId] }) : null,
     serverTime: identity.nowMs(ctx)
   };
 }

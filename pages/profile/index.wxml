@@ -16,7 +16,7 @@
     <block wx:else>
       <!-- 头像 + 昵称 -->
       <view class="card head-card">
-        <avatar-view fileId="{{profile.avatarFileId}}" name="{{profile.displayName}}" size="112" />
+        <avatar-view src="{{profile.avatarUrl}}" fileId="{{profile.avatarFileId}}" name="{{profile.displayName}}" size="112" bindretry="onAvatarRetry" />
         <view class="head-main">
           <view class="head-name ellipsis">{{profile.displayName || '未设置昵称'}}</view>
           <view wx:if="{{isCustomer}}" class="head-sub">{{profileCard.complete ? (profileCard.dormText || '资料已完善') : '未完善 · 去填写苑/楼栋/宿舍号'}}</view>
@@ -42,7 +42,7 @@
           <view class="form-label">头像</view>
           <view class="form-input avatar-pick">
             <image wx:if="{{form.avatarPreview}}" class="avatar-preview" src="{{form.avatarPreview}}" mode="aspectFill" binderror="onAvatarPreviewError" />
-            <avatar-view wx:else fileId="{{form.avatarFileId}}" name="{{form.displayName}}" size="88" />
+            <avatar-view wx:else src="{{form.avatarUrl}}" fileId="{{form.avatarFileId}}" name="{{form.displayName}}" size="88" bindretry="onFormAvatarRetry" />
             <view class="avatar-actions">
               <button class="mini-btn" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">{{uploadingAvatar ? '上传中…' : '选择微信头像'}}</button>
               <text class="avatar-default-link" bindtap="onUseDefaultAvatar">使用默认头像</text>
@@ -126,7 +126,7 @@
             <view class="section-label">绑定兼职</view>
             <block wx:if="{{bindingCard}}">
               <view class="row binding-row">
-                <avatar-view fileId="{{bindingCard.partnerAvatarFileId}}" name="{{bindingCard.partnerDisplayName}}" size="64" />
+                <avatar-view src="{{bindingCard.partnerAvatarUrl}}" fileId="{{bindingCard.partnerAvatarFileId}}" name="{{bindingCard.partnerDisplayName}}" size="64" bindretry="onBindingAvatarRetry" />
                 <view class="binding-main">
                   <view class="binding-name ellipsis">{{bindingCard.hidden ? '对方档案已不可见' : bindingCard.partnerDisplayName}}</view>
                   <view class="muted">{{bindingCard.hidden ? '对方已解除绑定，头像/昵称不再展示' : bindingCard.partnerNoDisplay}}</view>

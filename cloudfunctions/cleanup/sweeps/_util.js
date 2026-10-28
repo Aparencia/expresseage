@@ -11,9 +11,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 const MINUTE_MS = 60 * 1000;
 const SYSTEM = 'SYSTEM';
-// orders.images[] 上限 5 张（CONTRACT §4.1/DATA_MODEL §2.5）→ 下标 0~4。
+// orders.images[] 上限 10 张（D40；CONTRACT §4.1/DATA_MODEL §2.5）→ 下标 0~9。
 // 云 DB 数组子元素没有通配点查语法（不支持 'images.$.fileId'），引用计数/到期扫描按逐下标点路径点查。
-const IMAGE_INDEX_SLOTS = 5;
+const IMAGE_INDEX_SLOTS = 10;
 
 function collectionsOf(ctx) {
   return (ctx && ctx.COLLECTIONS) || shared.COLLECTIONS;
@@ -162,7 +162,7 @@ function imageFileIdsOf(order) {
 }
 
 // ── 文件引用计数：订单截图（历史 image{} + v1.0 images[]）+ 识别失败原图共用同一 fileId──────
-// 调用方只判"是否仍有引用"，因此在找到任一订单引用后短路（避免每张图都跑满 5 个下标点查）。
+// 调用方只判"是否仍有引用"，因此在找到任一订单引用后短路（避免每张图都跑满 10 个下标点查）。
 async function countFileRefs(ctx, fileId) {
   const C = collectionsOf(ctx);
   let orders = await ctx.dao.count(C.ORDERS, { where: { 'image.fileId': fileId } });

@@ -1,5 +1,5 @@
 // pkg-customer/pages/order-create/parts/model.js · 下单四步视图模型（纯函数，零 wx）
-// v1.0（D23/D24/D25）：一单多包裹——`order.create` 入参 {parcels[1~10], images[0~5], tickets?[],
+// v1.0（D23/D24/D25，D40 截图 0~10）：一单多包裹——`order.create` 入参 {parcels[1~10], images[0~10], tickets?[],
 //   serviceCode, appoint, note, delivery?, manualEntry, clientRequestId}；服务类型/预约/备注为**整单一份**
 //   （订单级动作作用于全部包裹，CONTRACT §4.1/§5.2）。无截图手填：images=[] 且 manualEntry=true（D24）。
 // 提交流程：submission id（= clientRequestId，防重复建单）在进入 Step4 生成，失败重试复用，
@@ -11,7 +11,7 @@ const enums = require('../../../../shared/enums');
 const recognize = require('../../../../utils/recognize/index');
 
 const STEP_TITLES = ['截图', '核对', '服务', '提交'];
-// 一单上限（CONTRACT §5.2/D23）：包裹 ≤10、截图 ≤5
+// 一单上限（CONTRACT §5.2/D23/D40）：包裹 ≤10、截图 ≤10（均取共享常量 shared/order-state）
 const MAX_PARCELS = recognize.MAX_PARCELS_PER_ORDER;
 const MAX_IMAGES = recognize.MAX_IMAGES_PER_ORDER;
 // 幂等键：服务端 validateClientRequestId 同口径 16~32 位 [A-Za-z0-9_-]

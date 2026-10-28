@@ -21,7 +21,7 @@ const { COLLECTIONS } = require(path.join(CLEANUP, 'shared/collections.js'));
 const enums = require(path.join(CLEANUP, 'shared/enums.js')); const auditActions = require(path.join(CLEANUP, 'shared/audit-actions.js'));
 // harness 完整性闸：先占位，首跑按真实断言数回填（少算/多算都判红）。
 const cleanupV1 = require(path.join(__dirname, 'lib', 'cleanup-v1-cases.js'));
-const EXPECTED_ASSERTIONS = 185 + cleanupV1.EXPECTED_ASSERTIONS;
+const EXPECTED_ASSERTIONS = 187 + cleanupV1.EXPECTED_ASSERTIONS; // 185 + 2：D40 images[9] 到期清理/删文件
 const NOW = Date.parse('2026-10-22T12:00:00+08:00');
 const MINUTE = 60 * 1000, HOUR = 60 * MINUTE, DAY = 24 * HOUR;
 const COLLECTION_NAMES = Object.keys(COLLECTIONS).map((key) => COLLECTIONS[key]);
@@ -357,13 +357,13 @@ async function filesSection(t) {
   world.orders.push(orderOf({ _id: 'files-fresh', status: enums.ORDER_STATUS.COMPLETED, statusUpdatedAt: NOW - 6 * DAY, image: image('cloud://shot-fresh.jpg') }));
   world.orders.push(orderOf({ _id: 'files-shared-a', status: enums.ORDER_STATUS.CANCELLED, statusUpdatedAt: NOW - 8 * DAY, image: image('cloud://shot-shared.jpg') }));
   world.orders.push(orderOf({ _id: 'files-shared-b', status: enums.ORDER_STATUS.CANCELLED, statusUpdatedAt: NOW - 8 * DAY, image: image('cloud://shot-shared.jpg') }));
-  world.orders.push(orderOf({ _id: 'files-behind-blockers', status: enums.ORDER_STATUS.COMPLETED, statusUpdatedAt: NOW - 10 * DAY, image: image('cloud://shot-behind.jpg') }));
+  world.orders.push(orderOf({ _id: 'files-behind-blockers', status: enums.ORDER_STATUS.COMPLETED, statusUpdatedAt: NOW - 10 * DAY, image: image('cloud://shot-behind.jpg') }));  world.orders.push(orderOf({ _id: 'files-slot9', status: enums.ORDER_STATUS.COMPLETED, statusUpdatedAt: NOW - 8 * DAY, image: image(''), images: Array.from({ length: 10 }, (_, i) => (i === 9 ? image('cloud://shot-slot9.jpg') : image(''))) }));
   const db = makeWorld(world);
   const cloud = createCloud();
   const ctx = makeCtx(db, { cloud });
   const result = await SWEEPS_RUN.files(ctx);
   const after = (id) => db.dump(COLLECTIONS.ORDERS).filter((row) => row._id === id)[0];
-  t.eq(result.acted, 4, '§D 截图 7 天到期：4 单清引用（100 条已清旧单不得占满批 100 挡住后面）');
+  t.eq(result.acted, 5, '§D 截图 7 天到期：5 单清引用（含 images[9] 槽位；100 条已清旧单不得占满批 100 挡住后面）');
   t.eq(after('files-old').image.fileId, '', '§D 清订单图片引用（fileId 置空）');
   t.eq([after('files-old').image.width, after('files-old').image.height], [0, 0], '§D 图片宽高归零');
   t.eq(dateMs(after('files-old').image.cleanedAt), NOW, '§D 写 image.cleanedAt（api order.get cleaned / imageUrl NOT_FOUND 的唯一判据）');
@@ -372,7 +372,7 @@ async function filesSection(t) {
   t.eq(cloud.deleted.indexOf('cloud://shot-fresh.jpg'), -1, '§D 未到期不删文件');
   t.eq(cloud.deleted.filter((fileId) => fileId === 'cloud://shot-shared.jpg').length, 1,
     '§D 一图多单共享 fileId：最后一单离开窗口才删（只删一次）');
-  t.eq(after('files-behind-blockers').image.fileId, '', '§D 批上限内处理到期单（查询带 image.fileId 非空条件）');
+  t.eq(after('files-behind-blockers').image.fileId, '', '§D 批上限内处理到期单（查询带 image.fileId 非空条件）'); t.eq([after('files-slot9').images[0].cleanedAt, after('files-slot9').images[9].fileId, dateMs(after('files-slot9').images[9].cleanedAt)], [undefined, '', NOW], '§D D40 images[9] 参与到期清理（IMAGE_INDEX_SLOTS=10，images[0..9] 全扫；images[0] 无引用不动）'); t.check(cloud.deleted.indexOf('cloud://shot-slot9.jpg') >= 0, '§D D40 images[9] 引用计数归零 → 删云文件（非空集断言）');
   const rerun = await SWEEPS_RUN.files(ctx);
   t.eq(rerun.acted, 0, '§D 重跑幂等：acted=0');
   t.eq(cloud.deleted.indexOf('cloud://shot-old.jpg'), cloud.deleted.lastIndexOf('cloud://shot-old.jpg'),
