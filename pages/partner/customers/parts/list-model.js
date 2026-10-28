@@ -11,6 +11,24 @@ function textOf(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+function listOf(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+// D42（task-20）：行头像临时 URL 由服务端随 partner.listBindings 下发（私有存储不可直读 cloud://）。
+// buildListRow 只做展示视图，这里按 bindingId 把 avatarUrl 补回行；未签发=空串，
+// avatar-view 自动回退 fileId → 默认头像（读失败不阻断列表）。
+function attachAvatarUrls(rows, rawList) {
+  const urls = {};
+  listOf(rawList).forEach((item) => {
+    const id = textOf(item && item.bindingId);
+    if (id && typeof item.avatarUrl === 'string' && item.avatarUrl) {
+      urls[id] = item.avatarUrl;
+    }
+  });
+  return listOf(rows).map((row) => Object.assign({}, row, { avatarUrl: urls[row.bindingId] || '' }));
+}
+
 // 页面初始状态（onLoad；首次 onShow 负责真正拉取）
 function createState(options) {
   const opts = options || {};
@@ -60,7 +78,7 @@ function nextQuery(state) {
 // 首屏/刷新响应：整页替换；与旧行对比得出"顾客新绑定"提示（顾客发起才能新增）
 function applyResponse(state, data, options) {
   const opts = options || {};
-  const rows = view.buildListRows(data && data.list);
+  const rows = attachAvatarUrls(view.buildListRows(data && data.list), data && data.list);
   // 首次加载没有"旧行"可比，不出"新顾客已绑定"提示（避免把首屏误当新增）
   const newRows = state.hasLoaded ? view.newRowsOf(state.rows, rows) : [];
   return Object.assign({}, state, {
@@ -78,7 +96,7 @@ function applyResponse(state, data, options) {
 // 触底追加响应：只追加+去重（游标分页；不重置已加载行）
 function applyMoreResponse(state, data, options) {
   const opts = options || {};
-  const incoming = view.buildListRows(data && data.list);
+  const incoming = attachAvatarUrls(view.buildListRows(data && data.list), data && data.list);
   return Object.assign({}, state, {
     rows: view.appendRows(state.rows, incoming),
     nextCursor: textOf(data && data.nextCursor),
@@ -142,6 +160,7 @@ module.exports = {
   nextQuery,
   applyResponse,
   applyMoreResponse,
+  attachAvatarUrls,
   applyError,
   beginLoad,
   dismissBanner,

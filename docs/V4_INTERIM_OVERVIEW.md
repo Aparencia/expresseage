@@ -185,11 +185,11 @@ expressage_college_v4/
 | | `docs/ARCHITECTURE.md` | 代码分层、冻结接口、S0~S10 写作用域 |
 | | `docs/V4_ENGINEERING.md` | 工程结构/云资源/测试与门禁/部署 runbook/批 0~9 技术拆分 |
 | | `docs/V4_FIXTURES.md` | 识别测试语料与判据夹具 |
-| 执行与验收 | `docs/QA_CHECKLIST.md` | 真机/双机/测试账号人工点检清单（**255 条**；agent 不代勾） |
+| 执行与验收 | `docs/QA_CHECKLIST.md` | 真机/双机/测试账号人工点检清单（**299 条**；agent 不代勾；取数命令见附录 E） |
 | | `docs/RUNBOOK.md` | 云环境搭建、部署、冒烟、隐私版本、灰度发布与回滚演练（§10） |
 | | `docs/V4_REVIEW_MATERIALS.md` | 提审前置 P0 清单、三角色体验路径、审核说明模板、驳回应对、证据留存 |
 | | `docs/V4_V3_PARITY.md` | v3→v4 功能对照验收表与用户勾选栏 |
-| | `docs/privacy/隐私保护指引.md` · `发布前填写清单.md` | 隐私文本定稿候选 v1.0 + 13 项发布前填写清单 |
+| | `docs/privacy/隐私保护指引.md` · `发布前填写清单.md` | 隐私文本定稿候选 v1.3（历史 v1.0 留痕）+ 13 项发布前填写清单 |
 | 状态与记录 | `STATE.md`（根） | **唯一状态源**：批次台账、用户待办、真机项、收口证据、风险 |
 | | `CHANGELOG.md`（根） | 用户可见变更 + 工程细节（按批） |
 | | `docs/TECH_DEBT.md` | 技术债台账 TD-001~TD-061（状态/影响/计划/来源，以台账为准） |
@@ -239,7 +239,7 @@ expressage_college_v4/
 
 ### 6.4 隐私收尾清单
 
-- `docs/privacy/隐私保护指引.md` 为**定稿候选 v1.0（2026-10-22 剪贴板/后台口径校准）**，仅剩 **13 项**由你填写/确认（对外名称、联系方式（**邮箱为主**）、主体类目、备案、用户协议、微信后台逐项声明、DeepSeek 对外提供披露、头像昵称声明、账号切换说明、审计保留期、`privacyVersion` 最终值等）；变更通知方式已定为**小程序内公告/弹窗**。
+- `docs/privacy/隐私保护指引.md` 为**定稿候选 v1.3（2026-10-28，D37~D42 文本校准；历史 v1.0 = 2026-10-22 剪贴板/后台口径校准留痕）**，仅剩 **13 项**由你填写/确认（对外名称、联系方式（**邮箱为主**）、主体类目、备案、用户协议、微信后台逐项声明、DeepSeek 对外提供披露、头像昵称声明、账号切换说明、审计保留期、`privacyVersion` 最终值等）；变更通知方式已定为**小程序内公告/弹窗**。
 - 微信后台「用户隐私保护指引」按官方模板逐项声明（**昵称、头像（同一项）/选中的照片或视频信息/摄像头/选中的文件/剪切板**；地址如后台提供则如实勾选；自开发无第三方 SDK 栏，DeepSeek 写用途/对外提供/补充文档）；`privacyVersion` 发布前一次性写入并与端内文本一致（RUNBOOK §3.8/§8、QA P20）。
 
 ## 7. 你（用户）的下一步（建议顺序）
@@ -284,9 +284,9 @@ git log --oneline -5                # 当前提交历史
 数字取数命令（避免手抄）：
 
 ```powershell
-(git ls-files | Measure-Object).Count                                     # 跟踪文件数（当前快照 564）
-(Select-String -Path docs\QA_CHECKLIST.md -Pattern '^\| [A-Z]+\d+ \|').Count  # QA 条目总数（255）
-node -e "console.log(require('./tools/lib/project.js').ALL_PAGES.length)"    # 页面数（30）
+(git ls-files | Measure-Object).Count                                     # 跟踪文件数（当前快照 655）
+(Select-String -Path docs\QA_CHECKLIST.md -Pattern '^\| [A-Z]+\d+ \|').Count  # QA 条目总数（299）
+node -e "console.log(require('./tools/lib/project.js').ALL_PAGES.length)"    # 页面数（31）
 node -e "const a=require('./shared/actions.js');console.log(Object.keys(a.ACTION_MAP).length)"  # 动作数（81）
 node tools/selftest.js | Select-String '运行'                              # 套件与失败数
 ```
@@ -324,6 +324,7 @@ node tools/selftest.js | Select-String '运行'                              # �
 | v0.5 | 2026-10-23 | **批 10 C 批收口（v1.0 一单多包裹 D23~D26）**：更新进度表/判据规模（31 套 4,566）/门禁读数（check 32/32、gate 红0黄0）/页面数 31；`createBatch` 移除、性能 P0、M 系列修复；B 批 D28/D29 规格已备、D27 待裁决 |
 | v0.6 | 2026-10-23 | **批 10 B 批收口（D28 换绑一体化 / D29 未读红点「留言+状态事件」/ AI 低置信不写入+建议条）**：更新判据规模（31 套 **4,660** 断言、+94）/门禁读数（check 32/32、check-docs 10/10、零金额 0、selftest 31 套 0 失败、gate 红0黄0）/工作树 28 路径已提交（代码提交 `62da7f3`）；`message.markRead` 事务 CAS + `ALL` 置读对方未读留言；TD-067（系统通知未读点）登记；**D27 位置方案仍待用户裁决**（不影响本轮交付） |
 | v0.7 | 2026-10-23 | **批 10 A 批收口（P1 十项按推荐采纳；代码提交 `bf74a1c`，45 文件 +2050/−271）**：更新判据规模（31 套 **4,799** 断言、+139）/门禁读数（check 32/32、check-docs 10/10、零金额 0、selftest 31 套 0 失败、check-functions 0 违规、sync 32 件一致、gate 红0黄0）；P1-1/2/3/4/5/6/7/8/9/10 落点见 `V4_UX_CUSTOMER` v1.1 六次修订；TD-060 关闭（代码侧）、TD-068/069/070 登记、QA 275 条；**D27 位置方案仍待用户裁决**（不影响本轮交付） |
+| v1.3 | 2026-10-28 | **2026-10-28 用户拍板批次（D37~D42）与收尾**：分享卡经 launch+隐私闸、邀请自动绑定、绑定限流 60 秒窗口+查询中、截图 0~10 张+AI 不设每人每日次数、标准代取=送寝室门口+新增送至楼下、头像临时链接通道（含兼职端看顾客）；隐私文本版本标签统一「定稿候选 v1.3」（`privacyVersion` 不升版）；文档回写 CONTRACT/DECISIONS/ARCHITECTURE/ENGINEERING/两份 UX/DATA_MODEL/QA（§Y 六条真机项）/隐私三处/帮助；门禁读数与断言数以 `check.ps1`/`node tools/selftest.js` 真实输出为准（本行不新写读数） |
 | v0.8 | 2026-10-28 | **v1.2/D36 分享与朋友圈文档回写（仅文档）**：三份 UX + `QA_CHECKLIST`（新增 §X 八条人项）+ v3 对照 + 审核材料 + 本文同步；口径源 = CONTRACT §8/§13-D36、`docs/V4_DECISIONS.md` D36、`docs/V4_ENGINEERING.md` §8.2 #33；门禁读数与断言行数以 `check.ps1` / `node tools/selftest-share.js` 真实输出为准（本行不新写读数） |
 
 ## 附录 A · 关键文件索引

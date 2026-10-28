@@ -11,6 +11,7 @@ const time = require('../../lib/time');
 const { errors } = require('../../lib/errors');
 const identity = require('../user/_common');
 const bindCommon = require('../bind/_common');
+const avatarUrl = require('../../lib/avatar-url');
 
 // 分页：limit 缺省 20、最大 50（DATA_MODEL §7.4）；客户列表一次扫描 ≤100 条（§5.2）。
 const DEFAULT_PAGE_SIZE = 20;
@@ -160,6 +161,24 @@ async function activeCountByCustomer(ctx, partnerId) {
 // ── 客户档案行 / 关键词匹配（DATA_MODEL §7.4：昵称/楼栋/宿舍/roomTag/尾号四位/customerNo）──
 function customerRowOf(binding, customer, activeOrderCount) {
   return bindCommon.partnerBindingRow(binding, customer, activeOrderCount);
+}
+
+// D42（task-20）：兼职看绑定顾客头像 = 服务端 5 分钟临时 URL（私有存储不可直读 cloud://）。
+// 一次批量签发本页所有行；无头像零外呼；未签发（平台失败/无能力）不写 avatarUrl，
+// 行内 avatarFileId 保留作回退键，客户端再退默认头像——读失败不得让列表整体失败。
+async function signRowsAvatarUrls(ctx, rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  const urls = await avatarUrl.signAvatarUrls(ctx, list.map((row) => (row && row.avatarFileId) || ''));
+  list.forEach((row) => {
+    if (!row || !row.avatarFileId) {
+      return;
+    }
+    const url = urls[row.avatarFileId];
+    if (url) {
+      row.avatarUrl = url;
+    }
+  });
+  return list;
 }
 
 function matchKeyword(row, keyword) {
@@ -451,6 +470,7 @@ module.exports = {
   countActiveOrders,
   activeCountByCustomer,
   customerRowOf,
+  signRowsAvatarUrls,
   matchKeyword,
   parseBindingCursor,
   allocSeqOf,

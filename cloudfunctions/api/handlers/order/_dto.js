@@ -10,6 +10,8 @@ const orderState = require('../../shared/order-state');
 const orderView = require('../../shared/order-view');
 const time = require('../../lib/time');
 const mask = require('../../db/dto/mask');
+const { counterpart: counterpartDto } = require('../../db/dto/full');
+const avatarUrl = require('../../lib/avatar-url');
 const {
   buildParcelDto,
   buildParcelDtos,
@@ -98,6 +100,8 @@ async function loadActiveBinding(ctx, customerId) {
 }
 
 // 对方公开资料：仅「当前 ACTIVE 绑定关系」内下发昵称与头像（解绑/停用/注销后不返回）
+// D42/task-20：兼职→顾客方向（兼职看绑定顾客）随 DTO 下发 5 分钟临时 URL（src 优先，avatarFileId 回退）；
+// 顾客→兼职方向继续由 bind.getCurrent/bootstrap 的 partnerAvatarUrl 承担，这里不重复外呼。
 async function resolveCounterpart(ctx, order, side) {
   if (!order) {
     return null;
@@ -111,11 +115,7 @@ async function resolveCounterpart(ctx, order, side) {
     if (!partner || partner.status !== enums.PARTNER_STATUS.ACTIVE || partner.deletedAt) {
       return null;
     }
-    const out = { displayName: textOf(partner.displayName) };
-    if (partner.avatarFileId) {
-      out.avatarFileId = partner.avatarFileId;
-    }
-    return out;
+    return counterpartDto({ displayName: textOf(partner.displayName), avatarFileId: partner.avatarFileId });
   }
   if (side === 'PARTNER' && order.customerId) {
     const binding = await loadActiveBinding(ctx, order.customerId);
@@ -126,11 +126,12 @@ async function resolveCounterpart(ctx, order, side) {
     if (!customer) {
       return null;
     }
-    const out = { displayName: textOf(customer.displayName) };
-    if (customer.avatarFileId) {
-      out.avatarFileId = customer.avatarFileId;
-    }
-    return out;
+    const fileId = textOf(customer.avatarFileId);
+    const urls = await avatarUrl.signAvatarUrls(ctx, [fileId]);
+    return counterpartDto(
+      { displayName: textOf(customer.displayName), avatarFileId: fileId },
+      { avatarUrl: fileId ? urls[fileId] : '' }
+    );
   }
   return null;
 }

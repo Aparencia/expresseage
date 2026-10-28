@@ -1,5 +1,5 @@
 <view class="customer-row" bindtap="onTap">
-  <avatar-view fileId="{{customer.avatarFileId}}" name="{{customer.displayName}}" size="64" />
+  <avatar-view src="{{src}}" fileId="{{customer.avatarFileId}}" name="{{customer.displayName}}" size="64" />
   <view class="customer-row-main">
     <view class="customer-row-name ellipsis">{{customer.displayName || '代客单'}}</view>
     <view class="customer-row-meta">{{customer.anchorText}}</view>

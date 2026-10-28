@@ -86,7 +86,7 @@
 
 ### 3.8 配置种子与冒烟
 
-- 用户：在 `config` 集合写 `_id='global'` 的种子（或由 `admin.bootstrap` 幂等建/校验），键与默认值见 ENGINEERING §3.6；`privacyVersion` 随隐私文本定稿回填（批 8 定稿候选 v1.0 ↔ 代码默认 `v4.0.0`，见 §8 与 `docs/privacy/发布前填写清单.md` §1#17）。
+- 用户：在 `config` 集合写 `_id='global'` 的种子（或由 `admin.bootstrap` 幂等建/校验），键与默认值见 ENGINEERING §3.6；`privacyVersion` 随隐私文本定稿回填（定稿候选 v1.3（历史 v1.0 留痕）↔ 代码默认 `v4.0.0`，见 §8 与 `docs/privacy/发布前填写清单.md` §1#17）。
 - Lead/用户：云开发控制台 → 云函数 → `api` → 测试 → 调用内部动作 `health.check`、`admin.bootstrap`（仅在开发者白名单下可用）；期望返回集合/索引清单、`configSeeded`，重复调用结果一致。
 - Lead：`node tools/seed-dev.js` 输出单环境初始化计划（dry-run，只打印集合/索引/config/测试账号计划与环境断言，不写真实库；真实初始化由用户/部署机执行；含服务类型目录、测试邀请码批次、测试顾客/兼职资料）。
 - 冒烟：`account-switch` 开 READONLY 读写边界；测试账号走 `TEST_WRITE` 两端各一单；头像上传/替换；删除测试账号（先 `dryRun` 看计数）；审计 `ACCOUNT_SWITCH_*`/`TEST_ACCOUNT_*` 可查。详细清单见 §9。
@@ -136,7 +136,7 @@
 | `orderTimeoutMinutes` / `autoCompleteHours` / `screenshotRetentionDays` | 120 / 24 / 7 | admin.updateConfig |
 | `zoneLabels` / `serviceCatalog` / `announcement` / `maintenance` | 五苑展示名 / 五类服务 / 公告 / 维护开关 | admin.updateConfig |
 | `stations`（v1.1/D32） | 8 条 `{id,name}` 站点正式名（P1~P8 固定；识别/选择器/AI prompt 用当前名称；缺省回退默认） | admin.updateConfig（后台配置页可改；名称 1~20 字、唯一） |
-| `privacyVersion` | 定稿候选文本 v1.0 对应 `v4.0.0`（首次发布保持；仅当体验版已让用户同意旧文本才 bump，见 `docs/privacy/发布前填写清单.md` §1#17） | admin.updateConfig（白名单文本键；后台 config 页不提供编辑入口，发布前由 Lead/用户一次性写入并留证） |
+| `privacyVersion` | 定稿候选文本 v1.3（历史 v1.0 留痕）对应 `v4.0.0`（首次发布保持；仅当体验版已让用户同意旧文本才 bump，见 `docs/privacy/发布前填写清单.md` §1#17） | admin.updateConfig（白名单文本键；后台 config 页不提供编辑入口，发布前由 Lead/用户一次性写入并留证） |
 | `aiFallback` | `{enabled:false, timeoutMs:8000, maxPerUserPerDay:5, ...}` | **后台只读**；改值走部署配置脚本/控制台，并与隐私文本同步 |
 
 - 客户端只经 `config.getPublic` 取公开子集；缓存 TTL 5 分钟 + onShow 刷新（ENGINEERING §3.6）。
@@ -162,7 +162,7 @@
 | 14 | 异常介入取消（批 8） | 仅 `EXCEPTION` 单可介入取消、原因必填、`cancelledBy='ADMIN'`、审计 `ORDER_ANOMALY_CANCEL`；非异常单 `INVALID_TRANSITION` | Lead/用户 | 返回原文 + 后台截图 |
 | 15 | cleanup 重跑幂等（批 8） | 触发器到点执行，日志/审计 `CLEANUP` 汇总 `scanned/acted/failed` 正常；紧接一轮 `acted` 收敛（无重复写审计）；`orderTimeout/autoComplete/retention/recognitionFailures/testData` 按到期条件生效 | Lead | 两轮日志 |
 | 16 | 维护模式（批 8） | 开启后读（`user.bootstrap`/`config.getPublic`/`message.list`）正常、客户端写 `INVALID_STATE`、端侧全屏公告可见；关闭后写恢复；开启/关闭均 `CONFIG_UPDATE` 审计 | 用户 | 录屏 + 返回原文 |
-| 17 | 隐私文本一致性（批 8） | `config.getPublic.privacyVersion` 与 `docs/privacy/隐私保护指引`（定稿候选 v1.0）一致；端内 help 全文离线可读、关键条目（数据项/留存/AI/测试账号/未成年人/权利）齐全；launch 弹窗口径与 §4.1/§4.2 一致 | Lead/用户 | 返回原文 + 截图 + `docs/privacy/发布前填写清单.md` 勾选 |
+| 17 | 隐私文本一致性（批 8） | `config.getPublic.privacyVersion` 与 `docs/privacy/隐私保护指引`（定稿候选 v1.3，历史 v1.0 留痕）一致；端内 help 全文离线可读、关键条目（数据项/留存/AI/测试账号/未成年人/权利）齐全；launch 弹窗口径与 §4.1/§4.2 一致 | Lead/用户 | 返回原文 + 截图 + `docs/privacy/发布前填写清单.md` 勾选 |
 
 ## 10. 灰度发布与回滚演练
 

@@ -3,6 +3,7 @@
 //       §5.2（客户列表：dormKey asc → 同宿舍 allocSeq（=roomTag 大写字母序）、批量取 customers ≤100）、
 //       §5.3（游标分页、单次扫描上限）；UX_PARTNER §3.5（搜索锚+编号，客户端不再二次排序）。
 // 只列自己 ACTIVE 绑定；avatarFileId/displayName 只在 ACTIVE 绑定期间返回；activeOrderCount 按顾客现算。
+// D42（task-20）：本页行头像随 DTO 下发 5 分钟临时 URL（src 优先），一次批量签发；avatarFileId 保留回退。
 'use strict';
 
 const { COLLECTIONS } = require('../../shared/collections');
@@ -36,6 +37,8 @@ async function handler(ctx, payload) {
     .filter((entry) => customer.isAfterBindingCursor(entry, cursor))
     .sort(customer.compareBindingEntries);
   const page = candidates.slice(0, limit);
+  // 只对本页行签发（≤50 个 fileID 一次批量）；keyword 过滤不依赖头像，避免无谓外呼。
+  await customer.signRowsAvatarUrls(ctx, page.map((entry) => entry.row));
   const last = page[page.length - 1];
   return {
     list: page.map((entry) => entry.row),

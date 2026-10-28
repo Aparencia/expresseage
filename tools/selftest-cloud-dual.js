@@ -8,7 +8,8 @@
  *
  * 覆盖：A) auth 动作域角色解析（含 ai.parseParcel 按入参 role 选定）；B) 双角色全链路（listCustomer/create/
  *       get 两侧/listPartner/accept/message.list 聚合/message.send fromRole/ai.parseParcel）；
- *       C) 单角色基线不回归（越权仍 FORBIDDEN）。
+ *       C) 单角色基线不回归（越权仍 FORBIDDEN）；
+ *       D) D42/task-20 兼职看绑定顾客头像临时 URL 通道（仅 ACTIVE 绑定/一次批量签发/无头像零外呼/解绑即停发/失败降级）。
  *
  * 挂载：独立 register 形态套件，由 tools/selftest.js 的 SUITES 聚合运行（同 TD-029 拆分先例：
  *       selftest-cloud.js 已到 1000 行红线，故本文件独立成套）；也可独立运行 node tools/selftest-cloud-dual.js。
@@ -32,7 +33,7 @@ const PARTNER_ORDER_NO = '20261021-0007';
 const PLAIN_PARTNER_ORDER_NO = '20261021-0008';
 const SERVICE_CODES = SERVICES.map((item) => item.code);
 
-const EXPECTED_ASSERTIONS = 36;
+const EXPECTED_ASSERTIONS = 46; // 36 + 10（D42/task-20 兼职看绑定顾客头像临时 URL）
 
 function serviceConfigOf(extra) {
   return Object.assign({
@@ -313,6 +314,156 @@ function register(h) {
     const pAccept = await pApi.call('order.accept', { orderNo: PLAIN_PARTNER_ORDER_NO, expectedVersion: 1 },
       { clientRequestId: 'plain-accept-00000000001' });
     t.check(pAccept.ok === true, 'C5 单角色兼职 order.accept 仍可用', pAccept.code || 'ok');
+  });
+
+  // ---------------------------------------------------------------- D D42 兼职看绑定顾客头像临时 URL
+  section('§7.4/D42 兼职看绑定顾客头像：服务端临时 URL 通道（仅 ACTIVE 绑定/无头像零外呼/解绑即停发）', async (t) => {
+    const CUSTOMER_FILE = 'cloud://env/avatars/customer/AVATAR0000000001.jpg';
+    const PARTNER_FILE = 'cloud://env/avatars/partner/AVATAR0000000001.jpg';
+    const TMP = (fileId) => 'https://tmp.example/' + encodeURIComponent(fileId);
+    const AVATAR_CUSTOMER = 'openid-avatar-c';
+    const AVATAR_PARTNER = 'openid-avatar-p';
+    const AVATAR_PARTNER_ID = 'partner-avatar';
+    const AVATAR_ORDER_NO = '20261021-0009';
+
+    // 种子：一个 ACTIVE 绑定 + 一张已完成单（解绑守卫要求无进行中单，同时 order.get 可读）
+    function d42Seed(options) {
+      const opts = options || {};
+      const db = createTestDb();
+      db.seed('users', [
+        userDoc(AVATAR_PARTNER, [ROLES.PARTNER]),
+        userDoc(AVATAR_CUSTOMER, [ROLES.CUSTOMER]),
+        userDoc('openid-avatar-other-p', [ROLES.PARTNER])
+      ]);
+      db.seed('customers', [customerDoc(AVATAR_CUSTOMER, 'CABCDEFGM', {
+        displayName: '小陈',
+        avatarFileId: opts.customerAvatar === false ? '' : CUSTOMER_FILE
+      })]);
+      db.seed('partners', [
+        partnerDoc(AVATAR_PARTNER_ID, AVATAR_PARTNER, 'PABC236', { avatarFileId: PARTNER_FILE }),
+        partnerDoc('partner-avatar-other', 'openid-avatar-other-p', 'PABC237')
+      ]);
+      db.seed('bindings', [{
+        _id: 'binding-avatar',
+        activeKey: AVATAR_CUSTOMER,
+        customerId: AVATAR_CUSTOMER,
+        partnerId: AVATAR_PARTNER_ID,
+        status: 'ACTIVE',
+        roomTag: 'A',
+        allocSeq: 1,
+        dormSnapshot: { dormKey: 'D4-522', buildingText: 'D4' },
+        boundAt: NOW,
+        partnerNote: ''
+      }]);
+      db.seed('orders', [{
+        _id: 'order-avatar',
+        orderNo: AVATAR_ORDER_NO,
+        requestKey: 'avatar-seed-1',
+        customerId: AVATAR_CUSTOMER,
+        customerOpenid: AVATAR_CUSTOMER,
+        customerNo: 'CABCDEFGM',
+        partnerId: AVATAR_PARTNER_ID,
+        partnerOpenid: AVATAR_PARTNER,
+        partnerNo: 'PABC236',
+        source: 'CUSTOMER',
+        isTest: false,
+        status: ORDER_STATUS.COMPLETED,
+        statusUpdatedAt: NOW,
+        createdAt: NOW,
+        completedAt: NOW,
+        version: 1,
+        parcel: { stationId: 'P3', pickupCode: 'A123' }
+      }]);
+      return db;
+    }
+
+    // cloud 桩：sign=正常签发并记录调用；fail=平台报错；missing=环境无 getTempFileURL 能力
+    function avatarCloud(mode) {
+      const calls = [];
+      const cloud = {
+        calls: calls,
+        openapi: { security: { msgSecCheck: async () => ({ errCode: 0, result: { suggest: 'pass' } }) } }
+      };
+      cloud.getTempFileURL = async (options) => {
+        const list = (options && options.fileList) || [];
+        calls.push(list.map((item) => item.fileID));
+        if (mode === 'fail') {
+          throw new Error('platform down');
+        }
+        return {
+          fileList: list.map((item) => ({ fileID: item.fileID, tempFileURL: TMP(item.fileID), maxAge: item.maxAge }))
+        };
+      };
+      return cloud;
+    }
+
+    function avatarApi(db, openid, cloud) {
+      return app.createApi({ db, now: () => NOW, openid, env: {}, cloud });
+    }
+
+    const db = d42Seed();
+    const cloud = avatarCloud('sign');
+    const pApi = avatarApi(db, AVATAR_PARTNER, cloud);
+    const list = await pApi.call('partner.listBindings', {});
+    const row = (list.data && Array.isArray(list.data.list) ? list.data.list[0] : null) || {};
+    t.check(list.ok === true && row.avatarFileId === CUSTOMER_FILE && row.avatarUrl === TMP(CUSTOMER_FILE),
+      'D1 partner.listBindings ACTIVE 绑定行下发头像临时 URL 且保留 avatarFileId（src 优先/fileId 回退）',
+      JSON.stringify({ fileId: row.avatarFileId, url: row.avatarUrl }));
+    t.eq(cloud.calls.length === 1 && cloud.calls[0].length === 1 && cloud.calls[0][0] === CUSTOMER_FILE,
+      true, 'D2 一次 getTempFileURL 只签本页 1 个 fileID（批量签发、不逐行外呼）');
+
+    const detail = await pApi.call('partner.getCustomer', { bindingId: 'binding-avatar' });
+    const detailRow = (detail.data && detail.data.customer) || {};
+    t.check(detail.ok === true && detailRow.avatarUrl === TMP(CUSTOMER_FILE) && detailRow.avatarFileId === CUSTOMER_FILE,
+      'D3 partner.getCustomer 下发顾客头像临时 URL（avatarFileId 保留回退）', detail.code || 'ok');
+
+    const orderGet = await pApi.call('order.get', { orderNo: AVATAR_ORDER_NO });
+    const counterpart = (orderGet.data && orderGet.data.order && orderGet.data.order.counterpart) || null;
+    t.check(orderGet.ok === true && !!counterpart && counterpart.avatarUrl === TMP(CUSTOMER_FILE)
+      && counterpart.avatarFileId === CUSTOMER_FILE,
+      'D4 兼职侧 order.get counterpart（兼职→顾客）下发 avatarUrl 且保留 avatarFileId',
+      JSON.stringify(counterpart));
+
+    const cCloud = avatarCloud('sign');
+    const cApi = avatarApi(db, AVATAR_CUSTOMER, cCloud);
+    const cOrder = await cApi.call('order.get', { orderNo: AVATAR_ORDER_NO });
+    const cCounter = (cOrder.data && cOrder.data.order && cOrder.data.order.counterpart) || null;
+    t.check(cOrder.ok === true && !!cCounter && !Object.prototype.hasOwnProperty.call(cCounter, 'avatarUrl')
+      && cCloud.calls.length === 0,
+      'D5 顾客→兼职方向不重复外呼（仍走 bind.getCurrent/bootstrap 的 partnerAvatarUrl 通道）',
+      JSON.stringify(cCounter));
+
+    const noAvatar = d42Seed({ customerAvatar: false });
+    const noCloud = avatarCloud('sign');
+    const noRow = ((await avatarApi(noAvatar, AVATAR_PARTNER, noCloud).call('partner.listBindings', {})).data || {}).list;
+    const noFirst = (Array.isArray(noRow) ? noRow[0] : null) || {};
+    t.check(!noFirst.avatarUrl && !noFirst.avatarFileId && noCloud.calls.length === 0,
+      'D6 顾客无头像 → 零外呼且不返回 avatarUrl/avatarFileId（客户端落默认头像）', JSON.stringify(noFirst));
+
+    const otherApi = avatarApi(db, 'openid-avatar-other-p', avatarCloud('sign'));
+    t.eq((await otherApi.call('partner.getCustomer', { bindingId: 'binding-avatar' })).code, 'FORBIDDEN',
+      'D7 反例：其它兼职拿该 bindingId 调 getCustomer → FORBIDDEN（越权无头像通道）');
+
+    const failApi = avatarApi(d42Seed(), AVATAR_PARTNER, avatarCloud('fail'));
+    const failList = await failApi.call('partner.listBindings', {});
+    const failRow = (failList.data && Array.isArray(failList.data.list) ? failList.data.list[0] : null) || {};
+    t.check(failList.ok === true && failRow.avatarFileId === CUSTOMER_FILE
+      && !Object.prototype.hasOwnProperty.call(failRow, 'avatarUrl'),
+      'D8 签发平台失败 → 列表不整体失败：avatarFileId 保留回退、不返回 avatarUrl（降级不抛错）', failList.code || 'ok');
+
+    const unbindDb = d42Seed();
+    const unbindCloud = avatarCloud('sign');
+    const unbindApi = avatarApi(unbindDb, AVATAR_PARTNER, unbindCloud);
+    const released = await unbindApi.call('partner.unbindCustomer', { bindingId: 'binding-avatar', reason: 'PARTNER_INITIATED' });
+    t.check(released.ok === true, 'D9 兼职解绑成功（进行中单为 0 才允许）', released.code || 'ok');
+    const afterList = await unbindApi.call('partner.listBindings', {});
+    const afterDetail = await unbindApi.call('partner.getCustomer', { bindingId: 'binding-avatar' });
+    const afterOrder = await unbindApi.call('order.get', { orderNo: AVATAR_ORDER_NO });
+    const afterCounter = (afterOrder.data && afterOrder.data.order && afterOrder.data.order.counterpart) || null;
+    t.check(afterList.ok === true && afterList.data.list.length === 0 && afterDetail.code === 'INVALID_STATE'
+      && afterOrder.ok === true && afterCounter === null && unbindCloud.calls.length === 0,
+      'D10 解绑后：listBindings 不再列该顾客 / getCustomer → INVALID_STATE / order.get counterpart=null 且零签发（解绑即停发）',
+      JSON.stringify({ list: afterList.data && afterList.data.list.length, detail: afterDetail.code, counter: afterCounter }));
   });
 }
 

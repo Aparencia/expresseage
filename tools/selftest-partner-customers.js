@@ -106,9 +106,10 @@ async function sectionA(h) {
     const b1Row = pickRow(base.data.list, B1);
     const b3Row = pickRow(base.data.list, B3);
     t.eq(Object.keys(b1Row).sort(), BINDING_ROW_KEYS.slice().sort(),
-      'A7 行 DTO 顶层键全部在白名单（ACTIVE 且有头像时含 avatarFileId）');
-    t.eq(Object.keys(b3Row).sort(), BINDING_ROW_KEYS.slice().filter((key) => key !== 'avatarFileId').sort(),
-      'A8 无头像时不出现 avatarFileId 键（不是空串占位）');
+      'A7 行 DTO 顶层键全部在白名单（ACTIVE 且有头像时含 avatarFileId + avatarUrl 临时 URL）');
+    t.eq(Object.keys(b3Row).sort(),
+      BINDING_ROW_KEYS.slice().filter((key) => key !== 'avatarFileId' && key !== 'avatarUrl').sort(),
+      'A8 无头像时不出现 avatarFileId/avatarUrl 键（不是空串占位）');
     t.eq(base.data.list.filter((row) => row.bindingId === B6).length, 0,
       'A9 已释放绑定（B6）不出现在客户列表（只列 ACTIVE）');
     t.eq(base.data.list.filter((row) => row.bindingId === B7).length, 0,

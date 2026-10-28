@@ -55,7 +55,7 @@
       data-index="{{index}}"
       bindtap="onRowTap"
     >
-      <avatar-view fileId="{{item.avatarFileId}}" name="{{item.displayName}}" size="{{64}}" />
+      <avatar-view src="{{item.avatarUrl}}" fileId="{{item.avatarFileId}}" name="{{item.displayName}}" size="{{64}}" bindretry="onAvatarRetry" />
       <view class="flex-1 customer-main">
         <view class="row between">
           <view class="strong ellipsis">{{item.displayNameText}}</view>

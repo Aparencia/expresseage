@@ -3,7 +3,7 @@
  * tools/selftest-privacy-text.js — 批 8 T6「端内隐私文本同步」断言套件（ENGINEERING §7.2 接入范式）
  *
  * 覆盖（task-80 交付 4 的五组判据）：
- *   A. 定稿候选 v1.0 关键条目 ⊆ 端内全文：17 项数据表 / 8 个章节标题 / 必披露主题 / 留存数字，
+ *   A. 定稿候选 v1.3 关键条目 ⊆ 端内全文：17 项数据表 / 8 个章节标题 / 必披露主题 / 留存数字，
  *      端内文本与 docs/privacy/隐私保护指引.md 同时存在（防双份漂移、防端内缺项）。
  *   B. launch 隐私弹窗 PRIVACY_ITEMS 与文档口径一致：头像/昵称可见边界（兼职昵称凭完整编号预览、
  *      头像绑定成功后才可见）、AI 仅去敏文字、账号切换/测试账号、留存期限、未成年人、注销/解绑；
@@ -33,7 +33,7 @@ const privacyText = require(path.join(__dirname, '..', 'pkg-customer/parts/priva
 const defaults = require(path.join(__dirname, '..', 'config/defaults.js'));
 
 const ROOT = path.resolve(__dirname, '..');
-const EXPECTED_ASSERTIONS = 246; // 实跑读数：node tools/selftest-privacy-text.js
+const EXPECTED_ASSERTIONS = 249; // 实跑读数：node tools/selftest-privacy-text.js
 
 const PART_FILE = 'pkg-customer/parts/privacy-text.js';
 const HELP_JS = 'pkg-customer/pages/help/index.js';
@@ -149,7 +149,7 @@ function register(h) {
   const allStatements = Object.keys(statements || {}).map((key) => statements[key]).join('\n');
 
   // ------------------------------------------------------------ A. 定稿关键条目 ⊆ 端内全文
-  h.section('A 定稿候选 v1.0 关键条目 ⊆ 端内全文（数据项/章节/主题/留存）', (t) => {
+  h.section('A 定稿候选 v1.3 关键条目 ⊆ 端内全文（数据项/章节/主题/留存）', (t) => {
     DATA_ITEMS.forEach((term) => checkTextSides(t, term));
     SECTION_TITLES.forEach((title) => {
       t.check(SECTIONS.some((section) => section.title === title),
@@ -218,10 +218,15 @@ function register(h) {
 
   // ------------------------------------------------------------ D. 文本版本 ↔ config.privacyVersion
   h.section('D 文本版本 ↔ config.privacyVersion 对应（版本单源）', (t) => {
-    t.eq(privacyText.TEXT_VERSION, 'v1.0', '文本版本 v1.0（与定稿候选一致）');
-    t.check(TEXT.indexOf(privacyText.TEXT_VERSION_LABEL) !== -1, '全文写明「定稿候选 v1.0」文本版本');
+    t.eq(privacyText.TEXT_VERSION, 'v1.3', '文本版本 v1.3（与定稿候选一致；历史 v1.0 留痕）');
+    t.check(TEXT.indexOf(privacyText.TEXT_VERSION_LABEL) !== -1, '全文写明「定稿候选 v1.3」文本版本');
     t.check(privacyTextDocCache.indexOf(privacyText.TEXT_VERSION_LABEL) !== -1,
-      '定稿文档头部同为「定稿候选 v1.0」（改版本必须两端同步）');
+      '定稿文档头部同为「定稿候选 v1.3」（改版本必须两端同步）');
+    t.check(privacyTextDocCache.indexOf(privacyText.TEXT_VERSION) !== -1,
+      '定稿文档写明文本版本号 v1.3（与端内全文同一标签）');
+    t.check(privacyTextDocCache.indexOf('历史版本') !== -1
+      && privacyTextDocCache.indexOf('定稿候选 v1.0') !== -1,
+    '定稿文档保留「历史版本 v1.0」留痕（版本标签统一不删证据）');
     t.check(TEXT.indexOf(CONFIG_VERSION) !== -1, '全文展示 config.privacyVersion 实际同意版本（' + CONFIG_VERSION + '）');
     t.check(privacyTextDocCache.indexOf(CONFIG_VERSION) !== -1, '定稿文档写明当前出厂版本 ' + CONFIG_VERSION);
     const swapped = privacyText.buildText('v9.9.9');
@@ -342,6 +347,8 @@ function register(h) {
       && TEXT.indexOf('剪贴板') !== -1
       && supplement.indexOf(TEXT) !== -1,
     '定稿文档保留用户填写占位符；剪贴板使用披露两端同源；补充文档为端内全文派生物（随文本重新生成，不单独维护）');
+    t.check(supplement.indexOf('文本版本：' + privacyText.TEXT_VERSION_LABEL) !== -1,
+      '补充文档头部文本版本与端内全文同标签（定稿候选 v1.3；派生物随文本重新生成）');
   });
 
   // ------------------------------------------------------------ H. 批 10 口径（D24/D25）

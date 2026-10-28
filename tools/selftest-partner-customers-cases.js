@@ -60,10 +60,11 @@ const B6 = 'bind-b7-6';
 const B7 = 'bind-b7-7';
 const BT = 'bind-b7-test';
 
-// 客户档案行顶层键白名单（多一个=可能泄漏 raw 文档字段；avatarFileId 仅 ACTIVE 绑定且有头像时下发）
+// 客户档案行顶层键白名单（多一个=可能泄漏 raw 文档字段；avatarFileId/avatarUrl 仅 ACTIVE 绑定且（sign 成功）时下发）
+// D42/task-20：avatarUrl = 服务端签发的 5 分钟临时 URL（src 优先）；avatarFileId 保留回退键，两者同进同出。
 const BINDING_ROW_KEYS = [
   'bindingId', 'customerNo', 'dormKey', 'buildingText', 'roomTag', 'displayName',
-  'phoneTail', 'partnerNote', 'boundAt', 'activeOrderCount', 'avatarFileId'
+  'phoneTail', 'partnerNote', 'boundAt', 'activeOrderCount', 'avatarFileId', 'avatarUrl'
 ];
 // 客户详情订单行：DATA_MODEL §7.4 明确只含 orderNo/status/statusText/serviceName/时间戳（可选时间戳按需出现）
 const ORDER_ROW_KEYS = ['orderNo', 'status', 'statusText', 'serviceName', 'createdAt',

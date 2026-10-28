@@ -59,13 +59,19 @@ function partnerPublic(partner, options) {
 }
 
 // 订单/客户档案内联的对方摘要：只用于当前 ACTIVE 绑定关系；解绑/停用/注销后调用方不要传 profile。
-function counterpart(profile) {
+// avatarUrl（D42/task-20）：服务端签发的 5 分钟临时 URL，仅 ACTIVE 绑定且签发成功时由调用方传入；
+// avatarFileId 始终保留作回退键（未签发/失败由客户端退默认头像）。
+function counterpart(profile, options) {
   if (!profile || typeof profile !== 'object') {
     return null;
   }
+  const opts = options || {};
   const out = { displayName: profile.displayName || '' };
   if (profile.avatarFileId) {
     out.avatarFileId = profile.avatarFileId;
+    if (typeof opts.avatarUrl === 'string' && opts.avatarUrl) {
+      out.avatarUrl = opts.avatarUrl;
+    }
   }
   return out;
 }

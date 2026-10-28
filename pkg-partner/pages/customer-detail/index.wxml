@@ -9,7 +9,7 @@
   <block wx:elif="{{view}}">
     <view class="card head-card">
       <view class="row">
-        <avatar-view fileId="{{view.avatarFileId}}" name="{{view.displayName}}" size="{{96}}" />
+        <avatar-view src="{{view.avatarUrl}}" fileId="{{view.avatarFileId}}" name="{{view.displayName}}" size="{{96}}" bindretry="onAvatarRetry" />
         <view class="flex-1 head-main">
           <view class="row between">
             <view class="strong">{{view.displayNameText}}</view>

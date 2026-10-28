@@ -87,9 +87,9 @@ Page({
     this.stopMessagePoll();
     this.clearUndoTimer();
   },
-  onPullDownRefresh() {
-    this.load().then(() => wx.stopPullDownRefresh());
-  },
+  // D42：头像临时 URL 过期/加载失败 → 点默认头像位重签（重拉一次 DTO，onShow 同理）
+  onCounterpartAvatarRetry() { this.load(); },
+  onPullDownRefresh() { this.load().then(() => wx.stopPullDownRefresh()); },
   onUnload() {
     this.stopMessagePoll();
     this.clearUndoTimer();

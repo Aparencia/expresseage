@@ -5,6 +5,7 @@
 'use strict';
 
 const partnerApi = require('../../../api/modules/partner');
+const userApi = require('../../../api/modules/user');
 const upload = require('../../../api/upload');
 const store = require('../../../store/index');
 const storage = require('../../../utils/storage');
@@ -25,6 +26,8 @@ Page({
     displayName: '',
     avatarFileId: '',
     avatarTicket: '',
+    // D42：选头像后的本机临时文件路径（激活前直接预览；私有云存储 fileId 不能直读 cloud://）
+    avatarPreview: '',
     uploadAvataring: false,
     agreed: false,
     submitting: false,
@@ -106,6 +109,7 @@ Page({
       this.setData({
         avatarFileId: uploaded.fileId || '',
         avatarTicket: uploaded.uploadTicketId || '',
+        avatarPreview: filePath,
         uploadAvataring: false
       });
     }).catch((err) => {
@@ -122,7 +126,7 @@ Page({
     if (this.data.uploadAvataring || this.data.submitting) {
       return;
     }
-    this.setData({ avatarFileId: '', avatarTicket: '' });
+    this.setData({ avatarFileId: '', avatarTicket: '', avatarPreview: '' });
     wx.showToast({ title: '头像可以以后在「我的」补；现在会显示默认头像', icon: 'none' });
   },
 
@@ -149,6 +153,7 @@ Page({
     }).then((result) => {
       this.applyActivated(result);
       this.setData({ submitting: false, canSubmit: false, activated: this.buildResult(result) });
+      this.refreshActivatedAvatar();
       this.scheduleJump();
     }).catch((err) => {
       this.setData({ submitting: false, errorText: (err && err.message) || '激活失败，请检查网络后重试' });
@@ -164,8 +169,30 @@ Page({
       partnerNo: partnerNo,
       partnerNoDisplay: partnerNo ? ids.displayNo(enums.NO_KIND.PARTNER, partnerNo) : '',
       displayName: partner.displayName || '',
-      avatarFileId: partner.avatarFileId || ''
+      avatarFileId: partner.avatarFileId || '',
+      // D42：激活成功后再经 user.avatarUrl 换 5 分钟临时 URL（私有存储不直读 cloud://）
+      avatarUrl: ''
     };
+  },
+
+  // D42：成功块本人头像 = 服务端签发的临时 URL（失败/无头像保持默认头像位，不阻断激活结果）
+  refreshActivatedAvatar() {
+    return userApi.avatarUrl().then((data) => {
+      const partner = (data && data.partner) || {};
+      if (!this.data.activated || !partner.avatarUrl) {
+        return;
+      }
+      this.setData({ 'activated.avatarUrl': partner.avatarUrl });
+    }).catch(() => {});
+  },
+
+  // D42：点默认头像位 = 重试（激活成功后重签临时 URL；激活前提示重新选择，不静默失败）
+  onAvatarRetry() {
+    if (this.data.activated) {
+      this.refreshActivatedAvatar();
+      return;
+    }
+    wx.showToast({ title: '头像没显示出来，可以重新选择一次', icon: 'none' });
   },
 
   // partner.activate 返回 {partnerNo, partner, roles}；就地水合 store，后续页面无需再 bootstrap

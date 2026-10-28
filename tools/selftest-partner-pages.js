@@ -49,7 +49,7 @@ const codeInput = require(path.join(ROOT, 'pkg-partner/pages/activate/parts/code
 
 // 注意：F 段（异步 fake transport）必须注册在最后——harness 的异步断言在 await 之后才计入，
 // 若后面再注册同步段，console 的节标题会被后注册的段名覆盖。
-const EXPECTED_ASSERTIONS = 194; // 184 + 10（D41 服务类型目录/停用 PICKUP_DOOR 行模型）；实际断言总数（少算/多算都判红）
+const EXPECTED_ASSERTIONS = 206; // 194 + 10（D41 服务类型目录/停用 PICKUP_DOOR 行模型）；实际断言总数（少算/多算都判红）
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
@@ -740,6 +740,82 @@ function register(h) {
       && servicePageWxml.indexOf('service-row-disabled') >= 0 && servicePageWxml.indexOf('hasLegacy') >= 0,
     'J10 服务设置页接线行模型：停用类型灰显且不可勾选（页面不另写判据）');
   });
+  // ------------------------------------------------------------------ K D42/task-20 兼职看绑定顾客头像
+  h.section('K. D42/task-20 兼职看绑定顾客头像：src 优先/retry 接线/fileId 回退/file-id 零命中/激活页预览', (t) => {
+    // K1/K2 行模型：服务端随 DTO 下发 avatarUrl（src 优先），未签发回落空串（avatar-view 再退默认头像）
+    const signedRows = listModel.attachAvatarUrls(
+      customerView.buildListRows([ROW_1, ROW_2]),
+      [Object.assign({}, ROW_1, { avatarUrl: 'https://tmp.example/c.jpg' }), ROW_2]
+    );
+    t.eq([signedRows[0].avatarUrl, signedRows[1].avatarUrl], ['https://tmp.example/c.jpg', ''],
+      'K1 客户列表行：avatarUrl 按 bindingId 透传；未签发=空串（src 优先/fileId 回退）');
+    const avatarState = listModel.applyResponse(listModel.createState(),
+      { list: [Object.assign({}, ROW_1, { avatarUrl: 'https://tmp.example/c.jpg' })], nextCursor: null }, { nowMs: NOW });
+    t.eq(avatarState.rows[0].avatarUrl, 'https://tmp.example/c.jpg',
+      'K2 applyResponse 后行保留服务端 avatarUrl（首屏/下拉/触底同一装配）');
+
+    const customersWxml = textOfRel('pages/partner/customers/index.wxml');
+    t.check(customersWxml.indexOf('src="{{item.avatarUrl}}"') >= 0
+      && customersWxml.indexOf('fileId="{{item.avatarFileId}}"') >= 0
+      && customersWxml.indexOf('bindretry="onAvatarRetry"') >= 0,
+    'K3 客户列表 WXML：头像 src 优先 + fileId 回退 + 失败可点重签（retry）');
+    t.check(textOfRel('pages/partner/customers/index.js').indexOf('onAvatarRetry()') >= 0,
+      'K4 客户列表页：retry 事件接线到重拉（服务端重签 5 分钟 URL）');
+
+    t.eq(detailView.identityOf(Object.assign({}, ROW_1, { avatarUrl: 'https://tmp.example/c.jpg' })).avatarUrl,
+      'https://tmp.example/c.jpg',
+      'K5 顾客详情视图：身份行 avatarUrl 取服务端临时 URL（avatarFileId 保留回退）');
+    const detailJs = textOfRel('pkg-partner/pages/customer-detail/index.js');
+    const avatarRefreshJs = textOfRel('pkg-partner/pages/customer-detail/parts/avatar-refresh.js');
+    t.check(textOfRel('pkg-partner/pages/customer-detail/index.wxml').indexOf('src="{{view.avatarUrl}}"') >= 0
+      && textOfRel('pkg-partner/pages/customer-detail/index.wxml').indexOf('bindretry="onAvatarRetry"') >= 0
+      && detailJs.indexOf("require('./parts/avatar-refresh')") >= 0 && detailJs.indexOf('avatarRefresh.pullLatest(this)') >= 0
+      && avatarRefreshJs.indexOf('partnerApi.getCustomer') >= 0 && avatarRefreshJs.indexOf("'view.avatarUrl'") >= 0
+      && avatarRefreshJs.indexOf('orderApi') === -1,
+    'K6 顾客详情：onShow/retry 只重签身份行头像（parts/avatar-refresh 单点，不重拉订单页）');
+
+    const partnerOrderWxml = textOfRel('pkg-partner/pages/order-detail/index.wxml');
+    const partnerOrderJs = textOfRel('pkg-partner/pages/order-detail/index.js');
+    t.check(partnerOrderWxml.indexOf('src="{{order.counterpart.avatarUrl}}"') >= 0
+      && partnerOrderWxml.indexOf('bindretry="onCounterpartAvatarRetry"') >= 0
+      && partnerOrderJs.indexOf('onCounterpartAvatarRetry()') >= 0,
+    'K7 兼职订单详情 counterpart（兼职→顾客）头像 src 优先 + retry 重拉 DTO');
+
+    const activateWxml = textOfRel('pkg-partner/pages/activate/index.wxml');
+    const activateJs = textOfRel('pkg-partner/pages/activate/index.js');
+    t.check(activateWxml.indexOf('src="{{avatarPreview}}"') >= 0
+      && activateWxml.indexOf('src="{{activated.avatarUrl || avatarPreview}}"') >= 0
+      && activateJs.indexOf('avatarPreview: filePath') >= 0,
+    'K8 激活页：选头像后本机临时路径预览（私有存储不直读 cloud://），结果块优先服务端临时 URL');
+    t.check(activateJs.indexOf('userApi.avatarUrl()') >= 0 && activateJs.indexOf('refreshActivatedAvatar') >= 0
+      && activateJs.indexOf("'activated.avatarUrl'") >= 0,
+    'K9 激活成功页本人头像：经 user.avatarUrl 换 5 分钟临时 URL（失败保持默认头像位，不阻断激活结果）');
+
+    t.check(textOfRel('components/customer-row/index.js').indexOf('src: { type: String') >= 0
+      && textOfRel('components/customer-row/index.wxml').indexOf('src="{{src}}"') >= 0,
+    'K10 customer-row 组件：新增 src? prop（src 优先 + customer.avatarFileId 回退）');
+
+    const wxmlFiles = fsutil.walk(ROOT, { exts: new Set(['.wxml']) });
+    const hyphenHits = wxmlFiles.filter((full) => fsutil.readText(full).indexOf('file-id=') >= 0).map((full) => fsutil.rel(full));
+    t.eq(hyphenHits, [], 'K11 全仓 WXML 零 file-id= 驼峰写法（D42 fileId 单一写法；实际扫描 ' + wxmlFiles.length + ' 个文件）');
+
+    const partnerWxmls = [
+      'pages/partner/customers/index.wxml',
+      'pkg-partner/pages/customer-detail/index.wxml',
+      'pkg-partner/pages/order-detail/index.wxml',
+      'pkg-partner/pages/activate/index.wxml',
+      'components/customer-row/index.wxml'
+    ];
+    const noSrc = [];
+    partnerWxmls.forEach((rel) => {
+      const tags = textOfRel(rel).match(/<avatar-view[^>]*>/g) || [];
+      tags.forEach((tag) => {
+        if (tag.indexOf('fileId=') >= 0 && tag.indexOf('src=') < 0) noSrc.push(rel + ':' + tag.trim());
+      });
+    });
+    t.eq(noSrc, [], 'K12 兼职端 avatar-view：凡传 fileId 必同时传 src（禁止直读 cloud:// 私有文件）');
+  });
+
   // ------------------------------------------------------------------ F READONLY/TEST_WRITE + transport
   h.section('F. READONLY/TEST_WRITE 与 fake transport：包络/零请求/票据/分享（§6.3、§6.4）', async (t) => {
     const captured = [];

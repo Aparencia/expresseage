@@ -152,6 +152,11 @@ Page({
     this.load(true);
   },
 
+  // D42：头像临时 URL 过期/加载失败时点默认头像位重试——整页重拉一次（服务端重签 5 分钟 URL）
+  onAvatarRetry() {
+    this.load(true);
+  },
+
   onDismissBanner() {
     this.state = listModel.dismissBanner(this.state);
     this.render();

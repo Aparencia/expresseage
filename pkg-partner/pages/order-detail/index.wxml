@@ -27,7 +27,7 @@
         <text class="small">顾客未绑定，进度需线下告知</text>
       </view>
       <view wx:elif="{{order.counterpart}}" class="row counterpart">
-        <avatar-view fileId="{{order.counterpart.avatarFileId}}" name="{{order.counterpart.displayName}}" size="{{64}}" />
+        <avatar-view src="{{order.counterpart.avatarUrl}}" fileId="{{order.counterpart.avatarFileId}}" name="{{order.counterpart.displayName}}" size="{{64}}" bindretry="onCounterpartAvatarRetry" />
         <view class="flex-1 counterpart-main">
           <view class="strong">{{order.counterpart.displayName || '顾客'}}</view>
           <view class="small" bindtap="onCopyCustomerNo">顾客编号 {{customerNoText || '—'}} · 复制</view>

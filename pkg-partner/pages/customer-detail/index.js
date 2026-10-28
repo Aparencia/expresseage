@@ -5,6 +5,7 @@ const partnerApi = require('../../../api/modules/partner');
 const orderApi = require('../../../api/modules/order');
 const modeGuard = require('../../../api/mode-guard');
 const detailView = require('./parts/detail-view');
+const avatarRefresh = require('./parts/avatar-refresh');
 const unbindFlow = require('./parts/unbind-flow');
 const share = require('../../../utils/share/handlers');
 
@@ -52,6 +53,15 @@ Page({
 
   onShow() {
     this.setData({ readonly: !modeGuard.canRenderWriteButton() });
+    // D42：头像临时 URL 5 分钟有效，回前台/返回页面时重签一次（只刷身份行，不重拉订单页）
+    if (this.data.view) {
+      avatarRefresh.pullLatest(this);
+    }
+  },
+
+  // D42：头像加载失败点默认头像位 = 重签一次 URL（逻辑在 parts/avatar-refresh）
+  onAvatarRetry() {
+    avatarRefresh.pullLatest(this);
   },
 
   onPullDownRefresh() {

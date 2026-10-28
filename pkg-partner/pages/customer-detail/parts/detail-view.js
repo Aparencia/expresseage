@@ -156,6 +156,8 @@ function identityOf(customer) {
   return {
     bindingId: row.bindingId,
     customerNo: row.customerNo,
+    // D42：头像 = 服务端 5 分钟临时 URL（src 优先）；avatarFileId 仅回退键
+    avatarUrl: textOf(customer && customer.avatarUrl),
     avatarFileId: row.avatarFileId,
     displayName: row.displayName,
     displayNameText: row.displayNameText,

@@ -22,8 +22,11 @@ async function handler(ctx, payload) {
     throw errors.forbidden('绑定关系不存在或不属于你');
   }
   const activeOrderCount = await customer.countActiveOrders(ctx, partner._id, binding.customerId);
+  // D42（task-20）：ACTIVE 绑定期间的顾客头像下发 5 分钟临时 URL（src 优先）；avatarFileId 保留回退。
+  const row = customer.customerRowOf(binding, profile, activeOrderCount);
+  await customer.signRowsAvatarUrls(ctx, [row]);
   return {
-    customer: customer.customerRowOf(binding, profile, activeOrderCount),
+    customer: row,
     activeOrderCount,
     unbindEligibility: {
       canUnbind: activeOrderCount === 0,

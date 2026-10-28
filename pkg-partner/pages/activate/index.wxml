@@ -10,7 +10,7 @@
   <block wx:if="{{activated}}">
     <view class="card result-card">
       <view class="row result-head">
-        <avatar-view fileId="{{activated.avatarFileId}}" name="{{activated.displayName}}" size="{{96}}" />
+        <avatar-view src="{{activated.avatarUrl || avatarPreview}}" fileId="{{activated.avatarFileId}}" name="{{activated.displayName}}" size="{{96}}" bindretry="onAvatarRetry" />
         <view class="result-main">
           <view class="result-title">成为兼职成功</view>
           <view class="muted">{{activated.displayName || '未设置昵称'}}</view>
@@ -55,7 +55,7 @@
     <view class="form-row avatar-row">
       <view class="form-label">头像</view>
       <view class="row flex-1 avatar-line">
-        <avatar-view fileId="{{avatarFileId}}" name="{{displayName}}" size="{{96}}" />
+        <avatar-view src="{{avatarPreview}}" fileId="{{avatarFileId}}" name="{{displayName}}" size="{{96}}" bindretry="onAvatarRetry" />
         <view class="avatar-actions">
           <button class="btn btn-ghost avatar-btn" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar" disabled="{{submitting}}">
             {{uploadAvataring ? '上传中…' : '选择头像'}}

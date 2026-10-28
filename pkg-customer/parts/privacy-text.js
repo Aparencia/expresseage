@@ -1,15 +1,17 @@
 // pkg-customer/parts/privacy-text.js · 端内「隐私政策」全文（静态、离线可读、文本单源）
-// 口径：docs/privacy/隐私保护指引.md（定稿候选 v1.0）+ docs/V4_CONTRACT.md §11；
+// 口径：docs/privacy/隐私保护指引.md（定稿候选 v1.3；历史版本 v1.0 留痕）+ docs/V4_CONTRACT.md §11；
 //       2026-10-28 D37~D42 同步：截图 0~10 张（D40）、AI 不设每人每日次数仅全局日配额（D40）、
 //       头像经约 5 分钟临时链接展示（D42）、服务类型两档（D41）——旧「0~5 张 / 每账号每日最多 5 次」
 //       口径已修订，见 docs/privacy/隐私保护指引.md 附录 A 留痕；
+//      文本版本标签 = 定稿候选 v1.3（2026-10-28 D37~D42 文本校准；历史版本 v1.0 留痕见
+//      docs/privacy/隐私保护指引.md 头部），与同意版本 config.privacyVersion 分离、不升版；
 //      版本对应 config.privacyVersion（用户实际同意的版本号，由调用方传入，本文件不写死业务版本）。
 // 纪律：纯数据 + 纯函数，零 wx；正文不出现任何费用/钱款语义与 L3 敏感示例值；段落里的 {version}
 //      由 buildSections/buildText 注入，避免文本里再出现一份会漂移的版本号常量。
 'use strict';
 
-const TEXT_VERSION = 'v1.0';
-const TEXT_VERSION_LABEL = '定稿候选 v1.0';
+const TEXT_VERSION = 'v1.3';
+const TEXT_VERSION_LABEL = '定稿候选 v1.3';
 const CONTACT_PLACEHOLDER = '__________';
 
 // 帮助页「口径说明」四条（与全文同一口径；页面不再各写一份）
