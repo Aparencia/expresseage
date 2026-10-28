@@ -20,7 +20,8 @@
  *   I. 服务端契约联调（fake DB，真实 handler）：严格白名单接受/拒绝、recognition.source 落库、
  *      拆单逐单 source 不串、ORDER_CREATED 事件与零写入
  *   K/L/M（批 10 A 批）：P1-8 相册授权修正、P1-4 换图替换/重试/失败卡两条出路（D24）、
- *      P1-6 提交前服务范围预检、P1-9「其他代办」强制备注（纯件 + 有牙扫描 + 页面接线）
+ *      P1-6 范围预检、P1-9「其他代办」强制备注 + N（第 2 批反馈 ⑧⑨）：取件码前置标签/同构、
+ *      Step1「下一步：核对」回迁（只跳步）+ 手填有内容时二次确认（静态接线 + 有牙正控）
  *
  * 纪律：不 mock 全局 wx（api/client 用 setTransport 注入替身）；fake 数据、不连真云；
  *       先合法基线再反例；样本非空；EXPECTED_ASSERTIONS 与实际断言数精确相等（少算/多算都判红）。
@@ -30,9 +31,7 @@ const fs = require('fs');
 const path = require('path');
 const fsutil = require('./lib/fsutil');
 const { createHarness, installCrashGuard } = require('./selftest');
-
 const ROOT = path.resolve(__dirname, '..');
-
 const model = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/model.js'));
 const ocrFlow = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/ocr-flow.js'));
 const enums = require(path.join(ROOT, 'shared/enums.js'));
@@ -49,13 +48,11 @@ const filesFlow = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts
 const precheck = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/precheck.js'));
 const pickerState = require(path.join(ROOT, 'components/image-picker/state.js'));
 const { createFakeDb } = require('./fake-db');
-
 const CLOUD_API = path.join(ROOT, 'cloudfunctions/api');
 const app = require(path.join(CLOUD_API, 'app.js'));
 const { COLLECTIONS } = require(path.join(CLOUD_API, 'shared/collections.js'));
 const serverEnums = require(path.join(CLOUD_API, 'shared/enums.js'));
-
-const EXPECTED_ASSERTIONS = 195; // 实际断言总数（少算/多算都判红）
+const EXPECTED_ASSERTIONS = 204; // 实际断言总数（少算/多算都判红）
 
 const ORDER_CREATE_PAGE = 'pkg-customer/pages/order-create/index.js';
 const ORDER_CREATE_WXML = 'pkg-customer/pages/order-create/index.wxml';
@@ -228,7 +225,6 @@ function register(h) {
       'A8 选择器里不存在任何自建/临时站点（零自建站名）');
     t.notEmpty(model.stationOptions(), 'A 组样本非空');
   });
-
   // ---------------------------------------------------------------- B 服务类型（只有名称+说明）
   h.section('B. 服务类型只有名称+说明（已启用过滤 / 零金额）', (t) => {
     const config = {
@@ -261,7 +257,6 @@ function register(h) {
       'B7 兼职未配置服务范围时展示全部目录项（enabled 未知不误杀）');
     t.notEmpty(options, 'B 组样本非空');
   });
-
   // ---------------------------------------------------------------- C canSubmit 五态与上界
   h.section('C. canSubmit 五态与上界（空选/超 10 件/缺站点/无码无尾号/形态闸/恰好 10 件）', (t) => {
     const empty = model.canSubmit([]);
@@ -298,7 +293,6 @@ function register(h) {
     t.eq([exactlyMax.items.length, model.MAX_PARCELS], [10, 10], 'C11 上界取 CONTRACT 常量 10（不写死两份数字）');
     t.notEmpty(exactlyMax.items, 'C 组样本非空');
   });
-
   // ---------------------------------------------------------------- D buildPayload 形状
   h.section('D. buildPayload：parcels[]/images[]/tickets[] 单入口 + 包裹级 failureId + 整单服务/预约/备注', (t) => {
     const manual = stationItem({});
@@ -396,7 +390,6 @@ function register(h) {
       'D25c 有来源图的件写实际下标（imageIndex=1 → images[1]，不归零）');
     t.notEmpty(batch.parcels, 'D 组样本非空');
   });
-
   // ---------------------------------------------------------------- E submission id 生命周期
   h.section('E. submission id 生命周期（格式/重试复用/内容变更重生成/成功清空）', (t) => {
     const seeded = model.createSubmissionId(() => 0.5);
@@ -450,7 +443,6 @@ function register(h) {
       'E11 指纹是纯函数（同内容同指纹，可重复计算）');
     t.notEmpty(items, 'E 组样本非空');
   });
-
   // ---------------------------------------------------------------- F api/client transport 注入
   h.section('F. api/client：显式 id 进包络/非法回退/写不重试/读重试/13 码人话/超时抛 CallError', async (t) => {
     const seen = [];
@@ -629,7 +621,6 @@ function register(h) {
       store.reset();
     }
   });
-
   // ---------------------------------------------------------------- G 页面层静态
   h.section('G. 页面层静态：零 wx.cloud.*/零状态字面量/零 random/零自拼 action/提交接线', (t) => {
     // 有牙正控：合成样本必须被扫描命中（否则"全绿"没有意义）
@@ -709,7 +700,6 @@ function register(h) {
       'G26 合并结果说明用不含量化时间的表述（「短时间内再次下单会自动并入同一订单」）');
     t.notEmpty(pageFiles, 'G 组样本非空');
   });
-
   // ---------------------------------------------------------------- H 逐件 AI 兜底（纯件，注入替身）
   h.section('H. 逐件 AI 兜底（按单调用/独立 failureId/只填空/某件失败只降级该件/来源优先级）', async (t) => {
     const serviceCode = enums.SERVICE_CODES[0];
@@ -849,7 +839,6 @@ function register(h) {
       'H28 建议条文案取单源 lowCopy（不写死第二份）');
     t.notEmpty(two.items, 'H 组样本非空');
   });
-
   // ---------------------------------------------------------------- J ocr-flow 纯件（P0-10 / C2 / 多图增量）
   h.section('J. ocr-flow 纯件：帧降采样 ≤1440 / 失败不谎报 / 多图增量合并', (t) => {
     const big = ocrFlow.frameSizeOf({ width: 4000, height: 3000 });
@@ -890,7 +879,6 @@ function register(h) {
     t.eq(avatar.planTicketCompression({ width: 0, height: 0, size: 1 }, 500 * 1024).reason, 'UNREADABLE',
       'J13 尺寸读不到 → UNREADABLE（由 api/upload 说真话拒绝，不静默丢图）');
   });
-
   // ---------------------------------------------------------------- K A 批 P1-8 相册授权 + P1-4 换图替换
   h.section('K. P1-8 不再请求 writePhotosAlbum + P1-4 换图替换/去重（纯件 + 有牙扫描）', (t) => {
     const pickerSrc = textOf('components/image-picker/index.js');
@@ -926,7 +914,6 @@ function register(h) {
     'K9 拍照/相册被拒 → 明确替代路径（相册/聊天/拍照 + 不传截图手填，UX §9.2）');
     t.notEmpty(Object.keys(pickerState.DENIED_COPY), 'K 组样本非空');
   });
-
   // ---------------------------------------------------------------- L A 批 P1-6 范围预检 + P1-9 CUSTOM 备注
   h.section('L. P1-6 提交前服务范围预检 + P1-9「其他代办」强制备注（纯件 + 页面接线）', (t) => {
     const zones = { zones: ['D', 'X'] };
@@ -955,7 +942,6 @@ function register(h) {
       'L8 预检数据只读 store 快照（customer.zone / binding.partnerPublic.zones），不新增请求');
     t.notEmpty(zones.zones, 'L 组样本非空');
   });
-
   // ---------------------------------------------------------------- M A 批 P1-4 重试/失败卡出路（D24）
   h.section('M. P1-4 重新识别/失败卡出路（无图打开选择器 / 有图原地重识别 / D24 两条出路）', (t) => {
     const fileA = { localPath: 'a.jpg', fileId: 'cloud://x/a.jpg', uploadTicketId: 'TK-A' };
@@ -983,11 +969,27 @@ function register(h) {
     'M7 失败卡两条出路接线（不传截图手填/手动填写 + 重新选择截图/重新识别）');
     t.notEmpty([fileA], 'M 组样本非空');
   });
-
+  // ---------------------------------------------------------------- N 第 2 批反馈 ⑧⑨（取件码标签 + Step1 回迁）
+  h.section('N. ⑧取件码前置标签/同构 + ⑨Step1「下一步：核对」回迁与手填二次确认（静态接线 + 有牙正控）', (t) => {
+    const xml = textOf(ORDER_CREATE_WXML);
+    const src = textOf(ORDER_CREATE_PAGE);
+    const step1 = xml.slice(xml.indexOf('step === 1'), xml.indexOf('step === 2'));
+    const labelBeforeCode = (s) => { const l = s.indexOf('<view class="form-label">取件码</view>'); const c = s.indexOf('<code-editor'); return l >= 0 && c >= 0 && l < c; };
+    const manualConfirm = (s) => /wx\.showModal\(/.test(String(s)) && String(s).indexOf('会清空已选截图和已识别') >= 0;
+    // 有牙正控：旧实现样本必须被判否（否则新判据是空集全绿）；旧样本仅内存字符串，不落盘
+    t.check(labelBeforeCode('<code-editor value="{{item.pickupCode}}" placeholder="取件码（可留空，填运单后 5 位）" bind:change="onCodeChange" />') === false, 'N1 正控：旧 WXML 取件码裸输入被判「无前置标签」（判据有牙）');
+    t.check(manualConfirm('onManualOnlyTap() { if (this.data.readonly) return; this.setData({ files: [] }); }') === false, 'N2 正控：旧 onManualOnlyTap 无二次确认被判否（判据有牙）');
+    t.check(labelBeforeCode(xml) === true, 'N3 取件码前置标签「取件码」在 code-editor 之前（与站点/柜号/尾号同构）');
+    t.check(xml.indexOf('placeholder="可留空，填运单后 5 位"') >= 0 && xml.indexOf('placeholder="取件码（') < 0, 'N4 取件码 placeholder 不再重复字段名（字段名由前置标签表达）');
+    t.notEmpty(step1, 'N5 Step1 视图切片非空（样本有效）');
+    t.check(/已识别 \{\{items\.length\}\} 件/.test(step1) && /截图 \{\{files\.length\}\} 张/.test(step1), 'N6 Step1 回退摘要「已识别 N 件 · 截图 M 张」（image-picker 不回显时数据仍在可见）');
+    t.check(step1.indexOf('wx:if="{{items.length}}"') >= 0 && step1.indexOf('bindtap="goStep1Next"') >= 0, 'N7 Step1 有已填件时出现「下一步：核对」按钮（wx:if items.length + goStep1Next 接线）');
+    t.check(/goStep1Next\(\)\s*\{\s*this\.setData\(\{\s*step:\s*2\s*\}\);\s*\}/.test(src), 'N8 goStep1Next 方法体只 setData({step:2})（不触碰 files/items，返回不丢已填件）');
+    t.check(manualConfirm(src) === true, 'N9 「不传截图，手动填写」有内容时二次确认（wx.showModal + 说明清空已选截图与已识别件）');
+  });
 }
 
 module.exports = { EXPECTED_ASSERTIONS, register };
-
 if (require.main === module) {
   const h = createHarness({ name: 'selftest-order-flow' });
   installCrashGuard(() => ({ count: h.count, passed: h.passed, failures: h.failures.length }), 'selftest-order-flow');

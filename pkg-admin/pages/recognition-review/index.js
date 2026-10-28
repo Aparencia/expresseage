@@ -2,6 +2,7 @@
 const admin = require('../../../api/modules/admin');
 const C = require('../../common/constants');
 const feedback = require('../../common/feedback');
+const copy = require('../../common/copy');
 const vm = require('./parts/view-model');
 
 const PAGE_SIZE = 20;
@@ -11,6 +12,13 @@ function labelList(options) {
   return options.map(function label(item) {
     return item.label;
   });
+}
+
+// 二级/写请求失败：只弹人话。无业务 code 的运行时异常（TypeError 等）不得回显英文原文（AGENTS §4.6）。
+function toastError(err) {
+  const code = err && err.code ? String(err.code) : '';
+  const text = code ? copy.errorText(err) : copy.UNKNOWN_ERROR_TEXT;
+  feedback.toast(text || copy.UNKNOWN_ERROR_TEXT);
 }
 
 Page({
@@ -135,7 +143,7 @@ Page({
       });
     }).catch((err) => {
       this.setData({ loadingMore: false });
-      feedback.toast(err && err.message);
+      toastError(err);
     });
   },
 
@@ -165,7 +173,7 @@ Page({
       this.refreshRows();
     }).catch((err) => {
       this.setData({ detailLoading: false, expandedNo: '' });
-      feedback.toast(err && err.message);
+      toastError(err);
     });
   },
 
@@ -174,8 +182,7 @@ Page({
   },
 
   refreshRows() {
-    const rows = this.data.list.map((item) => this.decorateRow(item));
-    this.setData({ list: rows });
+    this.setData({ list: vm.applyExpanded(this.data.list, this.data.expandedNo) });
   },
 
   onStatusTab(event) {
@@ -273,7 +280,7 @@ Page({
       this.loadList(true).catch(function () {});
     }).catch((err) => {
       this.setData({ submitting: false });
-      feedback.toast(err && err.message);
+      toastError(err);
     });
   },
 
@@ -307,7 +314,7 @@ Page({
       this.loadList(true).catch(function () {});
     }).catch((err) => {
       this.setData({ submitting: false });
-      feedback.toast(err && err.message);
+      toastError(err);
     });
   },
 

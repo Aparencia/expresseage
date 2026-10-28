@@ -56,6 +56,15 @@ function decorateList(list, expandedNo) {
   });
 }
 
+// 展开标志更新（行已是 decorateRow 视图行）：只改 expanded，禁止二次装饰（反馈④回归锁）。
+// refreshRows 只服务展开/收起，不得再走 decorateRow，否则失败码/角色/上传人/时间等已装饰字段会被洗成占位。
+function applyExpanded(list, expandedNo) {
+  return (list || []).map(function markRow(row) {
+    const item = row || {};
+    return Object.assign({}, item, { expanded: item.failureNo === expandedNo });
+  });
+}
+
 function buildRuleText(rule) {
   if (!rule) return '规则未识别到站点或取件码';
   if (typeof rule === 'string') return rule;
@@ -179,6 +188,7 @@ module.exports = {
   buildStatusTabs,
   decorateRow,
   decorateList,
+  applyExpanded,
   decorateDetail,
   buildRuleText,
   buildAiResultText,

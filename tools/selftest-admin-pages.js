@@ -41,12 +41,13 @@ const accountSwitchVm = require(path.join(ROOT, 'pkg-admin/pages/account-switch/
 const reviewVm = require(path.join(ROOT, 'pkg-admin/pages/recognition-review/parts/view-model.js'));
 const messagesVm = require(path.join(ROOT, 'pkg-admin/pages/messages/parts/view-model.js'));
 
-const EXPECTED_ASSERTIONS = 154 + 16; // +16：v1.1/D32 站点名称编辑卡
+const EXPECTED_ASSERTIONS = 154 + 22; // +16：v1.1/D32 站点名称编辑卡；+6：反馈④ applyExpanded 回归 3+2+页面方法完整性 1
 
 const ADMIN_PAGES = ['overview', 'invite-codes', 'customers', 'customer-detail', 'partners', 'orders',
   'order-detail', 'config', 'account-switch', 'messages', 'recognition-review'];
 const STATUS_LITERALS = ['SUBMITTED', 'ACCEPTED', 'PICKED', 'DELIVERED', 'COMPLETED', 'CANCELLED', 'EXCEPTION'];
 const PAGE_SIZE = 20;
+const PAGE_BUILTIN_METHODS = ['setData', 'getTabBar', 'selectComponent', 'triggerEvent'];
 
 function rel(relPath) {
   return path.join(ROOT, relPath);
@@ -58,6 +59,29 @@ function textOf(relPath) {
 
 function has(relPath) {
   return fsutil.isFile(rel(relPath));
+}
+
+// 页面方法完整性（反馈④补牙）：页面源码 this.<name>( 必须命中 Page 方法定义或内置白名单。
+// 抽件重构删掉 Page 方法但调用点未改时只在真机运行才炸；这里按源码静态挡住（AGENTS §5.2 不 mock wx/Page）。
+function pageMethodGaps(relPath) {
+  const code = fsutil.stripComments(textOf(relPath));
+  const defined = {};
+  const defRe = /^  (?:async\s+)?([A-Za-z_$][\w$]*)\s*\(/gm;
+  let match = defRe.exec(code);
+  while (match) {
+    defined[match[1]] = true;
+    match = defRe.exec(code);
+  }
+  const gaps = [];
+  const callRe = /this\.([A-Za-z_$][\w$]*)\s*\(/g;
+  match = callRe.exec(code);
+  while (match) {
+    if (defined[match[1]] !== true && PAGE_BUILTIN_METHODS.indexOf(match[1]) < 0) {
+      gaps.push(relPath + ':this.' + match[1] + '()');
+    }
+    match = callRe.exec(code);
+  }
+  return gaps;
 }
 
 function sampleConfig() {
@@ -289,6 +313,24 @@ function register(h) {
     ], [false, false, '误操作'], '停用原因必填、≤100、提交前去空白');
     t.eq(partnersVm.buildTabs('SUSPENDED').filter(function active2(x) { return x.active; })[0].key,
       'SUSPENDED', '状态筛选 tab 高亮正确');
+    // 反馈④同模式回归锁：点行只切 expanded，禁止对已装饰行二次 decorate（曾把 bindingText 绑定 6 洗成 0）
+    const partnerDecorated = partnersVm.decorateRow({
+      partnerNo: 'P-7K2-M9X', status: 'ACTIVE', displayName: '小**', bindingCount: 6,
+      todayOrders: 8, totalOrders: 240, serviceCount: 3, activatedAt: Date.now()
+    }, '');
+    const canApplyPartner = typeof partnersVm.applyExpanded === 'function';
+    const partnerExpanded = canApplyPartner ? partnersVm.applyExpanded([partnerDecorated], 'P-7K2-M9X') : null;
+    t.check(partnerExpanded !== null && partnerExpanded[0].expanded === true
+      && partnerExpanded[0].bindingText === partnerDecorated.bindingText
+      && partnerExpanded[0].orderText === partnerDecorated.orderText
+      && partnerExpanded[0].activatedAtText === partnerDecorated.activatedAtText,
+    '兼职行展开只改 expanded：绑定数/单量/激活时间不被二次装饰洗掉');
+    const partnerTwice = partnerExpanded !== null ? partnersVm.applyExpanded(partnerExpanded, 'P-7K2-M9X') : null;
+    const partnerCollapsed = canApplyPartner ? partnersVm.applyExpanded([partnerDecorated], '') : null;
+    t.check(partnerTwice !== null && partnerCollapsed !== null
+      && JSON.stringify(partnerTwice) === JSON.stringify(partnerExpanded)
+      && partnerCollapsed[0].expanded === false,
+    '兼职 applyExpanded 幂等（连跑两次一致）且可收起');
   });
 
   // ------------------------------------------------------------------ F. 订单总览
@@ -640,6 +682,27 @@ function register(h) {
       reviewVm.validateIgnoreNote('x'.repeat(101)).ok,
       reviewVm.validateIgnoreNote('  误识别  ').note
     ], [false, false, '误识别'], '忽略备注必填、≤100、去空白后提交');
+    // 反馈④根因回归锁：行展开只切 expanded，禁止二次装饰（曾用已删除的 Page.decorateRow 抛 t.decorateRow）
+    const reviewDecorated = reviewVm.decorateRow({
+      failureNo: 'F-2026-0001', failureCode: 'NO_TEXT', sourceRole: 'CUSTOMER',
+      uploaderNo: 'C-7K2M-9QX4', uploaderDisplayName: '小**', createdAt: Date.now(), status: 'PENDING'
+    }, '');
+    const canApplyReview = typeof reviewVm.applyExpanded === 'function';
+    const reviewExpanded = canApplyReview ? reviewVm.applyExpanded([reviewDecorated], 'F-2026-0001') : null;
+    t.check(reviewExpanded !== null && reviewExpanded[0].expanded === true
+      && reviewExpanded[0].failureCodeText === reviewDecorated.failureCodeText
+      && reviewExpanded[0].sourceRoleText === reviewDecorated.sourceRoleText
+      && reviewExpanded[0].uploaderText === reviewDecorated.uploaderText
+      && reviewExpanded[0].createdAtText === reviewDecorated.createdAtText
+      && reviewExpanded[0].statusText === reviewDecorated.statusText,
+    '复核行展开只改 expanded：失败码/角色/上传人/时间/状态不被二次装饰洗掉');
+    const reviewTwice = reviewExpanded !== null ? reviewVm.applyExpanded(reviewExpanded, 'F-2026-0001') : null;
+    t.check(reviewTwice !== null && JSON.stringify(reviewTwice) === JSON.stringify(reviewExpanded),
+      '复核 applyExpanded 幂等：连跑两次结果一致');
+    const reviewCollapsed = canApplyReview ? reviewVm.applyExpanded(reviewExpanded, '') : null;
+    t.check(reviewCollapsed !== null && reviewCollapsed[0].expanded === false
+      && canApplyReview === true && reviewVm.applyExpanded(null, 'F-1').length === 0,
+    '复核 applyExpanded 展开/收起切换 + 空列表安全返回 []');
   });
 
   // ------------------------------------------------------------------ K. 后台消息
@@ -753,6 +816,10 @@ function register(h) {
     const sourceOf = function text(relPath) {
       return textOf(relPath);
     };
+    const methodGaps = pageJs.reduce(function scanGaps(acc, relPath) {
+      return acc.concat(pageMethodGaps(relPath));
+    }, []);
+    t.eq(methodGaps, [], '11 页 this.<name>( 调用都有同名 Page 方法（抽件后残留调用挡住；反馈④回归）');
     t.eq(allJs.filter(function hasCloud(relPath) { return /wx\.cloud\./.test(sourceOf(relPath)); }),
       [], '后台页面层零 wx.cloud.*（不直连云）');
     const statusHits = [];

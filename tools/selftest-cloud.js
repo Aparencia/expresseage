@@ -27,14 +27,14 @@ const auth = require(path.join(API, 'middleware/auth.js'));
 const switchSession = require(path.join(API, 'middleware/switch-session.js'));
 const validateMw = require(path.join(API, 'middleware/validate.js'));
 const ratelimit = require(path.join(API, 'middleware/ratelimit.js'));
-const idempotency = require(path.join(API, 'middleware/idempotency.js'));
+const idempotency = require(path.join(API, 'middleware/idempotency.js')); const aiCommon = require(path.join(API, 'handlers/ai/_common.js'));
 
 const NOW = Date.parse('2026-10-21T12:00:00+08:00');
 const DAY_MS = 24 * 60 * 60 * 1000;
 const ADMIN_OPENID = 'openid-admin-dev01';
 const ADMIN_ENV = { ADMIN_OPENIDS: JSON.stringify({ [ADMIN_OPENID]: 'DEV-01' }) };
 
-const EXPECTED_ASSERTIONS = 179;
+const EXPECTED_ASSERTIONS = 180; // 179 + 1：⑦ 服务端规则快照负例（时间/订单号/手机号不当取件码）
 
 const API_PENDING_ASSERTS = 22;
 const CLEANUP_PENDING_ASSERTS = 14;
@@ -395,7 +395,7 @@ function register(h) {
         aiError = error;
       }
     }
-    t.eq(aiError, null, 'ai.parseParcel 本层不抛 RATE_LIMITED（handler 内静默降级）');
+    t.eq(aiError, null, 'ai.parseParcel 本层不抛 RATE_LIMITED（handler 内静默降级）'); t.eq([aiCommon.buildRuleResult('取件码：207-3-1014\n取件时间：2026-10-27 18:30\n订单编号：202610270001\n手机号：13800138000', '', { valid: true }, {}).pickupCode, aiCommon.buildRuleResult('订单编号：202610270001', '', { valid: true }, {}).pickupCode, aiCommon.buildRuleResult('取件时间：2026-10-27 18:30', '', { valid: true }, {}).pickupCode], ['20731014', '', ''], '⑦ 服务端规则快照：时间/订单号/手机号不是取件码（仅采纳取件码行，同判客户端）');
     const publicCtx = makeCtx(dao, { openid: 'openid-public' });
     let publicError = null;
     for (let i = 0; i < 6; i += 1) {

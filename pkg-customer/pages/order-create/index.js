@@ -181,11 +181,31 @@ Page({
   },
 
   // D24：0 图直接手填提交（不进入识别链路、不调 AI、不写复核队列）
+  // ⑨：Step1 已有截图/已填件时先二次确认——确认后才会清空截图与已识别件（避免从核对页返回后误点丢数据）
   onManualOnlyTap() {
     if (this.data.readonly) {
       wx.showToast({ title: '开发者只读视角不能操作', icon: 'none' });
       return;
     }
+    const hasContent = (this.data.files || []).length > 0 || (this.data.items || []).length > 0;
+    if (!hasContent) {
+      this.enterManualOnly();
+      return;
+    }
+    const page = this;
+    wx.showModal({
+      title: '不传截图，手动填写',
+      content: '会清空已选截图和已识别/已填的包裹，改为从空白开始手动填写。确定继续？',
+      confirmText: '继续',
+      cancelText: '取消',
+      success(res) {
+        if (res && res.confirm) page.enterManualOnly();
+      }
+    });
+  },
+
+  // ⑨ 手填重置（确认后执行）：保持 D24「不传截图」语义——清空截图/识别数据后进 Step2 手填空态
+  enterManualOnly() {
     this.setData({ files: [], perImage: [], images: [], tickets: [], imageFailures: [], aiHint: '' });
     this.onManualTap();
   },
@@ -276,6 +296,11 @@ Page({
     const items = this.data.items.slice();
     items[index] = model.revalidateItem(model.withManualEdit(items[index], patch));
     this.setData({ items: items, submission: model.clearSubmission() });
+  },
+
+  // ⑨ 返回回迁：从核对页「上一步」回 Step1 后，已有已填件时带数据回 Step2（只跳步，不碰 files/items）
+  goStep1Next() {
+    this.setData({ step: 2 });
   },
 
   goStep2Next() {

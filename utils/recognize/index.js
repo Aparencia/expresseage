@@ -108,10 +108,9 @@ function parseOcrText(rawText, options) {
   const matched = station.matchStation(joined, options);
   const tail = text.pickTrackingTail(lines);
   const candidates = codes.pickCodeCandidates(lines);
-  const codeList = candidates.filter(function compact(item) { return item.compact; });
-  const unalignedCodes = candidates
-    .filter(function odd(item) { return !item.compact; })
-    .map(function value(item) { return item.value; });
+  // ⑦：只对上下文/强形态候选产件；非上下文纯数字（订单号等）降级为 unaligned 提示
+  const codeList = candidates.filter(function compact(item) { return item.compact && item.numericOnly !== true; });
+  const unalignedCodes = candidates.filter(function odd(item) { return !item.compact || item.numericOnly === true; }).map(function value(item) { return item.value; });
   const lockerNo = pickLocker(lines);
   const shared = {
     stationId: matched ? matched.id : '',

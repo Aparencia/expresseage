@@ -48,6 +48,8 @@ Page({
     customerNo: '',
     customerNoDisplay: '',
     customerComplete: false,
+    // 兼职视图完成度（角色感知：与 customerComplete 一样由 buildVm 下发，自动展开判定不再读顾客资料）
+    partnerComplete: false,
     orderSummaryText: vm.DEFAULT_ORDER_SUMMARY,
     orderSummaryFromDto: false,
     messagesBadge: 0,
@@ -183,13 +185,14 @@ Page({
   },
 
   // P1-1：资料未完善自动展开编辑态（判定在 parts/view-model.js 纯件；每个页面实例只自动展开一次，取消后不回弹）
+  // 完成度按当前渲染角色传（顾客 customerComplete / 兼职 partnerComplete），页面不再自己判角色口径。
   maybeOpenEditForm() {
     const open = vm.shouldAutoOpenEdit({
       edit: this._openEdit === true,
       autoDone: this._autoEditDone === true,
       isCustomer: this.data.isCustomer,
       customerComplete: this.data.customerComplete,
-      profileCard: this.data.profileCard
+      partnerComplete: this.data.partnerComplete
     });
     this._openEdit = false;
     this._autoEditDone = true;

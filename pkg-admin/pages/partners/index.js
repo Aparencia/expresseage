@@ -141,7 +141,7 @@ Page({
   },
 
   decorateExpanded() {
-    this.setData({ list: vm.decorateList(this.data.list, this.data.expandedNo) });
+    this.setData({ list: vm.applyExpanded(this.data.list, this.data.expandedNo) });
   },
 
   onSwitch(event) {

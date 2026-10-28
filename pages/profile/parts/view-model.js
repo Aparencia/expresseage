@@ -200,6 +200,9 @@ function buildVm(snapshot) {
     customerNo: customerNo,
     customerNoDisplay: customerNo ? ids.displayNo(enums.NO_KIND.CUSTOMER, customerNo) : '',
     customerComplete: isCustomer && customer.profileComplete === true,
+    // 2026-10-28 用户反馈②回归修复：完成度必须按「当前渲染角色」取，页面才不再拿顾客资料判兼职。
+    // 兼职口径 = bootstrap.js 下发 `partner.profileComplete`（displayName 非空），与 route 分流同一判据。
+    partnerComplete: !isCustomer && partner.profileComplete === true,
     partnerCard: partnerCard,
     orderSummaryText: orderSummaryOf(customer) || DEFAULT_ORDER_SUMMARY,
     orderSummaryFromDto: orderSummaryOf(customer) !== '',
@@ -207,22 +210,34 @@ function buildVm(snapshot) {
   };
 }
 
+// 资料完成度按「当前渲染角色」取：顾客看 customer.profileComplete，兼职看 partner.profileComplete。
+// 2026-10-28 用户反馈②回归修复：旧实现不管角色都读顾客 profileCard.complete（buildProfileCard 只吃
+// customer），纯兼职 customer=null → 完成度恒 false → 每个新页面实例进「我的」都被自动展开成编辑态，
+// 摘要（兼职编号/分享/经营/账号）整段被隐藏。
+function completeOf(options) {
+  const opts = options || {};
+  if (opts.isCustomer === true) {
+    return opts.customerComplete === true;
+  }
+  return opts.partnerComplete === true;
+}
+
 // P1-1（批 10 A 批）：资料未完善进入本页时自动展开编辑态，仅「未完成 + 每个页面实例一次」；
 // 完成态即使带 ?edit=1 也不展开（不打扰已填完资料的人）；取消后 _autoEditDone 已置位 → 不反复弹。
+// 兼职视图（UX_PARTNER §3.10）只定义摘要态 + 显式「编辑资料」入口，无自动展开条款：
+// 默认态必须是摘要，编辑态只由用户主动点击或落地 ?edit=1 触发。
 function shouldAutoOpenEdit(options) {
   const opts = options || {};
   if (typeof opts.isCustomer !== 'boolean') {
     return false;
   }
-  const card = opts.profileCard || {};
-  const complete = opts.isCustomer ? opts.customerComplete === true : card.complete === true;
-  if (complete) {
+  if (completeOf(opts)) {
     return false;
   }
   if (opts.edit === true) {
     return true;
   }
-  return opts.autoDone !== true;
+  return opts.isCustomer === true && opts.autoDone !== true;
 }
 
 function buildForm(profile, isCustomer) {

@@ -22,7 +22,7 @@ const ocr = require(path.join(ROOT, 'utils/ocr/index.js'));
 const sharedStations = require(path.join(ROOT, 'shared/stations.js'));
 const sharedValidate = require(path.join(ROOT, 'shared/validate.js'));
 
-const EXPECTED_ASSERTIONS = 250; // 243 + 7：D35 条带裁剪/RGBA 精确切片/errno 分类/条带索引
+const EXPECTED_ASSERTIONS = 263; // 250 + 13：⑦ 噪声语料（时间/日期/订单号/手机号/运单号不产件 + 尾号取末 5 位）
 
 // v3 真机语料（sha256 指纹钉：改动语料必须同步改这里的期望与解析断言）
 const CORPUS_ONE = [
@@ -639,6 +639,44 @@ function sectionD35(h) {
   });
 }
 
+// ---------------------------------------------------------------- ⑦ 噪声语料
+// 用户反馈⑦：取件时间/日期/订单号/手机号/运单号等「不是取件码的数字」被当取件码加入。
+// 判据同时锁 D35 正例（漏识别修复）与一图多码正例不被误伤（见 sectionD35 / sectionParse）。
+function sectionCodeNoise(h) {
+  h.section('§4.3 噪声语料（⑦：时间/日期/订单号/手机号/运单号不得当取件码）', (t) => {
+    const SMS = [
+      '【菜鸟驿站】您的包裹已到湖工大东门驿站',
+      '取件码：207-3-1014',
+      '取件时间：2026-10-27 18:30',
+      '运单号：JT0001234567890',
+      '订单编号：202610270001',
+      '手机号：13800138000'
+    ].join('\n');
+    const sms = recognize.parseOcrText(SMS);
+    t.eq(sms.items.length, 1, '⑦ 典型驿站短信只产 1 件（时间/订单号/手机号不产件）');
+    t.eq(sms.items[0].pickupCode, '207-3-1014', '⑦ 唯一件是真实取件码');
+    t.eq(sms.items[0].trackingTail, '67890', '⑦ 运单尾号取运单号末 5 位（不是前 5 位 00012）');
+    const phoneSameLine = recognize.parseOcrText('取件码：207-3-1014 联系电话：13800138000');
+    t.eq(phoneSameLine.items.map(function code(item) { return item.pickupCode; }), ['207-3-1014'],
+      '⑦ 取件码+联系电话同行：手机号不成件');
+    t.eq(recognize.parseOcrText('取件时间：2026-10-27 18:30').items.length, 0, '⑦ 只有取件时间 → 0 件');
+    t.eq(recognize.parseOcrText('订单编号：202610270001').items.length, 0, '⑦ 只有订单编号 → 0 件');
+    t.eq(recognize.parseOcrText('手机号：13800138000').items.length, 0, '⑦ 只有手机号 → 0 件');
+    const bare = recognize.parseOcrText('20731014');
+    t.check(bare.items.length === 0 && bare.unalignedCodes.indexOf('20731014') >= 0,
+      '⑦ 无标签纯数字不产件，只作「认出但不像」提示');
+    t.eq(recognize.parseOcrText('取件号：207-3-1014').items.length, 1, '⑦ 取件号标签仍能出件（正例不受影响）');
+    const mixed = recognize.parseOcrText('取件码：207-3-1014 取件时间：2026-10-27 18:30');
+    t.eq(mixed.items.map(function code(item) { return item.pickupCode; }), ['207-3-1014'],
+      '⑦ 同一行取件时间内不产第二件');
+    t.eq(codes.pickCodeCandidates(['取件时间：2026-10-27 18:30']).length, 0, '⑦ 取件时间行无候选');
+    t.eq(codes.pickCodeCandidates(['订单编号：202610270001', '手机号：13800138000']).length, 0,
+      '⑦ 订单号/手机号行无候选');
+    t.eq(recognize.parseOcrText('取件码：\n207\n3\n1014').items[0].pickupCode, '20731014',
+      '⑦ D35 拆多行正例保持（漏识别修复不被误伤）');
+  });
+}
+
 function register(h) {
   sectionText(h);
   sectionMask(h);
@@ -655,6 +693,7 @@ function register(h) {
   sectionOcrEntry(h);
   sectionMergeParcels(h);
   sectionD35(h);
+  sectionCodeNoise(h);
 }
 
 module.exports = { EXPECTED_ASSERTIONS, register };

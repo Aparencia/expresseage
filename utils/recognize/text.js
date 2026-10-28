@@ -77,17 +77,25 @@ function maskSensitive(value, maxLength) {
 
 function tailCandidatesFromLine(line) {
   const out = [];
-  const patterns = [
-    /(?:运单|单号|快递单|末尾|后)(?:尾号|尾数|后)?[^\d]{0,3}(\d{5})/g,
-    /(\d{5})(?:\s*(?:尾号|末位|后五位))/g
-  ];
-  patterns.forEach(function each(re) {
-    let match = re.exec(line);
-    while (match) {
-      out.push({ value: match[1], by: 'keyword' });
-      match = re.exec(line);
+  // ⑦：关键词行取「数字运行内末 5 位」——运单号 JT0001234567890 的尾号是 67890，不是前 5 位 00012
+  const keywordRe = /(?:运单|单号|快递单|末位|末尾|后五位|后)(?:尾号|尾数|后)?[^\d]{0,4}(\d{5,})/g;
+  let keyword = keywordRe.exec(line);
+  while (keyword) {
+    const value = keyword[1].slice(-5);
+    if (out.every(function dup(item) { return item.value !== value; })) {
+      out.push({ value: value, by: 'keyword' });
     }
-  });
+    keyword = keywordRe.exec(line);
+  }
+  // 尾号在前的写法：34567 尾号
+  const trailingRe = /(\d{5})(?:\s*(?:尾号|末位|后五位))/g;
+  let trailing = trailingRe.exec(line);
+  while (trailing) {
+    if (out.every(function dup(item) { return item.value !== trailing[1]; })) {
+      out.push({ value: trailing[1], by: 'keyword' });
+    }
+    trailing = trailingRe.exec(line);
+  }
   return out;
 }
 

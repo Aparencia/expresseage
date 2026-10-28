@@ -40,6 +40,15 @@ function decorateList(list, expandedNo) {
   });
 }
 
+// 展开标志更新（行已是 decorateRow 视图行）：只改 expanded，禁止二次装饰（反馈④同模式回归锁）。
+// 点行曾用 decorateList(this.data.list) 对已装饰行再装配，把绑定数/单量/激活时间洗成 0/空。
+function applyExpanded(list, expandedNo) {
+  return (list || []).map(function markRow(row) {
+    const item = row || {};
+    return Object.assign({}, item, { expanded: item.partnerNo === expandedNo });
+  });
+}
+
 function isGovernanceBlocked(row) {
   return !!(row && row.isTest === true);
 }
@@ -66,6 +75,7 @@ module.exports = {
   buildTabs,
   decorateRow,
   decorateList,
+  applyExpanded,
   isGovernanceBlocked,
   suspendConfirmContent,
   resumeConfirmContent,

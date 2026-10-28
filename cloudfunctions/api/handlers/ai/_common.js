@@ -20,10 +20,15 @@ const DEFAULT_RETENTION_DAYS = 30;
 const CODE_TOKEN_RE = /[0-9A-Za-z]+(?:[-—–_#][0-9A-Za-z]+)*/g;
 const MASKED_TOKEN_RE = /[0-9A-Za-z]*\*[0-9A-Za-z*]*/g;
 const CODE_SEPARATOR_RE = /[\s\-—–_#·]/g;
-const CODE_CONTEXT_RESET_RE = /(?:取件码|取货码|提货码|取件|提货)/;
-const CODE_CONTEXT_SKIP_RE = /(?:运单|快递|物流|包裹|单号|尾号)/;
+// ⑦：取件码标签只认明确写法（裸「取件/提货」会把「取件时间」行当码上下文）
+const CODE_CONTEXT_RESET_RE = /(?:取件码|取货码|提货码|取件号)/;
+// ⑦：噪音标签与客户端 utils/recognize/codes.js NOISE 词表同族；命中即该 token 不属于码区
+const CODE_CONTEXT_SKIP_RE = /(?:取件时间|取件日期|订单编号|订单号|联系方式|取件人|收件人|货架|柜号|手机|电话|日期|时间|编号|单号|运单|快递|物流|尾号|柜)/;
 const CARRIER_PREFIX_RE = /^(?:JT|SF|YT|JD)/;
 const DIGIT_RE = /\d/;
+// ⑦：日期/手机号/纯 5 位不是取件码（与客户端 isContextCode 同判；只用于「猜候选」，不否决用户/AI 明确字段）
+const DATE_LIKE_RE = /^(?:(?:19|20)\d{2}[-/.]\d{1,2}[-/.]\d{1,2}|(?:19\d{2}|20[0-2]\d)(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01]))$/;
+const PHONE_LIKE_RE = /^1[3-9]\d{9}$/;
 
 // identity.roles = auth 按 users.roles 归一出的业务角色集（双角色 [CUSTOMER,PARTNER]）；
 // 切换会话/手工注入 ctx 只有 role 时回落单元素集，保持单角色语义不变。
@@ -206,13 +211,17 @@ function normalizeStationFromText(text, config) {
   return { id: '', name: '', conflict: hits.length > 1 };
 }
 
-// 候选 token 归一：去分隔符转大写、必须含数字、4~12 位、排除运单号前缀；上下文（运单/快递/单号/尾号）整段跳过。
+// 候选 token 归一：去分隔符转大写、必须含数字、4~12 位、排除运单号前缀；日期/手机号/5 位与噪音上下文整段跳过。
 function acceptCodeToken(token, linePrefix) {
   const value = token.replace(CODE_SEPARATOR_RE, '').toUpperCase();
   if (value.length < 4 || value.length > 12 || !DIGIT_RE.test(value)) {
     return '';
   }
   if (CARRIER_PREFIX_RE.test(value)) {
+    return '';
+  }
+  // ⑦：日期/手机号/纯 5 位不当取件码（同判客户端；D35 的 20731014 不构成现实日期，不受影响）
+  if (DATE_LIKE_RE.test(value) || PHONE_LIKE_RE.test(value) || /^\d{5}$/.test(value)) {
     return '';
   }
   const segments = String(linePrefix || '').split(CODE_CONTEXT_RESET_RE);

@@ -17,6 +17,12 @@
   </view>
 
   <block wx:if="{{step === 1}}">
+    <!-- ⑨ 返回回迁：从核对页「上一步」回本页后 files/items 仍在；image-picker 不回显时靠本摘要让用户看到数据没丢 -->
+    <view class="card" wx:if="{{files.length && items.length}}">
+      <view class="small">已识别 {{items.length}} 件 · 截图 {{files.length}} 张</view>
+      <view class="muted small">返回截图页后以上内容仍保留；点「下一步：核对」继续核对，或继续添加截图。</view>
+    </view>
+
     <view class="card">
       <view class="section-title">上传取件码截图（0~{{maxImages}} 张）</view>
       <view class="muted">可一次多选，也可分几次添加；多张截图会合并成同一张订单。截图仅用于识别取件码与兼职核对；订单完成或取消后 7 天删除。</view>
@@ -59,6 +65,11 @@
         <button class="btn btn-primary btn-inline" bindtap="onRetryOcr">{{files.length ? '重新识别' : '重新选择截图'}}</button>
       </view>
     </view>
+
+    <!-- ⑨ 常驻主按钮：Step1 已有已填件时可带数据回核对（goStep1Next 只跳步，不重置 files/items） -->
+    <view class="actions-row page-actions" wx:if="{{items.length}}">
+      <button class="btn btn-primary btn-inline" bindtap="goStep1Next">下一步：核对（{{items.length}} 件）</button>
+    </view>
   </block>
 
   <block wx:if="{{step === 2}}">
@@ -97,13 +108,17 @@
         </view>
       </picker>
 
-      <code-editor
-        value="{{item.pickupCode}}"
-        placeholder="取件码（可留空，填运单后 5 位）"
-        maxlength="40"
-        data-index="{{index}}"
-        bind:change="onCodeChange"
-      />
+      <!-- ⑧ 取件码与站点/柜号/运单尾号同构：前置标签 + 同款 .form-row 行（复用 app.wxss 全局类） -->
+      <view class="form-row">
+        <view class="form-label">取件码</view>
+        <code-editor
+          value="{{item.pickupCode}}"
+          placeholder="可留空，填运单后 5 位"
+          maxlength="40"
+          data-index="{{index}}"
+          bind:change="onCodeChange"
+        />
+      </view>
 
       <view class="form-row">
         <view class="form-label">柜号</view>

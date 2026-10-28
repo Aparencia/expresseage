@@ -11,6 +11,7 @@
  *   §4.1 上传票据形态（avatarTicket 入参键；32 位不可猜票据）
  *   §4.1 AVATAR 云存储路径模板（服务端唯一构造点：avatars/{role}/{random}.jpg，零 openid）
  *   §2.2 顾客性别（2026-10-27 用户口径：东苑楼栋推断/手改标记/未知不阻塞保存、页面接线）
+ *   §3.5 P1-1 资料自动展开（2026-10-28 反馈②：完成度按当前角色取——纯兼职默认摘要态、顾客未完善仍展开）
  *
  * 纪律：不 mock 全局 wx（storage 走注入的内存 platform，avatar 只测纯函数）；
  *       云路径期望串用拼接构造，避免"路径模板字面量"误命中门禁口径；
@@ -31,7 +32,7 @@ const uploadCommon = require(path.join(ROOT, 'cloudfunctions/api/handlers/upload
 const profileVm = require(path.join(ROOT, 'pages/profile/parts/view-model.js'));
 const avatarSave = require(path.join(ROOT, 'pages/profile/parts/avatar-save.js'));
 
-const EXPECTED_ASSERTIONS = 154;
+const EXPECTED_ASSERTIONS = 163;
 
 const TOKEN = 'T'.repeat(32);
 const CONSENT_AT = 1700000000000;
@@ -386,35 +387,94 @@ function register(h) {
       'uploadFile 在 prepare 之后（cloudPath/票据由服务端签发，size 用本地压缩后真实值）');
   });
 
-  // ---------------------------------------------------------------- §3.5 P1-1 资料未完善自动展开
-  h.section('§3.5 P1-1 资料未完善自动展开（仅未完成一次、完成态不展开、取消不回弹）', (t) => {
-    const incomplete = { complete: false };
-    const complete = { complete: true };
-    t.check(profileVm.shouldAutoOpenEdit({
-      isCustomer: true, customerComplete: false, profileCard: incomplete, autoDone: false
-    }) === true, '顾客资料未完成 + 首次进入 → 自动展开编辑态（首单少点一次）');
-    t.check(profileVm.shouldAutoOpenEdit({
-      isCustomer: true, customerComplete: false, profileCard: incomplete, edit: true, autoDone: true
-    }) === true, '路由落地带 ?edit=1 → 未完成即展开（P1-1 接线）');
-    t.check(profileVm.shouldAutoOpenEdit({
-      isCustomer: true, customerComplete: true, profileCard: complete, edit: true, autoDone: false
-    }) === false, '反例：资料已完成即使带 ?edit=1 也不自动展开（不打扰已填完的人）');
-    t.check(profileVm.shouldAutoOpenEdit({
-      isCustomer: true, customerComplete: false, profileCard: incomplete, autoDone: true
-    }) === false, '反例：已自动展开过（autoDone=true）→ 不再展开（取消可回摘要、不反复弹）');
-    t.check(profileVm.shouldAutoOpenEdit({
-      isCustomer: false, profileCard: incomplete, autoDone: false
-    }) === true, '兼职资料未完成 → 同口径自动展开（我的页双角色共用）');
-    t.check(profileVm.shouldAutoOpenEdit({
-      isCustomer: false, profileCard: complete, autoDone: false
-    }) === false, '兼职资料已完成 → 不自动展开');
+  // ---------------------------------------------------------------- §3.5 P1-1 资料自动展开（角色感知；2026-10-28 反馈②回归）
+  h.section('§3.5 P1-1 自动展开按角色取完成度（纯兼职默认摘要态、顾客未完善仍展开、取消不回弹）', (t) => {
+    // 集成链：snapshot → buildVm（装配）→ shouldAutoOpenEdit（判定）。
+    // 旧用例直接注入 profileCard:{complete} 绕过 buildVm，于是「装配取顾客资料 / 判定读 profileCard」两段
+    // 各自绿、集成处断链，把「纯兼职必自动展开」的缺陷锁成期望（2026-10-28 用户反馈②）。
+    function autoOpenOf(snap, flags) {
+      const built = profileVm.buildVm(snap);
+      return profileVm.shouldAutoOpenEdit(Object.assign({
+        isCustomer: built.isCustomer,
+        customerComplete: built.customerComplete,
+        partnerComplete: built.partnerComplete,
+        edit: false,
+        autoDone: false
+      }, flags || {}));
+    }
+    const customerSnap = (complete) => ({
+      roles: [enums.ROLES.CUSTOMER],
+      activeRole: enums.ROLES.CUSTOMER,
+      customer: { profileComplete: complete }
+    });
+    const partnerSnap = (complete) => ({
+      roles: [enums.ROLES.PARTNER],
+      activeRole: enums.ROLES.PARTNER,
+      partner: {
+        displayName: complete ? '阿杰' : '',
+        profileComplete: complete,
+        status: enums.PARTNER_STATUS.ACTIVE
+      }
+    });
+    const dualSnap = (role, customerComplete, partnerComplete) => ({
+      roles: [enums.ROLES.CUSTOMER, enums.ROLES.PARTNER],
+      activeRole: role,
+      customer: { profileComplete: customerComplete },
+      partner: {
+        displayName: partnerComplete ? '阿杰' : '',
+        profileComplete: partnerComplete,
+        status: enums.PARTNER_STATUS.ACTIVE
+      }
+    });
+
+    t.check(autoOpenOf(customerSnap(false)) === true,
+      '顾客资料未完成 + 首次进入 → 自动展开编辑态（P1-1 首单少点一次，契约保留）');
+    t.check(autoOpenOf(customerSnap(false), { edit: true, autoDone: true }) === true,
+      '路由落地带 ?edit=1 → 未完成即展开（P1-1 接线）');
+    t.check(autoOpenOf(customerSnap(true), { edit: true }) === false,
+      '反例：顾客资料已完成即使带 ?edit=1 也不自动展开（不打扰已填完的人）');
+    t.check(autoOpenOf(customerSnap(false), { autoDone: true }) === false,
+      '反例：已自动展开过（autoDone=true）→ 不再展开（取消可回摘要、不反复弹）');
+    t.check(autoOpenOf(partnerSnap(true)) === false,
+      '纯兼职昵称已填（profileComplete）+ 首次进入 → 默认摘要态，不自动展开（反馈②回归）');
+    t.check(autoOpenOf(partnerSnap(false)) === false,
+      '纯兼职昵称未填（profileComplete=false）→ 仍默认摘要态（UX_PARTNER §3.10 无自动展开条款）');
+    t.check(autoOpenOf(partnerSnap(true), { edit: true }) === false,
+      '反例：兼职资料已完成即使带 ?edit=1 也不展开（与顾客完成态同口径）');
+    t.check(autoOpenOf(dualSnap(enums.ROLES.CUSTOMER, false, true)) === true,
+      '双角色·当前顾客·顾客未完善 → 仍自动展开（顾客 P1-1 不被兼职资料「代偿」）');
+    t.check(autoOpenOf(dualSnap(enums.ROLES.PARTNER, false, true)) === false,
+      '双角色·当前兼职·兼职完善（顾客未完善）→ 默认摘要态（完成度按当前角色取，不读顾客资料）');
+    t.check(autoOpenOf(dualSnap(enums.ROLES.CUSTOMER, true, true)) === false
+      && autoOpenOf(dualSnap(enums.ROLES.PARTNER, true, true)) === false,
+    '双角色·双方完善 → 任一角色下都不自动展开');
     t.check(profileVm.shouldAutoOpenEdit() === false, '缺省入参不抛错且不展开（纯件防御，不猜资料状态）');
+
+    const builtPartner = profileVm.buildVm(partnerSnap(true));
+    t.check(builtPartner.isCustomer === false && builtPartner.partnerComplete === true
+      && builtPartner.customerComplete === false,
+    'buildVm 兼职装配：partnerComplete 由 partner.profileComplete 派生，customerComplete 不冒充兼职完成度');
+    const builtDual = profileVm.buildVm(dualSnap(enums.ROLES.CUSTOMER, false, true));
+    t.check(builtDual.isCustomer === true && builtDual.customerComplete === false
+      && builtDual.partnerComplete === false,
+    'buildVm 顾客装配：完成度只看 customer（其它角色资料不参与本角色判定）');
 
     const profileJs = readSource('pages/profile/index.js');
     t.check(/vm\.shouldAutoOpenEdit\(/.test(profileJs) && /_autoEditDone/.test(profileJs),
       '展开判定只经纯件 + 每页面实例一次标记（页面零业务判据）');
+    t.check(/partnerComplete:\s*this\.data\.partnerComplete/.test(profileJs)
+      && /partnerComplete:\s*false/.test(profileJs)
+      && !/profileCard:\s*this\.data\.profileCard/.test(profileJs),
+    '页面装配传 partnerComplete、不再把顾客 profileCard 当完成度（角色判据留在纯件）');
     t.check(/_openEdit = false;/.test(profileJs) && /maybeOpenEditForm\(\)/.test(profileJs),
       '?edit=1 只消费一次（消费后清标记，不反复展开）');
+
+    const profileWxml = readSource('pages/profile/index.wxml');
+    t.check(profileWxml.indexOf('wx:if="{{editMode}}"') !== -1
+      && profileWxml.indexOf('wx:if="{{!editMode}}"') !== -1,
+    '编辑卡只在 editMode、摘要卡只在 !editMode 渲染（两态互斥，默认态才看得到摘要）');
+    t.check(['兼职编号', '分享绑定卡片', '经营', '账号'].every((k) => profileWxml.indexOf(k) !== -1),
+      '默认摘要含兼职编号/分享/经营/账号入口（编辑态不得整段吞掉）');
   });
 
   // ---------------------------------------------------------------- §2.2 顾客性别（东苑楼栋推断/手改标记/未知不阻塞）

@@ -7,6 +7,9 @@
 //   ① 真实截图「207-3-1014」被 OCR 读成连写 20731014 / 空格分组 2 0 7 3 1 0 1 4 / 标签粘连时也要能认出；
 //   ② 日期启发式只认「带日期分隔符」或现实年份（19xx/20[0-2]x）的 8 位，8 位码不再被当日期误杀；
 //   ③ 自动填/提交形态与服务端 validatePickupCode 对齐（紧凑 4~12 位字母数字且至少 1 位数字）。
+// ⑦ 修复（2026-10-28 用户反馈「不是取件码的数字也被当码加入」）：
+//   ④ 码上下文只认取件码/取货码/提货码/取件号；取件时间/日期/订单号/手机号/运单号/柜号等噪音行整行跳过；
+//   ⑤ 上下文候选排除日期/手机号/纯 5 位；非上下文纯数字候选只作「认出但不像」提示、不自动产件。
 'use strict';
 
 // 原始输入上限（与服务端 validatePickupCode 的 PICKUP_CODE_MAX_RAW 同源）
@@ -19,16 +22,19 @@ const CODE_COMPACT_SEPARATOR = /[\s\-_#]/g;
 const CODE_ALNUM = /^[0-9A-Za-z]+$/;
 const LOCKER_MAX = 10;
 
-// 码上下文：这些标签后的数字按「取件码语境」解析（OCR 常见「取件码：207-3-1014」）
-const CODE_CONTEXT_RE = /(?:取件码|取货码|提货码|取件|提货)/;
+// 码上下文：只认明确的取件码类标签（⑦：裸「取件/提货」会把「取件时间/取件人」行误当码上下文）
+const CODE_CONTEXT_RE = /(?:取件码|取货码|提货码|取件号)/;
 // 去掉标签前缀（含全角/半角冒号与空白），只留码区
-const CODE_CONTEXT_STRIP_RE = /^[\s\S]*?(?:取件码|取货码|提货码|取件|提货)[:：\s]*/;
+const CODE_CONTEXT_STRIP_RE = /^[\s\S]*?(?:取件码|取货码|提货码|取件号)[:：\s]*/;
 // 码区数字/字母组（组间允许 OCR 引入的空格/连字符/破折号等分隔符）
 const CODE_CONTEXT_RUN_RE = /[0-9A-Za-z]+(?:[\s\-—–_#·]+[0-9A-Za-z]+)*/g;
 // 纯数字片段行（OCR 把码拆成多行时的形态：207 / 3 / 1014）
 const FRAGMENT_LINE_RE = /^[\d\s\-—–_#·]+$/;
 // 各种分隔符（归一用）
 const SEPARATOR_CHARS_RE = /[\s\-—–_#·]/g;
+// ⑦ 噪音标签（与服务端 handlers/ai/_common.js 同族词表）：这些字段后的数字不是取件码。
+// 长的写法放前面，切段时整词切走（否则「取件时间」会被「时间」先切成「取件」+「时间」）。
+const NOISE_SPLIT_RE = /(?:取件时间|取件日期|订单编号|订单号|联系方式|取件人|收件人|货架|柜号|手机|电话|日期|时间|编号|单号|运单|快递|物流|尾号|柜)/;
 
 function toHalfWidth(value) {
   let out = '';
@@ -105,8 +111,13 @@ function isAutoFillCode(value) {
 function isContextCode(value) {
   const code = normalizeCode(value);
   if (!code || code.length > CODE_MAX) return false;
+  const compact = compactCode(code);
   if (!isFillableCode(code)) return false;
-  return !/^\d{5}$/.test(compactCode(code));
+  if (/^\d{5}$/.test(compact)) return false;
+  // ⑦：上下文行也会出现取件时间/手机号（如「取件码… 取件时间：2026-10-27」）；形态启发式只用于
+  // 「猜候选」，这里排除日期/手机号，避免把时间/电话当码。D35 的 20731014 不构成现实日期，不受影响。
+  if (isDateLike(code) || isDateLike(compact) || isPhoneLike(compact)) return false;
+  return true;
 }
 
 /** 候选打分：分段符/字母数字混合/常见长度更可信；用于同图多码排序 */
@@ -132,7 +143,9 @@ function stripContextLabel(line) {
 /** 码上下文行里「码区」的数字/字母组；短码要求整行就是码，避免把掩码运单前缀 JT22 当码 */
 function contextCodeRuns(line) {
   const rest = stripContextLabel(line).trim();
-  const runs = rest.match(CODE_CONTEXT_RUN_RE) || [];
+  // ⑦：同一行「取件码：207-3-1014 取件时间：2026-10-27」只用第一个码区段，噪音标签后的数字不算码
+  const codeArea = rest.split(NOISE_SPLIT_RE)[0] || '';
+  const runs = codeArea.match(CODE_CONTEXT_RUN_RE) || [];
   const out = [];
   runs.forEach(function each(run) {
     const raw = run.trim();
@@ -140,7 +153,7 @@ function contextCodeRuns(line) {
     const value = /\s/.test(raw) ? raw.replace(SEPARATOR_CHARS_RE, '') : normalizeCode(raw);
     if (!isContextCode(value)) return;
     // 4~5 位短码只有在「整行就是这串」时才采信（"JT22****25" 里的 JT22 不是码）
-    if (value.length < 6 && rest !== raw) return;
+    if (value.length < 6 && codeArea.trim() !== raw) return;
     out.push(value);
   });
   return out;
@@ -148,7 +161,8 @@ function contextCodeRuns(line) {
 
 /** 码上下文行末尾的连续数字（OCR 把「207」留在标签行、其余拆到下一行的形态） */
 function trailingDigitsOf(line) {
-  const after = stripContextLabel(line);
+  // ⑦：标签行尾部数字也要先切掉噪音段（「取件码：207 取件时间：…」只拼 207）
+  const after = stripContextLabel(line).split(NOISE_SPLIT_RE)[0];
   const match = after.match(/(\d[\d\s\-—–_#·]*)$/);
   return match ? match[1].replace(SEPARATOR_CHARS_RE, '') : '';
 }
@@ -159,13 +173,15 @@ function isFragmentLine(line) {
   return text.length > 0 && FRAGMENT_LINE_RE.test(text);
 }
 
-function candidateOf(value, line, context) {
+function candidateOf(value, line, context, numericOnly) {
   return {
     value: value,
     score: scoreCode(value),
     line: line,
     compact: isCompactCode(value),
-    context: context
+    context: context,
+    // ⑦：非码上下文的「纯数字 token」只作「认出但不像」提示，不自动产件
+    numericOnly: numericOnly === true
   };
 }
 
@@ -201,6 +217,8 @@ function collectTokenCandidates(list, consumed) {
   list.forEach(function eachLine(line, index) {
     if (consumed[index]) return;
     const text = String(line);
+    // ⑦：取件时间/日期/手机号/订单号/运单号/柜号等噪音行整行跳过（明确取件码标签行由上下文路径负责）
+    if (NOISE_SPLIT_RE.test(text)) return;
     const context = isCodeContextLine(text);
     text.split(/[\s,，;；、|:：()（）【】\[\]]+/).forEach(function add(part) {
       const token = normalizeCode(part);
@@ -208,8 +226,9 @@ function collectTokenCandidates(list, consumed) {
       // 码上下文行放宽日期/手机号启发式，但超长/带奇怪符号的候选仍进池（compact=false）
       const ok = context ? (isContextCode(token) || isPlausibleCode(token)) : isPlausibleCode(token);
       if (!ok) return;
-      if (context && /^\d{5}$/.test(token)) return;
-      tokens.push(candidateOf(token, line, context));
+      if (context && /^\d{5}$/.test(compactCode(token))) return;
+      // ⑦：非上下文纯数字（订单号/序号等）降级为「未对齐候选」提示，不自动产件
+      tokens.push(candidateOf(token, line, context, !context && /^\d+$/.test(token)));
     });
   });
   return tokens;
@@ -223,7 +242,11 @@ function rankCandidates(items) {
     const prev = seen[item.value];
     if (prev) {
       if (item.score > prev.score) prev.score = item.score;
-      if (item.context) prev.context = true;
+      // ⑦：同一值既有上下文候选又有非上下文纯数字候选时，上下文身份优先（可产件）
+      if (item.context) {
+        prev.context = true;
+        prev.numericOnly = false;
+      }
       return;
     }
     seen[item.value] = item;
@@ -234,10 +257,12 @@ function rankCandidates(items) {
 }
 
 /**
- * 取件码候选（形态闸通过的全部候选，含 compact/context 标记）。
+ * 取件码候选（形态闸通过的全部候选，含 compact/context/numericOnly 标记）。
  * 解析顺序：① 码上下文整行（连写/空格分组/连字符/标签粘连）→ ② 跨行片段拼码 →
  * ③ 常规 token 候选（非码上下文行；码上下文行保留超长候选给「认出但不像」提示）。
- * @returns {Array<{value:string, score:number, line:string, compact:boolean, context:boolean}>}
+ * ⑦：非上下文纯数字标 numericOnly=true，调用方不得据此自动产件（只作提示）。
+ * @returns {Array<{value:string, score:number, line:string, compact:boolean, context:boolean,
+ *   numericOnly:boolean}>}
  */
 function pickCodeCandidates(lines) {
   const list = lines || [];
@@ -248,10 +273,10 @@ function pickCodeCandidates(lines) {
   return rankCandidates(clusters.concat(tokens));
 }
 
-/** 自动填候选：只保留紧凑码可提交的（超长候选由调用方标"认出但不像"） */
+/** 自动填候选：只保留紧凑码可提交的（超长/非上下文纯数字由调用方标"认出但不像"） */
 function pickCodes(lines) {
   return pickCodeCandidates(lines)
-    .filter(function compact(item) { return item.compact; })
+    .filter(function compact(item) { return item.compact && item.numericOnly !== true; })
     .map(function strip(item) {
       return { value: item.value, score: item.score, line: item.line };
     });
