@@ -98,6 +98,21 @@ function entryOf(options) {
 }
 
 // 路径构造单源（页面只调本文件，不自己拼 query）：encodeURIComponent 防 path 注入。
+
+// D37 兜底（2026-10-30 用户侧复现）：分享卡 path 在「分享那一刻」固化——修复前发出的绑定卡仍指向
+// /pages/role/index；朋友圈卡落当前页（role/home）。这类非 launch 首启必须能回到唯一同意入口，
+// 且不能丢入口参数（否则同意后回不到邀请卡/订单）。路径仍只在本文件拼。
+function launchPathOf(entry) {
+  const value = entry || {};
+  if (value.bind) {
+    return LAUNCH_PAGE + '?bind=' + encodeURIComponent(String(value.bind));
+  }
+  if (value.orderNo) {
+    return LAUNCH_PAGE + '?orderNo=' + encodeURIComponent(String(value.orderNo));
+  }
+  return LAUNCH_PAGE;
+}
+
 function roleBindPathOf(partnerNo) {
   return ROLE_PAGE + '?bind=' + encodeURIComponent(String(partnerNo || ''));
 }
@@ -197,6 +212,7 @@ module.exports = {
   decideLaunchRoute,
   entryOf,
   decideEntryRoute,
+  launchPathOf,
   roleBindPathOf,
   profileEditPathOf,
   bindPagePathOf,

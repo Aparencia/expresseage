@@ -16,6 +16,7 @@ const homeView = require('./parts/home-view');
 const guideView = require('./parts/guide-view');
 const share = require('../../../utils/share/handlers');
 const sharePlatform = require('../../../utils/share/platform');
+const privacyGate = require('../../../utils/privacy-gate');
 
 const BIND_PAGE = '/pkg-customer/pages/bind/index';
 const CREATE_PAGE = '/pkg-customer/pages/order-create/index';
@@ -94,6 +95,15 @@ Page({
     if (this.data.singlePage) {
       return;
     }
+    // D37 兜底（2026-10-30 用户侧复现）：朋友圈卡「前往小程序」等非 launch 首启可能直落首页；
+    // 未同意隐私/版本变更时先回启动页过闸，避免用户在无同意入口的页面里反复撞写动作被拒。
+    privacyGate.redirectIfNeeded({}).then((blocked) => {
+      if (!blocked) this.enter();
+    });
+  },
+
+  // 隐私闸放行后的首页刷新（原 onShow 主体；切换会话/单页模式不经过这里）。
+  enter() {
     this.guard();
     this.syncTabBar();
     this.sync();

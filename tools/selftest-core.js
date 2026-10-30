@@ -22,6 +22,8 @@ const stations = require(path.join(ROOT, 'shared/stations.js'));
 const defaults = require(path.join(ROOT, 'config/defaults.js'));
 const route = require(path.join(ROOT, 'config/route.js'));
 const pendingInvite = require(path.join(ROOT, 'utils/share/pending-invite.js'));
+const privacyGate = require(path.join(ROOT, 'utils/privacy-gate.js'));
+const store = require(path.join(ROOT, 'store/index.js'));
 const ZM = require('./zero-money-scan');
 
 // 构造样本（源码中不出现连续词面，防止门禁自命中）
@@ -32,7 +34,7 @@ const SAMPLE_FEN = 'total' + 'Fen';
 const FEE_ACTION_RE = new RegExp(['[Ff]' + 'en', 'pri' + 'ce', 'f' + 'ee'].join('|'));
 const CLEAN_TEXT = '订单状态与取件码信息整理，本程序只做下单/接单/履约与消息通知。';
 
-const EXPECTED_ASSERTIONS = 144; // 89 骨架 + 30 D37 入口白名单 + 25 D38 待绑定邀请/接线
+const EXPECTED_ASSERTIONS = 160; // 89 骨架 + 30 D37 入口白名单 + 25 D38 待绑定邀请/接线 + 16 D37-b 直落页隐私兜底
 
 function register(h) {
   // ---------------------------------------------------------------- §7.1 编号
@@ -245,6 +247,50 @@ function register(h) {
       'launch 隐私同意闸先于分流（同意后才 route）');
     t.check(launchJs.indexOf('pendingInvite.remember(') > launchJs.indexOf('applyPrivacyGate(config)'),
       'D38 待绑定邀请在隐私闸通过后才记录（未同意不落会话状态）');
+  });
+
+  // ---------------------------------------------------------------- §7.1/D37-b 直落页隐私兜底
+  h.section('§7.1/D37-b 非启动页直落兜底（旧分享卡/朋友圈卡回 launch 过闸）', (t) => {
+    store.reset();
+    store.patch({ config: { privacyVersion: 'v4.0.0' } });
+    t.eq(privacyGate.launchRedirectOf({ bind: 'P7K2M9X' }),
+      { needed: true, url: '/pages/launch/index?bind=P7K2M9X', reason: 'FIRST_RUN' },
+      '未同意隐私 + 旧绑定卡直落 role → 回 launch 过闸且邀请编号不丢');
+    t.eq(privacyGate.launchRedirectOf({ orderNo: '20261028-0042' }).url,
+      '/pages/launch/index?orderNo=20261028-0042', '订单深链入口参数同样保留（同意后回订单详情）');
+    t.eq(privacyGate.launchRedirectOf({}).url, '/pages/launch/index',
+      '无入口参数（通用卡/朋友圈）回 launch 首页，不拼空 query');
+    t.eq(route.launchPathOf({ bind: 'P7K2M9X' }), '/pages/launch/index?bind=P7K2M9X',
+      '回启动页路径单源（页面不自拼 query）');
+    t.eq(route.launchPathOf({}), '/pages/launch/index', '空入口回纯 launch 路径');
+    store.patch({ privacyConsent: { version: 'v4.0.0', at: 1 } });
+    t.eq(privacyGate.launchRedirectOf({ bind: 'P7K2M9X' }), { needed: false, url: '', reason: 'OK' },
+      '已同意当前版本 → 直落页放行（不多跳、不重复弹窗）');
+    store.patch({ config: { privacyVersion: 'v4.0.1' } });
+    t.eq(privacyGate.launchRedirectOf({}).reason, 'VERSION_CHANGED',
+      '隐私版本变更后直落页也必须回 launch 重新同意');
+    store.patch({ config: null });
+    t.eq(privacyGate.launchRedirectOf({}).needed, true, '配置未就绪 fail-closed（回 launch，不猜放行）');
+    store.patch({ config: { privacyVersion: 'v4.0.0' }, privacyConsent: null });
+    store.setViewContext({ viewMode: 'READONLY', role: 'CUSTOMER', target: { role: 'CUSTOMER' } });
+    t.eq(privacyGate.launchRedirectOf({}).needed, false, '切换会话跳过兜底（后台排障不被隐私弹窗卡住）');
+    store.clearViewContext();
+    store.reset();
+    t.eq(store.snapshot().privacyConsent, null, '判定用 store 当前值；测试后复位不留脏态');
+    const roleJs = fs.readFileSync(path.join(ROOT, 'pages/role/index.js'), 'utf8');
+    t.check(roleJs.indexOf("require('../../utils/privacy-gate')") !== -1,
+      'role 邀请卡接直落兜底纯件');
+    t.check(/onLoad\(options\) \{[\s\S]{0,600}?privacyGate\.redirectIfNeeded\(\{ bind: this\._bindNo \}\)/.test(roleJs),
+      'role.onLoad 在邀请卡初始化前过兜底闸（旧卡直落也能回 launch 同意）');
+    t.check(roleJs.indexOf('if (!blocked) this.enter();') !== -1,
+      'role 只有闸放行后才进入邀请卡初始化（未同意不加载卡片/不发绑定动作）');
+    const homeJs = fs.readFileSync(path.join(ROOT, 'pages/customer/home/index.js'), 'utf8');
+    t.check(homeJs.indexOf("require('../../../utils/privacy-gate')") !== -1,
+      '顾客首页接直落兜底纯件');
+    t.check(/onShow\(\) \{[\s\S]{0,400}?privacyGate\.redirectIfNeeded\(\{\}\)/.test(homeJs),
+      '首页 onShow 冷启动入口也过兜底闸（朋友圈「前往小程序」落地当前页）');
+    t.check(homeJs.indexOf('if (!blocked) this.enter();') !== -1,
+      '首页只有闸放行后才刷新/拉数（未同意不撞写动作）');
   });
 
   // ---------------------------------------------------------------- §7.1/D38 待绑定邀请（会话级 pending）

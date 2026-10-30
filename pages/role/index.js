@@ -12,6 +12,7 @@ const previewCache = require('../../utils/preview-cache');
 const pendingInvite = require('../../utils/share/pending-invite');
 const share = require('../../utils/share/handlers');
 const sharePlatform = require('../../utils/share/platform');
+const privacyGate = require('../../utils/privacy-gate');
 
 const ACTIVATE_PAGE = '/pkg-partner/pages/activate/index';
 const ACCOUNT_SWITCH_PAGE = '/pkg-admin/pages/account-switch/index';
@@ -72,6 +73,16 @@ Page({
     if (singlePage) {
       return;
     }
+    // D37 兜底（2026-10-30 用户侧复现）：修复前发出的分享卡 path 固化在聊天里，仍会直落本页；
+    // 未同意隐私/版本变更时必须先回 launch 过闸，同意后 launch 再分流回邀请卡（参数不丢）。
+    privacyGate.redirectIfNeeded({ bind: this._bindNo }).then((blocked) => {
+      if (!blocked) this.enter();
+    });
+  },
+
+  // 隐私闸放行后的邀请卡初始化（原 onLoad 下半段；只在闸通过后执行，未同意时不做任何绑定动作）。
+  enter() {
+    this.sync();
     if (this.data.vm.viewContext) {
       const role = this.data.vm.viewContext.role === 'PARTNER' ? 'PARTNER' : 'CUSTOMER';
       redirect(role === 'PARTNER' ? route.PARTNER_WORKBENCH : route.CUSTOMER_HOME);
@@ -81,8 +92,8 @@ Page({
       redirect(ACCOUNT_SWITCH_PAGE);
       return;
     }
-    this.applyBindContext(bindNo);
-    if (bindNo) this.loadBindCard(bindNo);
+    this.applyBindContext(this._bindNo || '');
+    if (this._bindNo) this.loadBindCard(this._bindNo);
     if (!this.data.vm.roles || this.data.vm.roles.length === 0) this.hydrateBootstrap();
   },
 
