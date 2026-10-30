@@ -441,6 +441,26 @@ check.ps1：全部通过（4 步，退出码 0）
 - 断言增量（真实输出）：`selftest-privacy-text` 246→249、`selftest-cloud-dual` 36→46、`selftest-partner-pages` 194→206、`selftest-partner-customers` 120/120（白名单 +`avatarUrl`）、`selftest-cloud` 180/180、`selftest-bind-cloud` 119/119。
 - 真机项（用户点检）：兼职端客户列表/客户详情/订单详情顾客头像、激活成功页本人头像；云存储权限截图确认私有（read=false）。
 
+## 6n. 2026-10-30 隐私同意兜底收口证据（真实输出）
+
+背景：D37（`44e27cb`）已把**新分享卡**改为经 `launch` 过隐私闸，但两组真实用户仍在的输入没有覆盖——①聊天里修复前已发出的分享卡（path 固化在卡片消息里，仍指 `role`）；②朋友圈卡「前往小程序」落当前页（`role`/`home`）。两者都绕过唯一同意入口，用户会在「写动作被拒」与「找不到同意入口」之间循环。本批给 `role`/`customer/home` 加直落兜底：未同意/版本变更时经 `utils/privacy-gate` 回 `launch` 过闸，`bind`/`orderNo` 不丢；切换会话按既有口径跳过（服务端 `developerNo` 豁免）。
+
+`powershell -File check.ps1`（4 步，退出码 0）：
+
+```text
+PASS  check.js 代码/配置门禁（33 条）
+PASS  check-docs.js 设计文档门禁（--batch 1）
+PASS  zero-money-scan.js 零金额扫描（源码+页面+文档）
+PASS  selftest.js 全部断言 suite（EXPECTED_ASSERTIONS 闸）
+check.ps1：全部通过（4 步，退出码 0）
+```
+
+- `node tools/check.js` → `通过 33 项；失败 0 项`；`node tools/check-docs.js --batch 1` → `通过 10 项；失败 0 项`；`node tools/zero-money-scan.js` → `零金额扫描：0 命中（白名单 136 项）`。
+- `node tools/selftest.js` → `运行 33 套；失败 0 套；SKIP 0 套（无）；完整性 0 项；非聚合辅助文件 4 件（已声明）` / `结果：PASS`；`node tools/selftest-core.js` → `断言 160/160；失败 0 项`（D37-b 组 +16，`EXPECTED_ASSERTIONS` 144→160）。
+- 变异电池（首红→SHA256 还原→复绿）：M1 `utils/privacy-gate.js` 判定恒放行 → 4 条红（未同意/参数丢失/配置缺失等）；M2 `role` 页去掉 `privacyGate.redirectIfNeeded` → 1 条红；M3 `home` 页同 M2 → 1 条红；三文件 SHA256 逐字节校验 OK 后 `selftest-core` 复跑 `160/160 PASS`。
+
+**用户侧仍未生效**：小程序客户端改动必须用户重新「上传」体验版/发布；云函数改动必须重部署 `api`+`cleanup`（本批未改云函数；10-27/10-28 批次的云函数改动仍待重部署）。真机项：QA §Y1（已补「旧卡直落也必须过闸」场景）与 §Y2~Y6。
+
 
 ---
 
