@@ -5,6 +5,7 @@
 > 优先级：**CONTRACT > 本文 > 其他**；页面路径、字段、动作名、错误码、限额逐字引用 CONTRACT §1.1/§1.2/§1.3/§3/§4/§4.3/§5.3/§7/§8/§10/§11；API 字段级细节以 `docs/V4_DATA_MODEL.md` 定稿为准。
 > **v0.9 新增（D18~D21）**：①**账号切换**页两 tab——真实账号（**只读**，黄条+拒写+审计）与测试账号（**可写**，蓝条+`TEST` 角标，单机验收两端；测试数据隔离/标记/排除统计/30 天清理）；②**多开发者账号**（`DEV-01`/`DEV-02…`，各自微信登录、会话与审计隔离；**小程序不能切换微信登录账号本身**）；③绑定只能顾客发起（后台无任何「绑定顾客」入口）；④`roomTag` 恒大写（`D4-522A`）；⑤头像/昵称仅绑定双方可见，**后台列表/详情不展示头像、昵称脱敏**。
 > **v1.2 增补（D36 分享与朋友圈，2026-10-28 用户指令）**：后台 11 页**零分享入口**；切换会话统一隐藏右上角「转发/分享到朋友圈」菜单（`wx.hideShareMenu`，退出恢复；O3/M-33 关闭）；好友转发覆盖 19 个业务页、朋友圈仅 role/home/help 三页（落地=单页模式 scene=1154，静态降级）；卡片只有绑定卡/通用邀请卡两种、固定中性封面、**禁止页面截图、卡片零 L3**。后台侧约束与判据见本文 §6.11/§9。
+> **v1.3 增补（D37~D42，2026-10-28 用户拍板，后台影响面）**：①分享卡统一经 `/pages/launch/index` 落地并**先过隐私同意闸**（D37；后台 11 页零分享不变）；②邀请卡到达后的绑定由顾客本人自动发起（D38），后台不提供代绑入口、口径不变；③绑定限流改滚动 60 秒/5 次（D39），后台治理动作不涉及；④AI 兜底**不设每人每日次数上限**（D40，`config.aiFallback` 仍后台只读展示）；⑤服务类型两档「标准代取=寝室门口 / 送至楼下」（D41），配置页可分别启用/停用；⑥头像改**约 5 分钟临时链接**展示（D42），后台列表/详情仍不展示头像、DTO 无 `avatarFileId`。
 > **v0.8 继续有效（D16/D17）**：识别失败时由云函数调 **DeepSeek API** 对去敏 OCR 文本做结构化兜底；后台只承接「失败入队 → 复核 → 补录/忽略/通知」，**不调用任何第三方 AI、不展示/下发 Key**；失败**原图**仅复核页**按单**临时查看（5 分钟 URL + 每次 `FAILURE_IMAGE_VIEW` 审计），**不批量/不下载/不导出**。
 > 本文只写设计与验收，不写实现代码；正文不藏未决项，未决项集中本文 §10，跨文档回写项见本文 §10.4；本文自身章节一律用「本文 §x」引用。
 > 关联：`docs/V4_DATA_MODEL.md`（API 契约/字段分级）、`docs/V4_ENGINEERING.md`（白名单/门禁/账号切换与头像昵称门禁/AI 兜底门禁）、`docs/QA_CHECKLIST.md`（真机点检，人执行）、`docs/privacy/`（第三方 AI、复核原图、头像昵称与账号切换披露）。
@@ -508,7 +509,7 @@ USED / REVOKED / EXPIRED = 终态；不存在「重新生效」，需要时重�
 ### 6.6 写操作：真实拒写 + 测试可写
 - **真实账号（READONLY）**：前端所有写控件置灰/隐藏，点置灰控件 toast `开发者只读视角不能操作`；服务端见只读票据即对目标角色写动作返回 `FORBIDDEN`（双保险）。
 - **测试账号（TEST_WRITE）**：前端正常可用；服务端以 `viewContext` 解析目标测试账号身份执行写动作（可写动作以 CONTRACT §1.3 为准），写请求校验目标 `isTestAccount=true`；订单/事件写 `isTest=true` + `impersonatedBy={developerNo}`；**不得写真实账号数据、不得触发真实用户通知**；对测试账号不可执行真实治理动作。
-- 覆盖清单（真实账号一律拒绝；测试账号可写但仅测试内部）：`order.create/createBatch/accept/reject/markPicked/unmarkPicked/markDelivered/unmarkDelivered/reportException/resolveException/cancel/confirmDelivery/correct/undo/deleteRecord`；`message.send/markRead`；`bind.create/release`；`customer.saveProfile`；`partner.saveProfile/saveServiceConfig/unbindCustomer/saveCustomerNote`；`upload.prepare/cancel`（含 `purpose='AVATAR'`）；`user.acceptPrivacy/deleteAccount`；`partner.activate`；其他未列写动作默认拒绝。
+- 覆盖清单（真实账号一律拒绝；测试账号可写但仅测试内部）：`order.create/accept/reject/markPicked/unmarkPicked/markDelivered/unmarkDelivered/reportException/resolveException/cancel/confirmDelivery/correct/undo/deleteRecord`；`message.send/markRead`；`bind.create/release`；`customer.saveProfile`；`partner.saveProfile/saveServiceConfig/unbindCustomer/saveCustomerNote`；`upload.prepare/cancel`（含 `purpose='AVATAR'`）；`user.acceptPrivacy/deleteAccount`；`partner.activate`；其他未列写动作默认拒绝。
 - 后台治理写动作（邀请码/停启用/配置/切换会话开始结束/测试账号管理）不受切换票据影响，但在目标端页面内不可达，需先退出；双保险验收=前端提示 + 服务端错误码各验一次（AC-D-13）。
 - **绑定方向（D20）**：切换会话内也不能"造绑定"——真实顾客只读会话发起 `bind.create` 被拒；测试顾客只能绑测试兼职；**后台永无「绑定顾客」入口**，开发者不创建/代绑关系（§4.2/§10）。
 
@@ -544,7 +545,7 @@ USED / REVOKED / EXPIRED = 终态；不存在「重新生效」，需要时重�
 ### 6.11 分享与朋友圈的开发者侧约束（v1.2/D36）
 - **后台零分享**：`pkg-admin/**` 的 11 个后台页**不挂** `onShareAppMessage`/`onShareTimeline`、无 `open-type="share"` 入口——治理数据不外传（ENGINEERING §8.2 #33③；`selftest-admin-pages` 同口径）。
 - **切换会话禁分享（O3/M-33 关闭）**：`components/switch-bar` 统一调 `utils/share/platform.syncSession(inSession)`——进入 `READONLY`/`TEST_WRITE` 调 `wx.hideShareMenu()` 隐藏右上角「转发/分享到朋友圈」菜单，退出 `showShareMenu({withShareTicket:false})` 恢复（仅状态变化时调 API）；首页/我的/帮助页内分享按钮在 `viewSession` 时不渲染。
-- **卡片中性**：好友转发卡片只有两种、构造单源 `utils/share/index.js`（页面零自拼）——①兼职绑定卡（兼职身份 + 非切换会话 + 有 `partnerNo`，`path=/pages/role/index?bind={partnerNo}`，只带编号）；②通用邀请卡（`path=/pages/role/index`，零 query）。朋友圈卡片 `query` 恒空。一律显式固定中性封面 `/assets/share/cover.png`（5:4）与 `/assets/share/cover-timeline.png`（1:1），**禁止页面截图**——平台默认截图会把取件码/宿舍/尾号等 L3 带进卡片；卡片不含订单号/取件码/站点/宿舍/尾号/头像/昵称/截图/票据/识别原文。
+- **卡片中性**：好友转发卡片只有两种、构造单源 `utils/share/index.js`（页面零自拼）——①兼职绑定卡（兼职身份 + 非切换会话 + 有 `partnerNo`，`path=/pages/launch/index?bind={partnerNo}`（D37：先过隐私同意闸），只带编号）；②通用邀请卡（`path=/pages/launch/index`，零 query）。朋友圈卡片 `query` 恒空。一律显式固定中性封面 `/assets/share/cover.png`（5:4）与 `/assets/share/cover-timeline.png`（1:1），**禁止页面截图**——平台默认截图会把取件码/宿舍/尾号等 L3 带进卡片；卡片不含订单号/取件码/站点/宿舍/尾号/头像/昵称/截图/票据/识别原文。
 - **范围与平台事实**：好友转发覆盖顾客/兼职 19 个业务页；朋友圈仅 `pages/role`、`pages/customer/home`、`pkg-customer/pages/help` 三页——朋友圈落地=当前页**单页模式**（scene=1154：无登录态、不能跳页、tabBar 不渲染、云资源不可用），故 `app.js` 启动识别后跳过云初始化与 `user.bootstrap`，三页只做静态预览与「前往小程序」提示；朋友圈为平台 Beta（基础库 ≥2.11.3，支持范围以官方文档为准）、只能经右上角菜单触发、不得诱导分享。
 - **判据与取数**：`node tools/check.js` #33（19 页转发/3 页朋友圈/后台 11 页零分享/固定封面/会话收口/单页模式）+ `node tools/selftest-share.js`（断言数以命令真实输出为准；2026-10-28 实测 **182/182 PASS**）；页面清单单源 `tools/lib/share-pages.js`；真机分享/朋友圈效果属人项（`docs/QA_CHECKLIST.md` §X），agent 不代勾。开发者后台不提供任何分享/转发入口，也不因治理动作产生外发卡片。
 

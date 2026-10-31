@@ -11,7 +11,7 @@
 > **v1.0 已吸收（批 10，D23~D29）**：**一单多包裹**（`orders.parcels[]` 1~10 件、`images[]` 0~5 张（**D40 已修订为 0~10 张**，旧口径保留留痕）、短间隔合并窗口"多图/多次提交归一单"）、**逐件纠正**（`order.correct` 按 `itemIndex`）、**无截图·手填**（`manualEntry`，D24）、**每单配送地址**（`orders.delivery`，D25，仅本单有效不写回资料）、**未读红点口径**（D29：未读=留言+状态事件；工作台红点=待接单数量，两者语义区分）与 **AI 低置信不写入**（D29：建议条 + 采纳，兼职端只显示人话）。单量统计仍**按订单计**（合并单=1 单），不设包裹级状态。
 > **v1.3 增量（D37~D42，2026-10-28 用户拍板）**：①**分享卡 path 改 `/pages/launch/index`**（D37：绑定卡 `?bind=`、通用卡零 query；顾客点开先过隐私同意闸再进 role 邀请卡）；②顾客按「隐私同意→资料补齐」后**自动完成绑定**（D38，兼职侧无需操作、仍只由顾客发起，兼职端零绑定入口不变），兼职在分享时应提醒顾客"点开卡片即可绑定"；③**截图上限 10 张/单**（D40，兼职端按张展示缩略图）、AI 兜底不设每人每日次数（D40，保留全应用日配额）；④**服务类型两档**（D41：`PICKUP_STD` 标准代取=送到寝室门口（上楼）、新增 `PICKUP_LOW` 送至楼下（不上楼）；原「送寝上门」停用、仅历史订单展示）；⑤**头像改临时 URL 展示**（D42：约 5 分钟临时链接、换头像 onShow 立即生效、加载失败可重试）；⑥顾客绑定限流改滚动 60 秒/5 次（D39，兼职侧无感）。
 > **v1.2 增补（D36 分享与朋友圈，2026-10-28 用户指令「转发功能是不是没有，朋友圈转发也要」）**：顾客/兼职 19 个业务页支持「转发给朋友」（兼职端经右上角菜单转发，卡片构造单源 `utils/share`）；**兼职端页面不挂朋友圈**（朋友圈仅 `pages/role`、`pages/customer/home`、`pkg-customer/pages/help` 三页）；卡片只有「兼职绑定卡（只带 `partnerNo`）」与「通用邀请卡（零 query）」两种、**固定中性封面、禁止页面截图、卡片零 L3**；切换会话隐藏转发/朋友圈入口（O3/M-33 关闭）。详见 §7/§11。
-> v0.3~v0.6 已吸收（继续有效）：代客单 guest 落库、`bindings.partnerNote`、苑级范围、显式时间戳、`partners.status=CLOSED`、`bindings.activeKey`、站点仅 P1~P8；tabBar 上限 5 项、共用 `pages/profile/index`、根目录 `custom-tab-bar/`、`模块.动作` 命名；不设接单撤销（取件/送达可 `order.undo`）、guest 单自动完成、`order.listPartner` 返回 `counts` 6 项、批量=客户端循环逐单+同一 `batchActionId`、`order.createBatch` 仅一图多码拆单；`serviceConfig.acceptingOrders` 归属与 `PARTNER_CLOSED`、列表 DTO 分级、`bindingId` 参数、异常备注 ≤200、数据级别 L1/L2/L3（v0.9 起采集头像/昵称，见 §3.10）。
+> v0.3~v0.6 已吸收（继续有效）：代客单 guest 落库、`bindings.partnerNote`、苑级范围、显式时间戳、`partners.status=CLOSED`、`bindings.activeKey`、站点仅 P1~P8；tabBar 上限 5 项、共用 `pages/profile/index`、根目录 `custom-tab-bar/`、`模块.动作` 命名；不设接单撤销（取件/送达可 `order.undo`）、guest 单自动完成、`order.listPartner` 返回 `counts` 6 项、批量=客户端循环逐单+同一 `batchActionId`、`order.createBatch`（v1.0 起已移除，一图多码并入 `order.create` 一单多包裹）；`serviceConfig.acceptingOrders` 归属与 `PARTNER_CLOSED`、列表 DTO 分级、`bindingId` 参数、异常备注 ≤200、数据级别 L1/L2/L3（v0.9 起采集头像/昵称，见 §3.10）。
 
 ---
 ## 0. 设计目标与原则
@@ -294,7 +294,7 @@
 - **配额与隐私（D40 修订）**：`ai.parseParcel` **不设每人每日次数上限**（`config.aiFallback.maxPerUserPerDay=0` 表示不限，D40），仅保留全局日配额 + 冷却/超时降级，超限**静默降级**（不返回 `RATE_LIMITED`）；只发去敏 OCR 文本（≤2000 字），不发原图/openid/订单归属；外呼只存在云函数层，Key 只在环境变量。
 - **识别失败阶梯（保留人话）**：原图未读到 → "这张图没打开，换一张或手填"；未识别到取件码 → "没认出取件码，可手填"；站点未识别 → "站点没认出来，从 P1~P8 取件点里选一个"；全部失败 → 手填仍可提交 + "已反馈开发者复核"。
 - **字段校验（v1.0 逐件）**：站点必须 P1~P8（§4.2）；**每件**取件码 ≤40、柜号 ≤10、运单尾号恰好 5 位数字；件内取件码空 + 有运单尾号 ⇒ 该件 `codeStatus=NEED_CODE`；每件站点+（码或尾号）至少其一，两者都空不可提交；件数 1~10、截图 **0~10（D40）**；guest 的 `dormKey` 必填（送达要用）；服务类型只能选兼职已启用的类型（§6，D41 两档见 §3.6）。
-- **提交（v1.0 单入口；D40 修订图数）**：调 **`order.create`**（入参 `{parcels[1~10], images[0~10], tickets?[], serviceCode, appoint, note, manualEntry, guest?|bindingId?, delivery?, clientRequestId}`）；**一图多件 = 同一订单多包裹**（不再调 `createBatch`；`createBatch` 仅保留为旧调用方过渡别名，兼职端不使用）；`clientRequestId` 幂等（`orders.requestKey` 唯一，§4.2）；按钮 loading 期间禁用返回；成功后当前页结果块显示"已建单 1 单 · N 件" + `orderNo` 可进详情；失败按 `PARTNER_CLOSED`（接单开关关闭，含代客单）/ `FORBIDDEN/RATE_LIMITED/VALIDATION_FAILED/INTERNAL_ERROR` 分类。
+- **提交（v1.0 单入口；D40 修订图数）**：调 **`order.create`**（入参 `{parcels[1~10], images[0~10], tickets?[], serviceCode, appoint, note, manualEntry, guest?|bindingId?, delivery?, clientRequestId}`）；**一图多件 = 同一订单多包裹**（不再调 `createBatch`；其已于批 10 收口时移除，兼职端不使用；TD-062 关闭）；`clientRequestId` 幂等（`orders.requestKey` 唯一，§4.2）；按钮 loading 期间禁用返回；成功后当前页结果块显示"已建单 1 单 · N 件" + `orderNo` 可进详情；失败按 `PARTNER_CLOSED`（接单开关关闭，含代客单）/ `FORBIDDEN/RATE_LIMITED/VALIDATION_FAILED/INTERNAL_ERROR` 分类。
 - **跳转**：取消回工作台；成功进 `order-detail?orderNo=`。
 ### 3.5 客户列表 `pages/partner/customers/index`
 **目标**：查看**已被顾客绑定**的顾客档案；兼职端**没有添加/绑定/导入顾客入口**，只提供代客下单、邀请顾客自己绑定、解绑。
@@ -374,7 +374,7 @@
 - **字段（v0.7）**：`partners` 文档内的 `serviceConfig{ services[{code,enabled}], zones[], buildingNos[], acceptingOrders, maxDailyOrders?, businessHours?, autoAccept? }`（§6）；**不是** `partners` 顶层字段，也不是独立集合；**没有任何费用相关字段**。
 - **服务类型来源**：`config.serviceCatalog[{code,name,desc}]`（无定价，§6；D41 默认 5 类 `PICKUP_STD/PICKUP_LOW/PICKUP_URGENT/DROP_OFF/CUSTOM`，原 `PICKUP_DOOR` 停用）；**首次激活按目录生成草稿、默认 5 类全部启用（代码现状；旧 UX「全部未启用」口径已修订，D41）**；兼职可按需停用。
 - **校验**：至少 1 个服务类型启用；范围至少选 1 个苑；保存成功 toast"已保存，顾客端立即生效"。
-- **接单开关影响（v0.6）**：`serviceConfig.acceptingOrders=false` ⇒ 顾客 `order.create/createBatch` 一律被 `PARTNER_CLOSED` 拦截（顾客端入口置灰、文案"该兼职暂不接单"），已有订单继续履约；恢复开关后立即可下单；工作台顶部黄条"接单已关闭，顾客暂时不能下单"。
+- **接单开关影响（v0.6）**：`serviceConfig.acceptingOrders=false` ⇒ 顾客 `order.create` 一律被 `PARTNER_CLOSED` 拦截（顾客端入口置灰、文案"该兼职暂不接单"），已有订单继续履约；恢复开关后立即可下单；工作台顶部黄条"接单已关闭，顾客暂时不能下单"。
 - **首次进入**：`first=1` 显示引导条"启用服务类型并选好苑范围，顾客才能下单；服务只说明做什么，本程序不涉及任何费用收付。"
 - **状态**：加载骨架；保存中禁用；保存失败回滚到上次保存值并提示；首次进入显示引导条；`READONLY` 下开关/保存置灰，`TEST_WRITE` 可用（仅测试账号数据，§6）。
 - **文案**：关开关确认"关闭接单后，新顾客暂时不能下单；已接的订单不受影响。"
@@ -574,7 +574,7 @@
 | 异常上报 | 单件 | `order.reportException` | 不批量；原因+备注。 |
 | 取消/拒单 | `SUBMITTED` 用 `order.reject`；`ACCEPTED/PICKED/EXCEPTION` 用 `order.cancel`（§5.1） | 对应 action | 必须填原因；已取件后取消需二次确认。 |
 
-- **批量语义（v1.0）**：**不设专用 batch 云函数**；客户端循环逐单调用对应动作，携带**同一 `batchActionId`**，服务端逐单返回一条结果（订单号 + ok/错误码），客户端汇总"成功 N / 失败 M"并如实上屏（§5.1）；**改站点/改码例外——逐单逐件循环**：每个选中订单的每一件都调一次 `order.correct`（带 `itemIndex`，同一 `batchActionId`），结果按**件**汇总"成功 X 件 · 失败 Y 件"并列出失败件（订单号 + 第 k 件 + 原因），部分成功不回滚、不隐藏。`order.createBatch` 只作旧调用方过渡别名，兼职端不使用（一图多件=同一 `order.create` 多包裹）。
+- **批量语义（v1.0）**：**不设专用 batch 云函数**；客户端循环逐单调用对应动作，携带**同一 `batchActionId`**，服务端逐单返回一条结果（订单号 + ok/错误码），客户端汇总"成功 N / 失败 M"并如实上屏（§5.1）；**改站点/改码例外——逐单逐件循环**：每个选中订单的每一件都调一次 `order.correct`（带 `itemIndex`，同一 `batchActionId`），结果按**件**汇总"成功 X 件 · 失败 Y 件"并列出失败件（订单号 + 第 k 件 + 原因），部分成功不回滚、不隐藏。`order.createBatch` 已移除（TD-062 关闭），兼职端不使用（一图多件=同一 `order.create` 多包裹）。
 - **接单批量同样不可撤销**：批量接单后误操作只能逐单/批量「取消订单」+ 原因（§5.1），不进入撤销条。
 - **不允许**：批量改顾客归属（§5.1：订单归属不可变）；批量软删/硬删（§5.1：订单不可删）。
 - **执行与失败**：客户端循环逐单调用（同一 `batchActionId`）；服务端**逐单返回**，不聚合、不回滚成功项；结果条显示"成功 N · 失败 M"，失败项列出订单号与原因（如"顾客已取消"/"状态已变化"/"顾客已确认送达"）；**禁止把部分成功显示为全部成功**，失败项保持原状态可重试。
@@ -701,7 +701,7 @@
 - **roomTag 恒大写（D21）**：A…Z、AA…（Excel 列名式），展示 `D4-522A`；列表按 `dormKey + roomTag` 大写字母序；旧小写口径作废。
 
 ### 5.5 v1.0 新增口径（批 10：C 批 D23~D26 / B 批 D28~D29，兼职端影响面）
-- **一单多包裹与合并窗口（D23；D40 修订图数）**：`orders.parcels[]`（1~10 件）+ `images[]`（**0~10 张**，D40，原 0~5 保留留痕）；短间隔（`orderMergeWindowMinutes` 默认 10、0=关闭、0~60）内同顾客+同绑定兼职+同 `delivery` 的 `SUBMITTED` 单自动追加包裹（写 `PARCELS_APPENDED`、状态不变）；**代客单不参与合并**；订单级动作整单生效、`order.correct` 按 `itemIndex` 逐件；单量按订单计；`order.createBatch` 降为旧调用方过渡别名（兼职端不使用）。
+- **一单多包裹与合并窗口（D23；D40 修订图数）**：`orders.parcels[]`（1~10 件）+ `images[]`（**0~10 张**，D40，原 0~5 保留留痕）；短间隔（`orderMergeWindowMinutes` 默认 10、0=关闭、0~60）内同顾客+同绑定兼职+同 `delivery` 的 `SUBMITTED` 单自动追加包裹（写 `PARCELS_APPENDED`、状态不变）；**代客单不参与合并**；订单级动作整单生效、`order.correct` 按 `itemIndex` 逐件；单量按订单计；`order.createBatch` 已移除（TD-062 关闭；兼职端不使用）。
 - **无截图·手填（D24，D22 改判 B）**：截图非必填，`images=[]` 且 `manualEntry=true` 可提交；每件仍必须站点 +（取件码或运单尾号）；无截图单不进识别链路、不调 AI、不写复核队列；兼职端工作台/详情/代客下单均标「无截图·手填」。截图仍推荐（识别更快）。
 - **每单配送地址（D25）**：`orders.delivery{...}` 为本单送达地址（默认=下单人宿舍，可改他人宿舍并填收件人称呼 ≤20 字）；仅本单有效、不写回 `customers`、不触发换绑/roomTag；兼职按本单地址送达；他人地址属 L3，不进通知/分享/日志。
 - **未读红点口径（D29/B-2）**：`message.list.unread` = 未读留言 + 未读状态事件（本人订单 `order_events`，`at > users.messageReadAt`，状态类事件；不含公告/系统通知/测试数据）；进消息中心或对应订单详情后推进水位（只进不退；`ALL` 同时置读对方未读留言、`ORDER` 置读该单留言）——**兼职端消息红点与「我的」入口同源读 `unread`，工作台 tab 红点仍=待接单数量**，二者语义区分（§3.9/§4.12）。
@@ -730,7 +730,7 @@
 | :-- | :-- | :-- |
 | 工作台/订单详情：接单/拒单/已取件/撤销已取件/送达/撤销已送达/异常上报/解除/改码/取消/撤销条 | 置灰或隐藏；toast"开发者只读视角不能操作"；服务端 `FORBIDDEN` | 可用（**仅测试订单**；`isTest=true`、`impersonatedBy=DEV-01`） |
 | 订单详情留言 `message.send` | 输入框+发送置灰 | 可用（仅测试订单） |
-| 代客下单 `order.create/createBatch`、识别兜底 `ai.parseParcel` | 入口隐藏 | 可用（仅测试账号建测试单） |
+| 代客下单 `order.create`、识别兜底 `ai.parseParcel` | 入口隐藏 | 可用（仅测试账号建测试单） |
 | 客户列表/详情：解绑 `partner.unbindCustomer`、私有备注 `partner.saveCustomerNote` | 置灰/隐藏 | 可用（仅测试绑定） |
 | 服务类型与范围 `partner.saveServiceConfig` | 全部置灰 | 可用（仅测试账号配置） |
 | 我的：头像/昵称编辑 `partner.saveProfile`、切换身份、（若存在）注销 | 置灰；切换身份隐藏 | 可用（仅测试账号） |
@@ -793,7 +793,7 @@
 | :-- | :-- | :-- | :-- | :-- |
 | 无网络 | 请求超时/断网 | 顶部黄条 + 错误卡 | "没连上服务器，显示的是 08:12 的数据。" | 重试/下拉刷新；不本地假装成功 |
 | 云函数错误 | `INTERNAL_ERROR`/500 | 错误卡 | "服务器开小差了，这次没有改动，请重试。" | 重试；保留原状态 |
-| 接单开关关闭 | `serviceConfig.acceptingOrders=false` | 兼职工作台顶部黄条；顾客端下单入口置灰（顾客侧文档负责） | "接单已关闭，顾客暂时不能下单；已有订单不受影响。" | `order.create/createBatch` 返回 `PARTNER_CLOSED`；重开开关后立即可下单 |
+| 接单开关关闭 | `serviceConfig.acceptingOrders=false` | 兼职工作台顶部黄条；顾客端下单入口置灰（顾客侧文档负责） | "接单已关闭，顾客暂时不能下单；已有订单不受影响。" | `order.create` 返回 `PARTNER_CLOSED`；重开开关后立即可下单 |
 | 越权 | `FORBIDDEN` | 错误卡 + 回工作台 | "这个订单不属于你，已回工作台。" | 不泄露对方信息 |
 | 状态冲突 | `INVALID_TRANSITION` | 顶部提示 + 自动刷新 | "订单状态刚变了，已刷新为最新。" | 按最新状态重选动作 |
 | 误接单 | `ACCEPTED` 后发现接错 | 详情/行操作提示 | "不设接单撤销；取消后订单结束，顾客会看到取消原因。" | `order.cancel` + 原因枚举（§5.2）；不可恢复 |
@@ -857,7 +857,7 @@
 - [ ] 改码边界：兼职 `order.correct` 只能改自己订单识别字段（不改状态/归属/不代确认；越权 `FORBIDDEN`；记 `ORDER_CORRECTED`）；开发者 `fixRecognitionFailure` 只回填识别字段（记 `FAILURE_FIX`），订单状态不变。
 - [ ] 复核补录：开发者补录后兼职端刷新可见新站点/取件码并提示"取件信息已更新"；状态未变、无需重新接单；工作台 `NEED_CODE` chip 保留。
 - [ ] 识别失败不影响工作台排序/counts/异常区；失败单可正常接单→取件→送达。
-- [ ] 一图多码：拆单 N 单（≤5）共用同一 `fileId`、结果块列出 N 个订单号；`order.createBatch` 仅建单，不产生状态批量语义。
+- [ ] 一图多码/多图：**同一张订单 1~10 件**（每件独立字段、可逐件纠正 `order.correct(itemIndex)`）；多图/多码共享 `fileId`、不拆单；**无 `createBatch` 拆单流程**，结果块只出现一个 `orderNo`；整单动作一次生效、单量按订单计。
 - [ ] 单量统计：今日/本周 Tab 与数据一致；完成量/进行中/异常/取消计数正确；近 7 天柱状无假数据；复制日报摘要只含 orderNo + 状态 + 日期。
 - [ ] 切换会话 - READONLY：后台「切换账号」选真实 ACTIVE 兼职 → 黄条 `开发者只读视角 · 兼职 P-… · 退出` 常驻、切页不丢；工作台/订单详情/客户/我的/服务配置逐项写操作置灰或隐藏，点击 toast"开发者只读视角不能操作"；读/轮询/截图/头像昵称正常；隐藏分享；退出回「切换账号」页；过期或直接调写接口 → `VIEW_TICKET_EXPIRED`/`FORBIDDEN`。
 - [ ] 切换会话 - TEST_WRITE：后台选测试兼职开启 → 蓝条 `测试账号 · 兼职 P-…（测试） · 由 DEV-01 切换 · 退出` + 每页 `TEST` 角标；写操作可用且只写测试数据（`orders.isTest=true`、`impersonatedBy=DEV-01`）；真实账号/真实订单写 → `FORBIDDEN`；测试数据不进统计/红点/邀请码；隐藏分享；退出回「切换账号」页；审计可见 `ACCOUNT_SWITCH_*`。
@@ -887,7 +887,7 @@
 - [ ] （建议 X8）平台限制：兼职端没有「分享到朋友圈」入口（仅 role/home/help 三页顾客侧/共用页面）；朋友圈 Beta 与低版本微信升级提示页按平台实际记录，不承诺自动可用。
 
 ---
-## 12. 待裁决项（v1.0 收口；D1~D29、D36 已闭环，仅余平台实测项）
+## 12. 待裁决项（v1.0 收口；D1~D42 已闭环，仅余平台实测项）
 ### 12.1 用户裁决结果 / 平台实测（D 级已闭环，仅余实测项）
 | # | 事项 | 本文当前处理 | 状态 |
 | :-- | :-- | :-- | :-- |
@@ -911,7 +911,7 @@
 | 6 | guest 单无顾客确认 | `DELIVERED` 后由 `cleanup` 自动完成分支在 `autoCompleteHours`（默认 24h）后转 `COMPLETED`（`AUTO_COMPLETED`，actor=SYSTEM），不等待顾客（§5） |
 | 7 | 待接单红点/进度总览数据源 | `order.listPartner({view:'workbench'})` 返回列表 + `counts` **6 项**（submitted/accepted/picked/delivered/exception/todayCompleted）；红点、总览、轮询同源（§5.3、§4.2） |
 | 8 | 状态批量要不要专用 batch 云函数 | **不设**：客户端循环逐单调用 + 同一 `batchActionId`，服务端逐单返回，客户端汇总"成功 N / 失败 M"如实上屏（§5.1） |
-| 9 | `order.createBatch` 语义 | **v1.0 起降为旧调用方过渡别名**：接收旧 `{items,ticket,image}` 形态，内部映射为 `create` 的一单多包裹（items→parcels、ticket/image→images[0]），**不再建 N 张订单**；兼职端不使用；调用方迁移完成后移除（登记 TD）（§5.2/§5.3） |
+| 9 | `order.createBatch` 语义 | **批 10 收口已移除**（TD-062 关闭）：`order.create` 为唯一下单入口，一单多包裹/多图能力并入 `create` 的 `parcels[]`/`images[]` 入参；旧调用未登记动作 → `FORBIDDEN`（§5.2/§5.3） |
 | 10 | `acceptingOrders` 挂在哪 | 唯一归属 `partner.serviceConfig`（`partners` 文档内，不是顶层字段/独立集合）；关闭⇒顾客下单被 `PARTNER_CLOSED` 拦截、入口置灰，已有订单不受影响（§4.2、§6） |
 | 11 | 异常上报允许状态与备注上限 | `ACCEPTED/PICKED/DELIVERED` 均可上报，`exception.fromStatus` 可含 `DELIVERED`；`exception.text` ≤200（§4.2） |
 | 12 | 客户列表排序 / 详情页参数 | 服务端按 `dormKey` 升序→同宿舍 `roomTag` **大写字母序**、游标分页；`customer-detail` 用 `?bindingId=`，不透出顾客 openid（§4.2） |
@@ -929,7 +929,7 @@
 ### 12.3 v1.0 裁决回执（D23~D29 在兼职端的落点；2026-10-22 晚批 10）
 | # | 裁决 | 兼职端处理 | 落点 |
 | :-- | :-- | :-- | :-- |
-| 1 | [D23] 批量下单与合并窗口 | 一单 1~10 件、**0~10 图（D40 修订）**；短间隔同顾客同地址自动并单（`PARCELS_APPENDED`）；整单动作+逐件纠正；单量按订单计；`createBatch` 过渡别名 | §1.1/§1.3/§3.3/§3.4/§4.2/§4.3/§4.16/§5.5 |
+| 1 | [D23] 批量下单与合并窗口 | 一单 1~10 件、**0~10 图（D40 修订）**；短间隔同顾客同地址自动并单（`PARCELS_APPENDED`）；整单动作+逐件纠正；单量按订单计；`createBatch` 已移除（TD-062 关闭） | §1.1/§1.3/§3.3/§3.4/§4.2/§4.3/§4.16/§5.5 |
 | 2 | [D24] 无截图手填（D22 改判 B） | 截图非必填、`manualEntry` 标记；每件仍须站点+（码/尾号）；不进识别链路/不调 AI/不入队；上传失败文案改为"重试/换图/无截图手填" | §0 原则 12/§3.3/§3.4/§4.4/§4.16/§5.5/§10 |
 | 3 | [D25] 每单配送地址 | 详情「送达地址」块（收件人/送至下单人宿舍/未提供地址）；按本单地址送达；仅本单有效、不写回资料、不进通知/分享/日志 | §0 原则 13/§3.3/§3.4/§5.5 |
 | 4 | [D26] 顾客取件清单 | **不涉及兼职端**（顾客端页面，兼职端无入口/无接口变化） | — |

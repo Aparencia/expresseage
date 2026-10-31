@@ -4,15 +4,15 @@
 > v3 仓库（**只读**）：`D:\Code\expresseage_college_v3`（注意目录名拼写）；v4 仓库：`D:\Code\expressage_college_v4`。
 > 用途：给用户一张**可勾选**的验收表——证明 v3 的可运行能力在 v4 全部有去向（等价/改进/新增/取舍不迁），并给出对应判据与测试证据。
 > **文档级对照 ≠ 真机验收**：真机项只能由用户点检（`docs/QA_CHECKLIST.md`），agent 不代勾、不代宣布通过；本文不是「全门禁已过」声明。
-> 写作纪律：只写对照/验收/证据，不写实现代码；引用 v3 用「文件 + 函数名」，不写行号；未决项用 `[D#]`（D1~D22）、`[E#]`（E1~E18）、`[R#]`、`P1`/`P2`/「待用户裁决」；数字不写死，取数命令见 §6。
+> 写作纪律：只写对照/验收/证据，不写实现代码；引用 v3 用「文件 + 函数名」，不写行号；未决项用 `[D#]`（D1~D42）、`[E#]`（E1~E18）、`[R#]`、`P1`/`P2`/「待用户裁决」；数字不写死，取数命令见 §6。
 
 ## 0. 结论速览
 
-- **形态对照**：v3 是单机本地台账（主包 4 页 + 独立分包聊天工具入口页 1 个、`utils/` 纯函数层、本机存储、**零云函数**）；v4 是云开发双业务角色平台（30 页 = 主包 7 + 分包 23、`api`/`cleanup` 云函数、14 集合、13 错误码、开发者后台）。
+- **形态对照**：v3 是单机本地台账（主包 4 页 + 独立分包聊天工具入口页 1 个、`utils/` 纯函数层、本机存储、**零云函数**）；v4 是云开发双业务角色平台（31 页 = 主包 7 + 分包 24、`api`/`cleanup` 云函数、14 集合、13 错误码、开发者后台）。
 - **能力去向**：v3 可运行能力**全部有去向**（§2/§3），无「沉默丢失」。v3 的 6 类形态/能力为**取舍不迁**，均有 D# 依据：本机存储与旧库（D1/D2/D11）、聊天工具入口页（§2.1）、件级硬删（v4 订单不可删）、「未归类→归户」（guest 代客单承接，MVP 无认领）、已取件 3 天硬窗口（改历史分页）、档案回收站（改注销与软删记录）。
 - **v4 新增**（v3 无对应）：云开发与双角色、邀请码准入（D3）、双角色唯一编号（D15）、roomTag 绑定（D7/D21）、七状态机与事件流水、顾客端闭环、服务端搜索、单量统计、头像/昵称（D19）、开发者后台与切换会话（D14/D18）、测试账号、消息中心、注销、cleanup 定时清理。
-- **证据形态**：机器判据 = `tools/check.js` #1~#31、`tools/check-docs.js` #1~#10、`tools/selftest.js` 注册套件、`tools/mutation.ps1` 变异电池；用户侧 = `docs/QA_CHECKLIST.md` 人点检项（本表只索引，不替代）。
-- **当前还不能宣布验收通过**：**批 9 工程侧已收口（2026-10-22，离线部分：注销链路判据 + 审核材料手册 + 本文对照表 + 灰度回滚演练 + QA H12~H17）**，且 **D1~D22 已于 2026-10-22 全部裁决**；但真机项未点检、云环境未创建/部署、隐私与提审未开始（详见 §5）。本表是批 9 的验收**输入**与用户勾选底稿，不代勾、不代宣布通过。
+- **证据形态**：机器判据 = `tools/check.js` #1~#33、`tools/check-docs.js` #1~#10、`tools/selftest.js` 注册套件、`tools/mutation.ps1` 变异电池；用户侧 = `docs/QA_CHECKLIST.md` 人点检项（本表只索引，不替代）。
+- **当前还不能宣布验收通过**：**工程侧已收口到 2026-10-30（离线部分，最新为 D37~D42 拍板批次 + 隐私同意兜底；见 `STATE.md` §6m/§6n）**，且 **D1~D42 已于 2026-10-28 全部裁决**；仍待：真机项点检、最新云函数重部署（10-27/10-28 批次改动，`STATE.md` §6n）与审核/提审（详见 §5）。本表是验收的**输入**与用户勾选底稿，不代勾、不代宣布通过。
 
 ## 1. 方法与范围
 
@@ -20,7 +20,7 @@
 
 | 依据 | 本文用途 |
 | :-- | :-- |
-| `docs/V4_CONTRACT.md` §7 页面地图（30 页 = `app.json` 声明）、§5 订单状态机、§10 权限矩阵、§13 D1~D22 | 页面路径唯一来源、状态与权限口径、取舍理由编号 |
+| `docs/V4_CONTRACT.md` §7 页面地图（31 页 = `app.json` 声明）、§5 订单状态机、§10 权限矩阵、§13 D1~D42 | 页面路径唯一来源、状态与权限口径、取舍理由编号 |
 | `docs/V4_DATA_MODEL.md` §11 v3→v4 字段映射（不迁移，D11）、§7 API 契约 | v3 数据体到 v4 集合/字段的映射、action/集合名 |
 | `docs/V4_ENGINEERING.md` §1.2 v3 资产三清单（文件级继承/改造/丢弃）、§7 测试策略、§8 门禁、§11 批 6~9 | 资产去向、证据套件与门禁号、批次归属 |
 | `docs/V4_UX_PARTNER.md` §5（v3→v4 功能对照 + v3 六条教训）、`docs/V4_UX_CUSTOMER.md`、`docs/V4_UX_DEVELOPER.md` | 页面级交互差异、真机验收分区、P1 清单 |
@@ -64,10 +64,10 @@
 | `pages/pickup-list/index` | `pages/pickup-list/list-actions.js`（`batchPlan`/`stationTakePlan`/`filterOptions`）、`list-parts.js`（`splitUnassigned`/`pickedDayView`）、`utils/aggregate.js`（`buildPickupList`/`pendingIdsOfStation`） | `pages/partner/workbench/index`（主包 tab）+ `pkg-partner/pages/order-detail/index`（行内改码/异常/送达） | 改进 | `selftest-order-workbench`、`selftest-order-partner`；check #21；QA §F | 站点聚合 → 服务端状态桶 + 站点过滤；勾选已取件 → 七状态动作 + 批量同一 `batchActionId` + 5 秒撤销；已取件 3 自然日硬窗口 → 历史分页；件级硬删 → 订单不可删（取消/软删记录）；「未归类→归户」→ guest 代客单（MVP 无认领） |
 | `pages/archive-list/index` | `pages/archive-list/sheet-flow.js`（`planSave`/`resolveChatKeyForSave`/`gateSheetForm`）、`swipe.js`（`decideSwipe`）、`recycle.js`（`recyclePatch`）、`utils/storage.js`（`createCustomer`/`softDeleteCustomer`/`restoreCustomer`/`purgeCustomer`） | `pages/partner/customers/index`（主包 tab） | 改进 | `selftest-partner-customers`、`selftest-partner-pages`、`selftest-bind`；check #28；QA §C/§F16/§F22 | 建档从「兼职手填 + 聊天会话键」→「顾客自己建资料 + 顾客发起绑定（D20）」；左划删除 → 解绑（原因必填 + 通知顾客）；档案回收站 → 不迁（注销/软删记录）；会话键 → 完整 `partnerNo` |
 | `pages/customer-detail/index` | `pages/customer-detail/parts.js`（`groupByStation`/`openEditPatch`）、`utils/parcel-edit.js`（`validateEdit`/`planEditSave`）、`utils/parcel-remove.js`（`removeTapPlan`/`removePatch`） | `pkg-partner/pages/customer-detail/index`（档案/备注/历史单）+ `pkg-partner/pages/order-detail/index`（行内改码/异常/凭证） | 改进 | `selftest-partner-pages`、`selftest-partner-customers`；QA §F16 | 档案字段可改 → 资料由顾客维护、兼职只写 `partnerNote`（≤100）；会话键摘要展示 → 丢弃；名下快件行内改码 → `order.correct`（改站点/码/柜/尾号）；新增顾客编号、头像/昵称（仅绑定后可见） |
-| `pages/recognize/index` | `pages/recognize/index.js` 编排 + `parse-patch.js`（`planParsePatch`）、`form-parts.js`（`planSingleSave`）、`utils/parse.js`（`parseParcelText`）、`utils/ocr.js`（`recognizeImage`）、`utils/stations.js`（`inferStation`）、`utils/buildings.js`（`parseRoomLine`） | `pkg-customer/pages/order-create/index`（顾客下单）+ `pkg-partner/pages/create-on-behalf/index`（代客下单，v3 录入页移植） | 改进 | `selftest-recognize`、`selftest-order-flow`、`selftest-ai`、`selftest-order`；check #24~#26；QA §D/§R | 端内录入 → 顾客四步下单（截图→识别→确认→提交）；单机入库 → 云存储截图 + 7 天删除（D9）；一图多码全存 → `order.createBatch`（≤5 单原子建）；新增 AI 兜底（D16）与失败复核（D17）；草稿与三段布局不迁（改为分步页） |
+| `pages/recognize/index` | `pages/recognize/index.js` 编排 + `parse-patch.js`（`planParsePatch`）、`form-parts.js`（`planSingleSave`）、`utils/parse.js`（`parseParcelText`）、`utils/ocr.js`（`recognizeImage`）、`utils/stations.js`（`inferStation`）、`utils/buildings.js`（`parseRoomLine`） | `pkg-customer/pages/order-create/index`（顾客下单）+ `pkg-partner/pages/create-on-behalf/index`（代客下单，v3 录入页移植） | 改进 | `selftest-recognize`、`selftest-order-flow`、`selftest-ai`、`selftest-order`；check #24~#26；QA §D/§R | 端内录入 → 顾客四步下单（截图→识别→确认→提交）；单机入库 → 云存储截图 + 7 天删除（D9）；一图多码/多图 → 同一张订单 1~10 件（`order.create` 单入口，无拆单）；新增 AI 兜底（D16）与失败复核（D17）；草稿与三段布局不迁（改为分步页） |
 | `chatpick/index`（独立分包） | `chatpick/bridge.js`；平台接口经 `utils/chat-tool.js`（`openChatTool`/`getChatToolInfo`/`fingerprint`/`maskRoomIds`）唯一调用 | **无**（v4 不做聊天工具） | 取舍不迁 | `docs/V4_ENGINEERING.md` §1.2（`chatpick/**` 丢弃）；`docs/V4_CONTRACT.md` §7 主路径 | 理由：`chatTools` 只接受独立分包且引不到主包（v3 真机读数），v4 改「完整 `partnerNo` + 顾客发起绑定（D20）」；聊天入件不在 v4 主流程；会话标识最小化要求保留（隐私文本已声明） |
 
-### 2.2 v4 30 页反向覆盖（每页都有 v3 来源或显式新增）
+### 2.2 v4 31 页反向覆盖（每页都有 v3 来源或显式新增）
 
 | 分组 | v4 页面 | v3 来源 | 状态 | 证据（机器/人） |
 | :-- | :-- | :-- | :-- | :-- |
@@ -81,6 +81,7 @@
 | pkg-customer | `pkg-customer/pages/bind/index` | `chatpick` 会话键（关系建立，方向相反） | 改进 | `selftest-bind`、`selftest-bind-cloud`；QA §C |
 | pkg-customer | `pkg-customer/pages/order-create/index` | `pages/recognize/index` | 改进 | `selftest-order-flow`、`selftest-recognize`；QA §D/§R |
 | pkg-customer | `pkg-customer/pages/order-detail/index` | 无（顾客闭环，v4 新增） | 新增 | `selftest-order-lifecycle`、`selftest-order-customer`；QA §E |
+| pkg-customer | `pkg-customer/pages/pickup-list/index` | 无（D26 顾客取件清单独立页；v3 的 `pages/pickup-list/index` 已落工作台，§2.1） | 新增 | `selftest-order-customer`、`selftest-bind`；QA §L |
 | pkg-customer | `pkg-customer/pages/messages/index` | 无 | 新增 | `selftest-messages`、`selftest-message-pages`；QA §E |
 | pkg-customer | `pkg-customer/pages/help/index` | 无（隐私全文/零金额声明） | 新增 | `selftest-privacy-text`；QA §P/§M |
 | pkg-partner | `pkg-partner/pages/activate/index` | 无（邀请码激活，D3） | 新增 | `selftest-cloud`；QA §A/§B |
@@ -102,13 +103,13 @@
 | pkg-admin | `pkg-admin/pages/messages/index` | 无 | 新增 | `selftest-message-pages`、`selftest-admin`；QA §G |
 | pkg-admin | `pkg-admin/pages/recognition-review/index` | 无（D17 识别失败复核） | 新增 | `selftest-ai`、`selftest-cloud`；QA §R |
 
-> 合计 30 页：主包 7 + `pkg-customer` 5 + `pkg-partner` 7 + `pkg-admin` 11（与 `app.json`/CONTRACT §7 一致，取数命令见 §6）；其中 7 页承接 v3 能力（改进）、23 页为 v4 新增能力（含聊天工具入件的替代路径），**无「v4 有页面而来源不明」项**。
+> 合计 31 页：主包 7 + `pkg-customer` 6 + `pkg-partner` 7 + `pkg-admin` 11（与 `app.json`/CONTRACT §7 一致，取数命令见 §6）；其中 7 页承接 v3 能力（改进）、24 页为 v4 新增能力（含 `pickup-list` 与聊天工具入件的替代路径），**无「v4 有页面而来源不明」项**。
 
 ## 3. 业务能力 / 流程对照
 
 | 能力/流程 | v3 现状（文件+函数） | v4 落点（页面 / action / 集合） | 状态 | 判据与证据 | 说明 |
 | :-- | :-- | :-- | :-- | :-- | :-- |
-| 下单与识别 | `pages/recognize/index.js`；`utils/parse.js:parseParcelText`；`utils/ocr.js:recognizeImage`；`utils/stations.js:inferStation`；`utils/buildings.js:parseRoomLine`；`utils/parcel-drafts.js:buildDrafts` | `pkg-customer/pages/order-create`；`order.create`/`order.createBatch`、`ai.parseParcel`、`upload.prepare`；集合 `orders`/`upload_tickets`/`recognition_failures` | 改进 | `selftest-recognize`、`selftest-order`、`selftest-order-flow`、`selftest-ai`；check #24~#27；QA §D/§R | 识别规则与语料移植（ENGINEERING §1.2）；新增 AI 兜底只发去敏文本、失败静默降级并入复核队列；多图/多码逐张下单 |
+| 下单与识别 | `pages/recognize/index.js`；`utils/parse.js:parseParcelText`；`utils/ocr.js:recognizeImage`；`utils/stations.js:inferStation`；`utils/buildings.js:parseRoomLine`；`utils/parcel-drafts.js:buildDrafts` | `pkg-customer/pages/order-create`；`order.create`、`ai.parseParcel`、`upload.prepare`；集合 `orders`/`upload_tickets`/`recognition_failures` | 改进 | `selftest-recognize`、`selftest-order`、`selftest-order-flow`、`selftest-ai`；check #24~#27；QA §D/§R | 识别规则与语料移植（ENGINEERING §1.2）；新增 AI 兜底只发去敏文本、失败静默降级并入复核队列；多图/多码逐张下单 |
 | 订单状态机与操作 | `utils/storage-parcels.js`（`setParcelPicked`/`setParcelsPicked`）；`Parcel.status` 仅 `todo`/`done` + `pickedAt`；`utils/aggregate.js:dayOffsetOf` | `shared/order-state.js` 七态；`order.accept`/`reject`/`markPicked`/`unmarkPicked`/`markDelivered`/`unmarkDelivered`/`reportException`/`resolveException`/`cancel`/`confirmDelivery`/`correct`/`undo`/`deleteRecord`；集合 `orders`/`order_events` | 改进 | `selftest-state`、`selftest-order-lifecycle`、`selftest-order-partner`；QA §E/§F | v3「已取件只是时间戳」→ 独立 `PICKED` + 事件流水 + 撤销动作；送达闭环/自动完成/异常恢复补齐 |
 | 绑定与 roomTag | `utils/chat-tool.js`（`pairKeyOf`/`fingerprint`/`maskRoomIds`）；`utils/storage-customers.js`（`findCustomerByChatKey`/`rebindCustomerChatKey`） | `pkg-customer/pages/bind`、`pages/role`；`bind.create`/`release`/`getCurrent`、`partner.getPublic`；集合 `bindings`；roomTag 由 `lib/tag-allocator` 分配（大写 A…Z/AA…） | 改进 | `selftest-bind`、`selftest-bind-cloud`；check #28/#29；QA §C | 会话键 → 完整 `partnerNo` + **顾客发起**（D20）；roomTag 绑定成功时事务分配、旧号不复用（D7/D21）；解绑后双方互不可见头像/昵称 |
 | 工作台（取件清单） | `pages/pickup-list/list-actions.js`（`batchPlan`/`stationTakePlan`）；`utils/aggregate.js`（`buildPickupList`/`pendingIdsOfStation`）；`utils/storage-parcels.js:setParcelsPicked`（原子） | `pages/partner/workbench`；`order.listPartner({view:'workbench'})`；批量 = 客户端循环 + 同一 `batchActionId`；动作同上一行 | 改进 | `selftest-order-workbench`、`selftest-order-partner`；check #21；QA §F | 四档动线排序落 `shared/order-view`（TD-017）；分页/分片/行级 patch/30s 增量；服务端状态桶 + 搜索 + 部分失败逐单说 |
@@ -177,14 +178,14 @@
 1. v3 的 5 个页面全部有去向：4 个**改进**落入 v4 对应页，1 个（`chatpick` 聊天工具）**取舍不迁**且有理由（§2.1）。
 2. v3 的 19 类业务能力/流程全部映射到 v4 页面/action/集合/判据（§3）：**8 类改进 + 9 类新增 + 2 类取舍不迁**（本机存储、费用类能力），无「有实现在 v3、v4 无去向」项。
 3. v3 的 12 张工程教训与 6 条业务教训均已在 v4 有机制或判据承接（§4）；v4 批 1~8 自产教训卡已按「卡片 → 判据」逐条回写（节选见 §4.3）。
-4. **未验收项**：所有真机/双机/后台人点检项、云环境实际部署、审核与提审均未开始（§5.2）；本表**不能**作为「已验收通过」或「全门禁已过」的依据。
+4. **未验收项**：所有真机/双机/后台人点检项、最新云函数重部署（10-27/10-28 批次改动待重部署，`STATE.md` §6n）、审核与提审均仍待用户（§5.2）；文档级工程侧已收口到 2026-10-30，但本表**不能**作为「已验收通过」或「全门禁已过」的依据。
 5. 验收方式：机器证据以 `powershell -File check.ps1` 退出码 0 且含汇总行、`node tools/selftest.js` 全绿、`node tools/check-docs.js` 全过、零金额扫描 0 命中为准（取数见 §6）；人证据以 `docs/QA_CHECKLIST.md` 勾选为准。
 
-### 5.2 剩余项汇总（D 级已于 2026-10-22 全部闭环；余 E#/R#/真机与提审项）
+### 5.2 剩余项汇总（D1~D42 已于 2026-10-28 全部闭环；余 E#/R#/真机、部署与提审项）
 
 | # | 事项 | 类别 | 影响/阻塞 | 处理人 |
 | :-- | :-- | :-- | :-- | :-- |
-| 1 | 开通云开发并创建**唯一云环境**（D1 修订：账号只能开 1 个环境，开发/体验/正式共用一库） | D1 | 云资源、部署、联调 | 用户（已裁决 A，待执行） |
+| 1 | 开通云开发并创建**唯一云环境**（D1 修订：账号只能开 1 个环境，开发/体验/正式共用一库） | D1 | 云资源、部署、联调 | 已完成（批 1 收口；`STATE.md` §2） |
 | 2 | 确认 appid `wxcb7e5b41b89bc806` 主体可用 | D2 | 开工门/真机 | 用户（已裁决沿用 v3 appid） |
 | 3 | 邀请码准入方案确认 | D3 | 激活流程锁定 | 用户（已裁决 A） |
 | 4 | 主体/类目：个人主体 + 工具类目（提审前确认类目可选+备案） | D13 | 提审风险 | 用户（已裁决） |
@@ -195,18 +196,19 @@
 | 9 | DeepSeek 账号/条款/配额合规 | E11 | 识别兜底不能上线 | 用户 + Lead |
 | 10 | VisionKit 真机吐字、上传链路、订阅消息模板 | R3/R2/R6 | 识别形态/通知增强 | 用户真机/申请 |
 | 11 | 校方/驿站线下要求、云配额与成本估算 | R9/R13 | 运营与成本 | 用户 |
-| 12 | `docs/QA_CHECKLIST.md` 全部人点检项（§A~§P） | R12 | 发布前置 | 用户点检 |
+| 12 | `docs/QA_CHECKLIST.md` 全部人点检项（§A~§Y） | R12 | 发布前置 | 用户点检 |
 | 13 | 隐私文本 13 项用户填写 + 微信后台声明 | D9/D16~D19 相关 | 阻塞提审 | 用户 |
 | 14 | P1 清单（订阅消息、提示音、送达照片/签名/二维码、趋势对比、站点动线序、搜索历史、guest 认领 `order.guestClaim`、后台批量作废/复核批量等） | P1 | 后续版本，不阻塞本轮 | 用户裁决排期 |
 | 15 | P2 / 不做清单（评分评价等，见 `docs/V4_UX_CUSTOMER.md` §2 与 `docs/V4_UX_DEVELOPER.md` §10.3） | P2 / 不做 | 不在范围 | 用户确认 |
 | 16 | v3 6 类不迁项（本机存储、聊天工具、件级硬删、「未归类→归户」、3 天硬窗口、档案回收站） | 取舍确认 | 需用户确认取舍清单 | 用户勾选 |
+| 17 | 客户端重新上传体验版并复验隐私同意兜底（2026-10-30，D37 补强） | D37 | 真实用户可感知修复的前置 | 用户（未复验前按未修复对待） |
 
 ### 5.3 用户勾选栏（供逐项打勾，不代勾）
 
 | 勾选 | 验收包 | 对应章节/证据 |
 | :-- | :-- | :-- |
 | ☐ | v3 5 个页面 → v4 落点确认 | §2.1 |
-| ☐ | v4 30 页覆盖确认（含 23 个新增页） | §2.2 |
+| ☐ | v4 31 页覆盖确认（含 24 个新增页） | §2.2 |
 | ☐ | v3 19 类能力 → v4 action/集合确认 | §3 |
 | ☐ | v3 6 类不迁项取舍确认 | §0/§2.1/§5.2 #16 |
 | ☐ | v3 12 张工程教训 + 6 条业务教训解决确认 | §4 |
@@ -216,8 +218,9 @@
 | ☐ | 真机 QA §G/§V/§T（后台、只读视角、切换会话与测试账号） | 同上 |
 | ☐ | 真机 QA §R/§S/§P/§M（识别兜底、隔离负向、隐私、零金额巡检） | 同上 |
 | ☐ | 真机 QA §X（v1.2/D36 分享与朋友圈：转发/朋友圈单页模式/卡片中性/切换会话隐藏） | `docs/QA_CHECKLIST.md` §X |
+| ☐ | 真机 QA §Y（v1.3/D37~D42：分享卡隐私闸/邀请卡自动绑定/绑定限流/截图 10 张/AI 不限额/服务类型两档/头像临时链接） | `docs/QA_CHECKLIST.md` §Y |
 | ☐ | 发布前 §H + 隐私文本 13 项填写 | 同上 + `docs/privacy/发布前填写清单.md` |
-| ☐ | D1/D2/D3/D8/D13/D22 裁决与确认（2026-10-22 已全部裁决，待用户最终勾选归档） | §5.2 #1~#6 |
+| ☐ | D1~D42 裁决与确认（2026-10-22 / 2026-10-28 已全部裁决；D27 位置方案待研究结论后裁决，待用户最终勾选归档） | §5.2 #1~#6 |
 
 ## 6. 附录 · 盘点与取数命令（数字以真实输出为准）
 
@@ -234,7 +237,7 @@ Get-ChildItem "$v3\utils" -File -Filter *.js | Measure-Object
 Get-ChildItem "$v3\docs\lessons" -File | Select-Object -ExpandProperty Name
 (Get-ChildItem $v3 -Directory | Where-Object Name -match 'cloud').Count   # 期望 0
 
-# ── v4 页面全集 = 30 页对帐（以输出为准）────────────────────────────
+# ── v4 页面全集 = 31 页对帐（以输出为准）────────────────────────────
 node -e "const P=require('./tools/lib/project');console.log(P.ALL_PAGES.length);P.ALL_PAGES.forEach(p=>console.log(p))"
 
 # ── v4 机器证据（退出码 0 且含汇总行才算数）─────────────────────────

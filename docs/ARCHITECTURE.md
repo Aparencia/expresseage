@@ -1,6 +1,6 @@
 # V4_ARCHITECTURE · 代码分层与并行开发冻结接口（批 1 起）
 
-> 冻结时间：2026-10-21（v0.9 口径）。**设计口径唯一来源 = `docs/V4_CONTRACT.md` v0.9**，工程规则来源 = `docs/V4_ENGINEERING.md`。本文只登记**代码级接口、写作用域与自检方法**；与 CONTRACT 冲突时以 CONTRACT 为准，并先回报 Lead，不得自行改口径。
+> 冻结时间：2026-10-21（初版 v0.9 口径；D23~D42 增量已回写 §3.2/§4.3，S0~S10 写作用域与分层铁律未变）。**设计口径唯一来源 = `docs/V4_CONTRACT.md` 当前版本（增量以 CONTRACT §13 为准）**，工程规则来源 = `docs/V4_ENGINEERING.md`。本文只登记**代码级接口、写作用域与自检方法**；与 CONTRACT 冲突时以 CONTRACT 为准，并先回报 Lead，不得自行改口径。
 
 ## 1. 分层与数据流
 
@@ -16,7 +16,7 @@ cloudfunctions/api（index → app → router → middleware → handlers → db
 cloudfunctions/cleanup（index → sweeps/*）
                 │
                 ▼
-cloudfunctions/*/shared/（由 shared/** 与 utils/ids.js、utils/room-tag.js 逐字节同步的副本）
+cloudfunctions/*/shared/（由 shared/** 与 utils/ids.js、utils/room-tag.js、config/defaults.js 逐字节同步的副本）
 ```
 
 铁律：客户端不出现集合名与 action 字面量（只允许在 `api/` 与 `shared/`）；云函数不出现 `db.collection`（只允许 `db/dao.js`）；身份只来自服务端（真实 `OPENID` 或切换会话票据解析结果）。
@@ -66,14 +66,16 @@ const data = await call('order.confirmDelivery', { orderNo }, { expectedVersion:
 | :-- | :-- |
 | `api/modules/user.js` | `bootstrap()`、`avatarUrl()`（**D42**：本人头像 5 分钟临时 URL；无头像返回空）、`acceptPrivacy(version)`、`deleteAccount({confirmText:'注销', reason?})` |
 | `api/modules/customer.js` | `saveProfile(payload)`、`getProfile()` |
-| `api/modules/partner.js` | `activate({invitationCode,displayName,avatarTicket})`、`saveProfile`、`saveServiceConfig`、`getPublic({partnerNo})`、`listBindings`、`unbindCustomer({bindingId,reason,note})`、`saveCustomerNote({bindingId,note})` |
+| `api/modules/partner.js` | `activate({invitationCode,displayName,avatarTicket})`、`saveProfile`、`saveServiceConfig`、`getPublic({partnerNo})`、`listBindings`、`getCustomer({bindingId})`（批 7 只读：档案 + 解绑资格，参数一律 `bindingId`）、`stats({range?'today'|'week'|'month'})`（批 7 只读：单量统计，服务端聚合、排除测试数据）、`unbindCustomer({bindingId,reason,note})`、`saveCustomerNote({bindingId,note})` |
 | `api/modules/bind.js` | `create({partnerNo})`、`release({reason,note})`、`getCurrent()` |
 | `api/modules/order.js` | `create(payload, opts?)`（**v1.0 单入口**：`{parcels[], images[], tickets?[], serviceCode, appoint, note, delivery?, guest?/bindingId?, manualEntry?, clientRequestId}`；满足合并窗口时服务端追加到同单）、`get`、`listCustomer`、`listPartner`、`accept`、`reject`、`markPicked`、`unmarkPicked`、`markDelivered`、`unmarkDelivered`、`reportException`、`resolveException`、`cancel`、`confirmDelivery`、`correct`（v1.0 带 `itemIndex` 逐包裹）、`undo`、`deleteRecord`、`imageUrl`（v1.0 `{orderNo,index}` 取 `images[index]`；写动作 `opts.expectedVersion` 透传乐观锁，见 §3.1）。**`createBatch` 已随 v1.0 移除**（一图多码并入 `create`） |
 | `api/modules/message.js` | `send`、`list`、`markRead` |
 | `api/modules/upload.js` | `prepare({purpose})`、`cancel({uploadTicketId})` |
 | `api/modules/config.js` | `getPublic(force?)`（5 分钟缓存）、`prime(configPublic)`（**启动预热**：bootstrap 已回的公开子集灌入同一缓存，本次会话首次 `getPublic` 零云调用，TTL 语义不变）、`getCachedPublic()`、`clearCache()` |
 | `api/modules/ai.js` | `parseParcel(payload)`（仅识别失败兜底，不自动重试） |
-| `api/modules/admin.js` | `createInvites`、`revokeInvite`、`listInvites`、`listCustomers`、`getCustomer`、`listPartners`、`setPartnerStatus`、`listOrders`、`getOrder`、`listAudit`、`updateConfig`、`stats`、`bootstrap`、`viewAsStart`、`viewAsEnd`、`createTestAccount`、`listTestAccounts`、`deleteTestAccount`、`purgeTestData`、`listRecognitionFailures`、`getRecognitionFailure`、`fixRecognitionFailure`、`ignoreRecognitionFailure` |
+| `api/modules/admin.js` | `createInvites`、`revokeInvite`、`listInvites`、`listCustomers`、`getCustomer`、`listPartners`、`setPartnerStatus`、`listOrders`、`getOrder`、`listAudit`、`updateConfig`、`stats`、`viewAsStart`、`viewAsEnd`、`createTestAccount`、`listTestAccounts`、`deleteTestAccount`、`purgeTestData`、`listRecognitionFailures`、`getRecognitionFailure`、`fixRecognitionFailure`、`ignoreRecognitionFailure` |
+
+- **内部动作无客户端模块方法**：`admin.bootstrap`、`health.check`、`cleanup.*` 在 `shared/actions.js` 标 `visibility='internal'`，router 不对客户端开放，因此不出现在上表 `api/modules/*.js` 导出中；另 `bind.claimGuestOrder` 为 P1 预留（服务端 handler 已登记，`api/modules/bind.js` 不导出、页面无入口）。`api/modules` 的调用必须 ⊆ 注册表 `client` 集（门禁 `tools/check.js` #13 校验）。
 
 ### 3.3 `api/upload.js`
 
@@ -206,6 +208,7 @@ const off = store.subscribe((snapshot) => { this.setData({ vm: snapshot }); });
 | `shared/order-view.js` | 订单视图模型（四档动线排序、状态桶、锚+键） |
 | `utils/ids.js` | 编号归一/parse/display（**无生成、无 random**） |
 | `utils/room-tag.js` | `toTag/tagRank/formatDormTag/isValidTag/compareByDormTag`（大写 A…Z/AA…，禁字符串排序） |
+| `config/defaults.js`（同步为 `cloudfunctions/*/shared/defaults.js`） | 云端种子与配置校验的唯一默认值来源；`tools/sync-cloud-shared.js` 的第 17 个源（`shared/**` 14 件 + `ids.js` + `room-tag.js` + `defaults.js`），hash 门禁 `tools/check.js` #17 覆盖该副本 |
 
 ### 4.4 客户端与云端的编号/roomTag 分工
 
@@ -225,8 +228,8 @@ const off = store.subscribe((snapshot) => { this.setData({ vm: snapshot }); });
 ## 6. 本批完成判据（Lead 统一验收）
 
 - `node tools/check.js` 汇总行存在且 0 失败；`node tools/check-docs.js --batch 0` 0 失败；`tools/selftest*.js` 全绿（EXPECTED_ASSERTIONS 闸通过）。
-- 30 个页面四件套齐全且与 `app.json` 双向一致；14 集合注册表、13 错误码、action 注册表双向一致。
-- 零金额扫描 0 命中（真实输出）；v0.9 门禁 #28~#31 判据已登记（对象批次补"必须真红"证据）。
+- 31 个页面四件套齐全且与 `app.json` 双向一致（主包 7 + 3 分包 24：`pkg-customer` 6 / `pkg-partner` 7 / `pkg-admin` 11，含 `pkg-customer/pages/pickup-list/index`）；14 集合注册表、13 错误码、action 注册表双向一致。
+- 零金额扫描 0 命中（真实输出）；v0.9/v1.x 门禁 #28~#33 判据已登记（对象批次补"必须真红"证据）。
 - 云函数可在 fake DB 下跑通 `health.check` 与 `admin.bootstrap`；真实云环境联调等用户完成 D1/D2 前置后再做。
 
 ## 7. 与文档的对应关系

@@ -28,9 +28,9 @@ v0.7 关闭全部非 D 级缺口：零金额（§0.3）、双角色唯一编号�
 **口径**：本程序只负责顾客下单、兼职接单履约、信息整理；**不存在金钱交易**——不做在线支付、收款/记账/结算、运费计算、价格表/报价/费用分摊；服务类型只表达"做什么"，不表达"多少钱"（CONTRACT §0/§6）。
 **字段级（全集合无金额字段）**：`orders` 无 `fee/addons/priceFen/totalFen/payStatus`，`service` 只 `{code,name}`，无金额快照与子状态｜`partners.stats` 只含单量（`todayOrders/totalOrders/completedOrders/cancelledOrders/activeOrders/updatedAt`）、无收入/流水字段，`serviceConfig.services` 只 `{code,enabled}`｜`config.serviceCatalog` 只 `{code,name,desc}`、`config` 无价格/费率项｜`order_messages` 模板只含状态/地址/时间话术，`order_events.payload`/`admin_audit.detail`/通知/日志均无金额键｜接口入参/出参/DTO 无金额字段，未知字段（含金额键）被 schema 白名单拒绝。
 **动作级（不存在）**：`order.markPaid`/`order.unmarkPaid`、任何收款/结算/记账动作、`order_events` 的 `PAYMENT_*`、取消原因 `PRICE_ISSUE`/`PAYMENT_TIMEOUT`、支付类错误码；`order.undo` 只覆盖 `markPicked`/`markDelivered`。
-**扫描门禁**：`[门禁词表]` `Fen|price|fee|pay|amount|金额|价格|运费|收款|结算|费用|支付`；源码/页面文案/文档命中即失败（门禁见 `docs/V4_ENGINEERING.md`）。`[门禁词表]` 白名单=本小节声明行、标题/正文中的「零金额」概念引用、以及带「已删除/已废弃/不存在」标注的旧口径对照行；其余语境出现即缺陷（CONTRACT §14 第 7 条）。
+**扫描门禁**：词表（中文词/英文 token/标识符后缀）、扫描范围与白名单规则**唯一单源见 `tools/zero-money-scan.js`**（本文不复述字面量；门禁定义见 `docs/V4_ENGINEERING.md` §7.6）；源码/页面文案/文档命中即失败。白名单=本小节声明行、标题/正文中的「零金额」概念引用、以及带「已删除/已废弃/不存在」标注的旧口径对照行；其余语境出现即缺陷（CONTRACT §14 第 7 条）。
 ### 0.4 识别兜底与失败复核硬约束（用户三次修订④⑤，v0.8）
-**口径**：端侧 OCR + 规则解析后**站点或取件码任一缺失/不可信**（`codeStatus=NEED_CODE`、`stationId=''`、或解析结果与 OCR 文本冲突）→ 客户端调 `ai.parseParcel`（**唯一外呼出口**，DeepSeek 只在云函数侧调用）；AI 只做**预填建议**，不覆盖用户手填、不替代 `order.correct`；仍失败/低置信 → 写 `recognition_failures`（含原图引用；**记录粒度=订单 × 截图**：同图多单各一条、`failureId` 按单独立、未建单也保留 `orderId=''`）供开发者后台复核（CONTRACT §4.2/§4.3）。
+**口径**：端侧 OCR + 规则解析后**站点或取件码任一缺失/不可信**（`codeStatus=NEED_CODE`、`stationId=''`、或解析结果与 OCR 文本冲突）→ 客户端调 `ai.parseParcel`（**唯一外呼出口**，DeepSeek 只在云函数侧调用）；AI 只做**预填建议**，不覆盖用户手填、不替代 `order.correct`；仍失败/低置信 → 写 `recognition_failures`（含原图引用；**记录粒度=包裹 × 截图**（D23/D24）：同图多件各一条、`failureId` 按件独立、未建单也保留 `orderId=''`）供开发者后台复核（CONTRACT §4.2/§4.3）。
 **不做什么**：不给第三方发原图/openid/订单归属；不做客户端直连第三方 AI（Key 泄露即事故）；不因 AI 失败新增业务错误码（仍 13 个）；不提供批量查看/下载/导出原图；AI 结果不得直接改订单状态、不代确认、不创建订单。
 **字段级（全部为非敏感、无交易语义）**：`config.aiFallback{enabled,model,timeoutMs,maxPerUserPerDay,dailyQuota,cooldownMinutes}`（布尔/字符串/整数次数/毫秒，**无交易类字段、无 Key**；**D40：`maxPerUserPerDay=0` 语义=不设每人每日次数上限，只保留全局日配额/冷却/超时降级**）与 `config.recognitionFailureRetentionDays`（7~30，默认 30）；`orders.parcels[].recognitionSource∈{RULE,DEEPSEEK,MANUAL}`、`parcels[].confidence?`、`parcels[].failureId?`（**v1.0 失败关联只在包裹级**；`images[]` 不存 `failureId`，**均为可选字段**，缺失的旧单按 `RULE`/`MANUAL` 展示，不阻断任何动作）。
 **动作级**：新增 `ai.parseParcel` + `admin.listRecognitionFailures/getRecognitionFailure/fixRecognitionFailure/ignoreRecognitionFailure`；新增审计 `FAILURE_IMAGE_VIEW/FAILURE_FIX/FAILURE_IGNORE`；**无任何金额/收费类动作或事件**（§0.3 零金额词表与门禁继续生效）。
@@ -63,7 +63,7 @@ v0.7 关闭全部非 D 级缺口：零金额（§0.3）、双角色唯一编号�
 | `customers` | `_id=openid`（测试顾客 `_id='TEST-<random>'`） | 顾客资料（宿舍身份）+**`customerNo`**+**`displayName` 昵称（必填）/`avatarFileId`（可空→默认头像）**（v0.9） | `customer.saveProfile`/注销内部 | ❌ | 账号存续+注销 30 天（头像文件随注销即删） |
 | `partners` | 自增 | 兼职资料、**`partnerNo`**、**`displayName` 昵称（必填）/`avatarFileId`（可空→默认头像）**（v0.9）、服务配置、单量统计缓存 | `partner.activate`/`saveProfile`/`saveServiceConfig`/`admin.setPartnerStatus`/`admin.createTestAccount`/cleanup | ❌ | ACTIVE/SUSPENDED 存续；CLOSED 保留审计；测试兼职随测试数据清理 |
 | `bindings` | 自增 | 绑定+`roomTag`（**恒大写**）+宿舍快照+兼职备注；**只能由顾客 `bind.create` 创建**（v0.9） | `bind.create`/`bind.release`/`partner.unbindCustomer`/换宿舍/注销 | ❌ | 历史行保留 |
-| `orders` | 自增 | 订单主表（快照/状态/版本/编号快照/留存/多包裹多图）+**`isTest` / `impersonatedBy?`（v0.9）** + **v1.0：`parcels[]`（1~10）/`images[]`（0~5）/`manualEntry`/`delivery`** | `order.create`/状态动作/cleanup | ❌ | 终态 180 天→匿名化→30 天→物理删；测试数据 30 天清理 |
+| `orders` | 自增 | 订单主表（快照/状态/版本/编号快照/留存/多包裹多图）+**`isTest` / `impersonatedBy?`（v0.9）** + **v1.0：`parcels[]`（1~10）/`images[]`（0~10，D40）/`manualEntry`/`delivery`** | `order.create`/状态动作/cleanup | ❌ | 终态 180 天→匿名化→30 天→物理删；测试数据 30 天清理 |
 | `order_events` | 自增 | 全量状态流水（审计/进度数据源） | 所有订单写动作 | ❌ | 随订单删除 |
 | `order_messages` | 自增 | 订单留言 | `message.send` | ❌ | 随订单删除/匿名化 |
 | `invitation_codes` | 自增 | 开发者发邀请码（发码/作废/审计）；旧 `activation_codes` 更名 | `admin.createInvites`/`admin.revokeInvite`/`partner.activate`/cleanup | ❌ | 长期脱敏保留 |
@@ -941,7 +941,7 @@ cleanup(serverNow):
 | 28 | **越权读失败记录/原图（v0.8）** | 用他人 `failureNo` 调 `getRecognitionFailure`；构造 `fileId` 直取云存储；走非复核页接口取原图 | `NOT_FOUND`/`FORBIDDEN`；云存储客户端读全拒，URL 只能由云函数签发（5 分钟） |
 | 29 | **原图访问审计与限面（v0.8）** | 复核页同一/不同记录多次查看原图；尝试批量/下载/导出 | 每次落 `FAILURE_IMAGE_VIEW`（含 `developerNo/failureNo`）；**不存在批量/下载/导出接口** |
 | 30 | **AI 外发 payload 白名单（v0.8）** | 断言 `ai.parseParcel` 外发 DeepSeek 的键集合；客户端目录搜 `DEEPSEEK_API_KEY`/`api.deepseek.com` | 键集合**完全等于** `{ocrTextMasked,hintTrackingTail?,role}`（单测断言）；客户端零命中（工程门禁失败） |
-| 31 | **兜底失败静默降级+必入队（v0.8）** | AI 超时/5xx/熔断/超配额/JSON 失败；OCR 无文本；图片不可读；同 `clientRequestId` 重试；同图多单逐单调用 | `ok:true`+`recognized:false`+`needsReview:true`+`failureId`；**不返回 `RATE_LIMITED`/不新增错误码**；`recognition_failures` 必有记录且 `failureCode` ∈ 五值；重试只 1 条（幂等），**同图多单各 1 条**（粒度=订单×截图，各自 `fileId` 相同/`failureId` 不同） |
+| 31 | **兜底失败静默降级+必入队（v0.8）** | AI 超时/5xx/熔断/超配额/JSON 失败；OCR 无文本；图片不可读；同 `clientRequestId` 重试；同图多单逐单调用 | `ok:true`+`recognized:false`+`needsReview:true`+`failureId`；**不返回 `RATE_LIMITED`/不新增错误码**；`recognition_failures` 必有记录且 `failureCode` ∈ 五值；重试只 1 条（幂等），**同图多单各 1 条**（粒度=包裹×截图，各自 `fileId` 相同/`failureId` 不同） |
 | 32 | **复核补录边界（v0.8）** | `fixRecognitionFailure` 对已 `IGNORED` 记录/非法站点/非法码/全空字段；补录后检查关联订单；`notifyUploader:true` 与缺 note 的 ignore | `INVALID_STATE`/`VALIDATION_FAILED`；**逐单回填本记录关联订单**（不批量改同图其他单）`status/statusUpdatedAt` 不变、无 `order_events`、不代确认、不改归属；`version+1`；缺 note→`VALIDATION_FAILED`；通知是**参数**不是动作（不产生新 action）；审计 `FAILURE_FIX`/`FAILURE_IGNORE` |
 | 33 | **绑定方向（v0.9）** | 兼职身份调 `bind.create`；顾客绑自己（`partner.openid==caller effectiveOpenid`）；代客下单后断言 `bindings` 未新增 | `FORBIDDEN`（兼职调用/自绑）；**代客单不写 `bindings`**；兼职端/后台无任何“绑定顾客”接口或入口 |
 | 34 | **真实账号传 `TEST_WRITE` / 票据挪用（v0.9）** | 真实顾客/兼职目标开 `mode='TEST_WRITE'`；用他人票据/过期票据；`TEST_WRITE` 票据写非 `viewTicket.targetId` 归属的订单/资料 | `FORBIDDEN`（签发时 + 每次请求 `targetIsTest && targetId===effectiveOpenid` 双校验）；过期→`VIEW_TICKET_EXPIRED`；不产生他人/真实数据 |
@@ -955,7 +955,7 @@ cleanup(serverNow):
 
 | 41 | **合并窗口边界（v1.0/D23）** | 窗口内再次提交（同顾客+同兼职+`SUBMITTED`+同 `delivery`）；窗口外；原单已 `ACCEPTED`；不同兼职/不同顾客；不同 `delivery`；原单已取消；兼职代客单 | 窗口内→**追加包裹**（同一 `orderNo`、`version+1`、`PARCELS_APPENDED`、无新订单、无 `ORDER_CREATED`）；其余→**新建订单**；**代客单永不合并** |
 | 42 | **合并越权/伪造（v1.0/D23）** | 顾客 A 构造 `mergeAppend` 试图并入他人订单；客户端传目标 `orderNo`；不同 `delivery` 强行窗口内提交 | 只按服务端候选（本人+当前绑定兼职+`SUBMITTED`+同 `delivery`+窗口内）判定；**不接受客户端指定目标订单**；不满足→新建；越权→`FORBIDDEN`/不并入 |
-| 43 | **多包裹/多图上下限与原子性（v1.0/D23）** | `parcels` 11 件；`images` 6 张；同一截图拆 10 件；合并后超 10 件/超 5 图 | `VALIDATION_FAILED`（`data.field='parcels'/'images'`）不建单；**合并超限→另建新单**（不报错、不部分追加）；事务原子无半完成 |
+| 43 | **多包裹/多图上下限与原子性（v1.0/D23；D40 修上限）** | `parcels` 11 件；`images` 11 张；同一截图拆 10 件；合并后超 10 件/超 10 图 | `VALIDATION_FAILED`（`data.field='parcels'/'images'`）不建单；**合并超限→另建新单**（不报错、不部分追加）；事务原子无半完成 |
 | 44 | **无截图手填越权/伪造（v1.0/D24）** | `manualEntry=true` 但传 `images`/`ticket`；`manualEntry=false` 且 `images=[]`；无截图单构造 `recognition.failureId` 指向他人记录；无截图单查复核队列 | 前者 `VALIDATION_FAILED`（矛盾入参，服务端派生校验）；无截图单**不调 AI、不写 `recognition_failures`**；非法/非本人 `failureId` → 静默丢关联不阻断建单（现状）；复核队列无该单记录 |
 | 45 | **配送地址越权/冲突（v1.0/D25）** | 填他人宿舍但 `recipientName` 空/超 20 字/未过内容安全；查询非本人订单 `delivery`；兼职读非本单 `delivery`；后台列表读完整地址；同请求传 `delivery` 与 `guest` | `VALIDATION_FAILED`（缺称呼/超长/违规）；他人 `delivery` **不可见**（`FORBIDDEN`/不返回）；后台仅 `zone/buildingNo/buildingText`（不下发称呼/尾号/宿舍/dormKey）；`delivery` 与 `guest` 互斥（代客单不写 `delivery`）；**不写回 `customers`、不触发重绑/roomTag** |
 | 46 | **顾客取件清单仅本人（v1.0/D26）** | 深链/参数换 `customerId`/`orderNo` 取他人包裹；投影返回尾号/柜号/宿舍/服务/预约/备注/编号/头像/昵称/截图；代客单进入清单 | 只返回本人 `source='CUSTOMER'` 进行中订单；**投影白名单外字段一概不返回**（DTO 键集合断言）；代客单/他人单不出现；无新 action、无新集合 |
@@ -986,7 +986,7 @@ cleanup(serverNow):
 
 | # | v0.8 回填项 | 本文落点 |
 | :-- | :-- | :-- |
-| 1 | **14 集合**：`recognition_failures` 逐字段表（含 `failureNo` 生成规则/`requestKey†` 入队幂等/`failureCode` 5 值/`status` 3 值/`resolution`/`retentionDays`）、读屏蔽、索引、查询路径、**粒度=订单×截图** | §0.4/§1/§2.14/§4.9/§5.1/§5.2 |
+| 1 | **14 集合**：`recognition_failures` 逐字段表（含 `failureNo` 生成规则/`requestKey†` 入队幂等/`failureCode` 5 值/`status` 3 值/`resolution`/`retentionDays`）、读屏蔽、索引、查询路径、**粒度=包裹×截图** | §0.4/§1/§2.14/§4.9/§5.1/§5.2 |
 | 2 | `config` 增 `recognitionFailureRetentionDays`（7~30 默认 30，**可后台配**）与 `aiFallback{enabled,model,timeoutMs,maxPerUserPerDay,dailyQuota,cooldownMinutes}`（无金额、无 Key、不下发客户端；**MVP 后台只读展示、`admin.updateConfig` 白名单不含、改值走部署脚本/控制台**） | §2.10/§6.5/§7.6/§7.9 |
 | 3 | `orders` 可选字段 `parcel.recognitionSource(RULE\|DEEPSEEK\|MANUAL)`、`parcel.confidence?`、`image.failureId?`（v0.8 历史口径；v1.0 见 §13.1d：粒度=包裹×截图、`parcels[itemIndex].failureId`、`images[]` 多图） | §2.5/§3/§4.9/§7.9 |
 | 4 | `ai.parseParcel`：入参白名单/二次去敏/8s 超时/重试/熔断/限流；返回 DTO 逐字段=CONTRACT §4.3；降级 `ok:true+recognized:false`、**不新增错误码** | §0.4/§4.9/§6.2/§6.5/§7.1/§7.2/§7.6/§7.9 |
@@ -1016,7 +1016,7 @@ cleanup(serverNow):
 
 | # | v1.0 回填项 | 本文落点 |
 | :-- | :-- | :-- |
-| 1 | **一单多包裹（D23）**：`orders.parcel{}`→`parcels[]`（1~10，逐件 stationId/stationName/pickupCode/lockerNo/trackingTail/codeStatus/recognitionSource?/confidence?/failureId?/imageIndex?）；`image{}`→`images[]`（0~5，`{fileId,width,height,cleanedAt?}`，失败关联只在包裹级）；`manualEntry` 派生；`delivery`（D25） | §0.6/§1/§2.5/§2.6/§3/§5.1/§5.2/§6.3/§7.5/§8/§10/§11 |
+| 1 | **一单多包裹（D23）**：`orders.parcel{}`→`parcels[]`（1~10，逐件 stationId/stationName/pickupCode/lockerNo/trackingTail/codeStatus/recognitionSource?/confidence?/failureId?/imageIndex?）；`image{}`→`images[]`（0~10，D40 修订；`{fileId,width,height,cleanedAt?}`，失败关联只在包裹级）；`manualEntry` 派生；`delivery`（D25） | §0.6/§1/§2.5/§2.6/§3/§5.1/§5.2/§6.3/§7.5/§8/§10/§11 |
 | 2 | **合并窗口（D23）**：`config.orderMergeWindowMinutes`（默认 10、0=关闭、0~60）；同顾客+同绑定兼职+`SUBMITTED`+窗口内+同 `delivery` → 追加包裹（`version+1`、`PARCELS_APPENDED`、状态不变）；超上限另建新单；代客单不参与；`order.createBatch` 移除 | §0.6/§2.5/§2.10/§4.7/§4.8A/§5.1/§5.2/§7.5/§7.6/§8.2/§8.4 |
 | 3 | **无截图手填（D24，D22 改判 B）**：`images=[]`+`manualEntry=true` 可提交；不入识别链路/不写队列；「无截图·手填」标识；每件仍须站点+码/尾号 | §0.6/§2.5/§2.14/§4.8A/§4.9/§6.3/§7.5/§7.9/§12#44 |
 | 4 | **每单配送地址（D25）**：`orders.delivery{zone,buildingNo,room,dormKey,buildingText,recipientName?,phoneTail?}`；默认本人宿舍、他人称呼≤20、仅本单有效不写回资料、合并要求同地址；admin 脱敏 | §0.6/§2.5/§3/§4.8A/§6.3/§6.4/§7.5/§10/§12#45 |
@@ -1031,7 +1031,7 @@ cleanup(serverNow):
 **`†` 扩展字段报备（CONTRACT 未列，需 lead 确认）**：`users.updatedAt/purgeAt`（变更审计/注销清理）、`customers.deletedAt/anonymizedAt/purgeAt`（注销链路）、`partners.createdAt/updatedAt/suspendedAt/suspendedReason/closedReason`（生命周期/停用原因）、`bindings.tagKey/allocSeq/releasedBy`（roomTag 并发唯一/序号/释放者）、`orders.createdAt/updatedAt`（排序兜底/排障）、`orders.claimTokenHash/claimExpiresAt/claimedAt`（[P1] 认领预留）、`admin_audit.requestKey`（管理写幂等）、`admin_view_sessions.requestKey`（视角开启幂等）、`upload_tickets.draftId`（草稿校验，可只随票据存）、`config.subscribeTemplates`（[P1] 订阅消息模板 ID/开关）。**v0.8 新增报备**：`recognition_failures.retentionDays`（记录级固化保留天数，CONTRACT §4 行未列）、`recognition_failures.requestKey`（入队幂等键 `{uploaderOpenid}:{clientRequestId}`，唯一索引；CONTRACT §4 行未列）、`ruleResult`/`aiResult` 的字段形状与 `aiErrorCode` 六值枚举（CONTRACT 只列字段名）、`failureNo` 生成规则 `F-YYYYMMDD-XXXXXX`（CONTRACT 只列唯一）、`resolution.by='SYSTEM'`（到期清理）、`uploadTicketId` 归属校验失败仍入队（`ruleResult.ticketInvalid`）、识别失败记录在上传者注销后的匿名化口径（`uploaderOpenid=''`，§10.3）、`image.failureId` 由复核/下单写入的时序、`notifyUploader` 的站内消息落点（消息中心聚合视图，不新增集合）。**v0.9 新增报备**：`upload_tickets.purpose`（CONTRACT §4 集合行未列，§4.1/§5.3 已定义 `purpose` 入参）、测试账号 `_id` 格式 `TEST-<random>` 与三处同值口径（CONTRACT 只约定 `TEST-…` 前缀）、`admin_view_sessions.targetAvatarFileId` 仅切换会话内展示、`config.avatarMaxBytes` 经 `config.getPublic` 下发（CONTRACT 允许“等公开配置”）、`admin.stats` 增 `test` 计数字段、`users.testLastUsedAt` 写点（会话开启/测试写动作）、测试账号业务数据“账号保留、数据清空”的级联范围**v1.0 新增报备**：`recognition_failures.itemIndex†`（记录对应包裹序号，CONTRACT 未列）、合并追加的幂等键方案（`order_events.requestKey={orderId}:PARCELS_APPENDED:{clientRequestId}`，CONTRACT 只列创建/写动作幂等）、`orders.manualEntry` 由 `images.length===0` 派生写入（CONTRACT 已列字段但未写派生规则）、`delivery.phoneTail` 可选 4 位（CONTRACT D25 未列长度）、`orders.delivery` 仅顾客路径写入（PARTNER 代客单不写、送达地址仍由 `dorm`/`guest` 表达）、多值索引 `idx_images_file` 的备选方案（若控制台不支持数组字段多值索引：cleanup 按终态时间窗分批扫描 `images[]`，不新增集合）、取件清单「本地勾选」不落库（客户端 storage 白名单键名属工程域）、`orders.parcels[].failureId` 按件独立落点（CONTRACT §4.3 已述“按件独立”）。如需改口径请 lead 裁决后回填 CONTRACT。
 
 **旧口径关闭**：O-01~O-27 均已关闭（v0.4 独立 `upload_tickets`/删 `tagSeq`/三键族；v0.5 动作表全量、`deleteRecord`/`markRead`/`saveCustomerNote`/`cancel`/`getPublic`；v0.6 换宿舍重绑、DTO 分级、激活码错误映射、解绑 reason、客户列表排序、工作台 6 counts、截图路径、订阅模板入 config 等）。**v0.7 起明确作废**：v0.6“线下收款记账”口径（`payStatus`/`markPaid`/`PAYMENT_*`/统计收入，已删）、`activation_codes`/“激活码”术语（改 `invitation_codes`/“邀请码”）、旧 `partnerCode`（改 `partnerNo`）、`CODE_EXPIRED`/`CODE_USED`（改 `INVITE_*`）；v0.7 不重开任何 O 项。**v0.8 追加口径**（不删除历史结论）：OCR 兜底只做预填建议、失败静默降级入队、不新增错误码；识别失败原图是后台默认脱敏的**唯一例外**（临时 URL+审计+不批量）；`aiFallback` 值只有次数/毫秒/布尔/枚举，零金额口径继续有效。**v0.9 追加作废**：旧小写 roomTag/`D4-522a`、`VIEW_AS_*` 审计名、“不收集头像”“第二个微信号验收/MVP 单账号”“所有视角一律只读”等表述；`partner.getPublic` 绑定前回头像、头像路径含 openid、测试账号 `openid=''` 全部作废；`TEST_WRITE` 仅测试账号（真实账号不可写）；测试数据与真实数据同集合但严格隔离（**不建 `test_accounts`**）；绑定只能顾客发起（兼职可写视角不存在）。
-### 13.3 用户裁决事项（仅 D 级；2026-10-22 已全部闭环）
+### 13.3 用户裁决事项（仅 D 级；D1~D22 于 2026-10-22 闭环，D23~D42 为 v1.0~v1.3 增补，D27 待裁决）
 
 | # | 事项 | 本文默认 | 裁决结果（2026-10-22） |
 | :-- | :-- | :-- | :-- |
@@ -1053,6 +1053,19 @@ cleanup(serverNow):
 | D27 | 全部取件完成后的兼职楼栋级位置（研究进行中） | 未裁决前维持「永不收集定位」（CONTRACT §11.1）；本文**不新增**位置字段/集合/采集 | 🔄 待裁决（LOCATION v2 研究） |
 | D28 | 换绑一体化（B 批推荐采纳） | 客户端编排 `bind.release`→`bind.create`；服务端接口不变（§7.4 已注） | 按推荐采纳（2026-10-22 晚） |
 | D29 | 状态事件计入未读红点 + AI 低置信不写入（B 批推荐采纳） | AI 低置信只回建议条、点采纳才写入（§4.9/§7.9）；消息未读口径见 §7.6 | 按推荐采纳（2026-10-22 晚） |
+| D30 | 交易在小程序外完成的对外文案口径（D6 不变；小程序内仍零交易语义） | 文案按「本程序不涉及任何费用收付，交易在小程序外完成」表述 | 已定（2026-10-27 补充） |
+| D31 | 顾客性别采集与推断（`gender`/`genderManual`） | 按「苑+楼栋」推断（仅东苑 D：1/2/5/6/7/8=男、3/4/9/10=女，其余＝未知），可手改、未知不阻塞资料完成 | 已定（2026-10-27） |
+| D32 | 站点名称可改 + 命中匹配归一 | `config.stations` 固定 8 条 `{id,name}`；识别/手输按「精确名→规范名→别名→关键词」唯一命中，多解不猜 | 已定（2026-10-27） |
+| D33 | 识别失败原图与 AI 诊断回传 | 任何识别失败必调一次 `ai.parseParcel` 入队（无文本只入队不外呼）；入队落真实 `fileId`（服务端按票据校验）；复核页展示 AI 排障字段、绝不回显 Key | 已定（2026-10-27） |
+| D34 | v1.1 本批范围（顾客端 UI/卡顿治理/后端安全基线；A2/A3/A7/A8 不处理） | 按 D30/D31/D32/D33 与安全基线落地；A1/A4/A5/A6 后置 | 已定（2026-10-27 补充） |
+| D35 | 取件码自动填充修复（真实截图四形态） | 连写/逐字空格/带连字符/标签粘连与跨行拼码都必须回填；AI 归一的 8 位码不得被日期启发式误杀 | 已定（修复已实现，2026-10-27） |
+| D36 | 分享与朋友圈 | 好友转发覆盖 19 个业务页；朋友圈仅 role/home/help 三页；卡片仅「兼职绑定卡」「通用邀请卡」两种 + 固定中性封面 + 零 L3；切换会话隐藏分享 | 已定（2026-10-28） |
+| D37 | 分享卡经 `launch` 落地 + 隐私闸 | 卡片 path 统一 `/pages/launch/index`（`?bind=` 或零 query）；`launch.onLoad` 读 `bind`/`orderNo` 白名单 → 先过隐私同意闸再分流 | 已定（2026-10-28） |
+| D38 | 绑定自动化 | 邀请卡落地新用户按「隐私同意 → 资料补齐」完成后客户端自动调一次 `bind.create`；成熟用户点绑定直接发起；已绑定同号不重复 create；仍须顾客本人 openid + 既有校验与限流 | 已定（2026-10-28） |
+| D39 | 绑定相关限流改时间窗 | `partner.getPublic` + `bind.create` 合计同一计数桶、滚动 60 秒/5 次（UTC+8 分钟分片）；取消每自然日总量 | 已定（2026-10-28） |
+| D40 | 截图上限 10 张 + AI 兜底不设每人每日次数 | `MAX_IMAGES_PER_ORDER` 5→10（件数上限仍 10）、清理槽位覆盖 `images[0..9]`、`upload.prepare` 30→60 次/日/人；`config.aiFallback.maxPerUserPerDay=0` 语义=不限（保留全局日配额/冷却/超时降级） | 已定（2026-10-28） |
+| D41 | 服务类型重定义 + 新增「送至楼下」 | `PICKUP_STD`＝送到寝室门口（上楼）；新增 `PICKUP_LOW`＝宿舍楼下/约定地点（不上楼）；原 `PICKUP_DOOR` 停用、仅历史订单展示；默认顺序 STD/LOW/URGENT/DROP_OFF/CUSTOM | 已定（2026-10-28） |
+| D42 | 头像展示修复（改临时 URL） | 新增 `user.avatarUrl`（本人头像约 5 分钟临时 URL，无头像返回空）；绑定对方随 `bind.getCurrent`/`user.bootstrap.binding` 下发 `avatarUrl`（仅 ACTIVE 绑定）；`avatarFileId` 保留为回退键；保存资料时头像票据失效不清空旧头像 | 已定（2026-10-28） |
 ## 14. 验收清单（文档级 DoD）
 - [ ] **14 集合**逐字段表齐全（含 v0.8 `recognition_failures`；**v0.9 不新增集合/不建 `test_accounts`**），字段名与 CONTRACT v1.0 §3/§4/§4.2/§4.3 及 v1.0 增补行（`parcels[]`/`images[]`/`manualEntry`/`delivery`）逐字一致；`†` 扩展字段已在 §13.2 报备。
 - [ ] 动作名与 CONTRACT §5.3 逐字一致（含 `admin.createInvites/revokeInvite/listInvites`、`admin.viewAsStart/viewAsEnd`、**v0.8 `ai.parseParcel` + 四复核动作**、**v0.9 `admin.createTestAccount/listTestAccounts/deleteTestAccount/purgeTestData`**、**v1.0 `order.create` 单入口（`order.createBatch` 已移除）**）；**无** `order.markPaid/unmarkPaid`、`admin.generateCodes/revokeCode` 等旧动作。
@@ -1063,12 +1076,12 @@ cleanup(serverNow):
 - [ ] **v0.8 `ai.parseParcel`**：入参白名单与二次去敏、8s 超时/重试/熔断、**不设每人每日次数（D40，`maxPerUserPerDay=0`）+ 全局日配额**、返回 DTO 逐字段=CONTRACT §4.3、降级 `ok:true+recognized:false`、**不新增错误码（仍 13 个）**、失败必写队列、`READONLY` 拒绝（`TEST_WRITE` 以目标测试账号触发）、客户端零外呼均已写明。
 - [ ] **v0.9 账号切换与测试数据隔离**：`users.isTestAccount/createdByDeveloperNo/testLastUsedAt`+合成 openid `TEST-<random>`；`admin_view_sessions.viewMode/targetIsTest/targetAvatarFileId`；`TEST_WRITE` 仅测试账号、真实账号传 `TEST_WRITE`→`FORBIDDEN`；`orders.isTest/impersonatedBy` 服务端派生；`actorOpenid`/`effectiveOpenid` 分离与票据交叉校验；测试数据排除统计/红点/邀请码/报表；四动作安全闸（dry-run/二次确认/前后条数/真实引用拒绝/会话 endedAt）。
 - [ ] **v0.9 绑定方向/头像昵称/roomTag**：`bind.create` 仅 CUSTOMER、自绑拒绝、代客单不写 `bindings`、真实×测试 `FORBIDDEN`；`displayName` 必填≤20+`msgSecCheck`、`avatarFileId` 路径 `avatars/{role}/{random}.jpg`≤200KB/替换删旧/注销删文件/默认头像、绑定前只回昵称不回头像、解绑后不返回；`roomTag` 恒大写 `A…Z/AA…`、展示 `D4-522A`、全文无 `D4-522a`/`excelLower`。
-- [ ] **v0.8 复核四动作**：`list/get` 脱敏且列表无 `fileId/uploaderOpenid`、`get` 原图临时 URL 5 分钟+每次 `FAILURE_IMAGE_VIEW`、`fix` 只回填本记录自己那条订单（逐单，不改状态/不代确认/不创建/不改归属/不写 `order_events`/审计 `FAILURE_FIX`）、`ignore` 备注必填（审计 `FAILURE_IGNORE`）、**"通知上传者"是 `notifyUploader` 参数而非独立动作**（站内必做、订阅 P1）、不批量/不下载/不导出；**记录粒度=订单 × 截图**（同图多单各一条、`failureId` 按单独立、未建单保留 `orderId=''`）。
+- [ ] **v0.8 复核四动作**：`list/get` 脱敏且列表无 `fileId/uploaderOpenid`、`get` 原图临时 URL 5 分钟+每次 `FAILURE_IMAGE_VIEW`、`fix` 只回填本记录自己那条订单（逐单，不改状态/不代确认/不创建/不改归属/不写 `order_events`/审计 `FAILURE_FIX`）、`ignore` 备注必填（审计 `FAILURE_IGNORE`）、**"通知上传者"是 `notifyUploader` 参数而非独立动作**（站内必做、订阅 P1）、不批量/不下载/不导出；**记录粒度=包裹 × 截图**（同图多件各一条、`failureId` 按件独立、未建单保留 `orderId=''`）。
 - [ ] v0.7 回填 17 项逐项落点可核对（§13.1），v0.8 回填 10 项逐项落点可核对（§13.1b），**v0.9 回填 10 项逐项落点可核对（§13.1c）**；无 `activation_codes`/`CODE_EXPIRED`/`CODE_USED`/`PAYMENT_`/`payStatus`/`VIEW_AS_*`/`partnerCode`/`D4-522a`/`excelLower` 残留。
 - [ ] 每个集合有读屏蔽口径；每个写动作有权限、幂等键、限流、错误码；重复请求返回 `duplicated:true`；错误码仅 13 个（AI 失败不占错误码）。
 - [ ] 索引覆盖 §5.2 每个查询路径（含编号搜索/邀请码/切换会话/**识别失败队列与到期清理**/**测试账号与测试数据清理**），分页禁止 skip；负向测试 **46 条**（§12：v0.7 26 + v0.8 6 + v0.9 8 + v1.0 6）覆盖越权/票据/前缀/编号/零金额/脱敏/复核/AI 外发与降级/绑定方向/真实×测试/头像昵称/测试隔离。
 - [ ] 留存/cleanup/注销/匿名化字段级可执行（§10，含邀请码/切换会话（`READONLY`/`TEST_WRITE`）/编号快照/**识别失败记录与原图引用到期、上传者注销匿名化**/**头像文件与测试数据 30 天清理、`purgeTestData`/`deleteTestAccount` 级联**）；v3→v4 映射与 D11 一致（§11，含 OCR 来源映射与头像/昵称/测试账号空库起）。
-- [ ] 与 CONTRACT v1.0 无冲突（冲突已按 v0.9 回填并在 §13.1c 逐项登记；审计补丁：合成 openid `TEST-<random>`、头像路径不含 openid、绑定前只回昵称、`actorOpenid/effectiveOpenid`、`ACCOUNT_SWITCH_*` 统管两种模式已吸收）；用户裁决项 §13.3（**D1~D29**：D1~D22 已裁决、D22 改判 B；v1.0 增补 D23~D26；D28/D29 B 批按推荐采纳；D27 待裁决）；无实现代码、无「略/TODO」占位。
+- [ ] 与 CONTRACT v1.0 无冲突（冲突已按 v0.9 回填并在 §13.1c 逐项登记；审计补丁：合成 openid `TEST-<random>`、头像路径不含 openid、绑定前只回昵称、`actorOpenid/effectiveOpenid`、`ACCOUNT_SWITCH_*` 统管两种模式已吸收）；用户裁决项 §13.3（**D1~D42**：D1~D22 已裁决、D22 改判 B；D23~D26 C 批；D28/D29 B 批按推荐采纳；D30~D42 批 11/12 与 v1.3 增补；D27 待裁决）；无实现代码、无「略/TODO」占位。
 
 - [ ] **v1.0 订单模型（D23~D26；D40 修订图数）**：`orders.parcels[]`（1~10 件逐字段）/`images[]`（**0~10 张**，D40）/`manualEntry`/`delivery` 字段表齐全；`config.orderMergeWindowMinutes`（默认 10、0=关闭、0~60）写入；合并窗口条件与超限另建新单、`PARCELS_APPENDED` 与幂等键写明；`order.correct itemIndex`/`order.imageUrl index`/`confirmDelivery` 整单/`createBatch` 移除/单量按订单计。
 - [ ] **v1.0 无截图手填/配送地址/取件清单**：`manualEntry` 与 `images=[]` 一致性、不入识别链路；`delivery` 默认本人宿舍/他人称呼必填≤20/仅本单有效/不写回资料/合并要求同地址/仅苑+楼栋脱敏；取件清单 `order.listCustomer` 最小投影白名单（仅站点+取件码）与「仅本人进行中」口径写明。
