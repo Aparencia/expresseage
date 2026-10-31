@@ -1,6 +1,6 @@
 # expressage_college_v4 · 校园快递代取（v4）
 
-> **当前阶段：工程侧收口（2026-10-30 隐私同意兜底批次）**——四步门禁可自证（见下）；**待用户执行**：真机点检、隐私 13 项填写与微信后台声明、审核提审、灰度与回滚演练。
+> **当前阶段：工程侧收口（2026-10-31 文档结构重整；上一功能批次 2026-10-30 隐私同意兜底）**——四步门禁可自证（见下）；**待用户执行**：真机点检、隐私 13 项填写与微信后台声明、审核提审、灰度与回滚演练。
 > 权威入口：**口径** = [`docs/contract/V4_CONTRACT.md`](docs/contract/V4_CONTRACT.md) · **状态** = [`STATE.md`](STATE.md) · **文档总览** = [`docs/README.md`](docs/README.md) · **工程规则** = [`docs/engineering/V4_ENGINEERING.md`](docs/engineering/V4_ENGINEERING.md)。
 
 ## 这一版是什么
