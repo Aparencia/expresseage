@@ -1,5 +1,5 @@
 // shared/validate.js · 字段校验纯件（编号/邀请码形态、宿舍身份、尾号、文本上限、取消原因）
-// 契约：docs/V4_CONTRACT.md v0.9 §3/§3.1/§5.1/§5.2/§6；docs/V4_DATA_MODEL.md §6.5/§7；
+// 契约：docs/contract/V4_CONTRACT.md v0.9 §3/§3.1/§5.1/§5.2/§6；docs/data/V4_DATA_MODEL.md §6.5/§7；
 //       docs/ENGINEERING §5.3（编号）、§5.3b（roomTag 由 utils/room-tag.js 校验）、§4.3（clientRequestId）。
 // 返回约定：{ ok:true, ...归一后的值 } 或 { ok:false, reason, field }；reason 是内部原因码，
 //           面向用户的文案在 shared/error-copy.js（校验层不拼人话，避免两份文案）。

@@ -1,8 +1,8 @@
 'use strict';
 /**
  * tools/selftest-state.js — v4 状态机 / 视图模型 / 四档排序 / 编号 / roomTag / 启动分流 / 页面零件。
- * 分层依据：docs/V4_ENGINEERING.md §7.1（纯件 shared/utils/config + 页面零件 parts/）。
- * 判据纪律：先合法基线、再只有该闸能挡的反例；样本非空；期望值以 docs/V4_CONTRACT.md 与镜像为准，
+ * 分层依据：docs/engineering/V4_ENGINEERING.md §7.1（纯件 shared/utils/config + 页面零件 parts/）。
+ * 判据纪律：先合法基线、再只有该闸能挡的反例；样本非空；期望值以 docs/contract/V4_CONTRACT.md 与镜像为准，
  *           不抄现状。EXPECTED_ASSERTIONS 必须精确等于实际断言数（少算/多算都判红）。
  * 接入：tools/selftest.js 里 `h.setExpected(require('./selftest-state').EXPECTED_ASSERTIONS)` 后 register(h)。
  * 零金额：本文件不得出现口径词表（ENGINEERING §7.6）字面量，需要时用构造串。

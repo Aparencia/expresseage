@@ -1,6 +1,6 @@
 // pkg-partner/pages/create-on-behalf/parts/form-model.js · 代客下单两路径纯件（零 wx、零请求）
-// 口径：docs/V4_UX_PARTNER.md §3.4（已绑定/新顾客两条路；字段校验；一图多码 createBatch；幂等 clientRequestId）
-//      docs/V4_DATA_MODEL.md §7.5 批 7（order.create 兼职路径 bindingId 或 guest 二选一，都不写 bindings）
+// 口径：docs/ux/V4_UX_PARTNER.md §3.4（已绑定/新顾客两条路；字段校验；一图多码 createBatch；幂等 clientRequestId）
+//      docs/data/V4_DATA_MODEL.md §7.5 批 7（order.create 兼职路径 bindingId 或 guest 二选一，都不写 bindings）
 // 边界：本文件只做选项装配/校验/请求体/幂等键生命周期/失败人话；不调 wx、不发请求、不写本地存储。
 'use strict';
 

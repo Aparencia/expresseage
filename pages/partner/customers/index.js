@@ -1,5 +1,5 @@
 // pages/partner/customers/index.js · 客户列表（只列已被顾客绑定的顾客；兼职端无任何添加/绑定/导入入口）
-// 口径：docs/V4_UX_PARTNER.md §3.5；docs/V4_DATA_MODEL.md §7.4 listBindings（搜索/分页/排序全在服务端）
+// 口径：docs/ux/V4_UX_PARTNER.md §3.5；docs/data/V4_DATA_MODEL.md §7.4 listBindings（搜索/分页/排序全在服务端）
 const partnerApi = require('../../../api/modules/partner');
 const store = require('../../../store/index');
 const modeGuard = require('../../../api/mode-guard');

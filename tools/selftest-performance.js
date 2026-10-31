@@ -250,7 +250,7 @@ function register(h) {
     t.check(appSrc.indexOf('router.getRouter()[request.action]') < 0, 'E19 不再每请求 getRouter() 全量构建（回归即红）');
     const checkRaw = textOf('tools/check.js');
     t.check(checkRaw.indexOf('staticRegistryProblems') >= 0, 'E20 补偿判据进 check.js #13（未用域错配构建期暴露）');
-    const arch = textOf('docs/ARCHITECTURE.md');
+    const arch = textOf('docs/engineering/V4_ARCHITECTURE.md');
     t.check(arch.indexOf('按域懒加载') >= 0 && arch.indexOf('fail-fast') >= 0, 'E21 架构文档写明懒加载与 fail-fast 落差');
   });
 
@@ -323,7 +323,7 @@ function register(h) {
     t.eq(counters.config, 1, 'G4 bootstrap（含 configPublic）仍只读 1 次 config（无二次读）');
     const configCommon = codeOf('cloudfunctions/api/handlers/config/_common.js');
     t.check(configCommon.indexOf('ctx.config') >= 0, 'G5 handler 侧优先复用 ctx.config（缺省才回退 readConfig）');
-    const eng = textOf('docs/V4_ENGINEERING.md');
+    const eng = textOf('docs/engineering/V4_ENGINEERING.md');
     t.check(eng.indexOf('同请求复用') >= 0 && eng.indexOf('跨请求 TTL 缓存') >= 0, 'G6 工程文档写明同请求复用与「跨请求 TTL 不做」');
   });
 
@@ -352,7 +352,7 @@ function register(h) {
     t.check(home.indexOf('scheduleLoading()') >= 0 && home.indexOf('clearLoadingTimer()') >= 0, 'H13 home 延迟置 loading 且成功/失败/卸载对称清理');
     t.check(home.indexOf('setData({ loading: true, error') < 0, 'H14 home 不再在请求发起瞬间强制置 loading（快网少一次 setData）');
 
-    const eng = textOf('docs/V4_ENGINEERING.md');
+    const eng = textOf('docs/engineering/V4_ENGINEERING.md');
     t.check(eng.indexOf('preloadRule') >= 0 && eng.indexOf('networkTimeout') >= 0, 'H15 文档登记 P0-7/P0-8 app.json 性能配置口径（实际注入值由 I1/I2 断言）');
   });
 

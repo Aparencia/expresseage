@@ -1,5 +1,5 @@
 // pkg-partner/pages/create-on-behalf/parts/payload-model.js · 代客下单请求体纯件（零 wx、零请求）
-// 口径：docs/V4_CONTRACT.md §4/§5.2/§5.3 v1.0（D23/D24/D25）：order.create 单入口
+// 口径：docs/contract/V4_CONTRACT.md §4/§5.2/§5.3 v1.0（D23/D24/D25）：order.create 单入口
 //       {parcels[1~10], images[0~5], tickets?[], serviceCode, appoint, note, manualEntry, guest?/bindingId?, delivery?}
 //       createBatch 已移除（一图多码 = 同一订单多包裹）。
 // 边界：只做请求体/幂等键签名装配；校验在 form-model.validate（调用方唯一入口）。

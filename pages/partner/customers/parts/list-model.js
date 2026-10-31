@@ -1,6 +1,6 @@
 // pages/partner/customers/parts/list-model.js · 客户列表页状态装配（纯件：零 wx、零请求）
-// 口径：docs/V4_UX_PARTNER.md §3.5（服务端 keyword 搜索 + 游标分页；客户端不本地过滤/不二次排序）
-//      docs/V4_DATA_MODEL.md §7.4 listBindings：服务端已排序+过滤+分页，返回 {list,nextCursor}
+// 口径：docs/ux/V4_UX_PARTNER.md §3.5（服务端 keyword 搜索 + 游标分页；客户端不本地过滤/不二次排序）
+//      docs/data/V4_DATA_MODEL.md §7.4 listBindings：服务端已排序+过滤+分页，返回 {list,nextCursor}
 'use strict';
 
 const view = require('../../../../utils/customer-view');

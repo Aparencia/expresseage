@@ -1,7 +1,7 @@
 // pkg-partner/pages/stats/parts/view-model.js · 单量统计视图模型（纯件，零 wx）
-// 口径：docs/V4_UX_PARTNER.md §3.8（今日/本周/本月 tab、四格指标、近 7 天自绘柱、空/错态）、
+// 口径：docs/ux/V4_UX_PARTNER.md §3.8（今日/本周/本月 tab、四格指标、近 7 天自绘柱、空/错态）、
 //       §9（日报摘要数据源、单一来源 partner.stats、页面不做历史页累加）、§12（不引图表库）；
-//       docs/V4_DATA_MODEL.md §7.4 partner.stats（已冻结出参形状，批 7）：
+//       docs/data/V4_DATA_MODEL.md §7.4 partner.stats（已冻结出参形状，批 7）：
 //       {range,counts:{completed,active,cancelled,exceptions},completionRate(0..1|null),
 //        series[7]{date:'YYYY-MM-DD',label:'MM-DD',completed},recent[≤10]{orderNo,status,statusText,at},
 //        todayCompleted}。页面只消费服务端 DTO，不本地猜状态/完成率/异常，不按历史页累加。

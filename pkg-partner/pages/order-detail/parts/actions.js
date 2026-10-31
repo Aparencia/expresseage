@@ -1,5 +1,5 @@
 // pkg-partner/pages/order-detail/parts/actions.js · 动作注册表（可见性 100% 由服务端 order.actions[] 决定）
-// 契约：docs/V4_UX_PARTNER.md §3.3 状态动作矩阵 / §6.3 只读矩阵；docs/V4_DATA_MODEL.md §7.5 order.get
+// 契约：docs/ux/V4_UX_PARTNER.md §3.3 状态动作矩阵 / §6.3 只读矩阵；docs/data/V4_DATA_MODEL.md §7.5 order.get
 // 边界：本文件不判断七状态（服务端按状态机下发 actions）；页面只渲染、只做交互元数据（面板/确认框/危险色）。
 const orderState = require('../../../../shared/order-state');
 

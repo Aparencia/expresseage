@@ -1,6 +1,6 @@
 // pkg-partner/pages/order-detail/parts/voucher.js · 履约凭证卡纯件（MVP 口径：事件流水即事实依据）
-// 契约：docs/V4_UX_PARTNER.md §4.14「取件凭证（MVP）」与 §3.3 编号口径（凭证卡小字显示本人兼职编号）；
-//       docs/V4_DATA_MODEL.md §7.5 order.get（events 裁剪 {type,at,actorRole,note}）。
+// 契约：docs/ux/V4_UX_PARTNER.md §4.14「取件凭证（MVP）」与 §3.3 编号口径（凭证卡小字显示本人兼职编号）；
+//       docs/data/V4_DATA_MODEL.md §7.5 order.get（events 裁剪 {type,at,actorRole,note}）。
 // 边界：顾客确认时间只取服务端事件（COMPLETED + actorRole=CUSTOMER）或 DTO.completedAt；
 //       代客单无顾客确认路径，标「系统自动完成」。不展示截图/签名/二维码（MVP 不做）。
 const orderState = require('../../../../shared/order-state');

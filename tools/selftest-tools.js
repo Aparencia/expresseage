@@ -27,9 +27,9 @@ function read(rel) {
   return fs.readFileSync(path.join(ROOT, rel), 'utf8');
 }
 
-/** 解析 docs/V4_DATA_MODEL.md §5.1 的唯一索引：目标集 = `collection.field`（不写死条数）。 */
+/** 解析 docs/data/V4_DATA_MODEL.md §5.1 的唯一索引：目标集 = `collection.field`（不写死条数）。 */
 function dataModelUniqueIndexes() {
-  const text = read('docs/V4_DATA_MODEL.md');
+  const text = read('docs/data/V4_DATA_MODEL.md');
   const start = text.indexOf('### 5.1');
   const end = text.indexOf('### 5.2');
   if (start < 0 || end <= start) return [];

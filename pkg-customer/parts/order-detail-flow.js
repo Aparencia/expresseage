@@ -1,7 +1,7 @@
 // pkg-customer/parts/order-detail-flow.js · 订单详情数据编排（纯件，零 wx：页面只做 setData 与定时器）
 // 职责：拉取 order.get → 组装视图（状态/进度/动作/截图/留言/时间线/提示条）；
 //      轮询成功/失败的状态合并（失败保留旧数据、只更新顶部条与轮询策略），写动作返回 DTO 立即重绘。
-// 口径：docs/V4_UX_CUSTOMER.md §3.8/§5/§8.1；AC-C-21~29/45/46；QA E17。
+// 口径：docs/ux/V4_UX_CUSTOMER.md §3.8/§5/§8.1；AC-C-21~29/45/46；QA E17。
 'use strict';
 
 const view = require('./status-view');

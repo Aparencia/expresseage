@@ -1,5 +1,5 @@
 // pkg-partner/pages/create-on-behalf/parts/preset-model.js · `?bindingId=` 预置态纯件（零 wx、零请求）
-// 口径：docs/V4_UX_PARTNER.md §3.4（已绑定路径按 bindingId 定位；顾客列表/档案行「代客下单」带参数进入）
+// 口径：docs/ux/V4_UX_PARTNER.md §3.4（已绑定路径按 bindingId 定位；顾客列表/档案行「代客下单」带参数进入）
 // 边界：命中才选中；未命中不猜（bindingIndex=-1 → 「请选择顾客」态，不默认第 0 位误建单）。
 'use strict';
 

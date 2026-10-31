@@ -1,6 +1,6 @@
 // pkg-partner/pages/order-detail/parts/exception-panel.js · 异常上报/解除面板纯件
-// 契约：docs/V4_UX_PARTNER.md §4.13（六原因 + 备注 ≤200 + OTHER 必填）、§3.3、§5.1（解除回到 fromStatus）；
-//       docs/V4_DATA_MODEL.md §7.5 order.reportException / order.resolveException。
+// 契约：docs/ux/V4_UX_PARTNER.md §4.13（六原因 + 备注 ≤200 + OTHER 必填）、§3.3、§5.1（解除回到 fromStatus）；
+//       docs/data/V4_DATA_MODEL.md §7.5 order.reportException / order.resolveException。
 // 边界：原因枚举单源 = shared/enums.EXCEPTION_CODES；解除目标只读服务端 DTO 的 exception.fromStatus。
 const enums = require('../../../../shared/enums');
 const orderState = require('../../../../shared/order-state');

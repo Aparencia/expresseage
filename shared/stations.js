@@ -1,6 +1,6 @@
 // shared/stations.js · 校园取件点 P1~P8、名称可配与多说法命中归一（纯函数，零 wx）
-// 契约：docs/V4_CONTRACT.md v1.1 §3/§4.2（D32：正式名可由 config.stations 修改，识别按「匹配命中」归一）；
-//       docs/V4_DATA_MODEL.md §2.10（config.stations 字段）；docs/V4_ENGINEERING.md §3.6（全局配置）。
+// 契约：docs/contract/V4_CONTRACT.md v1.1 §3/§4.2（D32：正式名可由 config.stations 修改，识别按「匹配命中」归一）；
+//       docs/data/V4_DATA_MODEL.md §2.10（config.stations 字段）；docs/engineering/V4_ENGINEERING.md §3.6（全局配置）。
 // 口径：站点 id 固定 P1~P8（禁自建站点）；名称默认内置、后台可改（1~20 字、非空、唯一，非法回退默认）；
 //       识别/手输按「配置精确名 → 去标点规范名 → 静态别名 → 关键词命中」归一，**唯一最高分才采信**，
 //       多解/无解一律不猜（宁可不猜，也不要把人指到错的驿站）。

@@ -1,7 +1,7 @@
 // shared/gender.js · 顾客性别纯件（枚举/标签由 shared/enums 单源；东苑楼栋推断 + 手动修改口径）
 // 口径：用户 2026-10-27 裁决（task-1）——东苑(D) 楼栋 1/2/5/6/7/8 = 男、3/4/9/10 = 女；
 //       其他苑（X/N/B/C）或非法苑/楼栋一律「未知」；未知/未填不阻塞资料保存（profileCompleted 判据仍=昵称+宿舍）。
-// 契约落点：docs/V4_DATA_MODEL.md §2.2（customers.gender / genderManual）、docs/V4_CONTRACT.md §4.2。
+// 契约落点：docs/data/V4_DATA_MODEL.md §2.2（customers.gender / genderManual）、docs/contract/V4_CONTRACT.md §4.2。
 // 纪律：零 wx、纯函数、零存储；性别枚举字面量只出现在 shared/enums.js（本文件只做引用与派生）。
 'use strict';
 

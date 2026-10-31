@@ -1,5 +1,5 @@
 // pkg-customer/parts/privacy-text.js · 端内「隐私政策」全文（静态、离线可读、文本单源）
-// 口径：docs/privacy/隐私保护指引.md（定稿候选 v1.3；历史版本 v1.0 留痕）+ docs/V4_CONTRACT.md §11；
+// 口径：docs/privacy/隐私保护指引.md（定稿候选 v1.3；历史版本 v1.0 留痕）+ docs/contract/V4_CONTRACT.md §11；
 //       2026-10-28 D37~D42 同步：截图 0~10 张（D40）、AI 不设每人每日次数仅全局日配额（D40）、
 //       头像经约 5 分钟临时链接展示（D42）、服务类型两档（D41）——旧「0~5 张 / 每账号每日最多 5 次」
 //       口径已修订，见 docs/privacy/隐私保护指引.md 附录 A 留痕；

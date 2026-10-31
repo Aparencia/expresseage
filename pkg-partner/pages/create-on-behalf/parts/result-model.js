@@ -1,5 +1,5 @@
 // pkg-partner/pages/create-on-behalf/parts/result-model.js · 提交结果块纯件（零 wx、零请求）
-// 口径：docs/V4_UX_PARTNER.md §3.4（成功后当前页结果块逐个列 orderNo 可点；guest 提示块必显；一图多码 N 单）
+// 口径：docs/ux/V4_UX_PARTNER.md §3.4（成功后当前页结果块逐个列 orderNo 可点；guest 提示块必显；一图多码 N 单）
 'use strict';
 
 const GUEST_HINT_LINES = [

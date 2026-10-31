@@ -1,5 +1,5 @@
 // shared/error-codes.js · 业务错误码唯一集（恰好 13 个，大写_下划线）
-// 契约：docs/V4_CONTRACT.md v0.9 §5.3 末段；docs/ENGINEERING §4.4 映射表。
+// 契约：docs/contract/V4_CONTRACT.md v0.9 §5.3 末段；docs/ENGINEERING §4.4 映射表。
 // 纪律：全仓只认这 13 个 code；旧码（INVALID_PARAM / CODE_EXPIRED / PAYMENT_* 等）一律禁止出现。
 //       新增失败场景先改写语义或复用 INVALID_STATE，不得新增 code（v0.8/v0.9 均坚持不新增）。
 // 调用方：云函数 respond/errors、shared/error-copy、tools 门禁（与 CONTRACT 双向核对 13 码）。

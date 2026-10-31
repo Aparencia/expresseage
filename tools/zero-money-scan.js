@@ -1,7 +1,7 @@
 'use strict';
 /**
  * tools/zero-money-scan.js — 零金额扫描器（词表唯一单源）
- * 口径来源：docs/V4_ENGINEERING.md §7.6（词表/白名单/判据输出）、§8.2 #22、CONTRACT §12。
+ * 口径来源：docs/engineering/V4_ENGINEERING.md §7.6（词表/白名单/判据输出）、§8.2 #22、CONTRACT §12。
  *
  * 三范围（§7.6）：
  *   1) source = 全仓库 *.js|*.json|*.wxml|*.wxss（含 cloudfunctions/）

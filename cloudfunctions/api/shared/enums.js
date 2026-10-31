@@ -1,5 +1,5 @@
 // shared/enums.js · v4 枚举值与中文文案单源（零 wx 纯数据，客户端/云函数共用）
-// 契约：docs/V4_CONTRACT.md v0.9 §3/§5/§6/§10；docs/V4_DATA_MODEL.md §2/§4/§8；docs/ARCHITECTURE.md §4.3。
+// 契约：docs/contract/V4_CONTRACT.md v0.9 §3/§5/§6/§10；docs/data/V4_DATA_MODEL.md §2/§4/§8；docs/engineering/V4_ARCHITECTURE.md §4.3。
 // 纪律：枚举字面量只在本文件出现一次；长度/字母表/前缀、状态中文、取消原因等中文都由这里下发，
 //       页面与云函数禁止各写一份。本文件不含任何生成/存储逻辑（编号与 roomTag 的生成只在云端）。
 'use strict';

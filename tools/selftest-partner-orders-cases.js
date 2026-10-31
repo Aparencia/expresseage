@@ -4,9 +4,9 @@
  *
  * 为什么拆：门禁 #18 要求 tools/*.js 单文件 ≤1000 行；本文件承担 fake DB 装配、文档种子、
  * DTO 白名单期望与通用断言助手，主套件只保留 A~G 断言段落（同样 ≤1000 行）。
- * 口径：docs/V4_DATA_MODEL.md §2.5（orders.guest/source/customerNo）、§4.7（requestKey 归属）、
+ * 口径：docs/data/V4_DATA_MODEL.md §2.5（orders.guest/source/customerNo）、§4.7（requestKey 归属）、
  *       §4.8 块 A（已绑定顾客 / guest 两分支伪代码）、§7.5 order.create/createBatch/listPartner 行 +
- *       「批 7 兼职客户与运营（只增不改语义）」①~⑥；docs/V4_UX_PARTNER.md §3.4/§3.6/§7。
+ *       「批 7 兼职客户与运营（只增不改语义）」①~⑥；docs/ux/V4_UX_PARTNER.md §3.4/§3.6/§7。
  * 期望值逐字来自文档，不抄生产实现（防同源恒真）。
  */
 const path = require('path');

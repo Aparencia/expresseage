@@ -1,8 +1,8 @@
 // pkg-partner/pages/customer-detail/parts/unbind-flow.js · 解绑流程纯件（零 wx、零请求）
-// 口径：docs/V4_UX_PARTNER.md §3.6（无进行中单才可解绑；原因必填 + 二次确认 + 成功通知顾客）
-//      docs/V4_DATA_MODEL.md §7.4 partner.unbindCustomer：{bindingId,reason,note?}；
+// 口径：docs/ux/V4_UX_PARTNER.md §3.6（无进行中单才可解绑；原因必填 + 二次确认 + 成功通知顾客）
+//      docs/data/V4_DATA_MODEL.md §7.4 partner.unbindCustomer：{bindingId,reason,note?}；
 //      兼职侧释放原因恒为 PARTNER_INITIATED（顾客侧走另一入口，枚举见 §2.4）
-//      docs/V4_UX_PARTNER.md §6.3：READONLY 下解绑置灰（点击只提示，不发请求）
+//      docs/ux/V4_UX_PARTNER.md §6.3：READONLY 下解绑置灰（点击只提示，不发请求）
 'use strict';
 
 const enums = require('../../../../shared/enums');

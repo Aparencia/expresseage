@@ -72,7 +72,7 @@ const SRC = {
   partnerPublic: readText('cloudfunctions/api/handlers/partner/getPublic.js'),
   switchSession: readText('cloudfunctions/api/middleware/switch-session.js'),
   viewAsStart: readText('cloudfunctions/api/handlers/admin/viewAsStart.js'),
-  dataModel: readText('docs/V4_DATA_MODEL.md')
+  dataModel: readText('docs/data/V4_DATA_MODEL.md')
 };
 
 // ── fake DB 端到端样本（四动作 handler 直调；不 mock 全局 wx）──────────────────

@@ -1,6 +1,6 @@
 // pkg-partner/pages/order-detail/parts/reason-panel.js · 取消/拒单原因面板纯件（原因枚举 + OTHER 必填）
-// 契约：docs/V4_UX_PARTNER.md §3.3（拒单=取消并填原因）、§4.13（取消原因枚举）、§5.2；
-//       docs/V4_DATA_MODEL.md §7.5 order.reject / order.cancel（reason 必填、note 可选 ≤100）。
+// 契约：docs/ux/V4_UX_PARTNER.md §3.3（拒单=取消并填原因）、§4.13（取消原因枚举）、§5.2；
+//       docs/data/V4_DATA_MODEL.md §7.5 order.reject / order.cancel（reason 必填、note 可选 ≤100）。
 // 边界：原因枚举单源 = shared/enums.CANCEL_REASONS[PARTNER]，页面不复制一套文案。
 const enums = require('../../../../shared/enums');
 

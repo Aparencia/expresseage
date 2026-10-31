@@ -1,6 +1,6 @@
 // utils/customer-view.js · 顾客档案视图模型（纯件零 wx、零请求、零全局状态）
-// 口径：docs/V4_UX_PARTNER.md §3.5（客户列表行/搜索/分页/空态）、§3.6（详情身份行）
-//      docs/V4_DATA_MODEL.md §7.4（listBindings 行 DTO：服务端已排序+过滤+分页，客户端不二次排序）
+// 口径：docs/ux/V4_UX_PARTNER.md §3.5（客户列表行/搜索/分页/空态）、§3.6（详情身份行）
+//      docs/data/V4_DATA_MODEL.md §7.4（listBindings 行 DTO：服务端已排序+过滤+分页，客户端不二次排序）
 // 数据来源：partner.listBindings 的 list 项（仅 ACTIVE 绑定返回头像/昵称；解绑后 DTO 不再返回）
 'use strict';
 

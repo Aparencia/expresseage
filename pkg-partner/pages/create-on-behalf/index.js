@@ -1,5 +1,5 @@
 // pkg-partner/pages/create-on-behalf/index.js · 代客下单（两条顾客路径：已绑定 bindingId / 新顾客 guest；均不写 bindings）
-// 口径：docs/V4_UX_PARTNER.md §3.4；docs/V4_DATA_MODEL.md §7.5 批 7（bindingId 与 guest 二选一）
+// 口径：docs/ux/V4_UX_PARTNER.md §3.4；docs/data/V4_DATA_MODEL.md §7.5 批 7（bindingId 与 guest 二选一）
 const orderApi = require('../../../api/modules/order');
 const partnerApi = require('../../../api/modules/partner');
 const configApi = require('../../../api/modules/config');

@@ -1,5 +1,5 @@
 // shared/audit-actions.js · 管理审计枚举（恰好 16 个）
-// 契约：docs/ARCHITECTURE.md §4.3；docs/V4_CONTRACT.md v0.9 §4.2「admin 审计」/ §1.2/§1.3。
+// 契约：docs/engineering/V4_ARCHITECTURE.md §4.3；docs/contract/V4_CONTRACT.md v0.9 §4.2「admin 审计」/ §1.2/§1.3。
 // 纪律：新日志只写这 16 个值；账号切换统一 ACCOUNT_SWITCH_*（旧 VIEW_AS 系列已作废，
 //       历史日志的兼容换算放在 admin.listAudit 读取侧，不在本文件留旧名，避免被再次写入）。
 // 调用方：云函数 admin.* handler、cleanup、admin_audit 写入与后台审计区块。

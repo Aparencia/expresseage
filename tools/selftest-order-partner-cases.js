@@ -4,8 +4,8 @@
  *
  * 为什么拆：门禁 #18 要求 tools/*.js 单文件 ≤1000 行；本文件承担 fake DB 装配、文档种子、DTO 断言期望、
  * 批量动作/动作矩阵助手与通用断言助手，主套件只保留 A~H 断言段落（同样 ≤1000 行）。
- * 口径：期望值逐字来自 docs/V4_CONTRACT.md §5/§7、docs/V4_DATA_MODEL.md §2.5/§4.1/§7.5/§8/§12、
- *       docs/V4_UX_PARTNER.md §4.2/§4.6/§4.7，不从生产实现抄值（防同源恒真）。
+ * 口径：期望值逐字来自 docs/contract/V4_CONTRACT.md §5/§7、docs/data/V4_DATA_MODEL.md §2.5/§4.1/§7.5/§8/§12、
+ *       docs/ux/V4_UX_PARTNER.md §4.2/§4.6/§4.7，不从生产实现抄值（防同源恒真）。
  */
 const path = require('path');
 const fs = require('fs');

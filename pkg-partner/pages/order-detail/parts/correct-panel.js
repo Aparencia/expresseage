@@ -1,6 +1,6 @@
 // pkg-partner/pages/order-detail/parts/correct-panel.js · 补码/改站点面板纯件（字段域 + 校验 + 提交装配）
-// 契约：docs/V4_UX_PARTNER.md §3.3「改码/改站点」+ §4.4「需查明」+ §5.1（PICKED 仅柜号/尾号）；
-//       docs/V4_DATA_MODEL.md §7.5 order.correct（SUBMITTED/ACCEPTED/EXCEPTION 全字段；PICKED 仅 lockerNo/trackingTail）。
+// 契约：docs/ux/V4_UX_PARTNER.md §3.3「改码/改站点」+ §4.4「需查明」+ §5.1（PICKED 仅柜号/尾号）；
+//       docs/data/V4_DATA_MODEL.md §7.5 order.correct（SUBMITTED/ACCEPTED/EXCEPTION 全字段；PICKED 仅 lockerNo/trackingTail）。
 // 边界：站点值域只取 shared/stations（P1~P8，不自建）；形态校验复用 utils/order-edit；本文件不判断"按钮显隐"。
 const enums = require('../../../../shared/enums');
 const orderState = require('../../../../shared/order-state');

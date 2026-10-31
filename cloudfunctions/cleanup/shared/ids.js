@@ -1,6 +1,6 @@
 // utils/ids.js · 唯一编号零件（归一回显/解析/展示/前缀提示；零 wx、零生成）
-// 契约：docs/V4_CONTRACT.md v0.9 §3/§3.1；docs/ENGINEERING §5.3（导出名单、归一顺序、错前缀文案同源）；
-//       docs/ARCHITECTURE.md §4.3（客户端只做归一/展示/校验，生成为云端 lib/id-generator.js）。
+// 契约：docs/contract/V4_CONTRACT.md v0.9 §3/§3.1；docs/ENGINEERING §5.3（导出名单、归一顺序、错前缀文案同源）；
+//       docs/engineering/V4_ARCHITECTURE.md §4.3（客户端只做归一/展示/校验，生成为云端 lib/id-generator.js）。
 // 依赖：rules 全部来自 shared/enums.js（字母表/长度/正则），归一与形态来自 shared/validate.js，
 //       提示文案来自 shared/error-copy.js（本文件不复制字符串，避免两份口径）。
 // 路径说明：require('../shared/x') 在客户端（utils/ids.js）与云函数副本（<fn>/shared/ids.js）两种位置

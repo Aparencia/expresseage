@@ -1,5 +1,5 @@
 // config/route.js · 启动分流纯函数（零 wx、零 storage，可直测）
-// snapshot 形状见 docs/ARCHITECTURE.md §3.6；返回 { url, reason }。
+// snapshot 形状见 docs/engineering/V4_ARCHITECTURE.md §3.6；返回 { url, reason }。
 // 角色解析口径（批 2）：显式 activeRole 优先 > 单角色直进 > 双角色回角色页由用户选择。
 // 「上次使用」建议由 pages/role 在显示层读 utils/storage 处理（本文件不 require storage、
 // 不接收 lastRole，路由输入保持 ARCHITECTURE §3.6 冻结形状）。

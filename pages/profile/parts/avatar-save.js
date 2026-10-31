@@ -1,5 +1,5 @@
 // pages/profile/parts/avatar-save.js · 头像票据过期的保存自愈（纯件：零 wx；save/reupload 由页面注入）
-// 口径：CONTRACT §4.2/§5.3、D19、D42、docs/TECH_DEBT.md TD-027（头像票据一次性：过期/已消费重放 → INVALID_STATE）、
+// 口径：CONTRACT §4.2/§5.3、D19、D42、docs/governance/V4_TECH_DEBT.md TD-027（头像票据一次性：过期/已消费重放 → INVALID_STATE）、
 //       V4_UX_CUSTOMER §4.10；批 10 A 批 P1-10；2026-10-28 D42 改判保底语义。
 // 阶梯（不无限重试、不重复消费票据、不掩盖其它错误）：
 //   ① 保存失败且错误指向头像上传凭证 → 重新 prepare+上传 1 次换新票后重试保存；

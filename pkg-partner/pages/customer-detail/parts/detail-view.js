@@ -1,5 +1,5 @@
 // pkg-partner/pages/customer-detail/parts/detail-view.js · 顾客详情视图装配（纯件：零 wx、零请求）
-// 口径：docs/V4_UX_PARTNER.md §3.6（身份行/备注/自然日分组历史单/解绑资格/兼职编号小字）
+// 口径：docs/ux/V4_UX_PARTNER.md §3.6（身份行/备注/自然日分组历史单/解绑资格/兼职编号小字）
 //      档案+解绑资格 ← partner.getCustomer；历史单单一来源 ← order.listPartner({view:'customer'})
 //      （两份接口的 orders/nextCursor 不双写：页面只消费 listPartner 的排序/游标，保证与工作台一致）
 'use strict';

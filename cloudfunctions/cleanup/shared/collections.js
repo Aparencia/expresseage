@@ -1,5 +1,5 @@
 // shared/collections.js · 云数据库集合注册表（唯一集合名来源，共 14 个）
-// 契约：docs/V4_CONTRACT.md v0.9 §4 集合表；docs/ARCHITECTURE.md §4.3 冻结清单。
+// 契约：docs/contract/V4_CONTRACT.md v0.9 §4 集合表；docs/engineering/V4_ARCHITECTURE.md §4.3 冻结清单。
 // 纪律：任何 handler / dao / sweep 只从这里取名；客户端不出现集合名字面量（ARCHITECTURE §1）。
 //       本文件零 wx、零业务逻辑，可被客户端与云函数 shared/ 副本共同引用。
 'use strict';

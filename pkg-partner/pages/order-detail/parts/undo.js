@@ -1,6 +1,6 @@
 // pkg-partner/pages/order-detail/parts/undo.js · 撤销条纯件（order.undo 仅取件/送达、5 秒窗由服务端判定）
-// 契约：docs/V4_UX_PARTNER.md §4.7（撤销条 5s / 文案）与 §3.3「不设接单撤销」；
-//       docs/V4_DATA_MODEL.md §7.5 order.undo（PICKED/DELIVERED、5 秒窗、无后续状态变化）。
+// 契约：docs/ux/V4_UX_PARTNER.md §4.7（撤销条 5s / 文案）与 §3.3「不设接单撤销」；
+//       docs/data/V4_DATA_MODEL.md §7.5 order.undo（PICKED/DELIVERED、5 秒窗、无后续状态变化）。
 // 边界：可见性 = 服务端 actions 里出现 undoPick/undoDeliver；本文件只算倒计时与文案，不自行发起撤销。
 const orderState = require('../../../../shared/order-state');
 const actionsPart = require('./actions');

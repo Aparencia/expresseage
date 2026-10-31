@@ -1,5 +1,5 @@
 // shared/format.js · 展示格式化纯件（时间 / 文本截断 / 锚+键行）
-// 契约：docs/V4_CONTRACT.md v0.9 §3「时间以 serverTime 为准」、§8「锚+键配对」；
+// 契约：docs/contract/V4_CONTRACT.md v0.9 §3「时间以 serverTime 为准」、§8「锚+键配对」；
 //       docs/ENGINEERING §5.8（v3 锚+键展示同口径）。编号展示唯一实现在 utils/ids.js
 //       （ENGINEERING §5.3），本文件不再拼一遍编号格式，避免两份口径。
 // 调用方：订单列表/详情、消息中心、客户档案行（锚+键）、后台列表时间列。

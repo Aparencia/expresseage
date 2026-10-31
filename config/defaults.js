@@ -1,6 +1,6 @@
 // config/defaults.js · 全局配置出厂值（唯一默认值来源；admin.bootstrap 种子、admin 范围校验、公开子集）
-// 契约：docs/V4_CONTRACT.md v1.1 §2/§4 config 行（含 orderMergeWindowMinutes，D23；stations，D32）；
-//       docs/V4_DATA_MODEL.md §2.10。docs/ENGINEERING §3.6（键与默认/范围）。
+// 契约：docs/contract/V4_CONTRACT.md v1.1 §2/§4 config 行（含 orderMergeWindowMinutes，D23；stations，D32）；
+//       docs/data/V4_DATA_MODEL.md §2.10。docs/ENGINEERING §3.6（键与默认/范围）。
 // 纪律：值只含布尔/字符串/整数次数与毫秒；无 Key、无第三方服务标识（客户端包内零外呼痕迹）。
 //       `aiFallback.model` 的出厂模型名由云函数 lib/ai 自持（本文件留空串表示"用云侧默认模型"）。
 // 调用方：云函数 admin.bootstrap（种子）、admin.updateConfig（CONFIG_LIMITS 范围）、

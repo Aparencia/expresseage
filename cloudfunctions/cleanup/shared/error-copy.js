@@ -1,5 +1,5 @@
 // shared/error-copy.js · 13 码中文人话唯一文案处（页面/云函数都从这里取，禁止各写一份）
-// 契约：docs/V4_CONTRACT.md v0.9 §5.3；docs/ENGINEERING §4.4「客户端不写死文案」。
+// 契约：docs/contract/V4_CONTRACT.md v0.9 §5.3；docs/ENGINEERING §4.4「客户端不写死文案」。
 // 纪律：每句都要说真话并给下一步；不出现"请稍后重试"式空话；不含任何交易语义。
 // 调用方：api/client.js（失败 toast）、云函数 respond/errors 组装 message、页面兜底文案。
 'use strict';

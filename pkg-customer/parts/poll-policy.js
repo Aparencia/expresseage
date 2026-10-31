@@ -1,5 +1,5 @@
 // pkg-customer/parts/poll-policy.js · 订单详情轮询策略（纯件，零 wx、零定时器、零随机）
-// 口径：docs/V4_UX_CUSTOMER.md §8.1 / CONTRACT §9 / AC-C-29 / QA E17
+// 口径：docs/ux/V4_UX_CUSTOMER.md §8.1 / CONTRACT §9 / AC-C-29 / QA E17
 //   页面可见 10s 一轮；失败退避 20s→40s（封顶 40s）；成功回 10s；onHide/onUnload stop 后不再排程。
 // 调用方：pkg-customer/pages/order-detail/index.js（定时器在页面，策略状态在这里，页面层零数字判据）。
 'use strict';

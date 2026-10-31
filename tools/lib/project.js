@@ -1,7 +1,7 @@
 'use strict';
 /**
  * tools/lib/project.js — v4 口径镜像常量（工具链共用；文档仍是唯一权威）。
- * 来源：docs/V4_CONTRACT.md v0.9 §4/§5.3/§7/§4.2、docs/V4_ENGINEERING.md §8.2。
+ * 来源：docs/contract/V4_CONTRACT.md v0.9 §4/§5.3/§7/§4.2、docs/engineering/V4_ENGINEERING.md §8.2。
  * 用途：check.js / check-docs.js / seed-dev.js / selftest-core.js 的期望值；
  * 文档改动时先改文档，再同步这里（check-docs 会做双向对帐）。
  */
@@ -148,24 +148,24 @@ const AUDIT_ACTIONS = ['INVITE_CREATE', 'INVITE_REVOKE', 'PARTNER_SUSPEND', 'PAR
 
 /** CONTRACT §7 / §12 文档地图（批 1 收口必须存在；batch 0 豁免集合见 ENGINEERING §8.3 #1）。 */
 const DESIGN_DOCS = [
-  'V4_REBUILD_SPEC.md',
-  'docs/V4_CONTRACT.md',
-  'docs/V4_DATA_MODEL.md',
-  'docs/V4_UX_CUSTOMER.md',
-  'docs/V4_UX_PARTNER.md',
-  'docs/V4_UX_DEVELOPER.md',
-  'docs/V4_ENGINEERING.md',
-  'docs/V4_DECISIONS.md',
-  'docs/QA_CHECKLIST.md',
-  'docs/ARCHITECTURE.md',
-  'docs/RUNBOOK.md',
-  'docs/V4_FIXTURES.md',
-  'docs/V4_REVIEW_MATERIALS.md',
-  'docs/V4_V3_PARITY.md',
+  'docs/contract/V4_REBUILD_SPEC.md',
+  'docs/contract/V4_CONTRACT.md',
+  'docs/data/V4_DATA_MODEL.md',
+  'docs/ux/V4_UX_CUSTOMER.md',
+  'docs/ux/V4_UX_PARTNER.md',
+  'docs/ux/V4_UX_DEVELOPER.md',
+  'docs/engineering/V4_ENGINEERING.md',
+  'docs/contract/V4_DECISIONS.md',
+  'docs/delivery/V4_QA_CHECKLIST.md',
+  'docs/engineering/V4_ARCHITECTURE.md',
+  'docs/delivery/V4_RUNBOOK.md',
+  'docs/engineering/V4_FIXTURES.md',
+  'docs/delivery/V4_REVIEW_MATERIALS.md',
+  'docs/delivery/V4_V3_PARITY.md',
 ];
 
-const BATCH0_EXEMPT = ['AGENTS.md', 'STATE.md', 'CHANGELOG.md', 'docs/ARCHITECTURE.md', 'docs/RUNBOOK.md',
-  'docs/V4_FIXTURES.md'];
+const BATCH0_EXEMPT = ['AGENTS.md', 'STATE.md', 'CHANGELOG.md', 'docs/engineering/V4_ARCHITECTURE.md', 'docs/delivery/V4_RUNBOOK.md',
+  'docs/engineering/V4_FIXTURES.md'];
 
 /** check.js #5 必需文件（骨架 + 文档 + 云函数 package.json）。 */
 const REQUIRED_FILES = ['README.md', 'AGENTS.md', 'STATE.md', 'CHANGELOG.md', 'check.ps1', 'gate.ps1', 'doctor.ps1',

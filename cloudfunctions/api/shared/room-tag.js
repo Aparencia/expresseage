@@ -1,5 +1,5 @@
 // utils/room-tag.js · roomTag 零件（Excel 列名式大写字母；零 wx、零生成随机）
-// 契约：docs/V4_CONTRACT.md v0.9 §3（roomTag 恒大写 A…Z/AA…，展示 D4-522A）；
+// 契约：docs/contract/V4_CONTRACT.md v0.9 §3（roomTag 恒大写 A…Z/AA…，展示 D4-522A）；
 //       docs/ENGINEERING §5.3b（本文件导出名单与 selftest 判据）。
 // 分工：分配序号只在云端 lib/tag-allocator.js（事务 + counters）；本文件只做序号↔标签换算、
 //       格式拼装、校验与排序。排序禁止字符串比较（'AA' 会排到 'Z' 前面），一律用 tagRank。

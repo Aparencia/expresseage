@@ -1,5 +1,5 @@
 // pkg-partner/pages/order-detail/parts/delivery-panel.js · 送达备注浮层纯件（deliveryNote / guest 24h 自动完成文案）
-// 契约：docs/V4_UX_PARTNER.md §3.3「送达」、§4.14 代客单凭证；docs/V4_DATA_MODEL.md §7.5 order.markDelivered / §7.6 config.getPublic。
+// 契约：docs/ux/V4_UX_PARTNER.md §3.3「送达」、§4.14 代客单凭证；docs/data/V4_DATA_MODEL.md §7.5 order.markDelivered / §7.6 config.getPublic。
 // 边界：guest 判定只读服务端 DTO.source（= ORDER_SOURCE.PARTNER）；24h 文案与自动完成时间不本地推算状态。
 const enums = require('../../../../shared/enums');
 

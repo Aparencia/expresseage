@@ -1,9 +1,9 @@
 'use strict';
 /**
  * tools/selftest-recognize.js — v4 识别规则纯件（utils/recognize/** 与 utils/ocr/** 的纯部分）。
- * 分层依据：docs/V4_ENGINEERING.md §7.1「识别规则」：码/站点/柜号/运单尾号/形态闸 + 语料样本。
+ * 分层依据：docs/engineering/V4_ENGINEERING.md §7.1「识别规则」：码/站点/柜号/运单尾号/形态闸 + 语料样本。
  * 判据纪律：先合法基线、再只有该闸能挡的反例；样本非空（不许空集全绿）；期望值以
- *           docs/V4_CONTRACT.md §3/§4.3 与 §4.3.1（D29 低置信不写入/可采纳建议）为准；语料带 sha256 指纹钉，防样本被悄悄改动。
+ *           docs/contract/V4_CONTRACT.md §3/§4.3 与 §4.3.1（D29 低置信不写入/可采纳建议）为准；语料带 sha256 指纹钉，防样本被悄悄改动。
  * 接入：tools/selftest.js 里 `h.setExpected(require('./selftest-recognize').EXPECTED_ASSERTIONS)` 后 register(h)。
  * 零金额：本文件不得出现口径词表（ENGINEERING §7.6）字面量，需要时用构造串。
  */

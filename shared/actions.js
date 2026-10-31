@@ -1,5 +1,5 @@
 // shared/actions.js · 云函数 action 注册表（CONTRACT v0.9 §5.3 全集）
-// 契约：docs/ARCHITECTURE.md §4.3；docs/ENGINEERING §4.2「动作注册纪律」。
+// 契约：docs/engineering/V4_ARCHITECTURE.md §4.3；docs/ENGINEERING §4.2「动作注册纪律」。
 // 每条 = action 名 → { visibility: 'client'|'internal', write: boolean }：
 //   · visibility=client 才允许被小程序调用（router 对 internal 一律 FORBIDDEN）；
 //   · write=true 表示会产生写入/外呼（READONLY 切换会话据此拒绝，客户端据此不做自动重试）。

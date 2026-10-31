@@ -1,5 +1,5 @@
 // pages/customer/parts/orders-view.js · 顾客订单列表视图模型（纯件，零 wx）
-// 口径：docs/V4_UX_CUSTOMER.md §3.4/§5.1/§5.7/§8.2；AC-C-21/22/30；CONTRACT §5.2（服务端排序，客户端不重排）
+// 口径：docs/ux/V4_UX_CUSTOMER.md §3.4/§5.1/§5.7/§8.2；AC-C-21/22/30；CONTRACT §5.2（服务端排序，客户端不重排）
 // 页面层零七状态字面量：状态一律经 shared/order-state 常量比较（check #21）。
 'use strict';
 

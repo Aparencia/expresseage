@@ -1,5 +1,5 @@
 // pkg-partner/pages/order-detail/index.js · 兼职订单详情（真实 DTO：order.actions 决定动作条；counterpart 只在 ACTIVE 绑定内下发）
-// 契约：docs/V4_UX_PARTNER.md §3.3 / §4.4 / §4.7 / §4.13 / §4.14；docs/V4_DATA_MODEL.md §7.5（order.get/correct/undo）。
+// 契约：docs/ux/V4_UX_PARTNER.md §3.3 / §4.4 / §4.7 / §4.13 / §4.14；docs/data/V4_DATA_MODEL.md §7.5（order.get/correct/undo）。
 // 边界：页面零状态机判断（动作/状态/编号/凭证全部消费服务端 DTO 与 parts 纯件）；只经 api/modules 出入。
 const orderApi = require('../../../api/modules/order');
 const messageApi = require('../../../api/modules/message');

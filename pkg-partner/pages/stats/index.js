@@ -1,5 +1,5 @@
 // pkg-partner/pages/stats/index.js · 单量统计（今日/本周/本月；近 7 天柱 + 今日日报；零费用口径）
-// 口径：docs/V4_UX_PARTNER.md §3.8（三档 tab/四格指标/自绘柱/空态）、§9（单一来源 partner.stats、
+// 口径：docs/ux/V4_UX_PARTNER.md §3.8（三档 tab/四格指标/自绘柱/空态）、§9（单一来源 partner.stats、
 //       日报摘要可复制、页面不做历史页累加）；DATA_MODEL §7.4 partner.stats 出参（批 7 冻结）。
 // 页面只做取参/接线/setData：指标、柱、日报、空/错态全部在 parts/view-model.js、parts/daily-report.js。
 'use strict';

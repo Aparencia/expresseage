@@ -103,8 +103,8 @@ check(1, '文档地图/分阶段必需文件', () => {
 // ---------------------------------------------------------------- #2 页面路径
 check(2, 'CONTRACT §7 页面路径 = app.json 声明（页数口径 ' + P.ALL_PAGES.length + '，与 ALL_PAGES 联动）', () => {
   if (BATCH === 0) return { skip: '§8.3 #2 明确"批 1 后生效"' };
-  const contract = text('docs/V4_CONTRACT.md');
-  if (contract === null) return ['缺失: docs/V4_CONTRACT.md'];
+  const contract = text('docs/contract/V4_CONTRACT.md');
+  if (contract === null) return ['缺失: docs/contract/V4_CONTRACT.md'];
   const sec = section(contract, /^##\s*7\./);
   if (!sec) return ['CONTRACT 缺 §7 页面地图'];
   const declaredInDoc = new Set();
@@ -127,8 +127,8 @@ check(2, 'CONTRACT §7 页面路径 = app.json 声明（页数口径 ' + P.ALL_P
 
 // ---------------------------------------------------------------- #3 action 表
 check(3, 'CONTRACT §5.3 action 表 = shared/actions.js；DATA_MODEL §7 ⊆ CONTRACT', () => {
-  const contract = text('docs/V4_CONTRACT.md');
-  if (contract === null) return ['缺失: docs/V4_CONTRACT.md'];
+  const contract = text('docs/contract/V4_CONTRACT.md');
+  if (contract === null) return ['缺失: docs/contract/V4_CONTRACT.md'];
   const sec = section(contract, /^###\s*5\.3/);
   if (!sec) return ['CONTRACT 缺 §5.3'];
   const out = [];
@@ -146,7 +146,7 @@ check(3, 'CONTRACT §5.3 action 表 = shared/actions.js；DATA_MODEL §7 ⊆ CON
   const registered = Object.keys(actions.ACTION_MAP || {});
   Object.keys(P.ACTIONS).filter((a) => registered.indexOf(a) === -1).forEach((a) => out.push('注册表缺: ' + a));
   registered.filter((a) => !P.ACTIONS[a] && P.P1_ACTIONS.indexOf(a) === -1).forEach((a) => out.push('注册表多出: ' + a));
-  const dm = text('docs/V4_DATA_MODEL.md');
+  const dm = text('docs/data/V4_DATA_MODEL.md');
   if (dm !== null) {
     const dmSec = section(dm, /^##\s*7\./);
     if (dmSec) {
@@ -168,8 +168,8 @@ check(3, 'CONTRACT §5.3 action 表 = shared/actions.js；DATA_MODEL §7 ⊆ CON
 
 // ---------------------------------------------------------------- #4 集合/错误码
 check(4, 'CONTRACT §4 集合（14）= shared/collections.js；13 错误码双向一致', () => {
-  const contract = text('docs/V4_CONTRACT.md');
-  if (contract === null) return ['缺失: docs/V4_CONTRACT.md'];
+  const contract = text('docs/contract/V4_CONTRACT.md');
+  if (contract === null) return ['缺失: docs/contract/V4_CONTRACT.md'];
   const out = [];
   const sec4 = section(contract, /^##\s*4\./);
   const docCollections = new Set();
@@ -213,8 +213,8 @@ check(4, 'CONTRACT §4 集合（14）= shared/collections.js；13 错误码双�
 
 // ---------------------------------------------------------------- #5 D#/E# 引用
 function defineRefSets() {
-  const contract = text('docs/V4_CONTRACT.md') || '';
-  const eng = text('docs/V4_ENGINEERING.md') || '';
+  const contract = text('docs/contract/V4_CONTRACT.md') || '';
+  const eng = text('docs/engineering/V4_ENGINEERING.md') || '';
   const dDefined = new Set();
   (section(contract, /^##\s*13\./) || '').split('\n').forEach((line) => {
     const m = line.match(/^\|\s*`?D(\d{1,2})`?\s*\|/);
@@ -294,8 +294,8 @@ check(7, '零金额文档扫描（docs/ + 根 md，白名单精确项）', () =>
 
 // ---------------------------------------------------------------- #8 编号规格一致性
 check(8, '编号规格四端一致（CONTRACT/ENGINEERING/ids.js/error-copy）', () => {
-  const contract = text('docs/V4_CONTRACT.md') || '';
-  const eng = text('docs/V4_ENGINEERING.md') || '';
+  const contract = text('docs/contract/V4_CONTRACT.md') || '';
+  const eng = text('docs/engineering/V4_ENGINEERING.md') || '';
   const c31 = section(contract, /^##\s*3\./) || '';
   const e53 = section(eng, /^###\s*5\.3/) || '';
   const out = [];
@@ -335,8 +335,8 @@ check(8, '编号规格四端一致（CONTRACT/ENGINEERING/ids.js/error-copy）',
 
 // ---------------------------------------------------------------- #9 AI 兜底文档判据
 check(9, 'AI 兜底文档三语义 + failureCode 5 枚举 + aiFallback 键 + 复核页路径 + 无明文 Key', () => {
-  const contract = text('docs/V4_CONTRACT.md') || '';
-  const eng = text('docs/V4_ENGINEERING.md') || '';
+  const contract = text('docs/contract/V4_CONTRACT.md') || '';
+  const eng = text('docs/engineering/V4_ENGINEERING.md') || '';
   const out = [];
   const groups = [
     { label: '外发字段=白名单', re: /白名单|AI_PAYLOAD_KEYS|外发字段/ },
@@ -352,7 +352,7 @@ check(9, 'AI 兜底文档三语义 + failureCode 5 枚举 + aiFallback 键 + 复
     groups.forEach((g) => { if (!g.re.test(pair[0])) out.push(pair[1] + ' 未覆盖语义: ' + g.label); });
   });
   const failCodes = ['NO_TEXT', 'PARSE_MISS', 'LOW_CONFIDENCE', 'LLM_ERROR', 'IMAGE_UNREADABLE'];
-  const dm = text('docs/V4_DATA_MODEL.md') || '';
+  const dm = text('docs/data/V4_DATA_MODEL.md') || '';
   const cSet = failCodes.filter((c) => c43.indexOf(c) !== -1);
   const dmSet = failCodes.filter((c) => dm.indexOf(c) !== -1);
   if (cSet.length !== 5) out.push('CONTRACT §4.3 failureCode 枚举不全（' + cSet.length + '/5）');
@@ -360,7 +360,7 @@ check(9, 'AI 兜底文档三语义 + failureCode 5 枚举 + aiFallback 键 + 复
   ['enabled', 'model', 'timeoutMs', 'maxPerUserPerDay', 'dailyQuota', 'cooldownMinutes'].forEach((k) => {
     if (c43.indexOf(k) === -1 && eng.indexOf(k) === -1) out.push('aiFallback 键未在文档出现: ' + k);
   });
-  ['docs/V4_CONTRACT.md', 'docs/V4_ENGINEERING.md'].forEach((rel) => {
+  ['docs/contract/V4_CONTRACT.md', 'docs/engineering/V4_ENGINEERING.md'].forEach((rel) => {
     if ((text(rel) || '').indexOf('pkg-admin/pages/recognition-review/index') === -1) out.push(rel + ' 缺复核页路径');
   });
   DOCS.forEach((rel) => {
@@ -399,7 +399,7 @@ check(10, 'v0.9 文档一致性（旧口径禁词/审计枚举/roomTag 大写/�
   const { dDefined } = defineRefSets();
   dRangeProblems(dDefined).forEach((m) => out.push(m));
   // ③ 审计枚举：CONTRACT §4.2 列全 16 个；注册表（代码侧）集合相等
-  const contract = text('docs/V4_CONTRACT.md') || '';
+  const contract = text('docs/contract/V4_CONTRACT.md') || '';
   const auditSection = (contract.match(/\*\*admin 审计\*\*[^\n]*/) || [''])[0];
   P.AUDIT_ACTIONS.forEach((a) => { if (auditSection.indexOf(a) === -1) out.push('CONTRACT §4.2 审计列表缺: ' + a); });
   const needAudit = needCode(['shared/audit-actions.js'], '审计枚举');
@@ -413,8 +413,8 @@ check(10, 'v0.9 文档一致性（旧口径禁词/审计枚举/roomTag 大写/�
     } else out.push('shared/audit-actions.js 加载失败');
   }
   // ④ roomTag 四端一致（CONTRACT D7/§3、ENGINEERING §5.3b/§4.12、utils/room-tag.js 大写）
-  const eng = text('docs/V4_ENGINEERING.md') || '';
-  [['docs/V4_CONTRACT.md', contract], ['docs/V4_ENGINEERING.md', eng]].forEach((pair) => {
+  const eng = text('docs/engineering/V4_ENGINEERING.md') || '';
+  [['docs/contract/V4_CONTRACT.md', contract], ['docs/engineering/V4_ENGINEERING.md', eng]].forEach((pair) => {
     if (!/A…Z|A\.\.\.Z/.test(pair[1])) out.push(pair[0] + ' 缺 roomTag 大写口径 A…Z/AA…');
   });
   const rt = loadModule('utils/room-tag.js');
@@ -434,7 +434,7 @@ check(10, 'v0.9 文档一致性（旧口径禁词/审计枚举/roomTag 大写/�
   ];
   five.forEach((f) => { if (!f.re.test(c13) && !f.re.test(contract)) out.push('CONTRACT §1.3 未覆盖: ' + f.label); });
   // ⑥ QA_CHECKLIST v0.9 点检项
-  const qa = text('docs/QA_CHECKLIST.md') || '';
+  const qa = text('docs/delivery/V4_QA_CHECKLIST.md') || '';
   ['账号切换', '测试账号', '头像', '绑定方向'].forEach((k) => {
     if (qa.indexOf(k) === -1) out.push('QA_CHECKLIST 缺 v0.9 点检小节: ' + k);
   });

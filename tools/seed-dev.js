@@ -76,7 +76,7 @@ function buildPlan() {
   const plan = [];
   // 1) 集合（14 个）
   P.COLLECTIONS.forEach((name) => plan.push({ kind: 'collection', target: name, action: 'ensure-collection', note: '空集合起（D11 不迁移 v3 数据）' }));
-  // 2) 唯一索引（权威：docs/V4_DATA_MODEL.md §5.1；与 cloudfunctions/api/handlers/admin/bootstrap.js
+  // 2) 唯一索引（权威：docs/data/V4_DATA_MODEL.md §5.1；与 cloudfunctions/api/handlers/admin/bootstrap.js
   //    的 INDEX_SPECS、selftest-cloud 的 15 项部署清单断言同源。列名对齐集合字段）
   const indexSpec = [
     ['customers', 'uk_customer_no', 'customerNo'],

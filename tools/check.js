@@ -1,7 +1,7 @@
 'use strict';
 /**
  * tools/check.js — v4 代码/配置门禁（ENGINEERING §8.2 的 31 条判据逐条实现）。
- * 口径：docs/V4_ENGINEERING.md v0.9 §8.2；失败含义见同表。汇总行必须存在（没有汇总输出 = 读数作废）。
+ * 口径：docs/engineering/V4_ENGINEERING.md v0.9 §8.2；失败含义见同表。汇总行必须存在（没有汇总输出 = 读数作废）。
  *
  * 与 check-docs 的分工（文件头登记差异，§8.2 #18）：
  *   - #18 行数：本文件对**代码/测试文件**（*.js）执行 ≤500 / 测试 ≤1000；文档 *.md 的体量/结构判据
@@ -11,7 +11,7 @@
  *
  * 用法：node tools/check.js            # 逐条打印 PASS/FAIL + 汇总行；有失败 exit 1
  *       node tools/check.js --fail-only
- * 纪律：本文件自身也受 #18 约束（≤500 行全文本）；新增判据先加进 docs/V4_ENGINEERING.md §8.2。
+ * 纪律：本文件自身也受 #18 约束（≤500 行全文本）；新增判据先加进 docs/engineering/V4_ENGINEERING.md §8.2。
  */
 const fs = require('fs');
 const path = require('path');

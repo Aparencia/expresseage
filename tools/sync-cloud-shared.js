@@ -2,8 +2,8 @@
 /**
  * tools/sync-cloud-shared.js — 共享注册表 → 云函数 shared/ 副本同步（唯一生成器）。
  *
- * 口径：docs/ARCHITECTURE.md §1/§2（"cloudfunctions/* /shared/** 只由本脚本生成，任何人不得手写"）、
- *       docs/V4_ENGINEERING.md §8.2 #17（逐字节 hash 对帐）。
+ * 口径：docs/engineering/V4_ARCHITECTURE.md §1/§2（"cloudfunctions/* /shared/** 只由本脚本生成，任何人不得手写"）、
+ *       docs/engineering/V4_ENGINEERING.md §8.2 #17（逐字节 hash 对帐）。
  *
  * 源（source of truth）：
  *   1) shared/**               → 云函数 shared/ 同名相对路径

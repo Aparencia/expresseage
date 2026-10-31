@@ -28,7 +28,7 @@
  *      跨三单正控：3 条更正事件中仅 1 条带补码 note（恒写/丢写/条件写反均判红）。
  *
  * 纪律：fake DB 注入 + 真实 handler，不连真库、不 mock 全局 wx；先合法基线再反例，样本非空；
- *       EXPECTED_ASSERTIONS 与实际断言数精确相等（少算/多算都判红）；口径唯一源 docs/V4_CONTRACT.md §5。
+ *       EXPECTED_ASSERTIONS 与实际断言数精确相等（少算/多算都判红）；口径唯一源 docs/contract/V4_CONTRACT.md §5。
  * 取数：node tools/selftest-order-lifecycle.js | Select-Object -Last 2
  */
 const path = require('path');

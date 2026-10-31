@@ -1,5 +1,5 @@
 // pkg-partner/pages/stats/parts/daily-report.js · 日报摘要纯件（可复制；零 wx）
-// 口径：docs/V4_UX_PARTNER.md §9「日报摘要（可复制）」：`【代取日报】YYYY-MM-DD 完成 N 单、异常 M 单；
+// 口径：docs/ux/V4_UX_PARTNER.md §9「日报摘要（可复制）」：`【代取日报】YYYY-MM-DD 完成 N 单、异常 M 单；
 //       订单 20261021-0031 已送达 / 20261021-0027 已取件 / …`——只含 orderNo + 状态 + 日期，
 //       不含取件码/宿舍/尾号；无任何费用信息。数据源 = partner.stats 的 counts/recent（DATA_MODEL §7.4）。
 'use strict';

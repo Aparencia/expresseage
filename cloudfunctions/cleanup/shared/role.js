@@ -1,5 +1,5 @@
 // shared/role.js · 角色判定纯函数（业务角色只有 CUSTOMER / PARTNER；开发者是白名单环境身份，不落库）
-// 契约：docs/V4_CONTRACT.md v0.9 §1/§1.3/§4.2（绑定方向铁律）；docs/V4_DATA_MODEL.md §6.1/§6.3。
+// 契约：docs/contract/V4_CONTRACT.md v0.9 §1/§1.3/§4.2（绑定方向铁律）；docs/data/V4_DATA_MODEL.md §6.1/§6.3。
 // 调用方：api/（按角色渲染入口）、云端 auth/guard-bind 中间件、启动分流（config/route.js 快照）。
 'use strict';
 

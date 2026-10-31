@@ -1,6 +1,6 @@
 // shared/zones.js · 五苑（楼区）标识、栋号/宿舍号值域与宿舍键拼装（纯函数，零 wx）
-// 契约：docs/V4_CONTRACT.md v0.9 §3 术语表（zone/buildingNo/buildingText/room/dormKey）；
-//       docs/V4_DATA_MODEL.md §4.5；docs/ENGINEERING §5.8（v3 utils/buildings.js 规则移植）。
+// 契约：docs/contract/V4_CONTRACT.md v0.9 §3 术语表（zone/buildingNo/buildingText/room/dormKey）；
+//       docs/data/V4_DATA_MODEL.md §4.5；docs/ENGINEERING §5.8（v3 utils/buildings.js 规则移植）。
 // 口径：固定顺序 D→X→N→B→C（不是字母序）；入库一律大写；栋号整数 1~10；宿舍号数字且 ≥100。
 // 调用方：shared/validate.js（宿舍身份校验）、页面资料表单、云端客户资料 handler、排序。
 'use strict';
