@@ -11,7 +11,7 @@
 ## 0. 派单输入单
 
 - `DESCRIPTION`：规格轴独立审查——对照 CONTRACT（唯一口径）/DATA_MODEL/三份 UX/ARCHITECTURE 检查 HEAD 实现的需求缺失、半写、范围外、实现与需求不符；产出本文件。
-- `PLAN_OR_REQUIREMENTS`：`docs/contract/V4_CONTRACT.md`（v0.9）+ `docs/data/V4_DATA_MODEL.md` + `docs/V4_UX_{CUSTOMER,PARTNER,DEVELOPER}.md` + `docs/engineering/V4_ARCHITECTURE.md`。
+- `PLAN_OR_REQUIREMENTS`：`docs/contract/V4_CONTRACT.md`（v0.9）+ `docs/data/V4_DATA_MODEL.md` + `docs/ux/V4_UX_{CUSTOMER,PARTNER,DEVELOPER}.md` + `docs/engineering/V4_ARCHITECTURE.md`。
 - `BASE_SHA` = 空树 `4b825dc642cb6eb9a060e54bf8d69288fbee4904`（全量新增基线）；`HEAD_SHA` = `9031d14cfc88b0cd8b03527da00ccc1f70a3e635`。
 - 写作用域：仅 `docs/archive/reviews/_parts/2026-10-22_D-spec-axis.md`（本文件）。
 

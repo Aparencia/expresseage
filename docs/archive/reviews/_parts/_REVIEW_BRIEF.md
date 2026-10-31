@@ -7,7 +7,7 @@
 - 仓库 `D:\Code\expressage_college_v4`；HEAD = `9031d14cfc88b0cd8b03527da00ccc1f70a3e635`；工作树干净；50 commits（root `d5ad214`）。
 - **审查对象 = HEAD 全量 v4 生产代码**（v4 相对 v1~v3 为全量新增，等同"全量新增代码审查"）。审查范围写成派单输入单：
   - `DESCRIPTION`：见各子代理派单（≤3 行）。
-  - `PLAN_OR_REQUIREMENTS`：`docs/contract/V4_CONTRACT.md`（唯一口径）+ `docs/data/V4_DATA_MODEL.md` + `docs/V4_UX_{CUSTOMER,PARTNER,DEVELOPER}.md` + `docs/engineering/V4_ARCHITECTURE.md`（分层/冻结接口）+ `docs/engineering/V4_ENGINEERING.md`（工程/门禁/代码硬标准）。
+  - `PLAN_OR_REQUIREMENTS`：`docs/contract/V4_CONTRACT.md`（唯一口径）+ `docs/data/V4_DATA_MODEL.md` + `docs/ux/V4_UX_{CUSTOMER,PARTNER,DEVELOPER}.md` + `docs/engineering/V4_ARCHITECTURE.md`（分层/冻结接口）+ `docs/engineering/V4_ENGINEERING.md`（工程/门禁/代码硬标准）。
   - `BASE_SHA` = 空树 `4b825dc642cb6eb9a060e54bf8d69288fbee4904`（全量新增的等价基线）；`HEAD_SHA` = `9031d14cfc88b0cd8b03527da00ccc1f70a3e635`。
 - 锚点校验适配：本仓 `STATE.md` **无「起点锚点」字段**（验证命令：`Select-String -Path STATE.md -Pattern '起点锚点'` → 空输出），按用户"忽略外引"以 HEAD 全量新增为基线，不再向用户追问锚点；此条在 part 文件回执中写明。
 - 旧报告清单 = **无**（`docs/archive/reviews/` 本轮新建）→ 结论节写"旧问题三态：N/A（无旧报告）"。

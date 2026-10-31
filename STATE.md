@@ -5,7 +5,7 @@
 > 更新时机：每批开工/收口、用户裁决变化、风险新增或关闭、HEAD 变化需回读。
 > 本文只记**状态、待办与下一步**，不重复设计口径（口径看 CONTRACT，工程规则看 ENGINEERING，接口看 ARCHITECTURE）。
 
-**快照时间：2026-10-31（**文档结构重整收口**：docs 按职责分组 + 新文档总览 `docs/README.md` + 门禁/白名单联动；上一收口 HEAD `78eaadf` 隐私同意兜底）；`check.js` 33/33、`check-docs` 10/10、零金额 0 命中（白名单 109 项，对帐清理失效整行后）、`selftest` 33 套 0 失败（断言合计 5,554）；云端 `api` 已部署并复验、`DEEPSEEK_API_KEY` 已配置；真机/提审/灰度未做）**
+**快照时间：2026-10-31（HEAD `b9d966a` **文档结构重整收口**：docs 按职责分组 + 新文档总览 `docs/README.md` + 门禁/白名单联动；上一收口 HEAD `78eaadf` 隐私同意兜底）；`check.js` 33/33、`check-docs` 10/10、零金额 0 命中（白名单 109 项，对帐清理失效整行后）、`selftest` 33 套 0 失败（断言合计 5,554）；云端 `api` 已部署并复验、`DEEPSEEK_API_KEY` 已配置；真机/提审/灰度未做）**
 > 临时总体说明（全局汇总，非状态源）：[`docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md`](docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md)（版本与取数快照由 Lead 统一维护；状态仍以本文件为准、口径以 CONTRACT 为准）。
 
 ## 1. 一句话状态
@@ -489,7 +489,7 @@ check.ps1：全部通过（4 步，退出码 0）
 - `node tools/selftest.js` → `运行 33 套；失败 0 套；SKIP 0 套（无）；完整性 0 项；非聚合辅助文件 4 件（已声明）` / `结果：PASS`；4 个读取文档内容的套件（performance/privacy-text/tools/testaccount）锚点保持。
 - `node tools/sync-cloud-shared.js` → `hash 对帐 OK（17 件 × 2 套）`（共享副本注释内的文档路径随根源同步改写）。
 - 文档计数与结构：见 `docs/README.md` §3/§7；迁移映射见 `docs/README.md` §10（旧路径 → 新路径；历史提交与归档审查中的行号为当时快照）。
-- 同批内容修正提交：`c43bd02`（文档内容漂移修正 + 零金额白名单对帐）。
+- 同批内容修正提交：`c43bd02`（文档内容漂移修正 + 零金额白名单对帐）；结构重整提交：`b9d966a`（164 文件 +1,225/−924；`gate.ps1 -Anchor 78eaadf -ScopeFiles <14 前缀> -Estimate 1400` → **红色 0 项；黄色 0 项**（退出码 0）：165 件变更、体量 1,378 ≤ 2,100、行数口径交验 `tools/lib/fsutil.js` = 196 行与 git blob 一致、提交信息合规）。
 
 
 ---
