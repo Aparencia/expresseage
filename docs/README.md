@@ -145,7 +145,7 @@ docs/
 | 组件/工具 | `components/` 16 套（含维护遮罩、切换条、测试角标、头像、空态/骨架等）+ 根 `custom-tab-bar/`；`api/` 唯一网络出口 + 10 个域模块 + upload/privacy/mode-guard；`store/` 内存快照；`shared/` 口径纯件；`utils/` 纯件（识别/OCR/编号/roomTag/头像/存储/隐私策略等） | `docs/engineering/V4_ARCHITECTURE.md` §3 |
 | 云函数 | `cloudfunctions/api`（入口/router/app + 7 中间件 + db/dao + lib + 11 域 handlers）与 `cloudfunctions/cleanup`（13 个幂等 sweep + 独立 dao）；依赖只 `wx-server-sdk` | `docs/engineering/V4_ARCHITECTURE.md` §4、`V4_ENGINEERING.md` §4 |
 | 数据 | 14 集合（users/customers/partners/bindings/orders/order_events/order_messages/invitation_codes/admin_view_sessions/counters/config/admin_audit/upload_tickets/recognition_failures）、13 错误码、16 审计枚举、81 动作（client 与 internal 分级） | `docs/contract/V4_CONTRACT.md` §4/§5.3、`docs/data/V4_DATA_MODEL.md` §1~§7 |
-| 门禁 | `check.ps1`（4 步）→ `tools/check.js`（33 条）、`tools/check-docs.js`（10 条）、`tools/zero-money-scan.js`（3 范围）、`tools/selftest.js`（33 套断言）；另 `tools/mutation.ps1` 变异电池、`tools/sync-cloud-shared.js` 副本对帐、`gate.ps1` 范围/体量闸、`doctor.ps1` 环境体检 | `docs/engineering/V4_ENGINEERING.md` §8 |
+| 门禁 | `check.ps1`（4 步）→ `tools/check.js`（34 条）、`tools/check-docs.js`（12 条）、`tools/zero-money-scan.js`（3 范围）、`tools/selftest.js`（33 套断言）；另 `tools/mutation.ps1` 变异电池、`tools/sync-cloud-shared.js` 副本对帐、`gate.ps1` 范围/体量闸、`doctor.ps1` 环境体检 | `docs/engineering/V4_ENGINEERING.md` §8 |
 | 分层铁律 | ①页面层零业务判据（不出现 `wx.cloud.*`/状态字符串字面量/编号或 roomTag 生成/随机数）；②客户端不直连数据库/存储；③云函数不出现 `db.collection`（只经 `db/dao.js`）；共享副本只由 `tools/sync-cloud-shared.js` 生成 | `docs/engineering/V4_ARCHITECTURE.md` §1~§4、根 `AGENTS.md` §2 |
 
 ## 7. 门禁与自证（取数命令）
@@ -156,7 +156,7 @@ powershell -File check.ps1
 
 # 分步读数
 node tools/check.js                 # 代码/配置门禁（通过 N 项；失败 M 项）
-node tools/check-docs.js            # 设计文档门禁（10 条；汇总行必须存在）
+node tools/check-docs.js            # 设计文档门禁（12 条；汇总行必须存在）
 node tools/zero-money-scan.js       # 零金额扫描（三范围；0 命中 + 白名单项数）
 node tools/selftest.js              # 全部断言套件（运行 N 套；失败 0 套）
 
@@ -181,11 +181,11 @@ powershell -File tools/doctor.ps1
 - **门禁联动**：`tools/lib/project.js` 的 DESIGN_DOCS、`tools/check-docs.js` 的文档路径、4 个读取文档内容的 selftest 套件、`tools/zero-money-allowlist.json` 的文件字段与整行原文同步更新；门禁判据未弱化（check-docs 仍 10 条、校验章节未变）。
 - **内容校正（漂移清理）**：裁决范围统一 D1~D42；旧拆单/旧页数（30→31）/旧截图张数/旧阈值等过时表述按现行口径回写；隐私补充文档中的真实联系方式改为占位符；STATE 头部快照与内部矛盾（D22 改判、部署状态）对齐；TECH_DEBT 补 TD-067 与文档治理欠账。
 - **收口提交**：内容漂移修正 `c43bd02`、结构重整 `b9d966a`、证据回填 `7685936`（`git log --oneline -3` 可查；门禁读数见 `STATE.md` §6o）。
+- **门禁判据补强（同日第二批，关闭 TD-071/TD-078/TD-079）**：`check.js` 33→**34 条**（新增 #34 打包忽略清单）；`check-docs` 10→**12 条**（新增 #11 总览读数可复算、#12 欠账台账结构；#3 补 DATA_MODEL §7 标题存在性与动作双向核对、#5 补工程缺口 E# 定义集/连续性与 `[E#]` 显式引用判红）；`docs/engineering/V4_ENGINEERING.md` §13 补 E7 定义行与编号命名空间说明；台账 TD-031 破损行修复；变异首红 + SHA256 逐字节还原证据见 `STATE.md` §6p。
 
 ### 8.2 仍开放（已登记台账，本轮不改）
 
-- 文档数字/快照漂移没有门禁判据（只有取数纪律）——见 `docs/governance/V4_TECH_DEBT.md` TD-078。
-- check-docs 两处结构盲点（DATA_MODEL §7 标题缺失会静默跳过、ENGINEERING §13 E13~E18 无定义仍放行）——见同台账 TD-079。
+- 文档治理类欠账 TD-071（打包忽略清单）、TD-078（总览读数漂移）、TD-079（check-docs 结构盲点）已关闭，判据见 §8.1 第二批条目与 `docs/engineering/V4_ENGINEERING.md` §8.2/§8.3。
 - 三份文档的批次台账/风险表仍有部分历史快照文字；最新状态以 `STATE.md` 为准。
 - 三份 UX 验收清单与 QA 清单存在双轨描述；执行以 QA 为准（UX 侧已标注）。
 

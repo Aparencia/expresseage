@@ -1,6 +1,6 @@
 'use strict';
 /**
- * tools/check-docs.js — 设计阶段文档门禁（ENGINEERING §8.3 十条判据）。
+ * tools/check-docs.js — 设计阶段文档门禁（ENGINEERING §8.3 十二条判据）。
  *
  * 用法：node tools/check-docs.js --batch 0   # 批 0：豁免"批 1 才建立"的六件（§8.3 #1）
  *       node tools/check-docs.js            # 默认 --batch 1 = 严格不豁免
@@ -10,6 +10,10 @@
  *   - §8.3 #10①「旧口径禁词表」只在本文件定义（文档不重复字面量）；命中按"整行"判定：
  *     若同一行带"作废/旧口径/清扫/残句/原文/即缺陷/不计入扫描"等修订说明上下文，视为历史修订说明而非现行口径。
  *   - §8.3 #6「占位标记」判定形式只在本文件定义；`[D#]`/`[E#]`/`[R#]`/P1/P2/⏳ 不算占位。
+ *   - §8.3 #11「可静态复算读数」的清单只在 staticGateCounts() 定义（check.js 判据数 / 本文件判据数 /
+ *     selftest 套数 / 零金额白名单项数）；断言总数不可静态复算，一律要求引用 `node tools/selftest.js` 取数命令。
+ *   - §8.3 #12「欠账台账结构」的列数/状态枚举/编号连续性/关闭依据只在本文件定义（TD-031 曾因单元格内
+ *     未转义 `|` 致整行错位且脚本静默漏读）。
  *   - 文档范围：根 *.md + docs/**\/*.md（与零金额扫描 docs 范围一致）。
  */
 const fs = require('fs');
@@ -86,6 +90,45 @@ function needCode(rels, what) {
   return missing.map((r) => '缺失: ' + r);
 }
 
+// 可静态复算的读数真值（#11 唯一来源）：判据/套件/白名单/文档份数。
+// 期望值不抄文档、不抄现状：一律从登记表源文件现场解析；解析失败即报错（不静默 0）。
+function staticGateCounts() {
+  const errors = [];
+  const read = (rel) => {
+    const s = text(rel);
+    if (s === null) errors.push('缺失（读数无法复算）: ' + rel);
+    return s || '';
+  };
+  const countChecks = (s) => (s.match(/^check\((\d+),\s*'/gm) || []).length;
+  const checkJs = countChecks(read('tools/check.js'));
+  const checkDocs = countChecks(read('tools/check-docs.js'));
+  const st = read('tools/selftest.js');
+  const suitesAt = st.indexOf('const SUITES = [');
+  let suites = 0;
+  if (suitesAt === -1) errors.push('tools/selftest.js 未找到 `const SUITES = [` 注册表');
+  else {
+    const endAt = st.indexOf('];', suitesAt);
+    const block = endAt === -1 ? '' : st.slice(suitesAt, endAt);
+    suites = (block.match(/'[^'\n]+'/g) || []).length;
+    if (suites === 0) errors.push('tools/selftest.js 的 SUITES 注册表解析为 0 套');
+  }
+  let allowlist = 0;
+  const allowSrc = read('tools/zero-money-allowlist.json');
+  if (allowSrc) {
+    try {
+      const json = JSON.parse(allowSrc);
+      if (!Array.isArray(json)) errors.push('tools/zero-money-allowlist.json 不是数组');
+      else allowlist = json.length;
+    } catch (e) {
+      errors.push('tools/zero-money-allowlist.json 不可解析: ' + e.message);
+    }
+  }
+  [checkJs, checkDocs, allowlist].forEach((n, i) => {
+    if (n === 0) errors.push(['check.js 判据数', 'check-docs 判据数', '白名单项数'][i] + ' 解析为 0');
+  });
+  return { errors, checkJs, checkDocs, suites, allowlist, docs: DOCS.length };
+}
+
 // ---------------------------------------------------------------- #1 文档地图
 check(1, '文档地图/分阶段必需文件', () => {
   const required = BATCH === 0 ? P.DESIGN_DOCS.filter((r) => !P.BATCH0_EXEMPT.includes(r)) : P.DESIGN_DOCS.slice();
@@ -147,9 +190,14 @@ check(3, 'CONTRACT §5.3 action 表 = shared/actions.js；DATA_MODEL §7 ⊆ CON
   Object.keys(P.ACTIONS).filter((a) => registered.indexOf(a) === -1).forEach((a) => out.push('注册表缺: ' + a));
   registered.filter((a) => !P.ACTIONS[a] && P.P1_ACTIONS.indexOf(a) === -1).forEach((a) => out.push('注册表多出: ' + a));
   const dm = text('docs/data/V4_DATA_MODEL.md');
-  if (dm !== null) {
+  if (dm === null) {
+    out.push('缺失: docs/data/V4_DATA_MODEL.md（§7 动作集合无法核对）');
+  } else {
     const dmSec = section(dm, /^##\s*7\./);
-    if (dmSec) {
+    if (!dmSec) {
+      // TD-079①：旧实现 `if (dmSec)` 命中才比对 → 删/改 §7 标题会静默跳过（空集全绿），必须判红。
+      out.push('DATA_MODEL 缺 §7 章节标题（需形如 `## 7. 云函数 API 契约…`）：动作集合核对被静默跳过');
+    } else {
       const MODULES = new Set(['user', 'customer', 'partner', 'bind', 'order', 'message', 'upload', 'config', 'admin',
         'ai', 'health', 'cleanup']);
       const dmActions = codeTokens(dmSec).filter((t) => {
@@ -160,10 +208,15 @@ check(3, 'CONTRACT §5.3 action 表 = shared/actions.js；DATA_MODEL §7 ⊆ CON
         if (mod === 'config') return t === 'config.getPublic';
         return true;
       });
+      if (dmActions.length === 0) out.push('DATA_MODEL §7 未解析到任何动作 token（空集不能算通过）');
+      const dmSet = new Set(dmActions);
       dmActions.filter((a) => !P.ACTIONS[a]).forEach((a) => out.push('DATA_MODEL §7 出现 CONTRACT 未登记动作: ' + a));
+      // 反向（TD-079①）：CONTRACT 的客户端可见动作必须在 DATA_MODEL §7 有契约行；cleanup.* 属内部 sweep，不在此表。
+      Object.keys(P.ACTIONS).filter((a) => !a.startsWith('cleanup.') && !dmSet.has(a))
+        .forEach((a) => out.push('DATA_MODEL §7 缺 CONTRACT 动作: ' + a));
     }
   }
-  return out.length ? shortList(out, 10) : null;
+  return out.length ? shortList(out, 12) : null;
 });
 
 // ---------------------------------------------------------------- #4 集合/错误码
@@ -222,8 +275,16 @@ function defineRefSets() {
   });
   const eSec = section(eng, /^##\s*13\./) || '';
   const eDefined = new Set();
-  const eText = ((eng.match(/^##\s*13\.[^\n]*/m) || [''])[0]) + '\n' + eSec;
-  (eText.match(/\bE(\d{1,2})\b/g) || []).forEach((m) => eDefined.add(Number(m.slice(1))));
+  // 只认 §13 表格首列（`| E7 | …` / `| E9/E10 | …`）：正文里提到 E# 不算“定义”，
+  // 否则"引用不存在的 E# 不被判红"（TD-079）。定义集为空/缺号由 #5 判红。
+  eSec.split('\n').forEach((line) => {
+    if (!line.trim().startsWith('|')) return;
+    const cell = (line.split('|')[1] || '').trim();
+    const m = cell.match(/^E(\d{1,2})(?:\s*\/\s*E(\d{1,2}))?$/);
+    if (!m) return;
+    eDefined.add(Number(m[1]));
+    if (m[2]) eDefined.add(Number(m[2]));
+  });
   return { dDefined, eDefined };
 }
 
@@ -245,10 +306,16 @@ function dRangeProblems(dDefined) {
   if (max > D_MAX) out.push('CONTRACT §13 D 编号 ' + max + ' 超出上限 D' + D_MAX);
   return out;
 }
-check(5, 'D#/E# 引用可解析（D1~D' + D_MAX + '；E1~E18）', () => {
+check(5, 'D#/E# 引用可解析（D1~D' + D_MAX + ' 连续；工程缺口 E# 全定义且连续；`[E#]` 显式引用必须命中定义集）', () => {
   const { dDefined, eDefined } = defineRefSets();
   const out = dRangeProblems(dDefined);
   if (eDefined.size === 0) out.push('ENGINEERING §13 未解析到 E 条目');
+  else {
+    const eMax = Math.max.apply(null, Array.from(eDefined));
+    for (let i = 1; i <= eMax; i += 1) {
+      if (!eDefined.has(i)) out.push('ENGINEERING §13 缺 E' + i + '（1..' + eMax + ' 应连续，未启用的编号不应夹在定义集中）');
+    }
+  }
   DOCS.forEach((rel) => {
     const s = text(rel) || '';
     (s.match(/\bD(\d{1,2})\b/g) || []).forEach((tok) => {
@@ -259,8 +326,16 @@ check(5, 'D#/E# 引用可解析（D1~D' + D_MAX + '；E1~E18）', () => {
       const n = Number(tok.slice(1));
       if (n < 1 || n > 18) out.push(rel + ': E' + n + ' 越界（E1~E18）');
     });
+    // TD-079②：AGENTS 规定"待裁决必须显式标 [E#]"，故只把方括号显式引用视为"工程缺口引用"；
+    // 散装 E# 在 QA §E / 提审材料 §5 是另一命名空间（验收条目/材料编号），不在此判据内。
+    // docs/archive/** 是历史快照（其 E# 多为审查命令编号），按归档纪律不参与现行引用校验。
+    if (rel.startsWith('docs/archive/')) return;
+    (s.match(/\[E(\d{1,2})\b/g) || []).forEach((tok) => {
+      const n = Number(tok.slice(2));
+      if (!eDefined.has(n)) out.push(rel + ': [E' + n + '] 未在 ENGINEERING §13 定义（工程缺口清单）');
+    });
   });
-  return out.length ? shortList(out, 10) : null;
+  return out.length ? shortList(out, 12) : null;
 });
 
 // ---------------------------------------------------------------- #6 占位标记
@@ -441,11 +516,151 @@ check(10, 'v0.9 文档一致性（旧口径禁词/审计枚举/roomTag 大写/�
   return out.length ? shortList(out, 12) : null;
 });
 
+// ---------------------------------------------------------------- #11 总览读数
+// TD-078：总览类文档的"当前读数"必须可复算——①STATE 快照行必须有日期/HEAD 锚点，
+// ②可静态复算的读数（判据数/套数/白名单项数）必须等于真值，③断言总数不得裸写（须引用取数命令）。
+check(11, '总览类文档读数可复算（快照日期/HEAD 锚点 + 判据数/套数/白名单一致；禁止裸写断言总数）', () => {
+  const C = staticGateCounts();
+  const out = C.errors.slice();
+  const truth = {
+    checkJs: 'node tools/check.js',
+    checkDocs: 'node tools/check-docs.js',
+    suites: 'node tools/selftest.js',
+    allowlist: 'tools/zero-money-allowlist.json'
+  };
+  const state = text('STATE.md');
+  if (state === null) out.push('缺失: STATE.md');
+  else {
+    const snapLines = state.split('\n').filter((line) => line.indexOf('快照时间') !== -1);
+    if (snapLines.length === 0) out.push('STATE.md 缺「快照时间」读数行（唯一状态源必须给出最后核对锚点）');
+    snapLines.forEach((line, i) => {
+      const where = 'STATE.md 快照行' + (snapLines.length > 1 ? '#' + (i + 1) : '');
+      if (!/20\d\d-\d\d-\d\d/.test(line)) out.push(where + ' 缺日期锚点（YYYY-MM-DD）');
+      if (line.indexOf('HEAD') === -1) out.push(where + ' 缺 HEAD 锚点');
+      if (/断言合计\s*[\d,]+/.test(line)) {
+        out.push(where + ' 裸写断言总数：改为引用取数命令 `node tools/selftest.js` 的汇总输出');
+      }
+      const js = line.match(/check\.js[^\d\n]{0,8}(\d+)\/(\d+)/);
+      if (js && (Number(js[1]) !== C.checkJs || Number(js[2]) !== C.checkJs)) {
+        out.push(where + ' check.js 读数 ' + js[1] + '/' + js[2] + ' ≠ 实际 ' + C.checkJs + '（' + truth.checkJs + '）');
+      }
+      const dc = line.match(/check-docs[^\d\n]{0,8}(\d+)\/(\d+)/);
+      if (dc && (Number(dc[1]) !== C.checkDocs || Number(dc[2]) !== C.checkDocs)) {
+        out.push(where + ' check-docs 读数 ' + dc[1] + '/' + dc[2] + ' ≠ 实际 ' + C.checkDocs + '（' + truth.checkDocs + '）');
+      }
+      const st = line.match(/selftest[^\d\n]{0,8}(\d+)\s*套/);
+      if (st && Number(st[1]) !== C.suites) {
+        out.push(where + ' selftest 套数 ' + st[1] + ' ≠ 实际 ' + C.suites + '（' + truth.suites + '）');
+      }
+      const wl = line.match(/白名单\s*(\d+)\s*项/);
+      if (wl && Number(wl[1]) !== C.allowlist) {
+        out.push(where + ' 零金额白名单 ' + wl[1] + ' 项 ≠ 实际 ' + C.allowlist + '（' + truth.allowlist + '）');
+      }
+    });
+  }
+  // docs/README.md 的「§6 代码结构 / §7 门禁与自证」是现行读数区；§8 起为整顿记录/开放项（历史叙述不在此判据内）。
+  const dr = text('docs/README.md');
+  if (dr === null) out.push('缺失: docs/README.md');
+  else {
+    const cutAt = dr.indexOf('\n## 8.');
+    if (cutAt === -1) out.push('docs/README.md 缺 §8 标题：无法界定"现行读数区"（#11 需要 §6~§7 边界）');
+    const region = cutAt === -1 ? dr : dr.slice(0, cutAt);
+    region.split('\n').forEach((line, i) => {
+      const where = 'docs/README.md:' + (i + 1);
+      const js = line.match(/check\.js`?[^\n]{0,40}?[（(]\s*(\d+)\s*条/);
+      if (js) {
+        if (Number(js[1]) !== C.checkJs) out.push(where + ' check.js 条数 ' + js[1] + ' ≠ 实际 ' + C.checkJs + '（' + truth.checkJs + '）');
+        if (line.indexOf('tools/check.js') === -1) out.push(where + ' check.js 读数缺取数命令 `node tools/check.js`');
+      }
+      const dc = line.match(/check-docs\.js`?[^\n]{0,40}?[（(]\s*(\d+)\s*条/);
+      if (dc) {
+        if (Number(dc[1]) !== C.checkDocs) out.push(where + ' check-docs 条数 ' + dc[1] + ' ≠ 实际 ' + C.checkDocs + '（' + truth.checkDocs + '）');
+        if (line.indexOf('tools/check-docs.js') === -1) out.push(where + ' check-docs 读数缺取数命令 `node tools/check-docs.js`');
+      }
+      const st = line.match(/selftest\.js`?[^\n]{0,40}?[（(]\s*(\d+)\s*套/);
+      if (st) {
+        if (Number(st[1]) !== C.suites) out.push(where + ' selftest 套数 ' + st[1] + ' ≠ 实际 ' + C.suites + '（' + truth.suites + '）');
+        if (line.indexOf('tools/selftest.js') === -1) out.push(where + ' selftest 读数缺取数命令 `node tools/selftest.js`');
+      }
+      const fm = line.match(/断言合计\s*[\d,]+/);
+      if (fm) out.push(where + ' 裸写断言总数：改为引用取数命令 `node tools/selftest.js` 的汇总输出');
+    });
+  }
+  // README.md（对外入口）：若出现门禁读数，必须带日期锚点或取数命令，防止"对外承诺的读数"过期。
+  const readme = text('README.md');
+  if (readme === null) out.push('缺失: README.md');
+  else {
+    readme.split('\n').forEach((line, i) => {
+      if (!/check\.js[^\d\n]{0,8}\d+\/\d+|check-docs[^\d\n]{0,8}\d+\/\d+|selftest[^\d\n]{0,8}\d+\s*套/.test(line)) return;
+      if (!/20\d\d-\d\d-\d\d/.test(line) && line.indexOf('tools/') === -1) {
+        out.push('README.md:' + (i + 1) + ' 门禁读数缺日期锚点或取数命令');
+      }
+    });
+  }
+  return out.length ? shortList(out, 12) : null;
+});
+
+// ---------------------------------------------------------------- #12 欠账台账
+// TD-031 事故：单元格内未转义的 `|` 让整行多出一列、状态列错位，且按列解析的脚本会静默漏读该行。
+// 本判据把「台账结构」变成机器判据：列数/编号格式与连续性/状态枚举/关闭依据/无重复。
+check(12, '欠账台账结构完整（列数一致/编号 TD-### 连续/状态枚举/关闭依据/无重复）', () => {
+  const rel = 'docs/governance/V4_TECH_DEBT.md';
+  const s = text(rel);
+  if (s === null) return ['缺失: ' + rel];
+  const out = [];
+  const lines = s.split('\n');
+  const header = lines.find((line) => /^\|\s*编号\s*\|/.test(line));
+  if (!header) return [rel + ': 缺表头 `| 编号 | 条目 | 影响 | 计划/批次 | 状态 | 来源 |`'];
+  const cellsIn = (line) => line.split('|').length - 2;
+  const cols = cellsIn(header);
+  if (cols !== 6) out.push(rel + ': 表头列数 ' + cols + ' ≠ 6（编号/条目/影响/计划/状态/来源）');
+  const ids = [];
+  lines.forEach((line, i) => {
+    if (!/^\|\s*TD-\d{3}/.test(line)) return;
+    const where = rel + ':' + (i + 1);
+    const cells = line.split('|');
+    if (cells.length - 2 !== cols) {
+      out.push(where + ' 表格列数 ' + (cells.length - 2) + ' ≠ 表头 ' + cols
+        + '（单元格内出现未转义 `|` 会让整行错位）');
+      return;
+    }
+    const id = cells[1].trim();
+    const issue = cells[2].trim();
+    const impact = cells[3].trim();
+    const plan = cells[4].trim();
+    const status = cells[5].replace(/^[\s*~]+|[\s*~]+$/g, '');
+    const m = id.match(/^TD-(\d{3})$/);
+    if (!m) out.push(where + ' 编号格式非 TD-###: ' + id);
+    else ids.push(Number(m[1]));
+    if (!issue) out.push(where + ' 条目为空');
+    if (!impact) out.push(where + ' 影响为空');
+    if (!/^(开放|跟踪中|已关闭)/.test(status)) {
+      out.push(where + ' 状态非法（' + status + '）：只允许 开放/跟踪中/已关闭');
+    } else if (/^已关闭/.test(status) && !/关闭依据|已完成|已关闭/.test(plan)) {
+      out.push(where + ' 已关闭缺「关闭依据/已完成」结论');
+    } else if (!/^已关闭/.test(status) && /关闭依据/.test(plan)) {
+      out.push(where + ' 未关闭却含「关闭依据」（状态与结论矛盾）');
+    }
+  });
+  if (ids.length === 0) out.push(rel + ': 未解析到任何 TD 行（空集不能算通过）');
+  else {
+    const seen = new Set(ids);
+    const max = Math.max.apply(null, ids);
+    for (let i = 1; i <= max; i += 1) {
+      if (!seen.has(i)) out.push(rel + ': TD-' + String(i).padStart(3, '0') + ' 缺失（1..' + max + ' 应连续，不复用不跳号）');
+    }
+    ids.forEach((n, idx) => {
+      if (ids.indexOf(n) !== idx) out.push(rel + ': TD-' + String(n).padStart(3, '0') + ' 重复');
+    });
+  }
+  return out.length ? shortList(out, 12) : null;
+});
+
 // ---------------------------------------------------------------- 输出
 let pass = 0;
 let failed = 0;
 let skipped = 0;
-console.log('== tools/check-docs.js · 设计文档门禁（ENGINEERING §8.3 · 10 条）==');
+console.log('== tools/check-docs.js · 设计文档门禁（ENGINEERING §8.3 · 12 条）==');
 console.log('批次：--batch ' + BATCH + (BATCH === 0 ? '（豁免批 1 才建立的六件）' : '（严格，不豁免）') + '；文档范围 ' + DOCS.length + ' 份');
 for (const r of results) {
   const id = '#' + String(r.no).padStart(2, '0');
