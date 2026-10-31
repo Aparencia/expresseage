@@ -5,7 +5,7 @@
 > 更新时机：每批开工/收口、用户裁决变化、风险新增或关闭、HEAD 变化需回读。
 > 本文只记**状态、待办与下一步**，不重复设计口径（口径看 CONTRACT，工程规则看 ENGINEERING，接口看 ARCHITECTURE）。
 
-**快照时间：2026-10-31（HEAD `待本批收口提交回填` **技术债收口批（B/C/D）**：check.js 34 条 / check-docs 12 条；关闭 TD-040/043/050/053/054/055/056/057/061/064/068/069/070（TD-044 关键词窗口保留开放）；上一收口 HEAD `c0a9200` 门禁判据补强）；`check.js` 34/34、`check-docs` 12/12、零金额 0 命中（白名单 109 项）、`selftest` 34 套 0 失败（断言数以 `node tools/selftest.js` 汇总行为准）；云端 `api` 已部署并复验、`DEEPSEEK_API_KEY` 已配置；真机/提审/灰度未做）**
+**快照时间：2026-10-31（HEAD `c2098ea` **技术债收口批（B/C/D）**：check.js 34 条 / check-docs 12 条；关闭 TD-040/043/050/053/054/055/056/057/061/064/068/069/070（TD-044 关键词窗口保留开放）；上一收口 HEAD `c0a9200` 门禁判据补强）；`check.js` 34/34、`check-docs` 12/12、零金额 0 命中（白名单 109 项）、`selftest` 34 套 0 失败（断言数以 `node tools/selftest.js` 汇总行为准）；云端 `api` 已部署并复验、`DEEPSEEK_API_KEY` 已配置；真机/提审/灰度未做）**
 > 临时总体说明（全局汇总，非状态源）：[`docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md`](docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md)（版本与取数快照由 Lead 统一维护；状态仍以本文件为准、口径以 CONTRACT 为准）。
 
 ## 1. 一句话状态
@@ -536,6 +536,27 @@ check.ps1：全部通过（4 步，退出码 0）
 - 台账：TD-071/TD-078/TD-079 → **已关闭**（关闭依据见台账各行）；TD-031 行修复；TD-028/TD-034 补关闭依据。后续明账：B~F 批（查询窗口簇/小单点/注销治理链/性能结构/契约扩展）待用户裁决；`tools/check.js` 998/1000 行，后续加判据须先拆 lib（lesson `2026-10-28_门禁文件自身有行数上限扩判据要拆lib.md`）。
 
 ---
+
+## 6q. 2026-10-31 技术债收口批（B/C/D）收口证据（真实输出）
+
+**提交**：内容提交 `c2098ea`（38 文件 +1603/−499）；`gate.ps1 -Anchor c0a9200 -ScopeFiles "cloudfunctions/,shared/,tools/,utils/,docs/,pages/,pkg-customer/,pkg-partner/,STATE.md" -Estimate 1200` → **红色 0 项/黄色 0 项（退出码 0）**（变更集 38 件、体量 1603 ≤ 预估 1200×1.5、提交信息合规）。
+
+**四步门禁**（`powershell -File check.ps1`，退出码 0）：
+- `PASS check.js 代码/配置门禁（34 条）`（`通过 34 项；失败 0 项`）
+- `PASS check-docs.js 设计文档门禁（--batch 1）`（`通过 12 项；失败 0 项`）
+- `PASS zero-money-scan.js 零金额扫描（源码+页面+文档）`（0 命中，白名单 109 项）
+- `PASS selftest.js 全部断言 suite（EXPECTED_ASSERTIONS 闸）`（`运行 34 套；失败 0 套；SKIP 0 套（无）；完整性 0 项；非聚合辅助文件 4 件（已声明）`）
+
+**分域真实读数**：
+- `node tools/check.js` → `通过 34 项；失败 0 项`
+- `node tools/selftest.js` → `运行 34 套；失败 0 套；SKIP 0 套（无）；完整性 0 项；非聚合辅助文件 4 件（已声明）` / `结果：PASS`
+- `node tools/selftest-deletion.js` → `断言 104/104；失败 0 项`（EXPECTED 100→104；§B9 由 3 条单事务断言重写为 7 条更强断言：最终段唯一冲突注入、分批页失败注入、两次幂等重试、`from=CLOSED` 断点、静态分页/ops 预算）
+- `node tools/selftest-query-window.js` → `断言 18/18；失败 0 项`（B 批新增套件，selftest 33→34 套）
+- `node tools/selftest-switch.js` 169/169、`selftest-admin.js` 268/268、`selftest-cloud.js` 180/180、`selftest-order-customer.js` 273/273、`selftest-partner-pages.js` 210/210、`selftest-privacy-text.js` 259/259、`selftest-order-flow.js` 204/204（均 `失败 0 项`）
+- 变异电池（D 批，临时改 `cloudfunctions/api/handlers/admin/setPartnerStatus.js` 后 SHA256 逐字节还原复跑绿）：M1 拆最终段 → users 标记半写被抓；M2 去掉 `from=CLOSED` 收敛分支 → 断点断言红；M3 订单页改 100 → 静态 ops 预算红；M4 漏写会话结束审计 → 审计断言红（4 组各自单闸首红、还原后一致）
+- `node tools/check-docs.js` → `#01~#12` 全 PASS，`通过 12 项；失败 0 项`
+
+**本批关闭/登记**：关闭 TD-040/043/050（B）、TD-061/064/068/069/070（C）、TD-053/054/055/056/057（D，TD-054 为 Lead 裁决删除 `users.purgeAt` 口径）；TD-044（关键词扫描窗）保留开放；新增登记 TD-080（事务内 `where`/`updateWhere` 与官方「仅 doc」限制可能冲突，部署后实测）。**真机项**：QA §P `P26` 待用户点检，agent 不代勾。
 
 ## 7. 当前风险与红灯（如实记录）
 
