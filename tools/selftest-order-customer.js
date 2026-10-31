@@ -15,6 +15,8 @@
  *      首屏即已补码（needCode=false）→ 提示/时间线直接上屏（task-67，端云 note 同字面量联调）
  *   H. 取件清单（D26）占位词：无码件「码未填」/「需查明（兼职正在查码）」语义不重复
  *   I. 截图区 v1.0：images[]{index,status,hasImage,cleaned} 三态/多图下标/历史单兼容/零存储句柄
+ *   K. 顾客端 UI 修复（兼职卡/服务范围/服务类型/头像兜底/tab 居中/tabBar 选中态）
+ *   L. C 批单点欠账收口（TD-068 服务范围预检单源 / TD-070「其他代办」码常量单源 / TD-064 死导出清除）
  *
  * 纪律：不 mock 全局 wx（api/client 用 setTransport 注入替身）；fake DTO/事件，不连真云；
  *       先合法基线再反例；样本非空；EXPECTED_ASSERTIONS 与实际断言数精确相等（少算/多算都判红）。
@@ -44,8 +46,11 @@ const store = require(path.join(ROOT, 'store/index.js'));
 const client = require(path.join(ROOT, 'api/client.js'));
 const orderApi = require(path.join(ROOT, 'api/modules/order.js'));
 const serverDto = require(path.join(ROOT, 'cloudfunctions/api/handlers/order/_dto.js'));
+const precheck = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/precheck.js'));
+const orderScopeReq = fsutil.tryRequire(path.join(ROOT, 'utils/order-scope.js'));
+const orderScope = orderScopeReq.value || {};
 
-const EXPECTED_ASSERTIONS = 259; // 实际断言总数（255 + 4：D40 截图上限/逐图进度 + D41 层级说明/服务文案 config 下发）
+const EXPECTED_ASSERTIONS = 273; // 实际断言总数（259 + 14：C 批 TD-064/068/070 收口断言）
 
 const STATUS = orderState.STATUS;
 const ACTION_KEYS = view.ACTION_KEYS;
@@ -922,6 +927,64 @@ function register(h) {
       'K31 D41 服务类型选择器文案由 config.services 下发（order-create 不写死服务名）');
 
     t.notEmpty([homeWxml, ordersWxss, tabBar], 'K27 K 组静态样本非空');
+  });
+
+  // ---------------------------------------------------------------- L. C 批单点欠账收口（TD-064/068/070）
+  h.section('L. C 批单点欠账：预检单源/「其他代办」码常量/死导出清除（TD-068/070/064）', (t) => {
+    const homeViewSrc = textOf('pages/customer/home/parts/home-view.js');
+    const precheckSrc = textOf('pkg-customer/pages/order-create/parts/precheck.js');
+    const parcelSrc = textOf('cloudfunctions/api/handlers/order/_parcel.js');
+    const adminCommonSrc = textOf('cloudfunctions/api/handlers/admin/_common.js');
+    const cleanupEnums = require(path.join(ROOT, 'cloudfunctions/cleanup/shared/enums.js'));
+    const stripped = (code) => fsutil.stripComments(code);
+    // TD-068：两份同口径预检下沉 utils/order-scope.js，两页 require 单源（re-export 保留原导出名）
+    t.check(typeof orderScope.zoneAllowedOf === 'function' && typeof orderScope.scopeTextOf === 'function'
+      && typeof orderScope.RANGE_BLOCK_TEXT === 'string' && typeof orderScope.SCOPE_ALL_TEXT === 'string',
+    'L1 TD-068 单源纯件 utils/order-scope.js 导出 zoneAllowedOf/scopeTextOf/RANGE_BLOCK_TEXT/SCOPE_ALL_TEXT');
+    t.check(orderScopeReq.ok === true, 'L2 TD-068 纯件可 require（零 wx 纯函数；'
+      + (orderScopeReq.error ? orderScopeReq.error.message : 'ok') + '）');
+    t.check(homeView.zoneAllowedOf === orderScope.zoneAllowedOf && precheck.zoneAllowedOf === orderScope.zoneAllowedOf,
+      'L3 TD-068 首页与下单页 zoneAllowedOf 引用同一函数（单源，未来不可能漂移）');
+    t.eq([/function zoneAllowedOf/.test(stripped(homeViewSrc)), /function zonesOf/.test(stripped(homeViewSrc)),
+      /function zoneAllowedOf/.test(stripped(precheckSrc)), /function zonesOf/.test(stripped(precheckSrc))],
+    [false, false, false, false], 'L4 TD-068 两页不再各写 zoneAllowedOf/zonesOf 实现（重复实现清零）');
+    t.check(/require\('\.\.\/\.\.\/\.\.\/\.\.\/utils\/order-scope'\)/.test(homeViewSrc)
+      && /require\('\.\.\/\.\.\/\.\.\/\.\.\/utils\/order-scope'\)/.test(precheckSrc),
+    'L5 TD-068 两页均 require utils/order-scope（同一单源文件）');
+    t.eq([
+      homeView.orderBlockReasonOf({ profileComplete: true, bound: true, zoneAllowed: false }),
+      precheck.rangeCheckOf({ zone: 'N', partnerPublic: { zones: ['D'] } }).reason,
+      homeView.scopeTextOf({ zones: [] })
+    ], [orderScope.RANGE_BLOCK_TEXT, orderScope.RANGE_BLOCK_TEXT, orderScope.SCOPE_ALL_TEXT],
+    'L6 TD-068 范围拦截文案/全部苑文案同源（原 home-view REASON.zone 与 precheck.RANGE_BLOCK_TEXT 合并）');
+    t.eq([
+      homeView.zoneAllowedOf({ zones: ['D'] }, '东苑'),
+      precheck.zoneAllowedOf({ zones: ['D'] }, '东苑'),
+      precheck.rangeCheckOf({ zone: '东苑', partnerPublic: { zones: ['D'] } }).ok,
+      homeView.zoneAllowedOf({ zones: ['D'] }, 'X')
+    ], [true, true, true, false],
+    'L7 TD-068 差异反例：旧 precheck 纯字符串比较遇「代号↔中文苑名」混用会误拦（D vs 东苑），单源后两端一致放行、真不含仍拦');
+    // TD-070：「其他代办」码 = shared/enums 显式常量，不再由 SERVICE_CODES 末项推导
+    t.eq(enums.CUSTOM_SERVICE_CODE, 'CUSTOM', 'L8 TD-070 shared/enums 导出显式 CUSTOM_SERVICE_CODE=CUSTOM');
+    t.eq(precheck.CUSTOM_SERVICE_CODE, enums.CUSTOM_SERVICE_CODE, 'L9 TD-070 客户端预检引用同一常量（不从 SERVICES 顺序推导）');
+    t.check(precheckSrc.indexOf('enums.CUSTOM_SERVICE_CODE') >= 0
+      && precheckSrc.indexOf('SERVICE_CODES[') < 0 && precheckSrc.indexOf('SERVICE_CODES.length') < 0,
+    'L10 TD-070 precheck 源码零「SERVICE_CODES 末项」推导写法');
+    t.check(parcelSrc.indexOf('const CUSTOM_SERVICE_CODE = enums.CUSTOM_SERVICE_CODE;') >= 0
+      && parcelSrc.indexOf("const CUSTOM_SERVICE_CODE = 'CUSTOM'") < 0,
+    'L11 TD-070 服务端 _parcel 引用同一常量（不再裸写字符串）');
+    t.eq([require(path.join(ROOT, 'cloudfunctions/api/shared/enums.js')).CUSTOM_SERVICE_CODE,
+      cleanupEnums.CUSTOM_SERVICE_CODE], ['CUSTOM', 'CUSTOM'],
+    'L12 TD-070 sync 生成的两套云函数副本同步常量（sync-cloud-shared 单源）');
+    t.check(enums.SERVICE_CODES.indexOf(enums.CUSTOM_SERVICE_CODE) >= 0,
+      'L13 TD-070 常量仍在服务码目录内（目录与常量一致）');
+
+    // TD-064：admin/_common 死导出 scanPaged（HEAD 起零生产调用）已删除，cloudfunctions+tools 去注释零残留
+    const scanResidue = fsutil.walk(path.join(ROOT, 'cloudfunctions'), { exts: new Set(['.js']) })
+      .concat(fsutil.walk(path.join(ROOT, 'tools'), { exts: new Set(['.js']) }))
+      .filter((full) => full !== __filename && stripped(fsutil.readText(full)).indexOf('scanPaged') >= 0)
+      .map((full) => fsutil.rel(full));
+    t.eq(scanResidue, [], 'L14 TD-064 scanPaged 死导出零残留（cloudfunctions + tools 全量去注释扫描）');
   });
 }
 

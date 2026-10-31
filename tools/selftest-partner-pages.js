@@ -49,7 +49,7 @@ const codeInput = require(path.join(ROOT, 'pkg-partner/pages/activate/parts/code
 
 // 注意：F 段（异步 fake transport）必须注册在最后——harness 的异步断言在 await 之后才计入，
 // 若后面再注册同步段，console 的节标题会被后注册的段名覆盖。
-const EXPECTED_ASSERTIONS = 206; // 194 + 10（D41 服务类型目录/停用 PICKUP_DOOR 行模型）；实际断言总数（少算/多算都判红）
+const EXPECTED_ASSERTIONS = 210; // 206 + 4（TD-069 max-count 属性静态判据）；实际断言总数（少算/多算都判红）
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
@@ -814,6 +814,20 @@ function register(h) {
       });
     });
     t.eq(noSrc, [], 'K12 兼职端 avatar-view：凡传 fileId 必同时传 src（禁止直读 cloud:// 私有文件）');
+
+    // TD-069：<image-picker> 自定义组件属性统一 kebab-case（max-count），与项目其它用法一致
+    const camelAttrTagsOf = (text) => (String(text).match(/<image-picker[^>]*>/g) || [])
+      .filter((tag) => tag.indexOf('maxCount=') >= 0);
+    t.eq(camelAttrTagsOf('<image-picker purpose="TICKET" maxCount="{{1}}" />').length, 1,
+      'K13 有牙正控：驼峰 maxCount= 属性样本被扫出（判据不是空转全绿）');
+    const camelWxmlHits = wxmlFiles.filter((full) => camelAttrTagsOf(fsutil.readText(full)).length > 0)
+      .map((full) => fsutil.rel(full));
+    t.eq(camelWxmlHits, [], 'K14 全仓 WXML <image-picker> 零驼峰 maxCount= 属性（TD-069；实际扫描 '
+      + wxmlFiles.length + ' 个文件）');
+    t.check(textOfRel('pkg-partner/pages/create-on-behalf/index.wxml').indexOf('max-count="{{1}}"') >= 0,
+      'K15 代客下单页改用 kebab-case max-count="{{1}}"（与项目其它用法一致）');
+    t.check(textOfRel('components/image-picker/index.js').indexOf('maxCount: { type: Number, value: 1 }') >= 0,
+      'K16 组件仍声明 maxCount 属性且默认值=1（kebab-case 自动映射，显式传 1 行为不变）');
   });
 
   // ------------------------------------------------------------------ F READONLY/TEST_WRITE + transport

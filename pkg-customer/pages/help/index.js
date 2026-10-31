@@ -5,6 +5,7 @@
 
 const store = require('../../../store/index');
 const defaults = require('../../../config/defaults');
+const privacyApi = require('../../../api/privacy');
 const privacyText = require('../../parts/privacy-text');
 const share = require('../../../utils/share/handlers');
 const sharePlatform = require('../../../utils/share/platform');
@@ -128,6 +129,8 @@ Page({
     statements: privacyText.STATEMENTS,
     privacyVersion: privacyVersionOf(),
     version: readVersion(),
+    // TD-061：官方《用户隐私保护指引》打开失败时的轻提示（成功时清空；不外呼、不采集）
+    privacyTip: '',
     // 朋友圈单页模式（scene=1154）：本页是纯静态内容，可直接当朋友圈落地页；按钮类交互需隐藏
     singlePage: false,
     singlePageHint: '',
@@ -163,6 +166,16 @@ Page({
   openDoc(key) {
     const view = docViewOf(key);
     this.setData({ doc: key, sections: view.sections, paragraphs: view.paragraphs });
+  },
+
+  // TD-061：主动打开微信官方《用户隐私保护指引》（官方能力，经 api/privacy 单点封装）。
+  // 打开失败只给一句轻提示（不弹错误码、不阻断帮助页其它内容）；本处理器不外呼、不采集任何用户数据。
+  onOpenPrivacyContract() {
+    privacyApi.openPrivacyContract().then((opened) => {
+      this.setData({
+        privacyTip: opened ? '' : '暂时无法打开微信官方《用户隐私保护指引》，请稍后再试'
+      });
+    });
   },
 
   // 好友转发 + 朋友圈：卡片判据单源 utils/share（中性封面、零业务值；朋友圈落地=本页静态内容）

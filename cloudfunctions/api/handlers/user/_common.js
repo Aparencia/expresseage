@@ -78,6 +78,38 @@ function loadPartnerById(ctx, partnerId) {
   return ctx.dao.get(COLLECTIONS.PARTNERS, partnerId);
 }
 
+// ── TD-053：已注销兼职（CLOSED）的 openid 匿名化回退 ────────────────────────────
+// admin.setPartnerStatus(CLOSED) 会把 partners.openid 换为唯一注销占位串 'CLOSED-<partners._id>'
+// （原 openid 不留存；占位串靠 _id 唯一，避免 uk_openid 在第二个注销兼职处冲突），
+// 因此「按 openid 找兼职」在 CLOSED 后必然落空。不可再激活的唯一锚点是 users.closedPartnerNo
+// （与 partnerClosedAt 一起由注销事务写入，schema 只增）。本文件所有消费点经 loadClosedPartnerState
+// 回退后，已注销兼职仍表现为「已注销/不可用」，而不是「从未激活」。
+const CLOSED_OPENID_PREFIX = 'CLOSED-';
+
+function closedOpenidOf(partner) {
+  const id = partner && partner._id !== undefined && partner._id !== null ? String(partner._id) : '';
+  return id ? CLOSED_OPENID_PREFIX + id : '';
+}
+
+function isClosedOpenid(openid) {
+  return typeof openid === 'string' && openid.indexOf(CLOSED_OPENID_PREFIX) === 0;
+}
+
+function closedPartnerNoOf(user) {
+  return user && typeof user.closedPartnerNo === 'string' ? user.closedPartnerNo : '';
+}
+
+// 回退查询（无 closedPartnerNo 标记时零额外 partners 查询；user 可由调用方预载避免重复读）
+async function loadClosedPartnerState(ctx, openid, preloadedUser) {
+  const user = preloadedUser || await loadUser(ctx, openid);
+  const partnerNo = closedPartnerNoOf(user);
+  if (!partnerNo) {
+    return { user: user, partner: null };
+  }
+  const partner = await ctx.dao.findOne(COLLECTIONS.PARTNERS, { where: { partnerNo } });
+  return { user: user, partner: partner };
+}
+
 function getActiveBinding(ctx, customerId) {
   if (!customerId) {
     return Promise.resolve(null);
@@ -119,6 +151,15 @@ async function requireActivePartner(ctx) {
   let partner = await loadPartnerByOpenid(ctx, scope.openid);
   if (!partner && scope.role === enums.ROLES.PARTNER) {
     partner = await loadPartnerById(ctx, scope.openid);
+  }
+  if (!partner) {
+    // TD-053 回退：openid 已匿名化的已注销兼职仍按 users.closedPartnerNo 找回 CLOSED 行，
+    // 错误口径保持「兼职已注销」而不是「请先激活兼职身份」（后者=从未激活）。
+    const closed = await loadClosedPartnerState(ctx, scope.openid);
+    partner = closed.partner;
+    if (!partner && closedPartnerNoOf(closed.user)) {
+      throw errors.partnerClosed('兼职已注销，无法操作');
+    }
   }
   if (!partner) {
     throw errors.forbidden('请先激活兼职身份');
@@ -257,6 +298,10 @@ module.exports = {
   loadCustomer,
   loadPartnerByOpenid,
   loadPartnerById,
+  closedOpenidOf,
+  isClosedOpenid,
+  closedPartnerNoOf,
+  loadClosedPartnerState,
   getActiveBinding,
   assertBusinessRole,
   requireCustomerProfile,

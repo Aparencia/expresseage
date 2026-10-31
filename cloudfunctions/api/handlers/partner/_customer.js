@@ -139,21 +139,31 @@ async function countActiveOrders(ctx, partnerId, customerId) {
   return total;
 }
 
-// 一次按状态取进行中单再按顾客分组（避免逐顾客 N+1）；guest 单 customerId='' 天然不归属顾客。
+// 一次按状态分页全量扫描进行中单再按顾客分组（避免逐顾客 N+1）：TD-050 关闭 300 条窗口截断。
+// 查询预算 = 5 状态 × ceil(该状态进行中单数 / MAX_ORDER_SCAN)；终态单不参与，实际单数天然很小。
 async function activeCountByCustomer(ctx, partnerId) {
   const base = activeOrderBase(ctx, partnerId);
   const counts = {};
   for (let i = 0; i < enums.ORDER_ACTIVE_STATUSES.length; i += 1) {
-    const rows = await ctx.dao.find(COLLECTIONS.ORDERS, {
-      where: Object.assign({}, base, { status: enums.ORDER_ACTIVE_STATUSES[i] }),
-      limit: MAX_ORDER_SCAN
-    });
-    rows.forEach((row) => {
-      const key = textOf(row.customerId);
-      if (key) {
-        counts[key] = (counts[key] || 0) + 1;
+    let skip = 0;
+    for (;;) {
+      const rows = await ctx.dao.find(COLLECTIONS.ORDERS, {
+        where: Object.assign({}, base, { status: enums.ORDER_ACTIVE_STATUSES[i] }),
+        orderBy: [['_id', 'asc']],
+        skip,
+        limit: MAX_ORDER_SCAN
+      });
+      rows.forEach((row) => {
+        const key = textOf(row.customerId);
+        if (key) {
+          counts[key] = (counts[key] || 0) + 1;
+        }
+      });
+      if (rows.length < MAX_ORDER_SCAN) {
+        break;
       }
-    });
+      skip += MAX_ORDER_SCAN;
+    }
   }
   return counts;
 }
@@ -367,27 +377,6 @@ async function loadCustomerOrders(ctx, partnerId, customerId) {
   return rows;
 }
 
-// 统计用：本兼职全部订单（排除 isTest），按状态桶取，终态用各自时间索引排序。
-async function loadPartnerOrders(ctx, partnerId) {
-  const rows = [];
-  for (let i = 0; i < enums.ORDER_STATUS_LIST.length; i += 1) {
-    const status = enums.ORDER_STATUS_LIST[i];
-    let sortField = 'statusUpdatedAt';
-    if (status === enums.ORDER_STATUS.COMPLETED) {
-      sortField = 'completedAt';
-    } else if (status === enums.ORDER_STATUS.CANCELLED) {
-      sortField = 'cancelledAt';
-    }
-    const part = await ctx.dao.find(COLLECTIONS.ORDERS, {
-      where: { partnerId, status, isTest: false },
-      orderBy: [[sortField, 'desc'], ['orderNo', 'desc']],
-      limit: MAX_ORDER_SCAN
-    });
-    part.forEach((row) => rows.push(row));
-  }
-  return rows;
-}
-
 // ── 自然日/周（周一起）/月窗口（serverTime + UTC+8，与 lib/time.dayKey 同源）───────────
 function shiftedDate(ms) {
   return new Date(time.toMs(ms) + TZ_OFFSET_MS);
@@ -486,7 +475,6 @@ module.exports = {
   isAfterOrderCursor,
   orderCursorOf,
   loadCustomerOrders,
-  loadPartnerOrders,
   dayStartMs,
   weekStartMs,
   monthStartMs,

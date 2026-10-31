@@ -917,7 +917,7 @@ function register(h) {
   // ---------------------------------------------------------------- L A 批 P1-6 范围预检 + P1-9 CUSTOM 备注
   h.section('L. P1-6 提交前服务范围预检 + P1-9「其他代办」强制备注（纯件 + 页面接线）', (t) => {
     const zones = { zones: ['D', 'X'] };
-    t.eq(precheck.CUSTOM_SERVICE_CODE, 'CUSTOM', 'L1 「其他代办」服务码取 shared/enums SERVICES 末项 = CUSTOM（不另抄码表）');
+    t.eq([precheck.CUSTOM_SERVICE_CODE, enums.CUSTOM_SERVICE_CODE, serverEnums.CUSTOM_SERVICE_CODE], ['CUSTOM', 'CUSTOM', 'CUSTOM'], 'L1 「其他代办」服务码=shared/enums 显式常量 CUSTOM（TD-070：不再取 SERVICES 末项；客户端与服务端副本同值）');
     t.eq([precheck.rangeCheckOf({ zone: 'D', partnerPublic: zones }).ok, precheck.rangeCheckOf({ zone: 'N', partnerPublic: zones }).ok,
       precheck.rangeCheckOf({ zone: 'N', partnerPublic: { zones: [] } }).ok, precheck.rangeCheckOf({ zone: '', partnerPublic: zones }).ok],
     [true, false, true, true], 'L2 苑在范围放行/不在范围拦（范围空=全部苑；顾客苑未知不误拦）');

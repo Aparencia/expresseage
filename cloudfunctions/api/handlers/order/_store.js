@@ -91,6 +91,15 @@ async function loadScopePartner(ctx) {
   if (!partner && scope.targetId) {
     partner = await getPartnerById(ctx, scope.targetId);
   }
+  if (!partner) {
+    // TD-053（D 批）：partners.openid 随 CLOSED 换为唯一注销占位串后，已注销兼职用 users.closedPartnerNo
+    // 回退找回 CLOSED 行，使 loadWritablePartner 仍报 PARTNER_CLOSED（兼职已注销）而不是「未激活兼职身份」。
+    const user = await getUser(ctx, scope.openid);
+    const closedPartnerNo = user && typeof user.closedPartnerNo === 'string' ? user.closedPartnerNo : '';
+    if (closedPartnerNo) {
+      partner = await ctx.dao.findOne(COLLECTIONS.PARTNERS, { where: { partnerNo: closedPartnerNo } });
+    }
+  }
   return partner;
 }
 

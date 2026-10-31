@@ -145,7 +145,7 @@ docs/
 | 组件/工具 | `components/` 16 套（含维护遮罩、切换条、测试角标、头像、空态/骨架等）+ 根 `custom-tab-bar/`；`api/` 唯一网络出口 + 10 个域模块 + upload/privacy/mode-guard；`store/` 内存快照；`shared/` 口径纯件；`utils/` 纯件（识别/OCR/编号/roomTag/头像/存储/隐私策略等） | `docs/engineering/V4_ARCHITECTURE.md` §3 |
 | 云函数 | `cloudfunctions/api`（入口/router/app + 7 中间件 + db/dao + lib + 11 域 handlers）与 `cloudfunctions/cleanup`（13 个幂等 sweep + 独立 dao）；依赖只 `wx-server-sdk` | `docs/engineering/V4_ARCHITECTURE.md` §4、`V4_ENGINEERING.md` §4 |
 | 数据 | 14 集合（users/customers/partners/bindings/orders/order_events/order_messages/invitation_codes/admin_view_sessions/counters/config/admin_audit/upload_tickets/recognition_failures）、13 错误码、16 审计枚举、81 动作（client 与 internal 分级） | `docs/contract/V4_CONTRACT.md` §4/§5.3、`docs/data/V4_DATA_MODEL.md` §1~§7 |
-| 门禁 | `check.ps1`（4 步）→ `tools/check.js`（34 条）、`tools/check-docs.js`（12 条）、`tools/zero-money-scan.js`（3 范围）、`tools/selftest.js`（33 套断言）；另 `tools/mutation.ps1` 变异电池、`tools/sync-cloud-shared.js` 副本对帐、`gate.ps1` 范围/体量闸、`doctor.ps1` 环境体检 | `docs/engineering/V4_ENGINEERING.md` §8 |
+| 门禁 | `check.ps1`（4 步）→ `tools/check.js`（34 条）、`tools/check-docs.js`（12 条）、`tools/zero-money-scan.js`（3 范围）、`tools/selftest.js`（34 套断言）；另 `tools/mutation.ps1` 变异电池、`tools/sync-cloud-shared.js` 副本对帐、`gate.ps1` 范围/体量闸、`doctor.ps1` 环境体检 | `docs/engineering/V4_ENGINEERING.md` §8 |
 | 分层铁律 | ①页面层零业务判据（不出现 `wx.cloud.*`/状态字符串字面量/编号或 roomTag 生成/随机数）；②客户端不直连数据库/存储；③云函数不出现 `db.collection`（只经 `db/dao.js`）；共享副本只由 `tools/sync-cloud-shared.js` 生成 | `docs/engineering/V4_ARCHITECTURE.md` §1~§4、根 `AGENTS.md` §2 |
 
 ## 7. 门禁与自证（取数命令）

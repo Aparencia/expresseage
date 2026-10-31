@@ -101,8 +101,20 @@ async function loadBootState(ctx, scope) {
     identity.loadPartnerByOpenid(ctx, scope.openid),
     identity.getActiveBinding(ctx, scope.openid)
   ]);
+  // TD-053 回退：partners.openid 随 CLOSED 匿名化后，按 users.closedPartnerNo 找回 CLOSED 行，
+  // partnerStatus/partnerNo/partner 块保持注销前口径（「已注销」而不是「从未激活」）。
+  const closedState = partner ? null : await identity.loadClosedPartnerState(ctx, scope.openid, user);
+  const effectivePartner = partner || (closedState && closedState.partner) || null;
   const boundPartner = binding && binding.partnerId ? await identity.loadPartnerById(ctx, binding.partnerId) : null;
-  return { viewSession, user, customer, partner, binding, boundPartner };
+  return {
+    viewSession,
+    user,
+    customer,
+    partner: effectivePartner,
+    closedPartnerNo: identity.closedPartnerNoOf(user),
+    binding,
+    boundPartner
+  };
 }
 
 // 角色解析（切换会话=票据角色；真实会话=users.roles，双角色兼职优先）并记一次 lastLoginAt（失败只告警）
@@ -157,6 +169,11 @@ async function handler(ctx) {
     ? buildBindingBlock(state.binding, state.boundPartner, avatarUrls.boundPartner)
     : null;
   const meSource = roleState.activeRole === enums.ROLES.PARTNER ? (partnerBlock || {}) : (customerBlock || {});
+  // TD-053：CLOSED 行已匿名化（partner 块可能为空）时，平铺 partnerStatus/partnerNo 仍按 users 标记口径保留
+  const partnerStatus = state.partner
+    ? state.partner.status || ''
+    : (state.closedPartnerNo ? enums.PARTNER_STATUS.CLOSED : '');
+  const partnerNo = state.partner ? state.partner.partnerNo || '' : state.closedPartnerNo;
 
   return {
     // DATA_MODEL §7.1 平铺 DTO
@@ -172,8 +189,8 @@ async function handler(ctx) {
     avatarFileId: meSource.avatarFileId || '',
     // D42：当前使用角色（me）的头像临时 URL；无头像/签发失败为空串（客户端回退默认头像）
     avatarUrl: meSource.avatarUrl || '',
-    partnerStatus: state.partner ? state.partner.status || '' : '',
-    partnerNo: state.partner ? state.partner.partnerNo || '' : '',
+    partnerStatus: partnerStatus,
+    partnerNo: partnerNo,
     isDeveloper: roleState.isDeveloper,
     viewContext,
     configPublic: await configCommon.loadPublicConfig(ctx),

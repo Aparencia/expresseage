@@ -64,31 +64,30 @@ async function fetchOrders(ctx, customerId, filter, scanLimit) {
   return rows;
 }
 
+// 三桶精确计数（TD-040）：每桶走 count，不再用 500 条扫描窗——单顾客历史 >500 单时计数会截断。
+// deletedByCustomerAt 生产只由 order.deleteRecord 写 Date（缺省=未删）；范围命令 gt 0 与旧内存判定
+// 「真值才算已删」同口径（fake DB：Date→毫秒数 >0 命中；0/缺省/空串不命中）。
+// 查询预算固定 6 次 count（每桶 total + 软删），与历史单量无关。
+async function countBucket(ctx, customerId, statusWhere) {
+  const where = Object.assign({ customerId, isTest: common.isTestSession(ctx) }, statusWhere);
+  const total = await ctx.dao.count(COLLECTIONS.ORDERS, { where });
+  const deleted = await ctx.dao.count(COLLECTIONS.ORDERS, {
+    where: Object.assign({}, where, { deletedByCustomerAt: ctx.dao.command('gt', 0) })
+  });
+  return total - deleted;
+}
+
 // 三桶计数（批 5 契约 C）：进行中=SUBMITTED/ACCEPTED/PICKED/DELIVERED/EXCEPTION；已完成=COMPLETED；
 // 已取消=CANCELLED。均排除 deletedByCustomerAt 软删（列表口径一致）；不受 keyword/status 筛选影响
 // （供列表 tab 角标，切 tab 不变）；与列表同样按 isTest 隔离，测试单不污染真实计数。
-function buildCounts(rows) {
-  const counts = { ongoing: 0, completed: 0, cancelled: 0 };
-  rows.forEach((order) => {
-    if (order.deletedByCustomerAt) {
-      return;
-    }
-    if (order.status === enums.ORDER_STATUS.COMPLETED) {
-      counts.completed += 1;
-    } else if (order.status === enums.ORDER_STATUS.CANCELLED) {
-      counts.cancelled += 1;
-    } else if (enums.ORDER_ACTIVE_STATUSES.indexOf(order.status) >= 0) {
-      counts.ongoing += 1;
-    }
-  });
-  return counts;
-}
-
-async function loadAllOfCustomer(ctx, customerId) {
-  return ctx.dao.find(COLLECTIONS.ORDERS, {
-    where: { customerId, isTest: common.isTestSession(ctx) },
-    limit: common.MAX_LIST_SCAN
-  });
+async function buildCounts(ctx, customerId) {
+  return {
+    ongoing: await countBucket(ctx, customerId, {
+      status: ctx.dao.command('in', enums.ORDER_ACTIVE_STATUSES)
+    }),
+    completed: await countBucket(ctx, customerId, { status: enums.ORDER_STATUS.COMPLETED }),
+    cancelled: await countBucket(ctx, customerId, { status: enums.ORDER_STATUS.CANCELLED })
+  };
 }
 
 module.exports = async function orderListCustomer(ctx, payload) {
@@ -114,10 +113,9 @@ module.exports = async function orderListCustomer(ctx, payload) {
   const hasMore = candidates.length > paging.limit;
   const list = await dto.buildOrderDtos(ctx, page, 'CUSTOMER');
   const last = page[page.length - 1];
-  const allRows = await loadAllOfCustomer(ctx, customerId);
   return {
     list,
     nextCursor: hasMore && last ? common.makeCursor(last, filter.sortField) : null,
-    counts: buildCounts(allRows)
+    counts: await buildCounts(ctx, customerId)
   };
 };

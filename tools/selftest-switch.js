@@ -42,9 +42,10 @@ const cloudActions = require(path.join(ROOT, 'cloudfunctions/api/shared/actions.
 const cloudEnums = require(path.join(ROOT, 'cloudfunctions/api/shared/enums.js'));
 const viewAsStart = require(path.join(ROOT, 'cloudfunctions/api/handlers/admin/viewAsStart.js'));
 const viewAsEnd = require(path.join(ROOT, 'cloudfunctions/api/handlers/admin/viewAsEnd.js'));
+const setPartnerStatus = require(path.join(ROOT, 'cloudfunctions/api/handlers/admin/setPartnerStatus.js'));
 const switchSession = require(path.join(ROOT, 'cloudfunctions/api/middleware/switch-session.js'));
 
-const EXPECTED_ASSERTIONS = 165;
+const EXPECTED_ASSERTIONS = 169;
 
 const VIEW_TICKET = 'T'.repeat(enums.TOKEN_LENGTH);
 // 旧审计名用拼接构造：本文件不出现旧名字面量（门禁 #30 / 文档纪律）
@@ -782,6 +783,35 @@ function register(h) {
     t.check(sessionSrc.indexOf('hydrateFromBootstrap') >= 0 && sessionSrc.indexOf('viewAsEnd') >= 0
       && sessionSrc.indexOf('enterViewContext') >= 0, 'utils/session：进入/退出共用同一水合实现（单一入口）');
   });
+
+  // ---------------------------------------------------------------- TD-056 兼职注销即结束切换会话
+  h.section('§4.8.2 TD-056 兼职 CLOSED 立即结束 targetId=partners._id 的有效会话', async (t) => {
+    const db = fake.createFakeDb({ uniqueIndexes: SWITCH_UNIQUE });
+    seedSwitchBase(db);
+    db.seed('admin_view_sessions', [
+      switchSessionRow(VIEW_TICKET, cloudEnums.VIEW_MODE.READONLY, cloudEnums.ROLES.PARTNER,
+        'partner-real-1', 'PABC23D', false)
+    ]);
+    const ctx = switchCtx(db, { clientRequestId: requestKeyOf(41) });
+    const closed = await switchResult(() => setPartnerStatus(ctx,
+      { partnerNo: 'PABC23D', status: cloudEnums.PARTNER_STATUS.CLOSED, reason: '注销兼职' }));
+    t.eq(closed.ok, true, 'TD-056 前置：兼职 CLOSED 治理链整体成功（分批页事务 + 最终段小事务）');
+    const session = sessionDocOf(db, VIEW_TICKET);
+    const endedAtMs = session.endedAt instanceof Date ? session.endedAt.getTime() : session.endedAt;
+    const endAudit = db.dump('admin_audit')
+      .filter((row) => row.action === audit.AUDIT_ACTIONS.ACCOUNT_SWITCH_END);
+    t.eq([endedAtMs, endAudit.length, endAudit[0] && endAudit[0].detail.reason],
+      [SWITCH_NOW, 1, 'TARGET_DELETED'],
+      'TD-056 CLOSED 立即写会话 endedAt=now + 1 条 ACCOUNT_SWITCH_END(TARGET_DELETED)，不等 sweep 过期');
+    const reuse = await switchResult(() => switchSession.middleware(
+      switchState(ctx, 'user.bootstrap', {}, { viewTicket: VIEW_TICKET })));
+    t.eq([reuse.ok, reuse.code], [false, 'FORBIDDEN'],
+      'TD-056 结束后票据立即不可用（switch-session「切换会话已结束」→ FORBIDDEN）');
+    const endAgain = await switchResult(() => viewAsEnd(ctx, { viewTicket: VIEW_TICKET }));
+    t.eq([endAgain.ok, endAgain.value && endAgain.value.duplicated,
+      endAgain.value && endAgain.value.endedAt !== undefined],
+    [true, true, true], 'TD-056 重复结束幂等：viewAsEnd 返回 duplicated=true 且保留原 endedAt');
+  });
 }
 
 module.exports = { EXPECTED_ASSERTIONS, register };
@@ -795,6 +825,3 @@ if (require.main === module) {
   const ret = h.finish();
   if (ret && typeof ret.then === 'function') ret.then(() => {});
 }
-
-
-

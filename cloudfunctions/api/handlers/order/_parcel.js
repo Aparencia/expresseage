@@ -10,8 +10,8 @@ const time = require('../../lib/time');
 const { errors } = require('../../lib/errors');
 const { RECOGNITION_SOURCES } = require('../../lib/ai/parse');
 
-// CONTRACT §6 服务类型表 / D5：CUSTOM=其他代办「需备注说明；兼职可拒单」。常量收敛，避免裸字符串散落。
-const CUSTOM_SERVICE_CODE = 'CUSTOM';
+// CONTRACT §6 服务类型表 / D5：CUSTOM=其他代办「需备注说明；兼职可拒单」。常量单源=shared/enums（TD-070）。
+const CUSTOM_SERVICE_CODE = enums.CUSTOM_SERVICE_CODE;
 
 function isPlainObject(value) {
   return !!value && typeof value === 'object' && !Array.isArray(value);

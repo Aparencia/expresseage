@@ -121,7 +121,7 @@
     <view class="card">
       <view class="row between">
         <view class="strong">取件截图</view>
-        <image-picker wx:if="{{!readonly}}" purpose="TICKET" maxCount="{{1}}" bind:change="onImageChange" bind:error="onImageError" />
+        <image-picker wx:if="{{!readonly}}" purpose="TICKET" max-count="{{1}}" bind:change="onImageChange" bind:error="onImageError" />
       </view>
       <view class="small">手填优先：看不清就直接填站点/取件码/柜号/运单尾号，不影响提交。</view>
       <view wx:if="{{noImage}}" class="flag-tip">无截图·手填：不传截图也可提交，兼职会按你填的站点/码核对</view>

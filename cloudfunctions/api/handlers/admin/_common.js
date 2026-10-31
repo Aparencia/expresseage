@@ -285,7 +285,7 @@ async function getOrderByNo(scope, orderNo) {
   return scope.dao.findOne(COLLECTIONS.ORDERS, { where: { orderNo } });
 }
 
-// ── 分页（offset 游标；先按排序扫描，再在内存做测试标记/关键词过滤）────────────
+// ── 分页（offset 游标）────────────────────────────────────────────────────────
 function parsePage(payload) {
   const input = isPlainObject(payload) ? payload : {};
   const rawLimit = Number(input.limit);
@@ -297,40 +297,6 @@ function parsePage(payload) {
     offset = Math.max(0, Math.floor(Number(input.cursor.offset)));
   }
   return { limit, offset };
-}
-
-// fetchPage(offset, size) → rows[]；match(row) → boolean（缺省全通过）
-async function scanPaged(options) {
-  const opts = options || {};
-  const limit = opts.limit || DEFAULT_PAGE_SIZE;
-  const start = opts.offset || 0;
-  const maxScan = opts.maxScan || MAX_SCAN;
-  const fetchPage = opts.fetchPage;
-  const match = typeof opts.match === 'function' ? opts.match : function pass() { return true; };
-  const rows = [];
-  let scanned = 0;
-  while (rows.length < limit && scanned < maxScan) {
-    const size = Math.min(Math.max(limit - rows.length + 10, 20), MAX_PAGE_SIZE);
-    const page = await fetchPage(start + scanned, size);
-    const list = Array.isArray(page) ? page : [];
-    if (list.length === 0) {
-      break;
-    }
-    for (let i = 0; i < list.length && rows.length < limit; i += 1) {
-      if (match(list[i])) {
-        rows.push(list[i]);
-      }
-    }
-    scanned += list.length;
-    if (list.length < size) {
-      break;
-    }
-  }
-  const nextOffset = scanned > 0 ? start + scanned : 0;
-  return {
-    rows: rows,
-    nextCursor: rows.length >= limit ? { offset: nextOffset } : null
-  };
 }
 
 function findPage(scope, collection, where, orderBy, offset, size) {
@@ -403,7 +369,6 @@ module.exports = {
   normalizeOrderNoInput,
   getOrderByNo,
   parsePage,
-  scanPaged,
   findPage,
   startOfDayMs,
   maskText,

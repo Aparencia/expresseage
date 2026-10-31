@@ -33,7 +33,7 @@ const privacyText = require(path.join(__dirname, '..', 'pkg-customer/parts/priva
 const defaults = require(path.join(__dirname, '..', 'config/defaults.js'));
 
 const ROOT = path.resolve(__dirname, '..');
-const EXPECTED_ASSERTIONS = 249; // 实跑读数：node tools/selftest-privacy-text.js
+const EXPECTED_ASSERTIONS = 259; // 249 + 10（TD-061 帮助页官方隐私保护指引入口静态判据）
 
 const PART_FILE = 'pkg-customer/parts/privacy-text.js';
 const HELP_JS = 'pkg-customer/pages/help/index.js';
@@ -436,6 +436,37 @@ function register(h) {
     t.check(TEXT.indexOf('不会清空你已有的头像') !== -1, '端内全文：头像票据失效不清空已有头像（D42）');
     t.check(supplement.indexOf(TEXT) !== -1, '补充文档派生物仍为端内全文逐字节派生物（随文本重新生成）');
     t.check(stripComments(partSource).indexOf('0~5 张') === -1, '纯文本件正文无「0~5 张」旧上限（注释留痕不计；单源=CONTRACT D40）');
+  });
+
+  // ------------------------------------------------------------ K. TD-061 帮助页官方隐私保护指引入口
+  h.section('K. TD-061 帮助页「查看官方隐私保护指引」入口（官方能力/失败轻提示/不外呼不采集）', (t) => {
+    const privacyApiSource = readSource('api/privacy.js');
+    const handlerStart = helpSource.indexOf('onOpenPrivacyContract()');
+    const handlerBody = handlerStart < 0 ? ''
+      : helpSource.slice(handlerStart, helpSource.indexOf('\n  },', handlerStart) + 1);
+    t.check(privacyApiSource.indexOf('function openPrivacyContract()') >= 0
+      && privacyApiSource.indexOf('wx.openPrivacyContract(') >= 0,
+    'K1 api/privacy.js 仍封装微信官方 openPrivacyContract（入口复用既有能力，不新增外呼）');
+    t.check(helpSource.indexOf("require('../../../api/privacy')") >= 0,
+      'K2 help 页经 api/privacy 调用官方能力（页面层不直连 wx 官方 API）');
+    t.check(handlerBody !== '' && handlerBody.indexOf('openPrivacyContract()') >= 0,
+      'K3 help 页有入口点击处理器并真实调用 openPrivacyContract（不是只有文案）');
+    t.check(helpSource.indexOf('privacyTip') >= 0 && /privacyTip:/.test(helpSource)
+      && /setData\(\{\s*privacyTip:/.test(helpSource),
+    'K4 打开失败给轻提示 privacyTip（不静默吞错、不向用户暴露错误码）');
+    t.check(!/wx\.(openPrivacyContract|getPrivacySetting|request|cloud)/.test(helpSource),
+      'K5 help 页零 wx 官方隐私 API 直调 / 零 wx.request / 零 wx.cloud（页面层零判据）');
+    t.check(handlerBody !== '' && !/(wx\.|openid|getLocation|chooseMedia|chooseImage)/.test(handlerBody),
+      'K6 处理器零 wx.* / 零 openid / 零定位与选图读取（官方能力打开，不采集任何用户数据）');
+    t.check(helpWxml.indexOf('查看官方隐私保护指引') >= 0
+      && helpWxml.indexOf('bindtap="onOpenPrivacyContract"') >= 0,
+    'K7 WXML 有可点击入口（文案=查看官方隐私保护指引 + bindtap 接线）');
+    t.check(/\{\{privacyTip\}\}/.test(helpWxml), 'K8 WXML 渲染失败轻提示 {{privacyTip}}');
+    t.check(/wx:if="\{\{!singlePage\}\}"/.test(helpWxml),
+      'K9 入口受 singlePage 隐藏（朋友圈落地页不出现按钮类交互，与分享入口同纪律）');
+    const entryAt = helpWxml.indexOf('bindtap="onOpenPrivacyContract"');
+    t.check(entryAt >= 0 && helpWxml.indexOf('version-card') > entryAt,
+      'K10 入口位于隐私政策区与版本卡之间（帮助页可发现，不挤占既有 FAQ/全文）');
   });
 }
 

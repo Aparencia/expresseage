@@ -201,6 +201,7 @@ if (require.main === module) {
     'selftest-bind', 'selftest-bind-cloud', 'selftest-order', 'selftest-order-flow', 'selftest-order-lifecycle',
     'selftest-order-customer', 'selftest-order-partner', 'selftest-order-workbench', 'selftest-order-detail-partner',
     'selftest-partner-customers', 'selftest-partner-orders', 'selftest-partner-pages', 'selftest-partner-stats',
+    'selftest-query-window',
     'selftest-profile', 'selftest-switch', 'selftest-testaccount',
     'selftest-admin', 'selftest-messages', 'selftest-cleanup', 'selftest-admin-pages',
     'selftest-message-pages', 'selftest-privacy-text', 'selftest-tools', 'selftest-deletion', 'selftest-performance',

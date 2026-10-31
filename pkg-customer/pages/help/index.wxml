@@ -51,6 +51,13 @@
     </block>
   </view>
 
+  <!-- TD-061：微信官方《用户隐私保护指引》主动入口（官方能力；打开失败给轻提示；不外呼不采集；朋友圈单页不展示按钮） -->
+  <view class="card" wx:if="{{!singlePage}}">
+    <view class="section-title">隐私保护指引</view>
+    <button class="btn btn-primary btn-block" bindtap="onOpenPrivacyContract">查看官方隐私保护指引</button>
+    <view class="muted paragraph" wx:if="{{privacyTip}}">{{privacyTip}}</view>
+  </view>
+
   <view class="card version-card">
     <view class="muted">版本 {{version}} · 隐私政策版本 {{privacyVersion}} · 客服：请联系你的兼职</view>
   </view>

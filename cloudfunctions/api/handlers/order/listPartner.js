@@ -246,12 +246,16 @@ async function buildCounts(ctx, partnerId, nowMs) {
     });
   }
   const todayStart = nowMs - ((nowMs + time.TZ_OFFSET_MS) % YESTERDAY_MS);
-  const completed = await ctx.dao.find(COLLECTIONS.ORDERS, {
-    where: { partnerId, status: enums.ORDER_STATUS.COMPLETED, isTest },
-    orderBy: [['completedAt', 'desc']],
-    limit: 100
+  // 今日完成（TD-043）：单 count 表达「completedAt ≥ 今日起点」，不再 find(limit:100) 后内存过滤；
+  // 口径与旧实现一致（单日完成数没有上界），仍按 isTest 隔离。
+  counts.todayCompleted = await ctx.dao.count(COLLECTIONS.ORDERS, {
+    where: {
+      partnerId,
+      status: enums.ORDER_STATUS.COMPLETED,
+      isTest,
+      completedAt: ctx.dao.command('gte', new Date(todayStart))
+    }
   });
-  counts.todayCompleted = completed.filter((order) => time.toMs(order.completedAt) >= todayStart).length;
   return counts;
 }
 

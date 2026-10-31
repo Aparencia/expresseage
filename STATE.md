@@ -5,7 +5,7 @@
 > 更新时机：每批开工/收口、用户裁决变化、风险新增或关闭、HEAD 变化需回读。
 > 本文只记**状态、待办与下一步**，不重复设计口径（口径看 CONTRACT，工程规则看 ENGINEERING，接口看 ARCHITECTURE）。
 
-**快照时间：2026-10-31（HEAD `f8b1916` **门禁判据补强收口**：check.js 34 条 / check-docs 12 条 / 关闭 TD-071·TD-078·TD-079；上一收口 HEAD `b9d966a` 文档结构重整）；`check.js` 34/34、`check-docs` 12/12、零金额 0 命中（白名单 109 项，对帐清理失效整行后）、`selftest` 33 套 0 失败（断言数以 `node tools/selftest.js` 汇总行为准）；云端 `api` 已部署并复验、`DEEPSEEK_API_KEY` 已配置；真机/提审/灰度未做）**
+**快照时间：2026-10-31（HEAD `待本批收口提交回填` **技术债收口批（B/C/D）**：check.js 34 条 / check-docs 12 条；关闭 TD-040/043/050/053/054/055/056/057/061/064/068/069/070（TD-044 关键词窗口保留开放）；上一收口 HEAD `c0a9200` 门禁判据补强）；`check.js` 34/34、`check-docs` 12/12、零金额 0 命中（白名单 109 项）、`selftest` 34 套 0 失败（断言数以 `node tools/selftest.js` 汇总行为准）；云端 `api` 已部署并复验、`DEEPSEEK_API_KEY` 已配置；真机/提审/灰度未做）**
 > 临时总体说明（全局汇总，非状态源）：[`docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md`](docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md)（版本与取数快照由 Lead 统一维护；状态仍以本文件为准、口径以 CONTRACT 为准）。
 
 ## 1. 一句话状态
@@ -24,6 +24,8 @@
 **2026-10-30 隐私同意兜底（真实用户复现）工程侧完成并收口（HEAD `78eaadf`）**：`check.ps1` 4 步全 PASS（退出码 0；`check.js` **33/33**、`check-docs` **10/10**（文档范围 67 份）、零金额 **0 命中（白名单 136 项）**、`selftest` **33 套 0 失败**，断言合计 **5,554**）。交付：`utils/privacy-gate` 非 launch 首启兜底——`role`/`customer/home` 在未同意/版本变更时经 `utils/privacy-gate` 回 `launch` 过闸并保留 `bind`/`orderNo`（切换会话按服务端 `developerNo` 豁免）；`selftest-core` **160/160**（D37-b 组 +16，`EXPECTED_ASSERTIONS` 144→160）；变异电池 3 组（gate 恒放行 / `role` 去钩子 / `home` 去钩子）首红后 SHA256 逐字节还原复绿；踩坑卡 `docs/governance/lessons/2026-10-30_分享卡path在分享时固化.md`。`api` 已部署并复验、`DEEPSEEK_API_KEY` 已配置。**真机项待用户**：重新「上传」体验版后再用「旧卡 + 新卡」各测一次直落（QA §Y1），agent 不代勾。
 
 **2026-10-31 文档结构重整（全仓文档整理）工程侧完成并收口**：docs 由平铺重排为 `contract/data/engineering/ux/delivery/governance/privacy/archive` 分组；`ARCHITECTURE`/`QA_CHECKLIST`/`RUNBOOK`/`TECH_DEBT` 统一 `V4_` 前缀；根 `V4_REBUILD_SPEC.md` 迁入 `docs/contract/` 并标历史快照；`docs/lessons/` 归入 `docs/governance/lessons/`；research/reviews 归入 `docs/archive/`；根 README 文档地图与临时总览合并为新 `docs/README.md`（权威顺序/目录地图/阅读路径/逐份摘要/代码结构对照/归档索引），原临时总览归档。**门禁联动**：`tools/lib/project.js` DESIGN_DOCS、`tools/check-docs.js` 路径、4 个读取文档内容的 selftest（performance/privacy-text/tools/testaccount）、`tools/zero-money-allowlist.json` 文件字段与整行原文同步改写，判据未弱化（check-docs 仍 10 条）。**白名单对帐**：清理 29 条失效整行、新增 2 条现行声明，136→109 项，避免失效项静默留存。同批内容漂移修正（提交 `c43bd02`）：裁决范围统一 D1~D42、页数 31、截图 0~10、STATE 部署状态与 D22/D24 矛盾、隐私补充文档真实联系方式脱敏、TECH_DEBT 补 TD-067 并新增 TD-078/TD-079。门禁读数以 §6o 下文真实输出为准。
+
+**2026-10-31 技术债收口批（B/C/D 批，用户指令「填补技术债」）工程侧完成并收口**：A 批（判据欠账 TD-071/078/079）已于同日先行收口（提交 `f8b1916` + 证据回填 `c0a9200`）；本批关闭 **12 条 TD**——B 批查询窗口簇 TD-040/043/050（计数改 `dao.count`/范围命令、绑定与进行中单全量分页，TD-044 关键词扫描窗保留开放）、C 批小单点 TD-061/064/068/069/070、D 批注销治理链 TD-053/055/056/057 + Lead 裁决 TD-054（删除 `users.purgeAt` 字段口径）。D 批按 CloudBase 事务平台限制（单事务 ≤100 ops / ≤30s / 仅 doc 不支持 where）落「有界分批事务 + 最终段原子 + `from=CLOSED` 幂等收敛」，`partners.openid` 随 CLOSED 换注销占位串、`users.closedPartnerNo/partnerClosedAt` 作不可再激活标记。新增 `tools/selftest-query-window.js`（18 断言，selftest 33→34 套）与 `utils/order-scope.js`（TD-068 单源），`selftest-deletion` 100→104 断言。`check.ps1` 4 步退出码 0（读数以 §6q 真实输出为准）。**真机项**：QA §P `P26`（帮助页官方隐私指引入口）待用户点检，agent 不代勾。
 
 ## 2. 批次台账
 
@@ -45,6 +47,7 @@
 | 批 12 | v1.2 D36 分享与朋友圈（用户 2026-10-28 指令「转发功能是不是没有，朋友圈转发也要」） | **工程侧完成并收口（2026-10-28）** | `check.ps1` 4 步 0（selftest **33 套 5,291 断言**、check **33/33**、docs **10/10**、零金额 0）；19 页好友转发（兼职绑定卡只带编号/其余通用卡）、role/home/help 三页朋友圈（单页模式静态降级）、固定中性封面禁页面截图、切换会话禁分享（`wx.hideShareMenu`，O3/M-33 关闭）、首页/帮助/我的可见入口；新增 `selftest-share` 182 与门禁 #33（`tools/lib/check-share.js`）；**真机分享/朋友圈项待用户**（QA §V 新人项）；无新集合/索引，客户端需重新编译 |
 | 批 13 | 隐私同意兜底（2026-10-30 真实用户复现） | **工程侧完成并收口（2026-10-30，HEAD `78eaadf`）** | `check.ps1` 4 步 0（check **33/33**、docs **10/10**（文档 67 份）、零金额 0（白名单 136 项）、selftest **33 套 0 失败**、断言合计 **5,554**）；`role`/`customer/home` 直落回 `launch` 过隐私闸（保留 `bind`/`orderNo`）；`selftest-core` **160/160**（+16）、变异电池 3 组首红→SHA256 还原→复绿；**客户端需用户重新上传体验版**、旧卡场景真机复验属用户（QA §Y1） |
 | 批 14 | 文档结构重整（2026-10-31 全仓文档整理与门禁联动） | **工程侧完成并收口（2026-10-31）** | docs 分组/改名/归档；新 `docs/README.md` 文档总览（合并原 README 文档地图 + 临时总览）；`tools/lib/project.js` DESIGN_DOCS、`tools/check-docs.js` 路径、4 个读取文档的 selftest、零金额白名单联动改写（判据未弱化）；白名单对帐 136→109（清 29 失效整行 + 2 新增）；`check.ps1` 4 步 0（见 §6o）；内容漂移修正提交 `c43bd02` |
+| 批 15 | 技术债收口批（B 查询窗口簇 / C 小单点 / D 注销治理链，2026-10-31 用户指令「填补技术债」） | **工程侧完成并收口（2026-10-31）** | 关闭 12 条 TD：B 批 TD-040/043/050、C 批 TD-061/064/068/069/070、D 批 TD-053/055/056/057 + Lead 裁决 TD-054；TD-044（关键词扫描窗）保留开放；新增 `selftest-query-window`（18 断言，selftest 33→34 套）与 `utils/order-scope.js`；D 批「有界分批事务+最终段原子+幂等收敛」（平台 ≤100 ops/≤30s/仅 doc）；`selftest-deletion` 100→104；`check.ps1` 4 步 0（见 §6q）；真机项 QA P26 待用户 |
 
 ## 3. 批 1 并行交付快照（全部收口）
 
@@ -556,7 +559,7 @@ check.ps1：全部通过（4 步，退出码 0）
 18. **批 8 遗留明账**：TD-051（云文件无主/无引用无法自动发现→控制台人工月度核对，RUNBOOK §7；P1 票据回写 fileID 后自动化）；TD-032（#29 静态扫描 `{ avatarFileId }` 简写盲区，行为套兜底）继续开放；TD-036（AI 降级 DTO `source=NONE` 语义缝隙，复核页已把排障码映射中文，语义待批 9 复核页真机确认）；TD-033/TD-035/TD-037/TD-038/TD-040~045/TD-047/048/050 继续明账。均不阻塞离线收口。
 19. **批 8 判据有牙**：6 套新判据均带变异电池首红（admin 3 组 / messages 行为断言 / cleanup 2 组 / admin-pages 5 组 / message-pages 4 组 / privacy-text 5 组，均 SHA256 逐字节还原后复跑绿）；`selftest-admin` 以「非白名单调用 / 他人票据 / 模式篡改 / TEST_WRITE 调禁用动作」负向矩阵锁越权，`selftest-cleanup` 以「阈值前不动 + 重跑 acted 收敛」锁时间旅行与幂等，`selftest-privacy-text` A 组以「docs 关键条目 ⊆ 端内全文」锁双源。
 20. **批 8 工程口径**：`tools/check.js` #24 对端内隐私全文（`pkg-customer/parts/privacy-text.js`）做**单文件窄豁免**（同时补偿断言锁零 Key/端点/URL/require/fetch/wx.cloud/ai.parseParcel），因 CONTRACT §11.2 要求端内明文披露第三方 AI 服务名；`admin.stats` 返回 `developerNo`（仅抬头/审计展示、不参与鉴权）；cleanup `run.js` 每轮写一条 `CLEANUP` 汇总审计（10 分钟一轮，严格按 ENGINEERING §10.2 步骤 11；如嫌刷屏 P1 可降噪）。
-21. **批 9 注销链路遗留明账**：TD-053（`partners.openid` 保留作不可再激活身份锚点，DATA_MODEL §10.3 的 openid 匿名化待 users 侧标记方案）、TD-054（`users.purgeAt` 未写，cleanup 按 `deletionRequestedAt` 扫描）、TD-055（`admin.setPartnerStatus(CLOSED)` 治理链非事务，文件删除在事务外）、TD-056（兼职 CLOSED 后既有切换会话未立即 `endedAt`，靠 viewSessions sweep 到期）、TD-057（`moveOrdersToException` 500 单上限）；另：§7.6 注销幂等（端到端被中间件 DEACTIVATED 拦截为 `FORBIDDEN`，`duplicated` 仅 handler 直调可达）、兼职 CLOSED 订单不随关闭立即匿名化（终态 180 天留存口径）已在文档澄清。均不阻塞离线收口，但不可当作「注销链路已真机验证」。
+21. **批 9 注销链路遗留明账**：TD-053（`partners.openid` 保留作不可再激活身份锚点，DATA_MODEL §10.3 的 openid 匿名化待 users 侧标记方案）、TD-054（`users.purgeAt` 未写，cleanup 按 `deletionRequestedAt` 扫描）、TD-055（`admin.setPartnerStatus(CLOSED)` 治理链非事务，文件删除在事务外）、TD-056（兼职 CLOSED 后既有切换会话未立即 `endedAt`，靠 viewSessions sweep 到期）、TD-057（`moveOrdersToException` 500 单上限）；另：§7.6 注销幂等（端到端被中间件 DEACTIVATED 拦截为 `FORBIDDEN`，`duplicated` 仅 handler 直调可达）、兼职 CLOSED 订单不随关闭立即匿名化（终态 180 天留存口径）已在文档澄清。均不阻塞离线收口，但不可当作「注销链路已真机验证」。 **2026-10-31 技术债收口批已关闭 TD-053/055/056/057（TD-054 按删除 `users.purgeAt` 字段口径收口），残余风险见本清单第 32 项；注销链路真机验证仍属用户。**
 22. **批 9 判据有牙**：`selftest-deletion` 首跑 14 条缺陷红（先判据后修），修后 3 组变异电池（删 partnerNote 清除行 / 删阶段一清 partnerNote 调用 / 删 clearInvitationUsage 调用）均首红 + SHA256 逐字节还原 + 复跑 89/89 PASS；套件以 `EXPECTED_ASSERTIONS=89` 完整性闸防漏算。
 23. **批 9 文档为「用户执行清单」不是验收结论**：`docs/delivery/V4_REVIEW_MATERIALS.md`、`docs/delivery/V4_V3_PARITY.md`、RUNBOOK §10.6 演练记录表、QA H12~H17 均需用户执行/填写；agent 不代提审、不代勾、不宣布通过；发布前置为 D13 类目可选性/备案、隐私后台声明、13 项填写、`privacyVersion` 写入、灰度观测与回滚演练记录非空。
 24. **单环境无 staging（D1 修订，2026-10-22）**：账号只能开通 1 个云环境 ⇒ 开发/体验/正式**共用一个库与存储**，上线后没有可随意试错的独立环境。缓解：测试账号/`isTest` 标记隔离 + 上线前「单环境清零」（RUNBOOK §10.2.1）+ 结构/数据变更前导出 JSON 备份（R7）+ 发布侧用体验版验收与平台分阶段发布做灰度；已登记 TD-058。**不得在正式库随意造测试数据**。
@@ -570,10 +573,13 @@ check.ps1：全部通过（4 步，退出码 0）
 
 31. **文档治理欠账（2026-10-30 盘点 → 2026-10-31 批 A 已关闭）**：原两处漂移/盲点——README/STATE/INTERIM 门禁读数与 HEAD 真实输出不一致仍能全绿（TD-078）、`check-docs` 对 DATA_MODEL §7 标题存在性与「工程缺口 E# 有无定义」无判据（TD-079）——已由 `check-docs` #11/#12 与 #3/#5 加固收口，TD-071 同步关闭（`check.js` #34）。此后读数必须以命令真实输出 + 日期/HEAD 锚点为准（#11 会判红裸写/错读数），不抄旧读数。
 
+32. **2026-10-31 技术债收口批残余风险**：①**事务平台上限**——CloudBase「单事务 ≤100 个操作 / ≤30 秒 / 仅 doc 不支持 where」为官方文档口径，部署前仍需按云控制台实测真实操作数/时长（TD-015）；当前按订单页 50 单×2 ops=100 的预算写死并在 `selftest-deletion` 静态断言。②**事务外删云文件窗口**——最终段提交后、删文件前崩溃时头像/失败原图清单已随匿名化清空，孤儿文件由 cleanup/TD-051 兜底（与旧实现同口径）。③**TD-044 保留开放**——关键词（取件码/宿舍/称呼/尾号）仍受每状态 300 扫描窗限制，需 DAO 暴露 `db.RegExp`/OR 或建索引（冻结件/跨域），订单号精确路径不受影响。④**测试文件行数余量**——`selftest-deletion` 990/1000、`setPartnerStatus.js` 496/500，后续新增断言须先拆件/新开套件，不能硬追加。⑤真机项（QA P26 等）只能用户点检，agent 不代勾。⑥**事务内 where 与官方限制的兼容风险（TD-080）**——全仓 10+ 文件在事务内用 `trx.find/updateWhere`，与 CloudBase「仅 doc」限制可能冲突，fake DB 无法证明；已登记 TD-080，部署 `api` 后必须优先实测，必要时改「事务外取 id → 事务内逐 doc 写」。
+
 ## 8. 最近更新
 
 | 日期 | 事件 |
 | :-- | :-- |
+| 2026-10-31 | **技术债收口批（B/C/D）**：关闭 12 条 TD（B 查询窗口簇 TD-040/043/050；C 小单点 TD-061/064/068/069/070；D 注销治理链 TD-053/055/056/057；Lead 裁决 TD-054 删除 `users.purgeAt` 口径），TD-044 保留开放；`selftest-query-window` 18 断言（selftest 33→34 套）、`utils/order-scope.js` 单源、D 批分批事务+最终段原子+幂等收敛；`check.ps1` 4 步 0（见 §6q）；提交锚点见 §6q |
 | 2026-10-21 | 批 0 设计定稿（CONTRACT v0.9 及全部设计文档；D18~D21 四次修订回写；隐私两件升草案） |
 | 2026-10-21 | 批 1 开工提交 `d5ad214`：app.json 页面地图冻结、ARCHITECTURE 接口冻结、根配置改造 |
 | 2026-10-21 | 批 1 并行开发（S0~S16）：云端/页面/组件/工具链/测试全部落盘；期间关闭多项门禁裁决与 bug（fake-db 三处、listPartner raw 文档泄露、saveProfile 角色死锁、bind 幂等、四档排序归属等） |
@@ -657,7 +663,7 @@ check.ps1：全部通过（4 步，退出码 0）
 
 15. **2026-10-30 隐私同意兜底已修复并提交**（证据见 §6n）：真实用户仍反馈隐私同意异常的两层原因——①**体验版仍是修复前构建**（客户端改动只能由用户「上传」后生效；最近一次成功上传证据早于 2026-10-28 的 D37 修复）；②**修复前发出的分享卡 path 固化在聊天里**，上传新包后点旧卡仍直落 `role`、绕过隐私闸。已给 `role`/`customer/home` 补直落兜底（`utils/privacy-gate`）。**用户侧必须**：重新上传体验版 → 用「旧卡 + 新卡」各测一次新用户落地（QA §Y1 已补旧卡场景）→ 真机确认后回签；未复验前按未修复对待。
 
-16. **文档结构重整 + 门禁判据补强已收口（2026-10-31）**：docs 分组/改名/归档与门禁联动完成，四步门禁全绿（§6o）；同日第二批按用户指令「处理技术债」只做 A 批（判据欠账），关闭 TD-071/TD-078/TD-079（`check.js` 34 条、`check-docs` 12 条，§6p）。后续新增/移动/改名文档按 `docs/README.md` §8.3 登记，并同步 `docs/README.md` §3~§5 与 `docs/engineering/V4_ENGINEERING.md` §9.1；B~F 批（查询窗口簇/小单点/注销治理链/性能结构/契约扩展）待用户裁决。用户侧无新增动作。
+16. **文档结构重整 + 门禁判据补强已收口（2026-10-31）**：docs 分组/改名/归档与门禁联动完成，四步门禁全绿（§6o）；同日第二批按用户指令「处理技术债」只做 A 批（判据欠账），关闭 TD-071/TD-078/TD-079（`check.js` 34 条、`check-docs` 12 条，§6p）。后续新增/移动/改名文档按 `docs/README.md` §8.3 登记，并同步 `docs/README.md` §3~§5 与 `docs/engineering/V4_ENGINEERING.md` §9.1；B/C/D 批（查询窗口簇/小单点/注销治理链）已于同日第三批完成收口（见 §6q）；剩余 E/F 批（性能结构/契约扩展）待用户裁决。用户侧无新增动作。
 
 ## 10. 维护规则
 

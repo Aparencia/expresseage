@@ -26,7 +26,7 @@ cloudfunctions/*/shared/（由 shared/** 与 utils/ids.js、utils/room-tag.js、
 | 工作流 | Owner | 写作用域（只许改这些） |
 | :-- | :-- | :-- |
 | S0 骨架与集成 | lead | `app.json` `app.js` `app.wxss` `project.config.json` `sitemap.json` `.gitignore` `.tool-versions` `.env.example` `config/env.js` `config/route.js` `api/**` `store/**` `pages/launch/**` `pages/profile/**` `utils/share/**` `docs/engineering/V4_ARCHITECTURE.md` |
-| S1 口径纯件 | v3-data-model | `shared/**` `utils/ids.js` `utils/room-tag.js` `config/defaults.js` |
+| S1 口径纯件 | v3-data-model | `shared/**` `utils/ids.js` `utils/room-tag.js` `utils/order-scope.js`（C 批 TD-068 下沉的服务范围预检单源） `config/defaults.js` |
 | S1b 云端身份域 | v3-data-model | `cloudfunctions/api/handlers/{user,customer,partner,bind,upload,config}/**` |
 | S2 工具链与门禁 | v3-engineering | `tools/**` `check.ps1` `gate.ps1` `doctor.ps1` |
 | S3 顾客端 | v3-lifecycle-flow | `pages/role/**` `pages/customer/**` `pkg-customer/**` `utils/recognize/**` `utils/ocr/**` |
@@ -126,6 +126,7 @@ const off = store.subscribe((snapshot) => { this.setData({ vm: snapshot }); });
 - 每个业务页（主包 5 tab + `pkg-customer` 6 页 + `pkg-partner` 7 页）`index.wxml` 根节点第一个子节点必须是 `<switch-bar />`；`pkg-admin` 页面不引用 `switch-bar`/`test-badge`。**v1.0 新增** `pkg-customer/pages/pickup-list/index`（D26 顾客取件清单：独立入口，只读展示本站订单 `parcels[]` 的站点+取件码，本机勾选只经 `utils/storage.pickupChecks`，不回写服务端）。
 - 页面 `.json` 只写 `navigationBarTitleText` 等；组件已在 `app.json` 全局注册，页面无需再 `usingComponents`。
 - **页面纯件（批 6~8 扩展）**：可测的视图模型/表单校验/文案放同页 `parts/*.js`（纯函数、零 `wx`），页面 `index.js` 只做取参→调 `api/`→`setData`→事件转发；`pkg-admin` 11 页均有 `parts/view-model.js` + `common/copy.js`，`pkg-customer/pkg-partner` 部分页有 `parts/*`。例外组件 `components/maintenance-mask`（维护模式全屏公告）与纯件 `utils/maintenance.js` 采用**页面级 `usingComponents` 注册**（不改 `app.json`；仅 `pages/customer/home`、`pages/partner/workbench` 引用）。
+- **服务范围预检单源（TD-068）**：`utils/order-scope.js`（零 `wx` 纯件）是「苑归一 / 服务范围文案 / 范围判定」的唯一实现——导出 `SCOPE_ALL_TEXT`、`RANGE_BLOCK_TEXT`、`zonesOf`、`zoneTableOf`、`zoneKeyOf`、`scopeTextOf`、`zoneAllowedOf`；`pages/customer/home/parts/home-view.js` 与 `pkg-customer/pages/order-create/parts/precheck.js` 只 `require` 该件并 re-export 原导出名（两份重复实现清零，拦截文案同源）。服务端 `order.create` 的 `assertServiceRange` 仍是唯一权威，本地预检只省一次必失败请求。
 - **分享事件（v1.2/D36）**：页面 `onShareAppMessage`/`onShareTimeline` 只允许 `return` 纯件结果——身份/会话/卡片/封面判据全在 `utils/share/{index,handlers}.js`（页面零自拼 `title/path/imageUrl`、零 `assets/share/` 路径）；朋友圈仅 role/home/help 三页（单页模式静态可自洽）；切换会话禁分享由 `components/switch-bar` 统一调 `utils/share/platform.syncSession`（唯一收口，页面/组件不直写 `wx.hideShareMenu`）；**分享卡 path 统一经 `config/route` 指向 `launch`（D37）**；单页模式（scene=1154）启动降级在 `app.js`。判据：`tools/check.js` #33 + `tools/selftest-share.js`。
 - 相对路径深度：`pages/xxx/index.js` 与 `pkg-*/pages/xxx/index.js` 到仓库根都是 `../../../`（`pkg-*/pages/xxx/parts/*` 为 `../../../../../`）；`pages/launch/index.js`、`components/xxx/index.js` 为 `../../`。
 - 组件 props/events（冻结）：
@@ -141,7 +142,7 @@ const off = store.subscribe((snapshot) => { this.setData({ vm: snapshot }); });
 | `order-row` | `order`（服务端视图模型） | `tap` |
 | `customer-row` | `customer` | `tap` |
 | `failure-image` | `failureNo` | `loaded`、`error` |
-| `image-picker` | `maxCount`（默认 1）、`purpose`（`TICKET`/`AVATAR`） | `change`（`detail.files`） |
+| `image-picker` | `maxCount`（默认 1；**WXML 绑定按 kebab-case 写 `max-count`**，TD-069）、`purpose`（`TICKET`/`AVATAR`） | `change`（`detail.files`） |
 | `code-editor` | `value`、`placeholder`、`maxlength` | `change`（`detail.value`） |
 | `section-card` | `title` | — |
 | `empty-state` | `text`、`actionText?` | `action` |
@@ -180,7 +181,10 @@ const off = store.subscribe((snapshot) => { this.setData({ vm: snapshot }); });
 
 `createDao(db)` → `{ get, findOne, find({where,orderBy,skip,limit}), count, add, update, updateWhere, remove, removeWhere, transaction(fn), serverDate(), inc(value), command(name, value) }`；集合名一律从 `require('../shared/collections')` 的 `COLLECTIONS.*` 取。返回值形状见 §4.1。
 
-> 查询指令工厂（批 10 / M-10，Lead 已授权）：`ctx.dao.command(name, value)` 返回 SDK 查询指令（`gte/lt/gt/neq/in/exists`），供服务端范围/前缀查询使用（仍由唯一 `db/dao.js` 构造指令对象，业务层不出现 `db`/`db.command`）。`api/db/dao.js` 与 `cleanup/db/dao.js` 两处补丁文本必须逐字一致；已知调用点 = `cloudfunctions/api/handlers/admin/_paging.js`（`fetchOrderedPage`/`fetchPrefixPage`）。
+> 查询指令工厂（批 10 / M-10，Lead 已授权）：`ctx.dao.command(name, value)` 返回 SDK 查询指令（`gte/lt/gt/neq/in/exists`），供服务端范围/前缀查询使用（仍由唯一 `db/dao.js` 构造指令对象，业务层不出现 `db`/`db.command`）。`api/db/dao.js` 与 `cleanup/db/dao.js` 两处补丁文本必须逐字一致；已知调用点 = `cloudfunctions/api/handlers/admin/_paging.js`（`fetchOrderedPage`/`fetchPrefixPage`）、`handlers/order/listCustomer.js`（`command('in')`/`command('gt')` 三桶计数）、`handlers/order/listPartner.js`（`command('gte')` 今日完成）、`handlers/partner/listBindings.js`（`command('in')` 批量补顾客资料）、`handlers/partner/stats.js`（`command('gte')`/`command('gt')` 区间计数）。
+> 全量精度窄口（B 批 · 查询窗口簇 TD-040/043/050）：**`db/dao.js` 本轮未改**——既有 `count(collection,{where})`、`command(name,value)` 与 `find(collection,{where,orderBy,skip,limit})` 已足够表达「count 精确计数 + 范围 where + 固定批全量扫描」，原设想的 `countRange` 新窄口不需要新增。新增调用点 = `handlers/order/listCustomer.js`（顾客三桶 `count` 精确计数）、`handlers/order/listPartner.js`（今日完成单 `count`）、`handlers/partner/listBindings.js`（绑定/顾客资料按 `_id` 升序固定批扫描 + `command('in')`）、`handlers/partner/stats.js`（区间 `count` + 近 7 日边界 `count`）、`handlers/partner/_customer.js`（进行中单按状态 `skip` 固定批扫描）。
+
+> 事务平台约束（D 批 TD-055）：`transaction(fn)` 的 fn 受 CloudBase 平台限制——**单事务 ≤100 操作、执行时间 ≤30 秒、仅支持 `doc` 方法（不支持 `where`，官方文档口径）**；调用方必须按「每页独立事务 + 最终关键段小事务」组织写（典型 = `admin.setPartnerStatus(CLOSED)`：分批页 ops ≤100、最终段 2 ops 原子；工程规则与残余风险见 ENGINEERING §4.13/R26）。**事务内分页取数的真实可用性待部署实测**：事务内仍按 dao 统一接口调用（`createTransactionDao` 复用同一 body），若真实 SDK 拒绝事务内 `where`，实现改为「事务外分页取 `_id` → 事务内逐 `doc` 写」，接口形状不变。
 
 > 写入语义补充（2026-10-22，真实云环境首跑事故）：`update/updateWhere` 的字段值语义 = **整值替换**（dao 内 `normalizeUpdateData` 把普通对象包成 `command.set`；对象字段不会再被 SDK 拍平成点路径，也不会与库内旧子字段合并）。真实故障：`users.privacyConsent` 初值为 `null` 时，写 `{version, at}` 被拍成 `privacyConsent.at` → MongoDB `-502001 Cannot create field 'at' in element {privacyConsent: null}`，导致「同意隐私政策」100% 失败；同理适用于 `orders.exception`（恢复后被置 `null` 再上报）等所有"嵌套对象字段可能从 null/标量起步"的写点。fake DB 已同步复刻该语义（见 ENGINEERING §7.3）。
 
@@ -197,7 +201,7 @@ const off = store.subscribe((snapshot) => { this.setData({ vm: snapshot }); });
 | `shared/actions.js` | 全部 action 名 → `{ visibility:'client'|'internal', write:boolean }`；internal 仅 `admin.bootstrap`、`health.check`、`cleanup.*` |
 | `shared/error-codes.js` | 13 码唯一集：`VALIDATION_FAILED` `FORBIDDEN` `NOT_FOUND` `CONFLICT` `INVALID_TRANSITION` `INVALID_STATE` `RATE_LIMITED` `INVITE_EXPIRED` `INVITE_USED` `VIEW_TICKET_EXPIRED` `PARTNER_CLOSED` `DEPENDENCY_FAILED` `INTERNAL_ERROR` |
 | `shared/error-copy.js` | 13 码 → 中文人话；编号前缀三句提示 |
-| `shared/enums.js` | 角色/订单状态/来源/取消原因/异常码/服务类型/绑定状态/审计动作等枚举与中文文案 |
+| `shared/enums.js` | 角色/订单状态/来源/取消原因/异常码/服务类型/绑定状态/审计动作等枚举与中文文案；**显式常量单源（TD-070）**：`CUSTOM_SERVICE_CODE='CUSTOM'`（「其他代办」）由客户端预检与服务端备注校验共用，不从 `SERVICES` 顺序推导，随 `tools/sync-cloud-shared.js` 生成两套云函数副本 |
 | `shared/audit-actions.js` | 审计枚举：`INVITE_CREATE` `INVITE_REVOKE` `PARTNER_SUSPEND` `PARTNER_RESTORE` `CONFIG_UPDATE` `ORDER_ANOMALY_CANCEL` `BOOTSTRAP` `FAILURE_IMAGE_VIEW` `FAILURE_FIX` `FAILURE_IGNORE` `ACCOUNT_SWITCH_START` `ACCOUNT_SWITCH_END` `ACCOUNT_SWITCH_EXPIRED` `TEST_ACCOUNT_CREATE` `TEST_ACCOUNT_DELETE` `TEST_DATA_PURGE` |
 | `shared/order-state.js` | 七状态转移表 + 动作合法起始状态 + 七状态中文文案 |
 | `shared/role.js` | 角色判定纯函数 |

@@ -2,11 +2,12 @@
 // 口径：UX_CUSTOMER §3.3（兼职卡展示服务范围；范围不含顾客苑时主 CTA 置灰并给原因；服务范围用中文苑名）、
 //       ARCHITECTURE §5（页面零判据）、PERFORMANCE 2026-10-22（首屏展示语义放纯件，页面只 setData）。
 // 边界：本地只做下单前预检，服务端 order.create 仍是唯一权威（不替代服务端校验）。
+// TD-068：服务范围/预检纯件下沉 utils/order-scope.js（与下单页 precheck 共用单源），本文件只 re-export 原导出名。
 'use strict';
 
-const zones = require('../../../../shared/zones');
+const orderScope = require('../../../../utils/order-scope');
 
-const SCOPE_ALL_TEXT = '全部苑';
+const SCOPE_ALL_TEXT = orderScope.SCOPE_ALL_TEXT;
 const SERVICE_TEXT_LIMIT = 3;
 
 const REASON = {
@@ -14,76 +15,11 @@ const REASON = {
   bind: '先绑定兼职',
   readonly: '开发者只读视角不能操作',
   closed: '该兼职暂不接单',
-  zone: '该兼职的服务范围不含你的苑，可换绑其他兼职。'
+  zone: orderScope.RANGE_BLOCK_TEXT
 };
 
 function textOf(value) {
   return typeof value === 'string' ? value.trim() : '';
-}
-
-function zonesOf(partnerPublic) {
-  const raw = partnerPublic && Array.isArray(partnerPublic.zones) ? partnerPublic.zones : [];
-  return raw.map(textOf).filter(function keep(zone) {
-    return zone !== '';
-  });
-}
-
-// config.zoneLabels 覆盖 shared/zones 默认名：键 = 苑代号（D/X/N/B/C），值 = 展示名
-function zoneTableOf(zoneLabels) {
-  const custom = zoneLabels && typeof zoneLabels === 'object' ? zoneLabels : {};
-  const table = {};
-  zones.ZONES.forEach(function each(code) {
-    table[code] = textOf(custom[code]) || zones.ZONE_LABELS[code];
-  });
-  return table;
-}
-
-// 苑值归一：既认代号（D），也认历史/后台直接存的中文苑名（东苑）→ 代号
-function zoneKeyOf(value, table) {
-  const code = zones.normalizeZone(value);
-  if (code) {
-    return code;
-  }
-  const text = textOf(value);
-  if (!text) {
-    return '';
-  }
-  const keys = Object.keys(table);
-  for (let i = 0; i < keys.length; i += 1) {
-    if (table[keys[i]] === text) {
-      return keys[i];
-    }
-  }
-  return '';
-}
-
-// 服务范围：无配置 = 全部苑；有配置一律显示中文苑名（不再暴露 D/X/N/B/C 原始代号）
-function scopeTextOf(partnerPublic, zoneLabels) {
-  const list = zonesOf(partnerPublic);
-  if (list.length === 0) {
-    return SCOPE_ALL_TEXT;
-  }
-  const table = zoneTableOf(zoneLabels);
-  const names = list.map(function map(zone) {
-    return table[zoneKeyOf(zone, table)] || zones.zoneLabel(zone) || zone;
-  });
-  return names.join(' / ');
-}
-
-// 顾客苑是否在兼职服务范围：范围为空=全部苑；顾客苑未知不误拦（资料完整才可下单，服务端权威）
-function zoneAllowedOf(partnerPublic, zone, zoneLabels) {
-  const list = zonesOf(partnerPublic);
-  if (list.length === 0) {
-    return true;
-  }
-  const table = zoneTableOf(zoneLabels);
-  const mine = zoneKeyOf(zone, table);
-  if (!mine) {
-    return true;
-  }
-  return list.some(function some(item) {
-    return zoneKeyOf(item, table) === mine;
-  });
 }
 
 // 服务类型：只列已启用项；超过 3 项显示前 3 + 「等 N 项」（N=已启用总数），不换行撑高卡片
@@ -157,9 +93,10 @@ function orderBlockReasonOf(context) {
 module.exports = {
   SCOPE_ALL_TEXT,
   SERVICE_TEXT_LIMIT,
-  zoneTableOf,
-  scopeTextOf,
-  zoneAllowedOf,
+  // TD-068 单源 re-export：保持原导出名，既有调用方/断言零改动
+  zoneTableOf: orderScope.zoneTableOf,
+  scopeTextOf: orderScope.scopeTextOf,
+  zoneAllowedOf: orderScope.zoneAllowedOf,
   serviceTextOf,
   partnerCardOf,
   orderBlockReasonOf

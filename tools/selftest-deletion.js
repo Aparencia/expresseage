@@ -1,25 +1,15 @@
 'use strict';
 /**
- * tools/selftest-deletion.js — 批 9「注销 / 数据删除链路」端到端判据套件（task-83）。
- *
- * A user.deleteAccount handler：confirmText 校验 / 进行中订单拦截且零写入 / 事务撤销 ACTIVE 绑定
- *   （CUSTOMER_ACCOUNT_CLOSED）+ 清 partnerNote / users DEACTIVATED + deletionRequestedAt /
- *   非顾客角色与 READONLY 会话拒绝 / 重复注销（duplicated）分支。
- * B cleanup.runAccountDeletion 阶段一（申请后每轮）：customers PII 匿名化 + 头像文件删除、订单立即匿名化
- *   （含 EXCEPTION 等非终态单）+ 截图清理、留言/事件去标识、识别失败 uploaderOpenid/fileId 清空并按引用计数删图、
- *   上传票据删除、切换会话 endedAt + ACCOUNT_SWITCH_END(TARGET_DELETED) 幂等、历史 bindings.partnerNote 清理。
- * C 阶段二（deletionRequestedAt+30d 时间旅行）：物理删 users/customers/bindings/tickets + 头像兜底删除、
- *   阈值前不动、重跑 acted 收敛 0、批上限 100 可重入、缺 deletionRequestedAt 脏数据跳过。
- * D 兼职 CLOSED 链路（DATA_MODEL §10.3）：释放绑定（PARTNER_CLOSED）+ 清 partnerNote、进行中订单转 EXCEPTION
- *   + ORDER_ANOMALY 事件、partners 匿名化（displayName/avatarFileId/停用与关闭原因）并删头像文件、
- *   invitation_codes.usedBy 置空保留 usedAt/batchId、识别失败匿名化与引用计数删图、
- *   CLOSED 后不可预览/再激活/被绑定/接单/恢复。
- * E 缺陷修复回归与边界/失败隔离：拒绝路径零写入、删文件失败不炸 sweep、脏数据不崩、空世界 acted=0、
- *   重复 CLOSED 不重复写订单事件。
- * F 端侧注销路径静态判据：pages/profile 两步确认文案 + 「注销」确认文本单源 + 调用形态；privacy-text 注销条款一致。
- *
- * 纪律：fake DB 注入、不 mock 全局 wx、不连真库/真云；EXPECTED_ASSERTIONS 与实际断言数精确相等；
- *      先合法基线再反例；每条断言文字带 §节号。取数：node tools/selftest-deletion.js | Select-Object -Last 2
+ * tools/selftest-deletion.js — 「注销 / 数据删除链路」端到端判据套件（task-83 / D 批 rev6）。
+ * A user.deleteAccount：confirmText / 进行中订单拦截零写入 / 事务撤销绑定 / users DEACTIVATED / 角色与会话拒绝 / 重复注销。
+ * B cleanup 阶段一：customers 与订单 PII 匿名化、截图引用清空与计数删图、票据/留言/事件去标识、会话 endedAt 审计。
+ * C 阶段二（+30d）：物理删账号、头像兜底、阈值前不动、重跑收敛、批上限 100、脏数据跳过。
+ * D 兼职 CLOSED（DATA_MODEL §10.3）：绑定释放/订单转 EXCEPTION/邀请码与失败记录匿名化/会话结束（TD-053/056/057）；
+ *   TD-055 rev6：治理写改为**每页一个独立事务**（平台单事务 ≤100 ops/≤30s），最终关键段（users 标记 +
+ *   partners patch）2 ops 原子；分批中断由同一请求重试幂等收敛（最终段冲突/单页失败/已 CLOSED 三断点）。
+ * E 边界与失败隔离；F 端侧注销路径静态判据。
+ * 纪律：fake DB 注入、不 mock 全局 wx、不连真库/真云；EXPECTED_ASSERTIONS 与实际断言数精确相等；先基线后反例。
+ * 取数：node tools/selftest-deletion.js | Select-Object -Last 2
  */
 const fs = require('fs');
 const path = require('path');
@@ -38,7 +28,7 @@ const enums = require(path.join(ROOT, 'shared/enums.js'));
 const auditActions = require(path.join(ROOT, 'shared/audit-actions.js'));
 
 // harness 完整性闸：先占位，首跑按真实断言数回填（少算/多算都判红）。
-const EXPECTED_ASSERTIONS = 89;
+const EXPECTED_ASSERTIONS = 104;
 
 const NOW = Date.parse('2026-10-22T12:00:00+08:00');
 const MINUTE = 60 * 1000;
@@ -50,6 +40,9 @@ const CUST = 'CUST-A';
 const PARTNER_OPENID = 'PARTNER-A';
 const PARTNER_ID = 'p-1';
 const VIEW_TICKET = 'T'.repeat(32);
+// TD-056：CLOSED 分支结束的切换会话（targetId=partners._id）与对照顾客会话
+const PARTNER_SESSION = 'P'.repeat(32);
+const CUSTOMER_SESSION = 'Q'.repeat(32);
 const COLLECTION_NAMES = Object.keys(COLLECTIONS).map((key) => COLLECTIONS[key]);
 
 // ---------------------------------------------------------------- 测试桩
@@ -645,6 +638,15 @@ async function sectionD(t) {
     recognition_failures: [
       failureOf('d-f-1', { uploaderOpenid: PARTNER_OPENID, orderId: 'ord-sub', fileId: 'cloud://fail-only-p1.jpg' }),
       failureOf('d-f-2', { uploaderOpenid: PARTNER_OPENID, orderId: 'ord-sub', fileId: sharedShot })
+    ],
+    // TD-056：targetId=partners._id 的兼职切换会话（CLOSED 应被立即结束）+ 顾客会话对照（不得误伤）
+    admin_view_sessions: [
+      sessionOf(PARTNER_SESSION, PARTNER_ID, {
+        role: enums.ROLES.PARTNER,
+        targetNo: 'PAAAAAA',
+        targetDisplayName: '老张'
+      }),
+      sessionOf(CUSTOMER_SESSION, CUST)
     ]
   });
   const cloud = createCloud();
@@ -723,6 +725,156 @@ async function sectionD(t) {
     { partnerNo: 'PAAAAAA', status: enums.PARTNER_STATUS.ACTIVE, reason: '' },
     { clientRequestId: nextCrid('d', 2) });
   t.eq([restore.ok, restore.code], [false, 'INVALID_TRANSITION'], '§D CLOSED 不可恢复（INVALID_TRANSITION）');
+
+  // ── TD-053（D 批 2026-10-31）：CLOSED 随注销匿名化 partners.openid + 写 users 标记 ──────────
+  const partnerUser = byId(db, COLLECTIONS.USERS, PARTNER_OPENID);
+  t.eq([partnerUser.closedPartnerNo, dateMs(partnerUser.partnerClosedAt), partnerUser.roles],
+    ['PAAAAAA', NOW, [enums.ROLES.PARTNER]],
+    'TD-053 CLOSED 写 users.closedPartnerNo/partnerClosedAt（schema 只增；roles 不动、作不可再激活锚点）');
+  t.eq([partner.openid, db.dump(COLLECTIONS.PARTNERS).filter((row) => row.openid === PARTNER_OPENID).length],
+    ['CLOSED-' + PARTNER_ID, 0],
+    'TD-053 partners.openid 换唯一注销占位串（原 openid 不再留存；不破坏 uk_openid 唯一索引）');
+  const bootClosed = await apiOf(db, PARTNER_OPENID, { cloud }).call('user.bootstrap', {});
+  t.eq([bootClosed.ok, bootClosed.data.partnerStatus,
+    bootClosed.data.partner && bootClosed.data.partner.status, bootClosed.data.partnerNo],
+  [true, enums.PARTNER_STATUS.CLOSED, enums.PARTNER_STATUS.CLOSED, 'PAAAAAA'],
+  'TD-053 bootstrap 回退：已注销兼职仍表现为「已注销」（partnerStatus/partner 块/编号保留，不退化为「未激活」）');
+
+  // ── TD-056（D 批）：CLOSED 立即结束 targetId=partners._id 的有效切换会话（不等 sweep 过期）──
+  const partnerSession = byId(db, COLLECTIONS.ADMIN_VIEW_SESSIONS, PARTNER_SESSION);
+  const customerSession = byId(db, COLLECTIONS.ADMIN_VIEW_SESSIONS, CUSTOMER_SESSION);
+  t.eq([dateMs(partnerSession.endedAt), customerSession.endedAt], [NOW, null],
+    'TD-056 CLOSED 立即写 targetId=partners._id 会话 endedAt=now（非目标会话不动）');
+  const sessionEnds = auditsOf(db, auditActions.AUDIT_ACTIONS.ACCOUNT_SWITCH_END);
+  t.eq([sessionEnds.length, sessionEnds[0] && sessionEnds[0].detail.reason,
+    sessionEnds[0] && sessionEnds[0].detail.viewMode, sessionEnds[0] && sessionEnds[0].requestKey],
+  [1, 'TARGET_DELETED', enums.VIEW_MODE.READONLY, 'switch-end:' + PARTNER_SESSION],
+  'TD-056 写 1 条 ACCOUNT_SWITCH_END(reason=TARGET_DELETED)、requestKey=switch-end:<id>（可幂等重放）');
+
+  // ── TD-053（D 批）：连续注销多个兼职时占位串按内部 id 唯一，uk_openid 不冲突 ────────────────
+  const twoDb = makeWorld({
+    users: [
+      userOf('openid-p1', { roles: [enums.ROLES.PARTNER] }),
+      userOf('openid-p2', { roles: [enums.ROLES.PARTNER] }),
+      userOf(ADMIN, { roles: [] })
+    ],
+    partners: [
+      partnerOf('openid-p1', { _id: 'p-1', partnerNo: 'PAAAAB2' }),
+      partnerOf('openid-p2', { _id: 'p-2', partnerNo: 'PAAAAC3' })
+    ]
+  });
+  const twoApi = apiOf(twoDb, ADMIN, { cloud: createCloud() });
+  const closeOne = await twoApi.call('admin.setPartnerStatus',
+    { partnerNo: 'PAAAAB2', status: enums.PARTNER_STATUS.CLOSED, reason: '连注销一' },
+    { clientRequestId: nextCrid('d', 5) });
+  const closeTwo = await twoApi.call('admin.setPartnerStatus',
+    { partnerNo: 'PAAAAC3', status: enums.PARTNER_STATUS.CLOSED, reason: '连注销二' },
+    { clientRequestId: nextCrid('d', 6) });
+  t.eq([closeOne.ok, closeTwo.ok, twoDb.dump(COLLECTIONS.PARTNERS).map((row) => row.openid)],
+    [true, true, ['CLOSED-p-1', 'CLOSED-p-2']],
+    'TD-053 连续注销两个兼职：占位串按内部 id 唯一、uk_openid 不冲突（清成 "" 会唯一索引冲突）');
+
+  // ── TD-057（D 批）：进行中订单按状态分页全量转异常（>500 单不再漏转，旧行为 ≤500 等价）─────
+  const manyOrders = [];
+  for (let i = 0; i < 501; i += 1) {
+    const at = new Date(NOW - (600 - i) * MINUTE);
+    manyOrders.push(orderOf('ord-many-' + i, {
+      status: enums.ORDER_STATUS.SUBMITTED,
+      createdAt: at,
+      statusUpdatedAt: at
+    }));
+  }
+  const manyDb = makeWorld({
+    users: [userOf(PARTNER_OPENID, { roles: [enums.ROLES.PARTNER] }), userOf(ADMIN, { roles: [] })],
+    partners: [partnerOf(PARTNER_OPENID)],
+    orders: manyOrders
+  });
+  const manyClosed = await apiOf(manyDb, ADMIN, { cloud: createCloud() }).call('admin.setPartnerStatus',
+    { partnerNo: 'PAAAAAA', status: enums.PARTNER_STATUS.CLOSED, reason: '大单量注销' },
+    { clientRequestId: nextCrid('d', 7) });
+  t.eq([manyClosed.ok, manyClosed.data.affectedOrders], [true, 501],
+    'TD-057 501 单全部转异常：affectedOrders=501（旧实现按最新 500 单取数会漏 1 单）');
+  const manyStatuses = manyDb.dump(COLLECTIONS.ORDERS).map((row) => row.status);
+  const manyEvents = manyDb.dump(COLLECTIONS.ORDER_EVENTS).filter((row) => row.type === 'EXCEPTION_REPORTED');
+  t.eq([manyStatuses.filter((status) => status !== enums.ORDER_STATUS.EXCEPTION).length, manyEvents.length],
+    [0, 501], 'TD-057 501 单状态全 EXCEPTION、逐单 1 条 EXCEPTION_REPORTED 事件（分批页各自事务提交，无遗漏）');
+
+  // ── TD-055（D 批 rev6）：最终关键段唯一冲突 → 只回滚最终段；同请求重试收敛（分批已提交不重复）──
+  const finalDb = makeWorld({
+    users: [userOf(PARTNER_OPENID, { roles: [enums.ROLES.PARTNER] }), userOf(ADMIN, { roles: [] })],
+    // 注入点：注销占位串 'CLOSED-p-1' 已被占 → 最终段 partners patch 触发 uk_openid 冲突
+    partners: [partnerOf(PARTNER_OPENID), partnerOf('unused-openid', { _id: 'p-conflict', partnerNo: 'PZZZZZ9', openid: 'CLOSED-' + PARTNER_ID })],
+    bindings: [bindingOf('bind-rb', CUST, PARTNER_ID)],
+    orders: [orderOf('ord-rb', { status: enums.ORDER_STATUS.SUBMITTED })],
+    invitation_codes: [inviteOf('rb', { usedBy: PARTNER_ID })],
+    recognition_failures: [failureOf('rb-f', { uploaderOpenid: PARTNER_OPENID, fileId: 'cloud://rb-f.jpg' })],
+    admin_view_sessions: [sessionOf(PARTNER_SESSION, PARTNER_ID, { role: enums.ROLES.PARTNER })]
+  });
+  const finalCloud = createCloud();
+  const finalApi = apiOf(finalDb, ADMIN, { cloud: finalCloud });
+  const finalCrid = nextCrid('d', 8);
+  const failed = await finalApi.call('admin.setPartnerStatus', { partnerNo: 'PAAAAAA', status: enums.PARTNER_STATUS.CLOSED, reason: '注入唯一冲突' }, { clientRequestId: finalCrid });
+  t.eq([failed.ok, failed.code, finalDb.stats.rollbacks, finalDb.stats.commits, auditsOf(finalDb, 'PARTNER_SUSPEND').length, finalCloud.deleted.length], [false, 'INTERNAL_ERROR', 1, 7, 0, 0],
+  'TD-055 最终段唯一冲突：INTERNAL_ERROR 不吞错；7 个分页事务已提交、最终段回滚 1 次、零审计零云删（不是单事务假绿）');
+  const rbDoc = () => byId(finalDb, COLLECTIONS.PARTNERS, PARTNER_ID);
+  t.eq([rbDoc().status, rbDoc().openid, byId(finalDb, COLLECTIONS.BINDINGS, 'bind-rb').status, byId(finalDb, COLLECTIONS.ORDERS, 'ord-rb').status, byId(finalDb, COLLECTIONS.RECOGNITION_FAILURES, 'rb-f').uploaderOpenid, byId(finalDb, COLLECTIONS.INVITATION_CODES, 'invite-rb').usedBy, dateMs(byId(finalDb, COLLECTIONS.ADMIN_VIEW_SESSIONS, PARTNER_SESSION).endedAt), byId(finalDb, COLLECTIONS.USERS, PARTNER_OPENID).closedPartnerNo],
+  [enums.PARTNER_STATUS.ACTIVE, PARTNER_OPENID, enums.BINDING_STATUS.RELEASED, enums.ORDER_STATUS.EXCEPTION, '', '', NOW, undefined],
+  'TD-055 最终段失败无半写：分批阶段已提交（绑定/订单/失败/邀请码/会话），partners 仍 ACTIVE、users 无注销标记');
+  await createApiDao(finalDb).update(COLLECTIONS.PARTNERS, 'p-conflict', { openid: 'UNUSED-9' });
+  const retried = await finalApi.call('admin.setPartnerStatus', { partnerNo: 'PAAAAAA', status: enums.PARTNER_STATUS.CLOSED, reason: '注入唯一冲突' }, { clientRequestId: finalCrid });
+  const rbEvents = finalDb.dump(COLLECTIONS.ORDER_EVENTS).filter((row) => row.type === 'EXCEPTION_REPORTED');
+  t.eq([retried.ok, retried.data.affectedBindings, retried.data.affectedOrders, rbDoc().openid, byId(finalDb, COLLECTIONS.USERS, PARTNER_OPENID).closedPartnerNo, auditsOf(finalDb, 'PARTNER_SUSPEND').length, auditsOf(finalDb, auditActions.AUDIT_ACTIONS.ACCOUNT_SWITCH_END).length, rbEvents.length, new Set(rbEvents.map((row) => row.requestKey)).size, finalCloud.deleted.length],
+  [true, 0, 0, 'CLOSED-' + PARTNER_ID, 'PAAAAAA', 1, 1, 1, 1, 1],
+  'TD-055 同请求重试收敛：补齐最终段（占位串/users 标记/恰 1 条审计）+ 补写首次中断缺的会话结束审计；事件/云删不重复');
+
+  // ── TD-055（D 批 rev6）：某一批量页事务失败 → 该页回滚、其它页已提交；重试只补未完成页 ──────────
+  const pageOrders = Array.from({ length: 51 }, (unused, i) => orderOf('ord-pg-' + i, { status: enums.ORDER_STATUS.SUBMITTED, createdAt: new Date(NOW - (600 - i) * MINUTE), statusUpdatedAt: new Date(NOW - (600 - i) * MINUTE) }));
+  const pageDb = makeWorld({
+    users: [userOf(PARTNER_OPENID, { roles: [enums.ROLES.PARTNER] }), userOf(ADMIN, { roles: [] })],
+    partners: [partnerOf(PARTNER_OPENID)],
+    orders: pageOrders
+  });
+  const pageApi = apiOf(pageDb, ADMIN, { cloud: createCloud() });
+  const pageOriginalTx = pageDb.runTransaction;
+  let pageTxCount = 0;
+  pageDb.runTransaction = async function patchedRun(fn) {
+    pageTxCount += 1;
+    if (pageTxCount !== 3) return pageOriginalTx(fn); // 第 3 个事务=订单第 2 页（第 1 页 50 单已提交）
+    return pageOriginalTx(async (trx) => { await fn(trx); throw new Error('注入：批量页提交失败'); });
+  };
+  const pageCrid = nextCrid('d', 9);
+  const pageFailed = await pageApi.call('admin.setPartnerStatus', { partnerNo: 'PAAAAAA', status: enums.PARTNER_STATUS.CLOSED, reason: '页失败注入' }, { clientRequestId: pageCrid });
+  pageDb.runTransaction = pageOriginalTx;
+  const pageStatuses = pageDb.dump(COLLECTIONS.ORDERS).map((row) => row.status);
+  t.eq([pageFailed.ok, pageDb.stats.rollbacks, pageStatuses.filter((status) => status === enums.ORDER_STATUS.EXCEPTION).length, pageStatuses.filter((status) => status === enums.ORDER_STATUS.SUBMITTED).length, byId(pageDb, COLLECTIONS.PARTNERS, PARTNER_ID).status, byId(pageDb, COLLECTIONS.USERS, PARTNER_OPENID).closedPartnerNo, auditsOf(pageDb, 'PARTNER_SUSPEND').length],
+  [false, 1, 50, 1, enums.PARTNER_STATUS.ACTIVE, undefined, 0],
+  'TD-055 订单第 2 页事务失败：该页回滚（1 单未转）、第 1 页 50 单已提交，最终段未执行（ACTIVE/无标记/零审计）');
+  const pageRetried = await pageApi.call('admin.setPartnerStatus', { partnerNo: 'PAAAAAA', status: enums.PARTNER_STATUS.CLOSED, reason: '页失败注入' }, { clientRequestId: pageCrid });
+  const pageEvents = pageDb.dump(COLLECTIONS.ORDER_EVENTS).filter((row) => row.type === 'EXCEPTION_REPORTED');
+  t.eq([pageRetried.ok, pageRetried.data.affectedOrders, pageEvents.length, new Set(pageEvents.map((row) => row.requestKey)).size], [true, 1, 51, 51],
+  'TD-055 重试收敛：只补转剩余 1 单；51 条 EXCEPTION_REPORTED 事件互不重复（requestKey 幂等）');
+
+  // ── TD-055（D 批 rev6）：最终段已提交、审计/事务外副作用前中断（from=CLOSED）→ 同请求重试收敛 ──
+  const convDb = makeWorld({
+    users: [userOf(PARTNER_OPENID, { roles: [enums.ROLES.PARTNER], closedPartnerNo: 'PAAAAAA', partnerClosedAt: new Date(NOW - MINUTE) }), userOf(ADMIN, { roles: [] })],
+    partners: [partnerOf('CLOSED-' + PARTNER_ID, { status: enums.PARTNER_STATUS.CLOSED, displayName: '', avatarFileId: '', deletedAt: new Date(NOW - MINUTE) })],
+    admin_view_sessions: [sessionOf(PARTNER_SESSION, PARTNER_ID, { role: enums.ROLES.PARTNER, endedAt: new Date(NOW - MINUTE) })]
+  });
+  const conv = await apiOf(convDb, ADMIN, { cloud: createCloud() }).call('admin.setPartnerStatus', { partnerNo: 'PAAAAAA', status: enums.PARTNER_STATUS.CLOSED, reason: '中断后重试' }, { clientRequestId: nextCrid('d', 10) });
+  const convData = conv.data || {};
+  t.eq([conv.ok, convData.affectedBindings, convData.affectedOrders, convData.partner && convData.partner.status, auditsOf(convDb, 'PARTNER_SUSPEND').length, auditsOf(convDb, auditActions.AUDIT_ACTIONS.ACCOUNT_SWITCH_END).length],
+  [true, 0, 0, enums.PARTNER_STATUS.CLOSED, 1, 1],
+  'TD-055 已 CLOSED 但审计缺失时重试：不 INVALID_TRANSITION，返回 brief + 动作数 0，补写状态审计与会话结束审计');
+
+  // ── TD-055（D 批 rev6）静态判据：页大小 ≤50、单批 ops 预算 ≤平台上限（fake DB 证不了真实上限）─────
+  const handlerSrc = readText('cloudfunctions/api/handlers/admin/setPartnerStatus.js');
+  const pageSizeOf = (name) => {
+    const matched = handlerSrc.match(new RegExp('const ' + name + ' = (\\d+);'));
+    return matched ? Number(matched[1]) : 0;
+  };
+  const pageSizes = ['BINDING_PAGE_SIZE', 'ORDER_PAGE_SIZE', 'FAILURE_PAGE_SIZE', 'SESSION_PAGE_SIZE'].map(pageSizeOf);
+  t.eq([pageSizes.filter((size) => size < 1 || size > 50).length, pageSizes.length, pageSizeOf('ORDER_PAGE_SIZE') * 2 <= 100, handlerSrc.split('scope.dao.transaction').length - 1, handlerSrc.indexOf('MAX_ORDER_PAGES_PER_STATUS') !== -1], [0, 4, true, 6, true],
+  'TD-055 分批结构：四类页大小均 >0 且 ≤50、订单页 50×2=100=平台事务操作上限、6 处分批事务入口、页数上限常量在');
 }
 
 // ---------------------------------------------------------------- §E 修复回归/边界

@@ -39,7 +39,8 @@ function buildPartnerDoc(openid, payload, nowDate, config) {
   };
 }
 
-async function handler(ctx, payload) {
+// 身份前置：写权限/切换会话/开发者账号（不激活业务身份）
+function assertActivationAllowed(ctx) {
   identity.assertWritable(ctx);
   const scope = identity.scopeOf(ctx);
   if (scope.viewMode) {
@@ -48,6 +49,11 @@ async function handler(ctx, payload) {
   if (ctx.identity && ctx.identity.developerNo) {
     throw errors.forbidden('开发者账号不激活兼职业务身份');
   }
+  return scope;
+}
+
+// 入参格式闸（邀请码/昵称；昵称内容安全在外层做，保持原调用顺序）
+function readActivationInput(payload) {
   const input = payload && typeof payload === 'object' ? payload : {};
   const codeResult = validate.validateInvitationCode(input.invitationCode);
   if (!codeResult.ok) {
@@ -57,44 +63,64 @@ async function handler(ctx, payload) {
   if (!nameResult.ok) {
     throw errors.validation('displayName', '请填写 1~20 字的昵称');
   }
-  await identity.assertTextSafe(ctx, nameResult.value, 'displayName');
+  return { input, code: codeResult.canonical, displayName: nameResult.value };
+}
 
-  const existingPartner = await identity.loadPartnerByOpenid(ctx, scope.openid);
-  if (existingPartner) {
+// TD-053：已注销兼职的 openid 已在 partners 匿名化，原有「按 openid 命中既有 partner → CONFLICT」判定
+// 改由 users.closedPartnerNo 标记承担（不可再激活的唯一锚点）；两者并行读，不增串行 RTT。
+async function assertNotAlreadyPartner(ctx, scope) {
+  const [existingPartner, user] = await Promise.all([
+    identity.loadPartnerByOpenid(ctx, scope.openid),
+    identity.loadUser(ctx, scope.openid)
+  ]);
+  if (existingPartner || identity.closedPartnerNoOf(user)) {
     throw errors.conflict('该微信号已是兼职，无需重复激活');
   }
-  const user = await identity.loadUser(ctx, scope.openid);
+  return user;
+}
+
+// 头像票据（可选）：消费前校验归属/路径/大小，成功后由调用方 consumeTicket
+async function prepareAvatar(ctx, input, config, nowMs) {
+  const ticketId = input.avatarTicket || input.avatarTicketId || '';
+  if (!ticketId) {
+    return { avatarTicket: null, avatarFileId: '' };
+  }
+  const avatarTicket = await uploadCommon.loadAvatarTicket(ctx, ticketId, nowMs);
+  const avatarFileId = uploadCommon.assertAvatarFile(
+    input.avatarFileId || input.fileId || '',
+    avatarTicket,
+    uploadCommon.avatarMaxBytes(config)
+  );
+  return { avatarTicket: avatarTicket, avatarFileId: avatarFileId };
+}
+
+async function handler(ctx, payload) {
+  const scope = assertActivationAllowed(ctx);
+  const fields = readActivationInput(payload);
+  await identity.assertTextSafe(ctx, fields.displayName, 'displayName');
+  const user = await assertNotAlreadyPartner(ctx, scope);
   const nowMs = identity.nowMs(ctx);
   const nowDate = identity.nowDate(ctx);
   const config = await configCommon.loadRuntimeConfig(ctx);
-
-  let avatarTicket = null;
-  let avatarFileId = '';
-  const avatarTicketId = input.avatarTicket || input.avatarTicketId || '';
-  if (avatarTicketId) {
-    avatarTicket = await uploadCommon.loadAvatarTicket(ctx, avatarTicketId, nowMs);
-    avatarFileId = uploadCommon.assertAvatarFile(input.avatarFileId || input.fileId || '', avatarTicket, uploadCommon.avatarMaxBytes(config));
-  }
-
+  const avatar = await prepareAvatar(ctx, fields.input, config, nowMs);
   const created = await activateInTransaction(ctx, {
     scope,
     user,
-    code: codeResult.canonical,
-    displayName: nameResult.value,
-    avatarFileId,
+    code: fields.code,
+    displayName: fields.displayName,
+    avatarFileId: avatar.avatarFileId,
     nowMs,
     nowDate
   }, config);
-
-  if (avatarTicket) {
-    await uploadCommon.consumeTicket(ctx, avatarTicket, nowMs);
+  if (avatar.avatarTicket) {
+    await uploadCommon.consumeTicket(ctx, avatar.avatarTicket, nowMs);
   }
   return {
     partnerNo: created.partnerNo,
     partner: {
       partnerNo: created.partnerNo,
-      displayName: nameResult.value,
-      avatarFileId,
+      displayName: fields.displayName,
+      avatarFileId: avatar.avatarFileId,
       status: enums.PARTNER_STATUS.ACTIVE,
       serviceConfig: created.serviceConfig
     },

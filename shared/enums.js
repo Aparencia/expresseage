@@ -170,6 +170,9 @@ SERVICES.forEach((item) => {
 });
 const URGENT_SERVICE_CODE = 'PICKUP_URGENT';
 const DROP_OFF_SERVICE_CODE = 'DROP_OFF';
+// TD-070：「其他代办」码显式常量（客户端预检与服务端校验共用一个值；不从 SERVICES 顺序推导，
+// 未来在目录末尾新增服务码不会改变 CUSTOM 语义）。
+const CUSTOM_SERVICE_CODE = 'CUSTOM';
 
 const CODE_STATUS = {
   OK: 'OK',
@@ -413,6 +416,7 @@ module.exports = {
   SERVICE_NAME,
   URGENT_SERVICE_CODE,
   DROP_OFF_SERVICE_CODE,
+  CUSTOM_SERVICE_CODE,
   CODE_STATUS,
   CODE_STATUS_TEXT,
   APPOINT_TYPE,
