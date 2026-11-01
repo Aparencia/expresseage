@@ -908,7 +908,65 @@ gate.ps1：红色 0 项；黄色 0 项（退出码 0）
 
 - **部署/上传**：本批改了云函数（api/cleanup）与客户端，需按上一条回复步骤先部署 `api`+`cleanup`（控制台确认 10 分钟触发器）再上传体验版；`api` 上次真实部署早于批 16。
 - **AI 兜底**：用户取证后台显示「智能识别兜底已关闭」⇒ `config.aiFallback.enabled=false`（非服务故障）；开启步骤见 RUNBOOK §16.2（控制台 `config/global` 改 `aiFallback.enabled=true` + `DEEPSEEK_API_KEY` 有效 + 配置页验证 + 失败图冒烟）。
-- **D57**：顾客端多取件码上传+取件清单展示——需求理解与范围待用户确认（是否与订单解耦/服务端存储/兼职可见/截图 L3 留存），本批未实现、未按本地缓存预实现。
+- **D57**：顾客端多取件码上传+取件清单展示——需求理解与范围待用户确认（是否与订单解耦/服务端存储/兼职可见/截图 L3 留存），本批未实现、未按本地缓存预实现。**（批 21 已定稿实现：用户三条边界「不强制绑定 / 不开放 / 本地」，见 §16。）**
 - **真机项（用户点检，agent 不代勾）**：QA §AC1~AC6（今日流水/今日已送达汇总/客户页首屏与置底/兼职取件清单双阶段/后台称呼/D51 尾窗与跨 0 点）、§E5/H18、AB1/AB2（新时点），以及 §Z/§AA/§AB 未勾项一并回归。
 - **贴边文件（TD-088）**：`selftest-cloud` 1000/1000、`partner/_customer.js` 497/500、`pick-list/index.js` 496/500、`workbench/index.js` 495/500、`selftest-order-customer` 981/1000、`selftest-partner-pages` 903/950；再改先拆件。
 - 工作树干净、未 push（本地领先 origin/main）；发布/提审/tag 均未执行。
+
+## 16. 批 21 收口证据（2026-11-01，D57 本机取件码清单）
+
+### 16.1 `check.ps1` 真实输出（尾段）
+
+```
+==> [1/4] check.js 代码/配置门禁（36 条）
+通过 36 项；失败 0 项
+==> [2/4] check-docs.js 设计文档门禁（--batch 1）
+check-docs（--batch 1）：通过 12 项；失败 0 项
+==> [3/4] zero-money-scan.js 零金额扫描（源码+页面+文档）
+零金额扫描：0 命中（白名单 108 项）
+==> [4/4] selftest.js 全部断言 suite（EXPECTED_ASSERTIONS 闸）
+selftest：运行 36 套；失败 0 套；SKIP 0 套（无）；完整性 0 项；非聚合辅助文件 4 件（已声明）
+------------------------------------------------------------
+PASS  check.js 代码/配置门禁（36 条）
+PASS  check-docs.js 设计文档门禁（--batch 1）
+PASS  zero-money-scan.js 零金额扫描（源码+页面+文档）
+PASS  selftest.js 全部断言 suite（EXPECTED_ASSERTIONS 闸）
+------------------------------------------------------------
+check.ps1：全部通过（4 步，退出码 0）
+```
+
+### 16.2 `gate.ps1` 真实输出（`-Anchor 0d2b064 -Estimate 1500 -ScopeFiles "docs/,pkg-customer/,tools/,utils/,CHANGELOG.md"`）
+
+```
+[PASS] git 身份：lead <lead@local>
+[PASS] 锚点可解析：0d2b064（HEAD=3625edc）
+[PASS] 变更集 31 件（锚点..HEAD + 工作区）
+[PASS] 范围前缀匹配（5 个前缀，31 件变更）
+[PASS] 行数检查完成（全文本口径，UTF-8）
+[PASS] 无 lockfile/package.json 变更
+[PASS] 体量 1818 行 ≤ 预估 1500 × 1.5 = 2250
+[PASS] 提交信息格式合规
+gate.ps1：红色 0 项；黄色 0 项（退出码 0）
+```
+
+### 16.3 分域读数（各套件真实输出摘录）
+
+- 存储/解析（D57）：`selftest-core` **202/202**（+42：第二键归一/去重/上限50挤旧/写读失败/两键隔离/clearAll）、`selftest-recognize` **295/295**（+19：粘贴解析正反例）。
+- 页面（D57）：`selftest-order-customer` **323/323**（+23：本机区纯件/零上传静态接线；主套件 981→926 行，F 组 66 行按拆件约定搬入 `tools/lib/order-customer-cases.js`）。
+- 隐私（D57）：`selftest-privacy-text` **289/289**（+30：三处同源四关键句/上限/键不泄漏/QA §AD 与 336 计数）。
+- OCR 适配器抽取回归：`selftest-order-flow` **277/277**、`selftest-ai` **251/251**（测试零改动，纯搬移等价）。
+- 全量：`selftest` 36 套 0 失败；`check.js` 36/36；`check-docs` 12/12；零金额 0 命中（108 白名单）；`sync-cloud-shared --check` 36 件一致（**云端零改动**）。
+
+### 16.4 文档回写（本批同时提交）
+
+- CONTRACT §7 pickup-list 行、§11.1「本机取件码清单」行、§11.2 v1.8 披露、§11.3 本机清单边界（含 READONLY=仅说明卡口径）、§13 D57 定稿 + D26 修订注 + §13 标题 v1.8；DECISIONS 新增 D57 段（用户三条边界原文留痕）。
+- ENGINEERING §17 L3 唯一例外、§5.6 双键、§8.2 #15 加牙、§16 批 21 工程变更；ARCHITECTURE §3.5 落点；DATA_MODEL §16（声明本机清单非服务端集合）；RUNBOOK §17（仅客户端上传、无需云函数重部署、本机清单不可远程清除边界）；UX_CUSTOMER §3.10 双区/§2.4/§2.5/§9.6/§12.6.5 AC-C-86/§13；QA §AD1~AD6（全部人/真机项，agent 不代勾）+ 附录 E 336；隐私三处同源（指引/补充文档/端内 `pkg-customer/parts/privacy-text.js`）+ `selftest-privacy-text` 30 条；TECH_DEBT：TD-087 已关闭（D57 实现交付）、TD-088 更新贴边清单、TD-089 新增（兼职端 OCR 适配器副本）。
+- 门禁 #15 扩展：`ex_college_v4.pickcodes` 字面量只允许出现在 `utils/storage.js`（客户端其它文件出现即红）；`tools/dead-export-baseline.json` 移除 `utils/recognize/station.js#ALIASES` 失效项（该导出已获生产引用=本机清单解析）。
+
+### 16.5 待用户 / 风险
+
+- **本批只改客户端**：无云函数/集合/索引/触发器/环境变量变化，**无需重部署云函数、无需 sync**；上传体验版即可（与批 20 的部署步骤相互独立）。
+- **D57 行为口径（需用户确认接受）**：①>50 条时**保留最新 50 条、自动顶掉最早的**并提示「本机最多存 50 条：超出 N 条，最早的已自动清掉」（不是拒绝新增）；②READONLY 只读视角仅显示说明卡「本机清单只在你本人手机上，只读视角看不到。」与「开发者只读视角不能操作」，不渲染数据/入口、不写盘；③本机清单是唯一「L3 明文存本机」例外——换机/清缓存丢失、服务端无法远程清除、兼职看不到故不能代取（页面已固定说明）；④截图识别纯端侧，机型不支持时给「这台手机不支持自动识别」+手填路径。
+- **真机点检（用户，agent 不代勾）**：QA §AD1~AD6（添加不建单/换机·清缓存/兼职端零可见/READONLY/零外呼零上传/上限去重清空）+ 之前未勾 §AC/§Z/§AA/§AB 等一并回归。
+- **贴边（TD-088 更新）**：`utils/storage.js` **476/500**（D57 +206 后贴边，下次先拆）、`selftest-cloud` 1000/1000、`partner/_customer.js` 497/500、`pick-list/index.js` 496/500、`workbench/index.js` 495/500、`selftest-partner-pages` 903/950。
+- 提交：`3625edc`（feat）+ 本证据提交；工作树干净、未 push、未 tag/发布/提审（本地领先 origin/main）。
