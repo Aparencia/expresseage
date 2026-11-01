@@ -5,7 +5,7 @@
 > 更新时机：每批开工/收口、用户裁决变化、风险新增或关闭、HEAD 变化需回读。
 > 本文只记**状态、待办与下一步**，不重复设计口径（口径看 CONTRACT，工程规则看 ENGINEERING，接口看 ARCHITECTURE）。
 
-**快照时间：2026-11-01（HEAD `019e5b3` **批 16（D43~D50）+ 批 17（D45~D48 实现）+ 批 16 补件 P0-1 + 批 18 审查修复批**（批 16 `f9ccefc` + 证据 `126b5e4`；批 17+P0-1 `a38933e` + 证据 `6aa9a00`；批 18 审查修复批（`019e5b3`，证据见 §13）；`gate.ps1` 红 0/黄 0）：check.js 36 条 / check-docs 12 条；D43~D50 口径登记 + #1 死代码清理/门禁 #35/#36 + #2 送达次日 23:50 日结批 + #3 代客下单补全 + #8 送至楼下展示位/回填 + 性能 P0-1~P0-4/P1-10 + #5 日期分类研究；批 17：#5 日期分类 M1 + P0-5、#7 楼层清单页（32 页）、#9 预约 LATEST（D47）、#10 汇总复制（D48）；批 18 审查修复（P0-1 截图序号/P1-4 已完结翻页/P1-5 工作台复制汇总/P1-6 截断/P1-7/8 楼层清单/P1-9 送达配置化/P1-10 取消 AI；门禁 #36 收紧 44 目录/基线 79→74））；`check.js` 36/36、`check-docs` 12/12、零金额 0 命中（白名单 108 项）、`selftest` 36 套 0 失败（断言数以 `node tools/selftest.js` 汇总行为准）；云端 `api` 已部署并复验、`DEEPSEEK_API_KEY` 已配置；真机/提审/灰度未做）**
+**快照时间：2026-11-01（HEAD `49f4f12` **批 16（D43~D50）+ 批 17（D45~D48）+ 批 16 补件 P0-1 + 批 18 审查修复批 + 批 19 欠账收尾批**（批 16 `f9ccefc`+证据 `126b5e4`；批 17+P0-1 `a38933e`+证据 `6aa9a00`；批 18 `019e5b3`+证据 `5093a01`；批 19 `49f4f12`，证据见 §14；`gate.ps1` 红 0/黄 0）：check.js 36 条 / check-docs 12 条；批 16~18 内容见 §2 台账；批 19：TD-084 代客下单识别逐件兜底/幂等粒度/超 10 件提示/预约请求时校时、TD-083 剩余 2 处配置化、TD-076 order-detail 拆件 500→327、TD-085 门禁判据/套件条数钉住、拆件留余量（check.js 999→386、dead-code.js 986→86、4 套测试→815~899、check.ps1 钉 36/12/36）；关闭 TD-076/083/084/085、登记 TD-086）；`check.js` 36/36、`check-docs` 12/12、零金额 0 命中（白名单 108 项）、`selftest` 36 套 0 失败（断言数以 `node tools/selftest.js` 汇总行为准）；云端 `api` 已部署并复验、`DEEPSEEK_API_KEY` 已配置；真机/提审/灰度未做）**
 > 临时总体说明（全局汇总，非状态源）：[`docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md`](docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md)（版本与取数快照由 Lead 统一维护；状态仍以本文件为准、口径以 CONTRACT 为准）。
 
 ## 1. 一句话状态
@@ -26,6 +26,8 @@
 **2026-10-31 文档结构重整（全仓文档整理）工程侧完成并收口**：docs 由平铺重排为 `contract/data/engineering/ux/delivery/governance/privacy/archive` 分组；`ARCHITECTURE`/`QA_CHECKLIST`/`RUNBOOK`/`TECH_DEBT` 统一 `V4_` 前缀；根 `V4_REBUILD_SPEC.md` 迁入 `docs/contract/` 并标历史快照；`docs/lessons/` 归入 `docs/governance/lessons/`；research/reviews 归入 `docs/archive/`；根 README 文档地图与临时总览合并为新 `docs/README.md`（权威顺序/目录地图/阅读路径/逐份摘要/代码结构对照/归档索引），原临时总览归档。**门禁联动**：`tools/lib/project.js` DESIGN_DOCS、`tools/check-docs.js` 路径、4 个读取文档内容的 selftest（performance/privacy-text/tools/testaccount）、`tools/zero-money-allowlist.json` 文件字段与整行原文同步改写，判据未弱化（check-docs 仍 10 条）。**白名单对帐**：清理 29 条失效整行、新增 2 条现行声明，136→109 项，避免失效项静默留存。同批内容漂移修正（提交 `c43bd02`）：裁决范围统一 D1~D42、页数 31、截图 0~10、STATE 部署状态与 D22/D24 矛盾、隐私补充文档真实联系方式脱敏、TECH_DEBT 补 TD-067 并新增 TD-078/TD-079。门禁读数以 §6o 下文真实输出为准。
 
 **2026-10-31 技术债收口批（B/C/D 批，用户指令「填补技术债」）工程侧完成并收口**：A 批（判据欠账 TD-071/078/079）已于同日先行收口（提交 `f8b1916` + 证据回填 `c0a9200`）；本批关闭 **12 条 TD**——B 批查询窗口簇 TD-040/043/050（计数改 `dao.count`/范围命令、绑定与进行中单全量分页，TD-044 关键词扫描窗保留开放）、C 批小单点 TD-061/064/068/069/070、D 批注销治理链 TD-053/055/056/057 + Lead 裁决 TD-054（删除 `users.purgeAt` 字段口径）。D 批按 CloudBase 事务平台限制（单事务 ≤100 ops / ≤30s / 仅 doc 不支持 where）落「有界分批事务 + 最终段原子 + `from=CLOSED` 幂等收敛」，`partners.openid` 随 CLOSED 换注销占位串、`users.closedPartnerNo/partnerClosedAt` 作不可再激活标记。新增 `tools/selftest-query-window.js`（18 断言，selftest 33→34 套）与 `utils/order-scope.js`（TD-068 单源），`selftest-deletion` 100→104 断言。`check.ps1` 4 步退出码 0（读数以 §6q 真实输出为准）。**真机项**：QA §P `P26`（帮助页官方隐私指引入口）待用户点检，agent 不代勾。
+
+**2026-11-01 批 19 欠账收尾批工程侧完成并收口（HEAD `49f4f12`）**：TD-084 代客下单识别逐件兜底（同图多件各一次、`failureId` 按件派生不共键）、合并超 10 件「请分单」显式提示、预约校验改请求时 `serverNow`；TD-083 剩余 2 处自动完成文案全部跟随 `config.autoCompleteAt`（工作台批量送达 + 代客单结果块）；TD-076 `order-detail/index.js` 500→327（拆 `parts/page-timers|panel-actions`）；TD-085 `check.ps1` 增 `$EXPECTED` 钉 36/12/36 条（首红：删 #34 判据后 `check.js` 35/35 仍绿、`check.ps1` exit 1；SHA256 还原复绿）；拆件留余量（`check.js` 999→386、`dead-code.js` 986→86、4 套测试→815~899、性能套件 E 段第 20 条 改读实现模块）；关闭 TD-076/083/084/085、登记 TD-086（测试文件 backlog）。`check.ps1` 4 步退出码 0（读数见 §14）；真机项 QA §AB 待用户。
 
 ## 2. 批次台账
 
@@ -51,6 +53,7 @@
 | 批 16 | 用户反馈裁决（D43~D50 登记）+ #1/#2/#3/#5/#8/性能 | **工程侧完成并收口（2026-11-01）** | 先口径后代码：D43~D50 登记；#1 死代码清理 + 门禁 #35/#36 落地、#2 送达次日 23:50 日结批、#3 代客下单补全、#8 送至楼下展示位/回填、性能 P0-2/3/4+P1-10、#5 日期分类研究；`check.ps1` 4 步 0、check 36/36、selftest 35 套 0 失败；真机项（QA §Z1~Z9、F31~F34、D17~D18 等）待用户；证据 §11 |
 | 批 17 | 用户反馈后半批（D45/D46/D47/D48 实现 + 批16补件 P0-1） | **工程侧完成并收口（2026-11-01）** | #5 日期分类 M1 + P0-5、#7 楼层清单第 32 页、#9 预约 LATEST、#10 汇总复制、P0-1 下单流水线；`selftest-order-workbench` 273/273、`selftest-pick-list` 116/116、`selftest-order-flow` 256/256；check 36/36、selftest 36 套 0 失败；真机项待用户；证据 §12 |
 | 批 18 | 审查修复批（review 9526e37..HEAD 逐条修复） | **工程侧完成并收口（2026-11-01）** | P0-1 多图 imageIndex 重映射、P1-4 已完结两阶段翻页、P1-5 工作台复制汇总、P1-6 summary truncated、P1-7/8 楼层清单复制全量+失败重试、P1-9 送达文案配置化、P1-10 取消 AI、P2 首页守卫/appoint 日历日/清单卸载竞态；门禁 #35/#36 收紧（44 目录、基线 79→74、selftest-tools 35）；新增 TD-084/085、TD-083 收口 1/3；`check.ps1` 4 步 0、check 36/36、selftest 36 套 0 失败；真机项待用户；证据 §13 |
+| 批 19 | 欠账收尾批（TD-083/TD-084 收口 + TD-076/TD-085 关闭 + 拆件留余量） | **工程侧完成并收口（2026-11-01）** | TD-084 ①~④（逐件兜底/按件 failureId/超 10 件提示/预约请求时校时）、TD-083 剩余 2 处配置化、TD-076 order-detail 500→327（+G20b 判据）、TD-085 `check.ps1` 钉 36/12/36 条（首红：删 #34 判据后 check.js 仍 35/35、check.ps1 exit 1）；拆件 check.js 999→386、dead-code.js 986→86、selftest-order-flow 999→844、order-partner 1000→815、order-workbench 997→885、partner-pages 982→899；关闭 TD-076/083/084/085、登记 TD-086；`check.ps1` 4 步 0、check 36/36、selftest 36 套 0 失败；真机项 QA §AB 待用户；证据 §14 |
 
 ## 3. 批 1 并行交付快照（全部收口）
 
@@ -598,13 +601,14 @@ check.ps1：全部通过（4 步，退出码 0）
 31. **文档治理欠账（2026-10-30 盘点 → 2026-10-31 批 A 已关闭）**：原两处漂移/盲点——README/STATE/INTERIM 门禁读数与 HEAD 真实输出不一致仍能全绿（TD-078）、`check-docs` 对 DATA_MODEL §7 标题存在性与「工程缺口 E# 有无定义」无判据（TD-079）——已由 `check-docs` #11/#12 与 #3/#5 加固收口，TD-071 同步关闭（`check.js` #34）。此后读数必须以命令真实输出 + 日期/HEAD 锚点为准（#11 会判红裸写/错读数），不抄旧读数。
 
 32. **2026-10-31 技术债收口批残余风险**：①**事务平台上限**——CloudBase「单事务 ≤100 个操作 / ≤30 秒 / 仅 doc 不支持 where」为官方文档口径，部署前仍需按云控制台实测真实操作数/时长（TD-015）；当前按订单页 50 单×2 ops=100 的预算写死并在 `selftest-deletion` 静态断言。②**事务外删云文件窗口**——最终段提交后、删文件前崩溃时头像/失败原图清单已随匿名化清空，孤儿文件由 cleanup/TD-051 兜底（与旧实现同口径）。③**TD-044 保留开放**——关键词（取件码/宿舍/称呼/尾号）仍受每状态 300 扫描窗限制，需 DAO 暴露 `db.RegExp`/OR 或建索引（冻结件/跨域），订单号精确路径不受影响。④**测试文件行数余量**——`selftest-deletion` 990/1000、`setPartnerStatus.js` 496/500，后续新增断言须先拆件/新开套件，不能硬追加。⑤真机项（QA P26 等）只能用户点检，agent 不代勾。⑥**事务内 where 与官方限制的兼容风险（TD-080）**——全仓 10+ 文件在事务内用 `trx.find/updateWhere`，与 CloudBase「仅 doc」限制可能冲突，fake DB 无法证明；已登记 TD-080，部署 `api` 后必须优先实测，必要时改「事务外取 id → 事务内逐 doc 写」。
-33. **批 18 审查修复批残余（2026-11-01）**：①**文件行数余量小**——`tools/lib/dead-code.js` 986/1000、`selftest-order-flow` 999/1000、`selftest-order-workbench` 997/1000、`pkg-partner/pages/order-detail/index.js` 500/500，后续变更先拆件或新开套件；②**#36 跨目录引用依赖 require 路径可静态解析**（动态 `require` 变量路径不识别，当前实仓无漏判；未来测试若用动态循环 require 可能误报页面函数为死）；③**summary.truncated 为保守判定**（恰好触顶无更多时也可能标 true，文案按「可能少报」处理；精确化需 +1 探测，未做）；④**TD-083 仅收口送达浮层 1/3**，还剩 `pages/partner/workbench/parts/batch-view.js` 与 `pkg-partner/pages/create-on-behalf/parts/result-model.js` 两处 23:50 静态文案；⑤**TD-084**（代客下单 AI 兜底只对首件/同图共用 failureId/超 10 件静默丢识别结果/本地预约校验用页面时间快照）与 **TD-085**（check.js/check-docs 判据条数无门禁断言）为明账；⑥真机项（复制汇总剪贴板、「更早」两阶段翻页、楼层清单复制拉全、D43 配置文案、首页切 tab）只能用户点检。
+33. **批 18 审查修复批残余（2026-11-01）**：①**文件行数余量小**——`tools/lib/dead-code.js` 986/1000、`selftest-order-flow` 999/1000、`selftest-order-workbench` 997/1000、`pkg-partner/pages/order-detail/index.js` 500/500，后续变更先拆件或新开套件；②**#36 跨目录引用依赖 require 路径可静态解析**（动态 `require` 变量路径不识别，当前实仓无漏判；未来测试若用动态循环 require 可能误报页面函数为死）；③**summary.truncated 为保守判定**（恰好触顶无更多时也可能标 true，文案按「可能少报」处理；精确化需 +1 探测，未做）；④**TD-083 仅收口送达浮层 1/3**，还剩 `pages/partner/workbench/parts/batch-view.js` 与 `pkg-partner/pages/create-on-behalf/parts/result-model.js` 两处 23:50 静态文案；⑤**TD-084**（代客下单 AI 兜底只对首件/同图共用 failureId/超 10 件静默丢识别结果/本地预约校验用页面时间快照）与 **TD-085**（check.js/check-docs 判据条数无门禁断言）为明账；⑥真机项（复制汇总剪贴板、「更早」两阶段翻页、楼层清单复制拉全、D43 配置文案、首页切 tab）只能用户点检。 **批 19（2026-11-01）已收口**：四个近上限文件已拆（`tools/lib/dead-code.js` 86、`selftest-order-flow` 844、`selftest-order-workbench` 885、`pkg-partner/pages/order-detail/index.js` 327）；TD-076/TD-083/TD-084/TD-085 关闭（见 §14）；真实风险剩 **TD-086 测试文件 backlog**（10 件 ≥962 行，下一次触碰前先拆）与 性能套件 E 段第 20 条 取证口径变更（改读 check.js 委托模块，见 ENGINEERING §7.2）。
 
 ## 8. 最近更新
 
 | 日期 | 事件 |
 | :-- | :-- |
 | 2026-11-01 | **批 16~18 收口（同日三批）**：批 16 用户反馈裁决（D43~D50 + 门禁 #35/#36 落地）；批 17 D45~D48 实现 + 楼层清单第 32 页 + 批16补件 P0-1；批 18 审查修复批（P0-1 截图序号 / P1-4 已完结翻页 / P1-5 工作台复制汇总 / P1-6 截断 / P1-7/8 楼层清单 / P1-9 送达配置化 / P1-10 取消 AI + #36 扫描器收紧）；`check.ps1` 4 步 0、check 36/36、selftest 36 套 0 失败（证据 §11/§12/§13） |
+| 2026-11-01 | **批 19 欠账收尾批收口**：TD-084/083 收口 + TD-076/TD-085 关闭 + 拆件留余量（check.js 999→386、dead-code.js 986→86、4 套测试→815~899、order-detail 500→327）+ 新登记 TD-086；`check.ps1` 4 步 0、check 36/36、docs 12/12、selftest 36 套 0 失败、gate 红 0/黄 0（38 件/体量 3274≤3600）；证据 §14 |
 | 2026-10-31 | **技术债收口批（B/C/D）**：关闭 12 条 TD（B 查询窗口簇 TD-040/043/050；C 小单点 TD-061/064/068/069/070；D 注销治理链 TD-053/055/056/057；Lead 裁决 TD-054 删除 `users.purgeAt` 口径），TD-044 保留开放；`selftest-query-window` 18 断言（selftest 33→34 套）、`utils/order-scope.js` 单源、D 批分批事务+最终段原子+幂等收敛；`check.ps1` 4 步 0（见 §6q）；提交锚点见 §6q |
 | 2026-10-21 | 批 0 设计定稿（CONTRACT v0.9 及全部设计文档；D18~D21 四次修订回写；隐私两件升草案） |
 | 2026-10-21 | 批 1 开工提交 `d5ad214`：app.json 页面地图冻结、ARCHITECTURE 接口冻结、根配置改造 |
@@ -691,6 +695,9 @@ check.ps1：全部通过（4 步，退出码 0）
 
 16. **文档结构重整 + 门禁判据补强已收口（2026-10-31）**：docs 分组/改名/归档与门禁联动完成，四步门禁全绿（§6o）；同日第二批按用户指令「处理技术债」只做 A 批（判据欠账），关闭 TD-071/TD-078/TD-079（`check.js` 34 条、`check-docs` 12 条，§6p）。后续新增/移动/改名文档按 `docs/README.md` §8.3 登记，并同步 `docs/README.md` §3~§5 与 `docs/engineering/V4_ENGINEERING.md` §9.1；B/C/D 批（查询窗口簇/小单点/注销治理链）已于同日第三批完成收口（见 §6q）；剩余 E/F 批（性能结构/契约扩展）待用户裁决。用户侧无新增动作。
 17. **批 18 审查修复批真机点检（只能用户）**：工作台计数卡「复制汇总」点击→剪贴板→发顾客群（truncated 时文案应含「仅统计最近 N 单，可能少报」）；工作台已完结区「更早」两阶段翻页（窗口内 >30 单不丢、到底提示）；楼层清单「复制清单」自动拉全与「已加载 N 单」、批量部分失败「重试失败单」条；兼职端送达浮层文案跟随后台 `autoCompleteAt`；顾客端多图下单中间图失败可正常提交；取消识别/先手动填写后迟到结果不覆盖。agent 不代勾。
+
+18. **批 19 欠账收尾批真机点检（只能用户）**：QA §AB AB1~AB4——工作台批量送达确认文案跟随后台自动完成时间（22:30/23:50 两态；60s TTL 首进短窗口可能显示默认）；代客单结果块/详情 guest 文案跟随配置；同图多码逐件兜底（各缺件分别预填、后台复核每件独立 `failureId`）；合并超 10 件显式「一单最多 10 件，请分单」；久留页面后预约按请求时校时拦截。agent 不代勾。
+19. **测试文件拆件 backlog（TD-086）**：`selftest-cloud` 1000、`selftest-ai` 999、`selftest-admin-pages` 996、`selftest-deletion` 990、`selftest-bind-cloud` 982、`selftest-admin` 978、`selftest-cleanup` 977、`selftest-profile` 973、`selftest-order-lifecycle` 969、`selftest-bind` 962——下次触碰前按 ENGINEERING §7.2 拆到 `tools/lib/<suite>-cases.js`（纯搬移 `EXPECTED_ASSERTIONS` 恒等、主套件 ≤950）。
 
 ## 10. 维护规则
 
@@ -792,3 +799,54 @@ gate.ps1：红色 0 项；黄色 0 项（退出码 0）
 **关键分项读数（全部真实实跑）**：`selftest-order-flow` 277/277、`selftest-order-customer` 290/290、`selftest-order-workbench` 308/308、`selftest-partner-stats` 248/248、`selftest-query-window` 50/50、`selftest-pick-list` 135/135、`selftest-order-detail-partner` 190/190、`selftest-tools` 35/35；`node tools/lib/dead-code.js`：44 目录 / 死函数候选 0 / #35 0 / #36 0、deadExports 基线 74（79→74）。
 **首红/变异回红留证**：#35 注入 `zzM23Probe` → 单点红（`通过 35 项；失败 1 项`）；#36 注入 `zzM24Probe` → 单点红；还原后 `通过 36 项；失败 0 项`。P1-4 状态机 4 组变异（hasMore 回退/跳过窗口续页/truncated 恒 false/少报说明删除）均精确回红后复绿；P0-1 3 图中间失败用例先红后绿；P1-7/8 楼层清单 116→135 断言、P1-9 182→190、P1-6 42→50/239→248、P1-4 273→308 均按先红后绿口径更新。
 **待用户/后续**：真机点检（工作台复制汇总剪贴板/「更早」两阶段翻页/楼层清单复制拉全与失败重试/D43 配置文案/首页切 tab）由用户执行，agent 不代勾；TD-083 剩余 2 处、TD-084/TD-085 为明账（§7 第 33 项）；`cleanup` 触发器与云环境部署状态不变。
+
+## 14. 批 19 收口证据（2026-11-01，真实输出）
+
+> 批 19 范围：欠账收尾批——TD-084 代客下单识别逐件兜底/幂等粒度/超 10 件提示/预约请求时校时；TD-083 剩余 2 处自动完成文案配置化；TD-076 `order-detail/index.js` 拆件（500→327）；TD-085 `check.ps1` 钉判据/套件条数；拆件留余量（check.js/dead-code.js/4 套测试）。批次提交 `49f4f12`（代码+文档），锚点 `5093a01`（批 18 证据回填）。
+
+```powershell
+# powershell -NoProfile -File check.ps1（收口前复跑，真实输出）
+PASS  check.js 代码/配置门禁（36 条）
+PASS  check-docs.js 设计文档门禁（--batch 1）
+PASS  zero-money-scan.js 零金额扫描（源码+页面+文档）
+PASS  selftest.js 全部断言 suite（EXPECTED_ASSERTIONS 闸）
+check.ps1：全部通过（4 步，退出码 0）
+
+# 其它真实读数
+check.js：通过 36 项；失败 0 项
+check-docs（--batch 1）：通过 12 项；失败 0 项
+零金额扫描：0 命中（白名单 108 项）
+selftest：运行 36 套；失败 0 套；SKIP 0 套（无）；完整性 0 项；非聚合辅助文件 4 件（已声明）
+selftest-tools：断言 35/35；失败 0 项 / 结果：PASS
+check-functions：扫描 346 个文件；函数 4288 个；>50 行函数 32 个（基线 43 项）；违规 0 项
+dead-code：页面/组件目录 44 个；死函数候选 0 个；#35 问题 0 项；#36 问题 0 项（基线 74/74）
+sync-cloud-shared --check：写 0 件、删 0 件；hash 对帐 OK（18 件 × 2 套）
+QA 附录 E 取数：324 条（新增 §AB AB1~AB4）
+
+# T5 分项（每套真实末两行）
+selftest-order-workbench：断言 321/321（308 + 13：TD-083 L 段）
+selftest-partner-pages：断言 243/243（226→243：TD-083 3 + TD-084 14）
+selftest-order-detail-partner：断言 191/191（190+1：G20b index.js ≤450 行）
+selftest-order-flow：断言 277/277（拆件恒等）
+selftest-order-partner：断言 128/128（拆件恒等）
+selftest-performance：断言 143/143（性能套件 E 段第 20 条 口径更新后）
+selftest-recognize：断言 276/276（失败幂等键既有断言未破）
+selftest-tools：断言 35/35
+
+# powershell -File gate.ps1 -Anchor 5093a01 -ScopeFiles ... -Estimate 2400
+[PASS] 锚点可解析：5093a01（HEAD=49f4f12）
+[PASS] 变更集 38 件（锚点..HEAD + 工作区）
+[PASS] 范围前缀匹配（7 个前缀，38 件变更）
+[PASS] 行数检查完成（全文本口径，UTF-8）
+[PASS] 体量 3274 行 ≤ 预估 2400 × 1.5 = 3600
+[PASS] 提交信息格式合规
+gate.ps1：红色 0 项；黄色 0 项（退出码 0）
+```
+
+**TD-085 首红/还原留证（判据条数闸）**：① 临时注释 `tools/check.js` 的 #34 判据行（`// check(34, ...)`）→ `node tools/check.js` 仍 `通过 35 项；失败 0 项` 且 exit 0（旧口径假绿）；② `powershell -NoProfile -File check.ps1` → exit 1，FAIL 行 `check.js 代码/配置门禁（36 条）（check.js 判据条数 35 ≠ 期望 36；判据/套件被增删？同批改 check.ps1 常量与 ENGINEERING §8.2 并留首红证据）`；同一次注入还被 `check-docs #11` 独立抓住（`STATE.md 快照行 check.js 读数 36/36 ≠ 实际 35`、`docs/README.md:148 check.js 条数 36 ≠ 实际 35`）；③ `cp` 备份还原 → `sha256 f882d952951a7df6a6d8b93970d7f05708bd4909d7e88e09cce33e60a04bbd2c` 逐字节一致 → `node tools/check.js` 36/36、`check.ps1` 4 步 exit 0。
+
+**拆件证据**：`tools/check.js` 999→386（`tools/lib/check-helpers.js` 141 + `check-rules-cloud.js` 290 + `check-rules-client.js` 297；用 `git archive HEAD` 冻结快照覆盖 10 文件后，check/dead-code/selftest-tools/check-functions 四份输出 diff 全空）；`tools/lib/dead-code.js` 986→86（门面 `module.exports` 17 项与 HEAD 逐字相同 + `dead-code-{core,parse,refs,exports,pages}.js`）；`selftest-order-flow` 999→844 + `tools/lib/order-flow-cases.js` 192；`selftest-order-partner` 1000→815 + `tools/lib/order-partner-cases.js` 215；`selftest-order-workbench` 997→885 + `tools/lib/workbench-cases.js` 217；`selftest-partner-pages` 982→899 + `tools/lib/partner-pages-cases.js` 229；`pkg-partner/pages/order-detail/index.js` 500→327 + `parts/page-timers.js` 53 + `parts/panel-actions.js` 141（行为零变化电池 21/21）。
+
+**首红/变异留证（T5 各线）**：TD-084 5/5（写死 23:50 → D33b 红；只回写首件 → O2 红；overflow 静默 → O6 红；预约只吃页面快照 → O11 红；幂等键写死 0 → O13 红）；TD-083 工作台 5/5（不填充时刻/恒返默认/单次 replace/页面不传 config/action-flow 不透传 → L 段对应断言红）；TD-076 行为零变化 21/21；性能套件 E 段第 20 条 改口径后 143/143。
+
+**待用户/后续**：真机点检 QA §AB AB1~AB4（批量送达文案跟配置、代客单 guest 文案、同图多码逐件兜底与复核粒度、超 10 件提示/预约请求时校时）由用户点检，agent 不代勾；工程侧下一批按 TD-086 优先拆 `selftest-cloud`/`selftest-ai`/`selftest-admin-pages`/`selftest-deletion`/`selftest-bind-cloud` 等（10 件 ≥962）。
