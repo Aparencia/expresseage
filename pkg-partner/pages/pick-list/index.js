@@ -36,6 +36,7 @@ Page({
     selectionText: '',
     batchRunning: false,
     batchResult: null,
+    copyLoading: false,
     emptyText: EMPTY_TEXT
   },
 
@@ -43,6 +44,16 @@ Page({
     this._orders = [];
     this._selected = {};
     this._lastBatch = null;
+    // P2：卸载守卫 + 请求序号（refresh 与上拉分页共用；旧响应不追加、不 setData）
+    this._unloaded = false;
+    this._loadToken = 0;
+    this._copying = false;
+  },
+
+  // P2：离页后不再 setData/toast/refresh 弹窗（加载/批量/复制中的迟到回调一律丢弃）
+  onUnload() {
+    this._unloaded = true;
+    this._copying = false;
   },
 
   // 切页才刷新：进入/从详情返回都走 onShow 的一次加载；无定时器、不做自动轮询（D46）
@@ -53,8 +64,8 @@ Page({
   },
 
   onPullDownRefresh() {
-    this.refresh().then(function done() { wx.stopPullDownRefresh(); })
-      .catch(function failed() { wx.stopPullDownRefresh(); });
+    this.refresh().then(() => { if (!this._unloaded) { wx.stopPullDownRefresh(); } })
+      .catch(() => { if (!this._unloaded) { wx.stopPullDownRefresh(); } });
   },
 
   // 好友转发：只转发中性卡片纯件（D36/D37），页面零自拼卡片
@@ -63,7 +74,7 @@ Page({
   },
 
   onReachBottom() {
-    if (this.data.loadingMore || !this.data.nextCursor) {
+    if (this.data.copyLoading || this.data.loadingMore || !this.data.nextCursor) {
       return;
     }
     this.load({ more: true });
@@ -99,24 +110,36 @@ Page({
     this._selected = {};
     this._lastBatch = null;
     this._orders = [];
+    // 刷新路径清掉上次批量的失败态与复制中的临时态（P1-8/P2）
+    this.setData({ batchResult: null, copyLoading: false });
     return this.load({ reset: true });
   },
 
+  // P2：每次请求领一个序号；任何 setData/toast 落点先比对（旧分页响应不追加到新列表）
   load(options) {
+    if (this._unloaded) {
+      return Promise.resolve(false);
+    }
     const opts = options || {};
     const more = opts.more === true;
+    const token = this._loadToken + 1;
+    this._loadToken = token;
     if (more) {
       this.setData({ loadingMore: true });
     } else {
       this.setData({ stage: 'loading', errorText: '', loading: true });
     }
     return orderApi.listPartner(view.queryOf({ cursor: more ? this.data.nextCursor : null }))
-      .then((data) => this.applyResult(data, more))
-      .catch((err) => this.loadError(err, more));
+      .then((data) => this.applyResult(data, more, token))
+      .catch((err) => this.loadError(err, more, token));
   },
 
-  applyResult(data, more) {
+  applyResult(data, more, token) {
+    if (this._unloaded || token !== this._loadToken) {
+      return false;
+    }
     const list = data && Array.isArray(data.list) ? data.list : [];
+    const nextCursor = (data && data.nextCursor) || null;
     this._orders = more ? this._orders.concat(list) : list;
     const groups = view.buildGroups(view.rowsOf(this._orders));
     const selection = view.applySelection(groups, this._selected);
@@ -125,16 +148,20 @@ Page({
       errorText: '',
       loading: false,
       loadingMore: false,
-      nextCursor: (data && data.nextCursor) || null,
+      nextCursor: nextCursor,
       groups: selection.groups,
       chunks: view.splitChunks(selection.groups, view.CHUNK_ROWS),
-      summary: view.summaryOf(selection.groups),
+      summary: view.summaryLineOf(view.summaryOf(selection.groups), nextCursor),
       selectedCount: selection.selectedCount,
       selectionText: selection.selectionText
     });
+    return true;
   },
 
-  loadError(err, more) {
+  loadError(err, more, token) {
+    if (this._unloaded || token !== this._loadToken) {
+      return false;
+    }
     if (err && err.code === 'VIEW_TICKET_EXPIRED') {
       wx.showModal({
         title: '切换会话已过期',
@@ -142,30 +169,75 @@ Page({
         showCancel: false,
         success: () => wx.reLaunch({ url: ACCOUNT_SWITCH_PAGE })
       });
-      return;
+      return false;
     }
     const text = (err && err.message) || '清单没加载出来，先检查网络再重试';
     if (more) {
       this.setData({ loadingMore: false });
       this.toastMsg(text);
-      return;
+      return false;
     }
     this.setData({ stage: 'error', errorText: text, loading: false, loadingMore: false });
+    return false;
   },
 
   onRetryTap() {
     this.refresh();
   },
 
-  // 复制清单：文案由纯件生成，只到楼栋级（D48 红线）；空清单不复制
+  // 复制清单（P1-7）：先把剩余分页自动拉全再复制，避免只复制已加载页导致漏单漏栋；
+  // 文案由纯件生成，只到楼栋级（D48 红线）；复制中防重入，拉取失败/卸载一律不复制
   onCopyTap() {
-    const text = view.copyText(this.data.groups);
-    if (!text) {
-      this.toastMsg('当前没有可复制的清单');
+    if (this._copying || this._unloaded) {
+      return;
+    }
+    const plan = view.copyPlanOf(this.data.groups, this.data.nextCursor, 0);
+    if (!plan.needMore) {
+      this.copyPlan(plan);
+      return;
+    }
+    this._copying = true;
+    this.setData({ copyLoading: true });
+    this.loadPendingForCopy(0).then((result) => {
+      this._copying = false;
+      if (this._unloaded) {
+        return;
+      }
+      this.setData({ copyLoading: false });
+      if (!result.ok) {
+        this.toastMsg(result.message);
+        return;
+      }
+      this.copyPlan(view.copyPlanOf(this.data.groups, this.data.nextCursor, result.pages));
+    });
+  },
+
+  // 复制前循环拉全：≤MAX_AUTO_PAGES 页、失败即中止（不复制半量清单）、离页即停
+  loadPendingForCopy(pages) {
+    if (this._unloaded) {
+      return Promise.resolve({ ok: false, pages: pages, message: '' });
+    }
+    if (!this.data.nextCursor) {
+      return Promise.resolve({ ok: true, pages: pages });
+    }
+    if (pages >= view.MAX_AUTO_PAGES) {
+      return Promise.resolve({ ok: true, pages: pages });
+    }
+    return this.load({ more: true }).then((loaded) => {
+      if (loaded === false) {
+        return { ok: false, pages: pages, message: '清单没拉全，先不复制，请检查网络后重试' };
+      }
+      return this.loadPendingForCopy(pages + 1);
+    });
+  },
+
+  copyPlan(plan) {
+    if (!plan.ok) {
+      this.toastMsg(plan.message);
       return;
     }
     wx.setClipboardData({
-      data: text,
+      data: plan.text,
       success: () => this.toastMsg('已复制（只到苑/栋级）'),
       fail: () => this.toastMsg('复制失败，请重试')
     });
@@ -191,7 +263,8 @@ Page({
     if (!selecting) {
       this._selected = {};
     }
-    this.applySelectionPatch({ selecting: selecting, batchResult: null });
+    // 不在这里清 batchResult：失败重试条要跨「退出/再进入多选」保留（P1-8，刷新/成功才清）
+    this.applySelectionPatch({ selecting: selecting });
   },
 
   onToggleRow(event) {
@@ -238,7 +311,7 @@ Page({
       content: this.writeHint('确认这单已送达？顾客端会看到进度更新。'),
       confirmText: '确认',
       success: (res) => {
-        if (res.confirm) {
+        if (res.confirm && !this._unloaded) {
           this.deliverOne(order);
         }
       }
@@ -246,11 +319,20 @@ Page({
   },
 
   deliverOne(order) {
+    if (this._unloaded) {
+      return Promise.resolve();
+    }
     const write = rowActions.buildWrite('deliver', order, {}, '');
     return orderApi[write.method](write.payload, write.opts).then(() => {
+      if (this._unloaded) {
+        return;
+      }
       this.toastMsg('已标记送达');
       this.refresh();
     }).catch((err) => {
+      if (this._unloaded) {
+        return;
+      }
       this.toastMsg((err && err.message) || '标记失败，请刷新后重试');
       this.refresh();
     });
@@ -277,7 +359,7 @@ Page({
       content: this.writeHint(plan.confirmText),
       confirmText: '确认',
       success: (res) => {
-        if (res.confirm) {
+        if (res.confirm && !this._unloaded) {
           this.runBatch(plan);
         }
       }
@@ -285,15 +367,22 @@ Page({
   },
 
   runBatch(plan) {
-    const running = Object.assign({}, plan, { batchActionId: client.createRequestId() });
+    if (this._unloaded) {
+      return Promise.resolve();
+    }
+    // 重试沿用同批 batchActionId（batch-view 口径），首轮才新领幂等键
+    const running = Object.assign({}, plan, { batchActionId: plan.batchActionId || client.createRequestId() });
     this._lastBatch = running;
     this.setData({ batchRunning: true });
     return batchView.run(running, (row, batchActionId) => {
       const write = rowActions.buildWrite('deliver', view.writeRowOf(row), {}, batchActionId);
       return orderApi[write.method](write.payload, write.opts);
     }).then((result) => {
+      if (this._unloaded) {
+        return;
+      }
       const summary = batchView.summary(running, result.results);
-      this.setData({ batchRunning: false, batchResult: summary });
+      this.applyBatchResult(summary);
       const content = this.writeHint(summary.text);
       wx.showModal({
         title: summary.allOk ? '批量送达完成' : '批量送达有失败',
@@ -302,21 +391,51 @@ Page({
         confirmText: summary.allOk ? '知道了' : '重试失败单',
         cancelText: '稍后处理',
         success: (res) => {
+          if (this._unloaded) {
+            return;
+          }
           if (res.confirm && !summary.allOk) {
             this.onBatchRetry();
             return;
           }
-          this.refresh();
+          // 「稍后处理」不刷新：保留行/勾选/失败态，底部「N 单失败 · 重试失败单」继续可点（P1-8）
+          if (summary.allOk || res.confirm) {
+            this.refresh();
+          }
         }
       });
     }).catch((err) => {
+      if (this._unloaded) {
+        return;
+      }
       this.setData({ batchRunning: false });
       this.toastMsg((err && err.message) || '批量送达没完成，请刷新后重试');
       this.refresh();
     });
   },
 
+  // 批量结果落状态：失败项保留勾选（成功项取消勾选，避免重复送达）；不刷新列表，失败态可重试
+  applyBatchResult(summary) {
+    const failedMap = {};
+    summary.failedOrderNos.forEach((orderNo) => {
+      failedMap[orderNo] = true;
+    });
+    this._selected = failedMap;
+    const state = view.applySelection(this.data.groups, this._selected);
+    this.setData({
+      batchRunning: false,
+      batchResult: summary,
+      groups: state.groups,
+      chunks: view.splitChunks(state.groups, view.CHUNK_ROWS),
+      selectedCount: state.selectedCount,
+      selectionText: state.selectionText
+    });
+  },
+
   onBatchRetry() {
+    if (this._unloaded || this.data.batchRunning) {
+      return;
+    }
     const last = this._lastBatch;
     const result = this.data.batchResult;
     if (!last || !result || !result.failedOrderNos.length) {

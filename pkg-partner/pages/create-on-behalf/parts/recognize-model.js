@@ -75,21 +75,6 @@ function failureRequestIdOf(uploadTicketId, itemIndex, ocrTextMasked) {
   return ticket.slice(0, 16) + contentHashOf(ocrTextMasked) + 'AI' + indexText;
 }
 
-/** 识别 DTO 行 → 待合并件（只留可提交字段；recognized=false 行只带 failureId 用于复核提示） */
-function recognizedItemOf(dto) {
-  const data = dto || {};
-  return {
-    pickupCode: data.recognized ? textOf(data.pickupCode) : '',
-    lockerNo: data.recognized ? textOf(data.lockerNo) : '',
-    trackingTail: data.recognized ? textOf(data.trackingTail) : '',
-    stationId: textOf(data.stationId).toUpperCase(),
-    failureId: textOf(data.failureId),
-    confidence: textOf(data.confidence),
-    source: textOf(data.source),
-    imageIndex: numberOr(data.imageIndex, -1)
-  };
-}
-
 /** 只填空白字段（手填优先）：返回 {item, changed}；站点命中 P1~P8 才写入（非法站点不猜） */
 function fillBlank(target, row) {
   const item = Object.assign({}, target || {});
@@ -177,6 +162,5 @@ module.exports = {
   isCancelled,
   mergeRecognizedItems,
   progressTextOf,
-  recognizedItemOf,
   recognitionTextOf
 };

@@ -80,39 +80,11 @@
       "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
     },
     {
-      "file": "pages/partner/workbench/parts/history-view.js",
-      "symbol": "countIn",
-      "reason": "history",
-      "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
-      "note": "历史死导出（teammate E（工作台/性能，批 16 并行））：批 16 死代码专项只清任务卡清单内的符号，本项未动、待该域收口时删除"
-    },
-    {
-      "file": "pages/partner/workbench/parts/parcel-view.js",
-      "symbol": "pieceCountOf",
-      "reason": "history",
-      "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
-      "note": "历史死导出（teammate E（工作台/性能，批 16 并行））：批 16 死代码专项只清任务卡清单内的符号，本项未动、待该域收口时删除"
-    },
-    {
-      "file": "pages/partner/workbench/parts/selection-flow.js",
-      "symbol": "restore",
-      "reason": "test-only",
-      "evidence": "tools/selftest-deletion.js:724",
-      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
-    },
-    {
       "file": "pkg-admin/common/format.js",
       "symbol": "formatClock",
       "reason": "history",
       "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
       "note": "历史死导出（pkg-admin 域（批 16 未排期））：批 16 死代码专项只清任务卡清单内的符号，本项未动、待该域收口时删除"
-    },
-    {
-      "file": "pkg-customer/pages/order-create/parts/bootstrap.js",
-      "symbol": "serviceIndexes",
-      "reason": "history",
-      "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
-      "note": "历史死导出（teammate C（下单链路，批 16 并行））：批 16 死代码专项只清任务卡清单内的符号，本项未动、待该域收口时删除"
     },
     {
       "file": "pkg-customer/pages/order-create/parts/model.js",
@@ -183,13 +155,6 @@
       "reason": "test-only",
       "evidence": "tools/selftest-state.js:566",
       "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
-    },
-    {
-      "file": "pkg-partner/pages/create-on-behalf/parts/recognize-model.js",
-      "symbol": "recognizedItemOf",
-      "reason": "history",
-      "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
-      "note": "历史死导出（teammate B（代客下单，批 16 并行））：批 16 死代码专项只清任务卡清单内的符号，本项未动、待该域收口时删除"
     },
     {
       "file": "pkg-partner/pages/messages/parts/message-view.js",

@@ -72,27 +72,11 @@ function toggleStation(rows, stationId) {
   return stateOf(rows, map);
 }
 
-// 应用恢复：刷新后只保留仍存在且仍可勾选的行
-function restore(rows, previousMap) {
-  const map = {};
-  const alive = {};
-  groupView.flattenRows(rows).forEach((row) => {
-    alive[row.orderNo] = row.selectable === true;
-  });
-  Object.keys(previousMap || {}).forEach((orderNo) => {
-    if (alive[orderNo]) {
-      map[orderNo] = true;
-    }
-  });
-  return stateOf(rows, map);
-}
-
 module.exports = {
   stateOf,
   toggle,
   toggleRow,
   selectAll,
   clear,
-  toggleStation,
-  restore
+  toggleStation
 };

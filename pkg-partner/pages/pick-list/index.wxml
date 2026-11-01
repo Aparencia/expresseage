@@ -15,9 +15,12 @@
   <view class="card intro-card">
     <view class="small intro-text">按苑 → 栋 → 楼层分组，只列已取件待送达的单。不自动刷新：下拉或切回本页时更新。</view>
     <view wx:if="{{summary.total}}" class="small intro-text intro-summary">{{summary.text}}</view>
+    <view wx:if="{{summary.loadedText}}" class="small intro-text intro-loaded">{{summary.loadedText}}</view>
     <view wx:if="{{readonly}}" class="small intro-text readonly-tip">只读视角下不能改订单状态</view>
     <view wx:elif="{{testWrite}}" class="small intro-text test-tip">测试账号会话：写操作只写入测试数据</view>
   </view>
+
+  <view wx:if="{{copyLoading}}" class="small load-more">正在拉取全部清单，稍等…</view>
 
   <view wx:if="{{stage === 'loading'}}" class="card"><view class="empty-text loading-text">加载中…</view></view>
   <view wx:elif="{{stage === 'error'}}" class="card">
@@ -70,6 +73,9 @@
   <view class="bottom-safe"></view>
 
   <view wx:if="{{selecting}}" class="batch-bar">
+    <view wx:if="{{batchResult && batchResult.failedOrderNos.length}}" class="batch-fail" bindtap="onBatchRetry">
+      <text class="small batch-fail-text">{{batchResult.failedOrderNos.length}} 单失败 · 重试失败单</text>
+    </view>
     <view class="row between batch-head">
       <text class="small">{{selectionText}}</text>
       <view class="row">

@@ -319,12 +319,24 @@ function adoptSuggestion(item) {
 }
 
 // ── 提交载荷（order.create v1.0 单入口）；整单预约为 shared/appoint 纯件（D47）───
-/** 图片快照：来自识别结果（含宽高）；同一顺序返回 tickets（images[i] ↔ tickets[i] 一一对应） */
+
+/** 来源图下标（fileIndex）：perImage 条目的 imageIndex（与件级 imageIndex 同语义），缺失时退回数组位置 */
+function fileIndexOf(entry, position) {
+  return entry && typeof entry.imageIndex === 'number' && entry.imageIndex >= 0 ? entry.imageIndex : position;
+}
+
+/**
+ * 图片快照：来自识别结果（含宽高）；同一顺序返回 tickets（images[i] ↔ tickets[i] 一一对应）。
+ * P0-1：无 image/无票据/超上限的图被过滤后 images[] 会短于文件序号，故同时返回
+ * fileIndex → images[] 下标映射（imageIndexMap；被过滤图无键）——调用方必须用 remapImageIndexes
+ * 重映射件级 imageIndex，否则 images 长度 ≤ imageIndex 时服务端按「第 k 件的截图序号不正确」整单拒绝。
+ */
 function buildImages(perImage, maxCount) {
   const limit = typeof maxCount === 'number' ? maxCount : MAX_IMAGES;
   const images = [];
   const tickets = [];
-  (perImage || []).forEach(function each(entry) {
+  const imageIndexMap = {};
+  (perImage || []).forEach(function each(entry, position) {
     const image = entry && entry.image ? entry.image : null;
     const ticket = entry && typeof entry.ticket === 'string' ? entry.ticket : '';
     if (!image || !image.fileId || !ticket || images.length >= limit) {
@@ -332,10 +344,25 @@ function buildImages(perImage, maxCount) {
     }
     const item = { fileId: image.fileId, width: image.width || 0, height: image.height || 0 };
     if (typeof image.size === 'number' && image.size > 0) item.size = image.size;
+    imageIndexMap[fileIndexOf(entry, position)] = images.length;
     images.push(item);
     tickets.push(ticket);
   });
-  return { images: images, tickets: tickets };
+  return { images: images, tickets: tickets, imageIndexMap: imageIndexMap };
+}
+
+/**
+ * 件级 imageIndex 重映射（P0-1，D23/D25b）：fileIndex → images[] 下标；被过滤图对应的件（无映射）
+ * 一律置 -1 —— buildPayload 据此省略 imageIndex 键，不写 0 冒充来自第 1 张图。
+ */
+function remapImageIndexes(items, imageIndexMap) {
+  const map = imageIndexMap || {};
+  return (items || []).map(function each(item) {
+    if (!item || item.manual === true) return item;
+    const fileIndex = typeof item.imageIndex === 'number' && item.imageIndex >= 0 ? item.imageIndex : -1;
+    const mapped = fileIndex >= 0 ? map[fileIndex] : undefined;
+    return Object.assign({}, item, { imageIndex: typeof mapped === 'number' ? mapped : -1 });
+  });
 }
 
 /**
@@ -401,6 +428,7 @@ module.exports = {
   revalidateItem,
   canSubmit,
   buildImages,
+  remapImageIndexes,
   buildPayload,
   summaryText,
   stepTitle,

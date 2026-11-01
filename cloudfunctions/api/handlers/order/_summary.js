@@ -3,6 +3,8 @@
 //       不新增查询/二次扫描；只到苑+楼栋级（不含房间号/roomTag/取件码/尾号/昵称/订单编号）。
 // 计数口径：total=订单数、parcels=总件数、byStatus{picked,delivered,ongoing} 均为订单数，
 //       异常（EXCEPTION）归入进行中（非终态、仍在处理）；byDorm[].count 为订单数。
+// P1-6：options.truncated = 本次 find 触达扫描上限（pageOf 判定）；聚合只覆盖已取到的行，
+//       响应如实带 summary.truncated=true，客户端文案据此注明「可能少报」，不静默当作全量。
 'use strict';
 
 const zones = require('../../shared/zones');
@@ -42,13 +44,15 @@ function compareDorm(left, right) {
   return zoneDelta !== 0 ? zoneDelta : left.buildingNo - right.buildingNo;
 }
 
-function buildSummary(rows) {
+function buildSummary(rows, options) {
+  const opts = options || {};
   const list = Array.isArray(rows) ? rows : [];
   const summary = {
     total: 0,
     parcels: 0,
     byStatus: { picked: 0, delivered: 0, ongoing: 0 },
-    byDorm: []
+    byDorm: [],
+    truncated: opts.truncated === true
   };
   const dormMap = {};
   list.forEach(function eachOrder(order) {

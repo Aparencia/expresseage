@@ -216,8 +216,10 @@ function componentChecks(t, deps) {
   const changeCount = (pickerSrc.match(/triggerEvent\('change'/g) || []).length;
   const uploadedAt = pickerSrc.indexOf("triggerEvent('uploaded'");
   const changeAt = pickerSrc.indexOf("triggerEvent('change'");
-  t.check(uploadedCount === 1 && uploadedAt >= 0 && (changeCount === 1 || pickerSrc.indexOf('clear()') >= 0),
-    'P16 组件每批上传完成触发 uploaded 事件（单处；既有 change/limit/error 事件不拆散）');
+  // P16：uploaded 单处；既有 change 至少存在且不拆散——change 的「全部批次结束后一次」时机由 P17 锁序，
+  // 不用任何源码字符串（如已删方法名）兜底判据
+  t.check(uploadedCount === 1 && uploadedAt >= 0 && changeCount >= 1,
+    'P16 组件每批上传完成触发 uploaded 事件（单处；change 至少存在且不拆散，时机由 P17 锁序）');
   t.check(uploadedAt >= 0 && changeAt > 0
     && pickerSrc.indexOf('this.emitUploaded(uploadedFiles)') < pickerSrc.indexOf("triggerEvent('change'"),
   'P17 uploaded 在批次内触发、change 仍在全部批次结束后一次触发（顾客端/代客端既有消费不变）');

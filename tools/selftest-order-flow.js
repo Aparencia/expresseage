@@ -35,9 +35,10 @@ const orderFlowClientCases = require('./lib/order-flow-client-cases');
 const orderFlowPipelineCases = require('./lib/order-flow-pipeline-cases');
 const CLOUD_API = path.join(ROOT, 'cloudfunctions/api');
 const app = require(path.join(CLOUD_API, 'app.js'));
+const parcelsInput = require(path.join(CLOUD_API, 'handlers/order/_parcels-input.js'));
 const { COLLECTIONS } = require(path.join(CLOUD_API, 'shared/collections.js'));
 const serverEnums = require(path.join(CLOUD_API, 'shared/enums.js'));
-const EXPECTED_ASSERTIONS = 256; // 242 + 14：D47 预约客户端 Q 组（选项/载荷/摘要/指纹/文案/接线） // 210 + 32（P0-1：P1~P30 + P26b 流水线化 31 + P 组样本非空 1）
+const EXPECTED_ASSERTIONS = 277; // 256 + 21：R 组 P0-1 多图 imageIndex 重映射 9 + S 组 P1-10 取消识别 8 + Q13~Q16 日历日回算 4 // 242 + 14：D47 预约客户端 Q 组（选项/载荷/摘要/指纹/文案/接线） // 210 + 32（P0-1：P1~P30 + P26b 流水线化 31 + P 组样本非空 1）
 
 const ORDER_CREATE_PAGE = 'pkg-customer/pages/order-create/index.js';
 const ORDER_CREATE_WXML = 'pkg-customer/pages/order-create/index.wxml';
@@ -77,6 +78,22 @@ function stationItem(extra) {
   return model.makeItem(Object.assign({ stationId: 'P3', pickupCode: 'A12345' }, extra || {}), {
     serviceCode: enums.SERVICE_CODES[0]
   });
+}
+
+// P0-1/P1-10 收口用例的页面实例桩：只提供 applyIdentify/runIdentify 消费的 data/setData/itemDefaults/onOcrPhase
+function identifyPageOf() {
+  return {
+    data: { step: 1, ocrState: 'idle', files: [], perImage: [], images: [], tickets: [], items: [] },
+    itemDefaults: function defaults() { return {}; },
+    setData: function setData(patch) { Object.assign(this.data, patch); },
+    onOcrPhase: function onOcrPhase(state) { this.data.ocrState = (state && state.phase) || this.data.ocrState; }
+  };
+}
+
+// P0-1 多图夹具：第 seq 张截图（localPath/fileId/上传票据齐全）
+function imageFileOf(seq) {
+  return { localPath: 'wxfile://tmp/ticket-' + seq + '.jpg',
+    fileId: 'cloud://test.env/orders/TKT/image-' + seq + '.jpg', uploadTicketId: 'TK-ORDER-FLOW-00' + seq };
 }
 
 // v1.0（D23）：order.create 单入口载荷：{parcels[], images[], tickets[], serviceCode, appoint, note, delivery?, manualEntry}
@@ -875,7 +892,99 @@ function register(h) {
     t.check(/onLatestDate\(/.test(step3PageSrc) && /onLatestTime\(/.test(step3PageSrc)
       && /onLatestPreset\(/.test(step3PageSrc),
     'Q12 页面接线 onLatestDate/onLatestTime/onLatestPreset（方法只转发 parts/step3）');
+    // P2：日历日回算（Date.UTC 会把 2026-02-30 静默归一成 3-02；回算年月日不一致即非法）
+    const badDate = { type: 'LATEST', date: '2026-02-30', time: '18:00' };
+    t.check(new Date(Date.UTC(2026, 1, 30)).getUTCMonth() === 2, 'Q13 正控：Date.UTC 确实把 2-30 归一成 3 月（回算判据有牙的前提）');
+    t.eq([appointUtil.dateTimeMs('2026-02-28', '12:00') > 0, appointUtil.dateTimeMs('2028-02-29', '12:00') > 0], [true, true],
+      'Q14 合法基线：普通日期与闰年 2-29 都能解析（回算不误伤合法值）');
+    t.eq([appointUtil.dateTimeMs('2026-02-30', '12:00'), appointUtil.dateTimeMs('2026-04-31', '12:00'),
+      appointUtil.dateTimeMs('2026-02-29', '12:00'), appointUtil.dateTimeMs('2026-13-01', '12:00')], [0, 0, 0, 0],
+    'Q15 日历不存在的日期（2-30/4-31/非闰年 2-29/13 月）一律返回 0（不归一冒充合法值）');
+    t.check(appointUtil.validateOf(badDate, nowMs).ok === false && appointUtil.payloadOf(badDate, nowMs).latestAt === '',
+      'Q16 非法日历日 → 下一步拦截且提交载荷不带 latestAt（服务端仍唯一权威）');
     t.notEmpty(appointUtil.timeOptions(), 'Q 组样本非空');
+  });
+  // ---------------------------------------------------------------- R P0-1 多图 imageIndex 重映射（可提交性）
+  h.section('R. P0-1 多图 imageIndex 重映射：images[] 过滤后件下标仍合法且指向正确来源图', (t) => {
+    const files = [imageFileOf(1), imageFileOf(2), imageFileOf(3)];
+    // 3 张图、中间一张 image=null（识别前解码失败）：该图被 buildImages 过滤，images 只有 2 张
+    const perImage = [
+      { imageIndex: 0, ticket: files[0].uploadTicketId, image: { fileId: files[0].fileId, width: 1080, height: 1440 } },
+      { imageIndex: 1, ticket: files[1].uploadTicketId, image: null },
+      { imageIndex: 2, ticket: files[2].uploadTicketId, image: { fileId: files[2].fileId, width: 1080, height: 1440 } }
+    ];
+    const page = identifyPageOf();
+    filesFlow.applyIdentify(page, [
+      model.makeItem({ stationId: 'P3', pickupCode: 'A12345', imageIndex: 0 }, {}),
+      model.makeItem({ stationId: 'P4', pickupCode: 'B23456', imageIndex: 2 }, {})
+    ], perImage, { ocrState: 'done' });
+    t.eq([page.data.images.length, page.data.tickets.length], [2, 2], 'R1 被过滤图（image=null）不进 images/tickets');
+    t.eq(page.data.items.map(function idx(item) { return item.imageIndex; }), [0, 1],
+      'R2 件级 imageIndex 从文件序号重映射为 images[] 下标（0/2 → 0/1，不再错位）');
+    t.eq([page.data.step, page.data.ocrState], [2, 'done'], 'R3 合法收口仍进 Step2（重映射不改既有步进）');
+    const payload = payloadOf(page.data.items, { images: page.data.images, tickets: page.data.tickets });
+    let judgeError = null;
+    let normalized = [];
+    try { normalized = parcelsInput.normalizeParcels(payload, 'MANUAL', payload.images.length); } catch (err) { judgeError = err; }
+    t.check(judgeError === null && normalized.length === 2, 'R4 生成包裹经 _parcels-input 判据无「第 k 件的截图序号不正确」');
+    t.eq(normalized.map(function idx(parcel) { return parcel.imageIndex; }), [0, 1],
+      'R5 服务端归一后 imageIndex 落在 images[] 合法域（0..images.length-1）');
+    t.eq(normalized.map(function file(parcel) { return payload.images[parcel.imageIndex].fileId; }),
+      [files[0].fileId, files[2].fileId],
+      'R6 imageIndex 指向正确来源文件（第 3 张图的件 → images[1]=第 3 张，不错指被过滤的第 2 张）');
+    let redError = null;
+    try {
+      parcelsInput.normalizeParcels({ parcels: [{ parcel: { stationId: 'P3', pickupCode: 'A12345' }, imageIndex: 2 }],
+        images: payload.images, tickets: payload.tickets }, 'MANUAL', 2);
+    } catch (err) { redError = err; }
+    t.check(redError !== null && !!redError.data && redError.data.field === 'imageIndex',
+      'R7 正控：未重映射的 imageIndex=2（images 只有 2 张）被服务端判据拒绝（判据有牙）');
+    const filteredPage = identifyPageOf();
+    filesFlow.applyIdentify(filteredPage, [model.makeItem({ stationId: 'P3', pickupCode: 'C34567', imageIndex: 1 }, {})],
+      perImage, { ocrState: 'failed' });
+    const filteredPayload = payloadOf(filteredPage.data.items,
+      { images: filteredPage.data.images, tickets: filteredPage.data.tickets });
+    t.check(Object.prototype.hasOwnProperty.call(filteredPayload.parcels[0], 'imageIndex') === false,
+      'R8 来源图被过滤的件省略 imageIndex 键（D25b：不写 0 冒充来源图）');
+    t.notEmpty(payload.images, 'R 组样本非空');
+  });
+  // ---------------------------------------------------------------- S P1-10 取消智能识别
+  h.section('S. P1-10 取消智能识别：丢弃在飞会话 + 迟到收口作废（不覆盖/不自动跳步）', async (t) => {
+    const files = [imageFileOf(1)];
+    const resultOf = function resultOf(seq) {
+      return { ok: true, items: [model.makeItem({ stationId: 'P3', pickupCode: 'A' + seq + '2345' }, {})],
+        perImage: [{ imageIndex: 0, ticket: files[0].uploadTicketId, image: { fileId: files[0].fileId, width: 1080, height: 1440 } }] };
+    };
+    const basePage = identifyPageOf();
+    await filesFlow.runIdentify(basePage, files, [], [], { finish: function done() { return Promise.resolve(resultOf(1)); } });
+    t.eq([basePage.data.items.length, basePage.data.step, basePage.data.ocrState], [1, 2, 'done'],
+      'S1 基线：未取消时收口写回并进 Step2（取消判据不误伤正常路径）');
+    const page = identifyPageOf();
+    let settle = null;
+    const inflight = filesFlow.runIdentify(page, files, [], [], {
+      finish: function finish() { return new Promise(function executor(resolve) { settle = resolve; }); }
+    });
+    await Promise.resolve();
+    filesFlow.onCancelAi(page);
+    t.eq([page.data.manualPicked, page.data.ocrState, page.data.failureText, page.data.failureNext],
+      [true, 'failed', ocrFlow.AI_FALLBACK_COPY.USER_CANCEL.text, ocrFlow.AI_FALLBACK_COPY.USER_CANCEL.next],
+      'S2 取消即按 §4.3.1 USER_CANCEL 落盘（文案取 parts/ai-fallback 单源）');
+    settle(resultOf(1));
+    await inflight;
+    t.eq([page.data.items.length, page.data.step, page.data.ocrState], [0, 1, 'failed'],
+      'S3 迟到识别结果作废：不覆盖 items、不自动跳步骤、不把取消态改回 done');
+    await filesFlow.runIdentify(page, files, [], [], { finish: function done() { return Promise.resolve(resultOf(2)); } });
+    t.eq([page.data.items.length, page.data.items[0].pickupCode], [1, 'A22345'],
+      'S4 取消后新一轮识别正常收口（取消不是粘滞态）');
+    const pageSrc = textOf(ORDER_CREATE_PAGE);
+    const flowSrc = textOf('pkg-customer/pages/order-create/parts/files-flow.js');
+    t.check(/onCancelAi\(\) \{\s*filesFlow\.onCancelAi\(this\);\s*\}/.test(pageSrc),
+      'S5 页面 onCancelAi 只一行转发 parts/files-flow（页面零编排判据）');
+    const finishAt = flowSrc.indexOf('await session.finish(list)');
+    t.check(finishAt >= 0 && flowSrc.indexOf('runCanceled(page, gen)', finishAt) > finishAt, 'S6 迟到收口在写回前校验取消代次（会话 token 缺口的补偿判据）');
+    t.check(/cancelRun\(page\)/.test(flowSrc) && flowSrc.indexOf('discardSession(page)') >= 0,
+      'S7 取消走 discardSession 单源（丢弃在飞会话，不另写一份）');
+    t.notEmpty(basePage.data.items, 'S 组样本非空');
   });
 }
 

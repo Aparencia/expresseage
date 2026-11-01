@@ -13,6 +13,9 @@
  *   F. 静态纪律：页面零 wx.cloud / 零七状态字面量 / 零 random / 不直调 client.call / 写动作带 expectedVersion /
  *      行渲染不出现 openid；有牙反例证明扫描能红；
  *   G. 异步联调：真实 _dto.buildOrderDto 七状态 actions 与行工具逐格一致、批量循环共享 batchActionId、批量撤销同 id。
+ *   K. 修复批 T3：P1-4 已完结两阶段翻页状态机（窗口内 cursor 续页 → 窗口耗尽转 older 首屏无游标、
+ *      hasMore 先 true 直到 older 空）+ 页面接线；P1-5 工作台复制汇总（主包单源纯件 + load 的 summary、
+ *      零额外请求）；P1-6 summary.truncated 时文案/toast 如实说明「可能少报」。
  *
  * 纪律：不 mock 全局 wx（本套只测纯件与真实 DTO；storage 用显式 platform 注入是既有公开能力）；
  *       先合法基线再反例；样本非空；EXPECTED_ASSERTIONS 与实际断言数精确相等。
@@ -40,8 +43,10 @@ const orderState = require(path.join(ROOT, 'shared/order-state.js'));
 const storage = require(path.join(ROOT, 'utils/storage.js'));
 const serverDto = require(path.join(ROOT, 'cloudfunctions/api/handlers/order/_dto.js'));
 const dayCases = require(path.join(__dirname, 'lib', 'workbench-day-cases.js'));
+// P1-5/P1-6：复制汇总纯件单源（主包 parts，工作台与统计页共用）；缺件时 optionalRequire 给逐条可定位红。
+const summaryCopy = optionalRequire('pages/partner/workbench/parts/summary-copy.js');
 
-const EXPECTED_ASSERTIONS = 235 + dayCases.EXPECTED_ASSERTIONS; // 实际断言总数（少算/多算都判红）
+const EXPECTED_ASSERTIONS = 235 + dayCases.EXPECTED_ASSERTIONS + 35; // 实际断言总数（含 K 段 P1-4/P1-5/P1-6）
 
 const STATUS = orderState.STATUS;
 const STATUS_LITERALS = ['SUBMITTED', 'ACCEPTED', 'PICKED', 'DELIVERED', 'COMPLETED', 'CANCELLED', 'EXCEPTION'];
@@ -883,6 +888,101 @@ function register(h) {
     textOf: textOf,
     PAGES: PAGES
   }));
+
+  // ── K. 已完结两阶段翻页（P1-4）+ 工作台复制汇总（P1-5/P1-6）──────────────────
+  h.section('K 已完结两阶段翻页 + 工作台复制汇总', (t) => {
+    const now = DOC_MS;
+    const state0 = historyView.pagingState();
+    const openedNo = historyView.openedPaging({ list: [], nextCursor: null });
+    const openedNext = historyView.openedPaging({ list: [], nextCursor: 'C1' });
+    const expandQ = historyView.expandQuery(now);
+    t.eq([state0.phase, state0.cursor, state0.windowDone, state0.hasMore, state0.olderLoaded], ['window', '', false, true, 0],
+      'K01 翻页初始态：window 阶段、无游标、hasMore 先 true');
+    t.eq([expandQ.view, expandQ.from, expandQ.to, expandQ.limit, expandQ.cursor],
+      ['history', historyView.yesterdayStartMs(now), now, historyView.HISTORY_LIMIT, undefined],
+      'K02 首屏窗口 = 昨天0点~now（不带游标）');
+    t.eq([openedNo.phase, openedNo.cursor, openedNo.windowDone, openedNo.hasMore], ['window', '', true, true],
+      'K03 P1-4：窗口无下一页仍 hasMore=true（更早未知，不丢「更早」入口）');
+    t.eq([openedNext.cursor, openedNext.windowDone, openedNext.hasMore], ['C1', false, true],
+      'K04 窗口有下一页：cursor 保留、进入窗口续页');
+    const windowMore = historyView.moreQueryOf(now, openedNext);
+    t.eq([windowMore.phase, windowMore.query.from, windowMore.query.to, windowMore.query.cursor], ['window', expandQ.from, now, 'C1'],
+      'K05 窗口未耗尽：同 from/to 窗口 + cursor 续页（不切 to 窗口——修「>30 单永久丢单」）');
+    const olderMore = historyView.moreQueryOf(now, openedNo);
+    t.eq([olderMore.phase, olderMore.query.to, olderMore.query.cursor], ['older', historyView.yesterdayStartMs(now) - 1, undefined],
+      'K06 窗口耗尽：转 older 首屏不带游标（to=昨天0点-1 天然不重叠——修「更早历史不可达」）');
+    t.eq(historyView.olderQuery(now).to + 1, expandQ.from, 'K07 两阶段窗口严格不重叠（older.to + 1 = expand.from）');
+    const windowPage2 = historyView.pageApplied(openedNext, { list: [{}], nextCursor: null }, 'window');
+    t.eq([windowPage2.windowDone, windowPage2.hasMore, windowPage2.cursor], [true, true, ''],
+      'K08 窗口续页耗尽：windowDone=true、hasMore 仍 true（等 older 查询确认最早）');
+    const olderPage = historyView.moreResultOf(windowPage2,
+      { list: [{ orderNo: 'E-1' }, { orderNo: 'E-2' }], nextCursor: 'C2' }, 'older');
+    t.eq([olderPage.paging.phase, olderPage.paging.cursor, olderPage.paging.hasMore, olderPage.paging.olderLoaded, olderPage.notice],
+      ['older', 'C2', true, 2, ''], 'K09 older 首屏有下一页：阶段 older、游标继续、累计已加载 2 行');
+    const olderCursorQ = historyView.moreQueryOf(now, olderPage.paging);
+    t.eq([olderCursorQ.phase, olderCursorQ.query.cursor, olderCursorQ.query.to], ['older', 'C2', historyView.yesterdayStartMs(now) - 1],
+      'K10 older 后续页带游标（同一 to 窗口）');
+    const emptyOlder = historyView.moreResultOf(historyView.pagingState(), { list: [], nextCursor: null }, 'older');
+    t.eq([emptyOlder.paging.hasMore, emptyOlder.notice], [false, 'earliest'],
+      'K11 older 空且此前无更早行 → hasMore=false + 提示「已到最早的订单」');
+    const emptyAfterLoaded = historyView.moreResultOf(olderPage.paging, { list: [], nextCursor: null }, 'older');
+    t.eq([emptyAfterLoaded.paging.hasMore, emptyAfterLoaded.notice], [false, ''],
+      'K12 已加载更早行后再空 → 只置 hasMore=false（不重复打扰）');
+    const tailPage = historyView.moreResultOf(olderPage.paging, { list: [{ orderNo: 'E-3' }], nextCursor: null }, 'older');
+    t.eq(tailPage.paging.hasMore, false, 'K13 older 页无下一页 → 已到最早（按钮转「已到最早的订单」）');
+    const expandedView = actionFlow.historyStateOf([], openedNo, false, now);
+    t.check(expandedView.hasMore === true && expandedView.moreText === '更早还有更多单 >',
+      'K14 展开成功后「更早还有更多单 >」可见（状态机驱动，不等 nextCursor）');
+    const earliestView = actionFlow.historyStateOf([], emptyOlder.paging, false, now);
+    t.check(earliestView.hasMore === false && earliestView.moreText === '',
+      'K15 确认到最早且无更早行 → 不显示「更多」按钮（零假入口）');
+    t.eq(historyView.mergeOlderRows([{ orderNo: 'A' }, { orderNo: 'B' }], [{ orderNo: 'B' }, { orderNo: 'C' }]),
+      [{ orderNo: 'A' }, { orderNo: 'B' }, { orderNo: 'C' }], 'K16 两阶段合并去重不重复行');
+    const windowRows = [];
+    const restRows = [];
+    for (let i = 0; i < 30; i += 1) windowRows.push({ orderNo: 'W-' + i });
+    for (let i = 30; i < 35; i += 1) restRows.push({ orderNo: 'W-' + i });
+    t.eq(historyView.mergeOlderRows(windowRows, restRows).length, 35,
+      'K17 窗口内 30 行 + 续页 5 行 = 35 行全部保留（修「窗口内 >30 单永久丢单」）');
+    const actionSrc = textOf(PAGES.actions);
+    const indexSrc = textOf(PAGES.index);
+    const wxml = textOf(PAGES.wxml);
+    t.check(actionSrc.indexOf('historyView.moreQueryOf(') !== -1 && actionSrc.indexOf('historyView.moreResultOf(') !== -1,
+      'K18 页面「更早」接线到两阶段状态机（moreQueryOf + moreResultOf）');
+    t.check(actionSrc.indexOf('historyView.olderQuery(') === -1,
+      'K19 页面不再在窗口阶段直接调 olderQuery（旧 bug 接线已移除）');
+    t.check(actionSrc.indexOf('historyView.openedPaging(') !== -1, 'K20 展开成功即写状态机 openedPaging');
+    t.check(indexSrc.indexOf('_historyPaging') !== -1 && indexSrc.indexOf('_olderCursor') === -1,
+      'K21 页面状态改存 _historyPaging（旧 _olderCursor 已移除）');
+    t.check(wxml.indexOf('bindtap="onHistoryMore"') !== -1, 'K22 WXML「更早」按钮仍接 onHistoryMore');
+    const richSummary = { total: 8, parcels: 10, byStatus: { picked: 1, delivered: 1, ongoing: 6 }, byDorm: [{ zone: 'D', buildingNo: 4, count: 2 }] };
+    const copyRich = summaryCopy ? summaryCopy.copyOf(Object.assign({}, richSummary, { truncated: true })) : null;
+    t.check(!!copyRich && copyRich.text.indexOf('（仅统计最近 8 单，可能少报）') !== -1,
+      'K23 P1-6：summary.truncated 时文案末尾如实说明「可能少报」（不静默少报）');
+    t.eq(copyRich && copyRich.truncated, true, 'K24 truncated 标记透传给页面（toast 据此提示）');
+    const copyBase = summaryCopy ? summaryCopy.copyOf(richSummary) : null;
+    t.eq(copyBase && [copyBase.visible, copyBase.truncated, copyBase.textOmitted], [true, false, false],
+      'K25 未触顶时复制视图无少报标记（合法基线）');
+    t.eq(copyBase && copyBase.text, '【代取汇总】当前 8 单（10 件）；东苑 4栋 2单。进度：进行中 6 / 已取件 1 / 已送达 1。',
+      'K26 工作台复用同一文案口径（苑/栋 + 进度，统计页/工作台单源）');
+    t.check(actionSrc.indexOf("require('./summary-copy')") !== -1 && wxml.indexOf('bindtap="onCopySummaryTap"') !== -1,
+      'K27 工作台复制汇总接线：page-actions require 主包纯件 + WXML 按钮');
+    t.check(wxml.indexOf('复制汇总') !== -1 && wxml.indexOf('只到苑/栋') !== -1,
+      'K28 WXML「复制汇总」按钮 + 隐私范围提示（只到苑/栋）');
+    t.check(indexSrc.indexOf('this._summary = (data && data.summary) || null;') !== -1,
+      'K29 工作台 load 保存 data.summary（复制不额外发请求）');
+    const copyStart = actionSrc.indexOf('onCopySummaryTap(');
+    const copyBody = copyStart >= 0 ? actionSrc.slice(copyStart) : '';
+    t.check(copyBody.indexOf('summaryCopy.copyOf(') !== -1 && copyBody.indexOf('orderApi.listPartner') === -1,
+      'K30 复制 handler 用已保存 summary（点击不再发请求、页面零本地聚合）');
+    t.check(copyBody.indexOf('当前没有进行中的订单') !== -1 && copyBody.indexOf("'已复制，可发到顾客群'") !== -1,
+      'K31 无单不复制假文案 + 成功 toast 与统计页同口径');
+    t.check(copyBody.indexOf('copy.truncated') !== -1 && copyBody.indexOf('可能少报') !== -1,
+      'K32 P1-6 truncated 时 toast 如实提示可能少报');
+    t.eq(summaryCopy ? summaryCopy.copyOf(null).textOmitted : null, false, 'K33 空数据视图 textOmitted=false（不复制假文案）');
+    t.check(!optionalRequire('pkg-partner/pages/stats/parts/summary-copy.js'), 'K34 旧 pkg-partner 路径已删除（纯件主包单源）');
+    t.notEmpty([state0, copyBase], 'K35 状态机/复制样本非空');
+  });
 }
 
 module.exports = { EXPECTED_ASSERTIONS, register };

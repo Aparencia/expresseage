@@ -259,6 +259,8 @@ Page({
     try {
       const results = await Promise.all(tasks);
       this.clearLoadingTimer();
+      // P2：await 期间切 tab/卸载（onHide/onUnload 已置 _hidden）→ 迟到结果不再 setData、不启动 ticker
+      if (this._hidden === true) return;
       const bindingData = results[0] || {};
       const listData = results[1] || {};
       const plan = renderPlan.refreshPlanOf({
@@ -286,6 +288,8 @@ Page({
       this.startTicker();
     } catch (err) {
       this.clearLoadingTimer();
+      // P2：已隐藏/已卸载页不写迟到错误（onShow 会重新 refresh，不在后台改已离开的页）
+      if (this._hidden === true) return;
       this.applyMaintenanceError(err);
     }
   },
@@ -307,6 +311,8 @@ Page({
 
   startTicker() {
     this.clearTicker();
+    // P2：已隐藏（切 tab/卸载）不启动定时器，避免后台空转与对不可见页 setData
+    if (this._hidden === true) return;
     this._ticker = setInterval(() => {
       if (!this.data.order) return;
       this.setData({ waitedText: '更新于 ' + format.formatTimeAgo(this.data.order.statusUpdatedAt) });

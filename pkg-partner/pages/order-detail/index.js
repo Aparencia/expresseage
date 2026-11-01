@@ -14,7 +14,7 @@ const undoPart = require('./parts/undo');
 const viewModel = require('./parts/view-model');
 const messagePoll = require('./parts/message-poll');
 const share = require('../../../utils/share/handlers');
-
+const store = require('../../../store/index');
 const UNDO_TICK_MS = 1000;
 const MESSAGE_POLL_MS = 10000;
 const MESSAGE_MAX = 200;
@@ -130,7 +130,7 @@ Page({
   applyDetail(data) {
     const order = (data && data.order) || {};
     const events = eventView.buildEvents(data && data.events);
-    const view = viewModel.buildView(order, events, { readonly: this.data.readonly, nowMs: Date.now() });
+    const view = viewModel.buildView(order, events, { readonly: this.data.readonly, nowMs: Date.now(), config: store.get('config') });
     this.setData({
       order: view.order,
       events: events,

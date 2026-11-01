@@ -5,6 +5,7 @@
 
 const orderApi = require('../../../../api/modules/order');
 const client = require('../../../../api/client');
+const store = require('../../../../store/index');
 const storage = require('../../../../utils/storage');
 const maintenance = require('../../../../utils/maintenance');
 const rowActions = require('./row-actions');
@@ -13,6 +14,7 @@ const actionFlow = require('./action-flow');
 const undoView = require('./undo-view');
 const historyView = require('./history-view');
 const guideView = require('./guide-view');
+const summaryCopy = require('./summary-copy');
 
 const DETAIL_PAGE = '/pkg-partner/pages/order-detail/index?orderNo=';
 const CREATE_ON_BEHALF_PAGE = '/pkg-partner/pages/create-on-behalf/index';
@@ -350,29 +352,60 @@ module.exports = {
     this.setData({ 'completed.loading': true, 'completed.expanded': true });
     orderApi.listPartner(historyView.expandQuery(Date.now())).then((data) => {
       this._historyRows = Array.isArray(data.list) ? data.list : [];
-      this._olderCursor = data.nextCursor || null;
+      // P1-4：展开成功即 hasMore=true（更早未知）；窗口内有下一页就先窗口续页，耗尽后由 onHistoryMore 转 older
+      this._historyPaging = historyView.openedPaging(data);
       this.setData({ completed: Object.assign({}, this.data.completed,
-        actionFlow.historyStateOf(this._historyRows, this._olderCursor, false, Date.now())) });
+        actionFlow.historyStateOf(this._historyRows, this._historyPaging, false, Date.now())) });
     }).catch((err) => {
       this.setData({ 'completed.loading': false, 'completed.expanded': false });
       this.toastMsg((err && err.message) || '历史订单没加载出来，检查网络后重试');
     });
   },
 
+  // P1-4 两阶段翻页：①窗口内先带 cursor 续页（expandQuery 同 from/to，不切 to 窗口——修「>30 单永久丢单」）；
+  // ②窗口耗尽后转 olderQuery 首屏不带 cursor（to=昨天0点-1 天然不重叠——修「更早历史不可达」）；
+  // ③only older 查询空/无下一页才置 hasMore=false，空结果且此前无更早行时明确提示已到最早。
   onHistoryMore() {
     const current = this.data.completed;
-    if (current.loading || !current.hasMore) {
+    const paging = this._historyPaging || historyView.pagingState();
+    if (current.loading || !paging.hasMore) {
       return;
     }
+    const plan = historyView.moreQueryOf(Date.now(), paging);
     this.setData({ 'completed.loading': true });
-    orderApi.listPartner(historyView.olderQuery(Date.now(), this._olderCursor)).then((data) => {
-      this._historyRows = historyView.mergeOlderRows(this._historyRows, data.list || []);
-      this._olderCursor = data.nextCursor || null;
+    orderApi.listPartner(plan.query).then((data) => {
+      const applied = historyView.moreResultOf(paging, data, plan.phase);
+      this._historyPaging = applied.paging;
+      this._historyRows = historyView.mergeOlderRows(this._historyRows, applied.rows);
       this.setData({ completed: Object.assign({}, this.data.completed,
-        actionFlow.historyStateOf(this._historyRows, this._olderCursor, false, Date.now())) });
+        actionFlow.historyStateOf(this._historyRows, applied.paging, false, Date.now())) });
+      if (applied.notice === 'earliest') {
+        this.toastMsg('已到最早的订单');
+      }
     }).catch((err) => {
       this.setData({ 'completed.loading': false });
       this.toastMsg((err && err.message) || '更早的订单没加载出来，检查网络后重试');
+    });
+  },
+
+  // D48/P1-5 工作台复制汇总（与统计页同口径）：用页面 load 已保存的 summary，点击不再发请求；
+  // 纯件生成文案（只到苑/栋级）；无单不复制假文案；truncated（服务端扫描触顶）时文案与 toast 都如实提示。
+  onCopySummaryTap() {
+    if (this._copying) {
+      return;
+    }
+    const config = store.get('config') || {};
+    const copy = summaryCopy.copyOf(this._summary, { zoneLabels: config.zoneLabels });
+    if (!copy.visible) {
+      this.toastMsg('当前没有进行中的订单');
+      return;
+    }
+    this._copying = true;
+    wx.setClipboardData({
+      data: copy.text,
+      success: () => this.toastMsg(copy.truncated ? '已复制（可能少报，文案已注明）' : '已复制，可发到顾客群'),
+      fail: () => this.toastMsg('复制没成功，请重试'),
+      complete: () => { this._copying = false; }
     });
   },
 };

@@ -198,12 +198,15 @@ function closedUndo() {
 }
 
 // 已完结展开/继续翻页 → completed 视图补丁（今天/昨天/更早 + 「更早」按钮）
-function historyStateOf(rows, nextCursor, loading, nowMs) {
+// P1-4：paging = history-view 两阶段翻页状态机（phase/cursor/windowDone/hasMore/olderLoaded）；
+// hasMore 由状态机裁决（window 耗尽后仍 true，直到 older 查询确认最早），不再等于「上页有无 nextCursor」。
+function historyStateOf(rows, paging, loading, nowMs) {
+  const state = paging || {};
   const panel = historyView.panelOf({
     rows: rows,
     nowMs: nowMs,
-    hasMore: !!nextCursor,
-    nextCursor: nextCursor,
+    hasMore: state.hasMore !== false,
+    nextCursor: state.cursor || null,
     loading: !!loading
   });
   return {

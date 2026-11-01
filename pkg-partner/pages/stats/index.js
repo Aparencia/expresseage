@@ -2,7 +2,9 @@
 // 口径：docs/ux/V4_UX_PARTNER.md §3.8（三档 tab/四格指标/自绘柱/空态）、§9（单一来源 partner.stats、
 //       日报摘要可复制、页面不做历史页累加）；DATA_MODEL §7.4 partner.stats 出参（批 7 冻结）。
 // D48（批 17）：新增「复制汇总」——点击时按需调一次 order.listPartner({view:'workbench',limit:1}) 取服务端
-//       summary（按需生成、不在 onShow 预拉、页面不本地聚合），文案纯件见 parts/summary-copy.js。
+//       summary（按需生成、不在 onShow 预拉、页面不本地聚合），文案纯件单源在主包
+//       pages/partner/workbench/parts/summary-copy.js（统计页与工作台共用，先例 pick-list → batch-view）。
+// P1-6（修复批 T3）：summary.truncated（服务端扫描触顶、可能少报）时纯件在文案末尾注明，toast 同步提示。
 // 页面只做取参/接线/setData：指标、柱、日报、汇总文案、空/错态全部在 parts/。
 'use strict';
 
@@ -12,7 +14,7 @@ const store = require('../../../store/index');
 const route = require('../../../config/route');
 const viewModel = require('./parts/view-model');
 const dailyReport = require('./parts/daily-report');
-const summaryCopy = require('./parts/summary-copy');
+const summaryCopy = require('../../../pages/partner/workbench/parts/summary-copy');
 const share = require('../../../utils/share/handlers');
 
 Page({
@@ -68,7 +70,7 @@ Page({
   },
 
   // D48 复制汇总（顾客群口径）：点击时按需取一次工作台 summary（非 onShow 预拉），纯件生成文案。
-  // 无进行中订单不复制假文案；剪贴板失败如实提示并可重试。
+  // 无进行中订单不复制假文案；剪贴板失败如实提示并可重试；truncated 时文案与 toast 都如实说明可能少报。
   onCopySummaryTap() {
     if (this._copying) {
       return;
@@ -85,7 +87,10 @@ Page({
       }
       wx.setClipboardData({
         data: copy.text,
-        success: () => wx.showToast({ title: '已复制，可发到顾客群', icon: 'none' }),
+        success: () => wx.showToast({
+          title: copy.truncated ? '已复制（可能少报，文案已注明）' : '已复制，可发到顾客群',
+          icon: 'none'
+        }),
         fail: () => wx.showToast({ title: '复制没成功，请重试', icon: 'none' })
       });
     }).catch(() => {

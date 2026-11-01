@@ -1,8 +1,8 @@
 // handlers/order/listPartner.js · order.listPartner：兼职工作台 / 历史订单 / 客户订单（批 7 view=customer）
 // 响应形状 = {list,nextCursor,counts}（history）；workbench/history 顶层键 + D48 只增 summary（仅 workbench，
-// 基于本次 find 命中行聚合、零额外查询）；view=customer 返回 {list,nextCursor}、不发 counts/summary
-// （DATA_MODEL §7.5 批 7 段④）。四档动线排序由客户端零件层用 shared/order-view 执行，服务端只做状态桶 +
-// 绑定顾客过滤；列表一律经 _dto 输出，绝不下发 raw order 文档（DATA_MODEL §6 DTO 铁律）。
+// 基于本次 find 命中行聚合、零额外查询；P1-6 扫描触顶时 summary.truncated=true）；view=customer 返回
+// {list,nextCursor}、不发 counts/summary（DATA_MODEL §7.5 批 7 段④）。四档动线排序由客户端零件层用
+// shared/order-view 执行，服务端只做状态桶 + 绑定顾客过滤；列表一律经 _dto 输出，绝不下发 raw order 文档。
 'use strict';
 
 const { COLLECTIONS } = require('../../shared/collections');
@@ -153,18 +153,24 @@ function matchKeyword(order, keyword) {
   return false;
 }
 
+// P1-6：任一状态 find 返回行数触达扫描上限（>= scanLimit）→ 本次候选集可能不全，summary 需如实标注
+// （聚合值仍按已取到的行计算，跨状态合并后去重；不新增查询、不二次扫描）。
 async function fetchOrders(ctx, partnerId, filter, scanLimit, extraWhere) {
   const isTest = common.isTestSession(ctx);
   const rows = [];
+  let truncated = false;
   for (let i = 0; i < filter.statuses.length; i += 1) {
     const part = await ctx.dao.find(COLLECTIONS.ORDERS, {
       where: Object.assign({ partnerId, status: filter.statuses[i], isTest }, extraWhere || {}),
       orderBy: [[filter.sortField, 'desc'], ['orderNo', 'desc']],
       limit: scanLimit
     });
+    if (part.length >= scanLimit) {
+      truncated = true;
+    }
     part.forEach((row) => rows.push(row));
   }
-  return rows;
+  return { rows, truncated };
 }
 
 // 时间窗过滤：from/to 为 0 表示不限；锚点与列表一致（completedAt → cancelledAt → statusUpdatedAt）。
@@ -196,9 +202,11 @@ function compareRowsBy(sortField) {
 
 // 一次取数 → 精确单号补查 → 去重 → keyword/时间窗过滤（= D48 summary 候选集）→ 游标 → 稳定排序 → 单页切片。
 // 两个视图共用（workbench/history 与 customer 只在 where 过滤与过滤状态集上不同）。
+// P1-6：返回 scanTruncated（fetch 触达扫描上限）供 workbench summary 标注「可能少报」；history/customer 不消费。
 async function pageOf(ctx, partnerId, filter, options) {
   const opts = options || {};
-  const rows = await fetchOrders(ctx, partnerId, filter, opts.scanLimit, opts.extraWhere);
+  const fetched = await fetchOrders(ctx, partnerId, filter, opts.scanLimit, opts.extraWhere);
+  const rows = fetched.rows;
   // 完整订单号补一次唯一索引精确查询：窗口扫描只截断「部分匹配」，完整单号命中不应受窗口影响。
   const exactOrderNo = opts.keyword ? exactOrderNoOf(opts.keyword) : '';
   if (exactOrderNo) {
@@ -224,7 +232,13 @@ async function pageOf(ctx, partnerId, filter, options) {
     .filter((order) => common.isAfterCursor(time.toMs(order[filter.sortField]), order.orderNo, opts.paging.cursor))
     .sort(compareRowsBy(filter.sortField));
   const page = candidates.slice(0, opts.paging.limit);
-  return { page, hasMore: candidates.length > opts.paging.limit, sortField: filter.sortField, summaryRows };
+  return {
+    page,
+    hasMore: candidates.length > opts.paging.limit,
+    sortField: filter.sortField,
+    summaryRows,
+    scanTruncated: fetched.truncated === true
+  };
 }
 
 function pageQueryOf(input, scanLimit) {
@@ -322,9 +336,9 @@ module.exports = async function orderListPartner(ctx, payload) {
   const counts = view === WORKBENCH_VIEW ? await buildCounts(ctx, partner._id, common.nowMsOf(ctx)) : orderView.countsTemplate();
   const body = { list, nextCursor: nextCursorOf(result), counts };
   // D48：仅 workbench 只增 summary（按苑/栋聚合 + 状态计数；history/customer 形状不变、不发 summary）。
-  // 复用本次 find 的命中行（result.summaryRows），零额外查询/零二次扫描。
+  // 复用本次 find 的命中行（result.summaryRows），零额外查询/零二次扫描；P1-6 扫描触顶时带 truncated=true。
   if (view === WORKBENCH_VIEW) {
-    body.summary = summaryPure.buildSummary(result.summaryRows);
+    body.summary = summaryPure.buildSummary(result.summaryRows, { truncated: result.scanTruncated });
   }
   return body;
 };

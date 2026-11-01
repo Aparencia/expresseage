@@ -10,6 +10,7 @@ const enums = require('../../../../shared/enums');
 
 const PAGE_LIMIT = 20; // 服务端分页：每片 ≤20 行（D46）
 const CHUNK_ROWS = 20; // 首次/追加渲染 setData：每片 ≤20 行（UX_PARTNER §4.11 同口径）
+const MAX_AUTO_PAGES = 10; // 复制清单自动拉全的页数上限：10 页 × 20 行 ⇒ ≤200 单（防一次点按无限拉取）
 const WORKBENCH_VIEW = 'workbench';
 const COPY_TITLE = '【楼层配送清单】';
 const UNKNOWN_GROUP_KEY = 'UNKNOWN';
@@ -303,6 +304,53 @@ function copyText(groups) {
   return COPY_TITLE + ' ' + parts.join('；') + '；共 ' + total + ' 单待送达。';
 }
 
+// 清单已加载单数（含「地址待同步」组，用于复制计划/页头提示）
+function totalOf(groups) {
+  let total = 0;
+  (Array.isArray(groups) ? groups : []).forEach((group) => {
+    total += Number(group && group.count) || 0;
+  });
+  return total;
+}
+
+// 页头汇总文案（P1-7）：还有下一页时明确「已加载 N 单」，避免把已加载页当成全量清单
+function summaryLineOf(summary, nextCursor) {
+  const base = summary || {};
+  const total = Math.max(0, Number(base.total) || 0);
+  const hasMore = !!nextCursor && total > 0;
+  return {
+    total: total,
+    buildingCount: Math.max(0, Number(base.buildingCount) || 0),
+    text: textOf(base.text),
+    loadedText: hasMore ? '已加载 ' + total + ' 单（还有更多，上拉或点「复制清单」自动拉全）' : ''
+  };
+}
+
+// 复制计划（P1-7）：未加载完 → needMore（页面先循环拉全，绝不复制半量清单）；
+// 页数到上限仍没拉完 → 提示先上拉（不一次点按拉爆）；空清单不给文案
+function copyPlanOf(groups, nextCursor, pagesLoaded) {
+  const total = totalOf(groups);
+  const pages = Math.max(0, Number(pagesLoaded) || 0);
+  if (nextCursor) {
+    const capped = pages >= MAX_AUTO_PAGES;
+    return {
+      ok: false,
+      needMore: true,
+      capped: capped,
+      loadedCount: total,
+      text: '',
+      message: capped
+        ? '清单超过 ' + (MAX_AUTO_PAGES * PAGE_LIMIT) + ' 单，先上拉加载更多再复制'
+        : '清单还没加载全，正在拉取剩余的…'
+    };
+  }
+  const text = copyText(groups);
+  if (!text) {
+    return { ok: false, needMore: false, capped: false, loadedCount: total, text: '', message: '当前没有可复制的清单' };
+  }
+  return { ok: true, needMore: false, capped: false, loadedCount: total, text: text, message: '' };
+}
+
 function selectionTextOf(selectedCount, totalCount) {
   return '已选 ' + selectedCount + ' 单 · 本屏共 ' + totalCount + ' 单';
 }
@@ -383,12 +431,15 @@ function queryOf(options) {
 
 module.exports = {
   CHUNK_ROWS,
+  MAX_AUTO_PAGES,
   queryOf,
   rowsOf,
   buildGroups,
   splitChunks,
   summaryOf,
+  summaryLineOf,
   copyText,
+  copyPlanOf,
   applySelection,
   toggleSelection,
   selectAll,

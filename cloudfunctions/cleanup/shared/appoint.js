@@ -96,16 +96,24 @@ function isStepAligned(ms) {
   return isFinite(ms) && ms > 0 && ms % STEP_MS === 0;
 }
 
-// 'YYYY-MM-DD' + 'HH:MM'（UTC+8）→ 毫秒；非法返回 0
+// 'YYYY-MM-DD' + 'HH:MM'（UTC+8）→ 毫秒；非法返回 0。
+// 日历日回算：Date.UTC 会把不存在的日期静默归一下一月（2026-02-30 → 2026-03-02），
+// 回算年月日不一致即视为非法日期，避免把非法值当合法最晚时间上送/展示。
 function dateTimeMs(dateValue, clockValue) {
   const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(textOf(dateValue));
   const clockMatch = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(textOf(clockValue));
   if (!dateMatch || !clockMatch) return 0;
+  const year = Number(dateMatch[1]);
   const month = Number(dateMatch[2]);
   const day = Number(dateMatch[3]);
   const minute = Number(clockMatch[2]);
   if (month < 1 || month > 12 || day < 1 || day > 31 || minute % STEP_MINUTES !== 0) return 0;
-  return Date.UTC(Number(dateMatch[1]), month - 1, day, Number(clockMatch[1]), minute) - TZ_OFFSET_MS;
+  const ms = Date.UTC(year, month - 1, day, Number(clockMatch[1]), minute) - TZ_OFFSET_MS;
+  const back = new Date(ms + TZ_OFFSET_MS);
+  if (back.getUTCFullYear() !== year || back.getUTCMonth() + 1 !== month || back.getUTCDate() !== day) {
+    return 0;
+  }
+  return ms;
 }
 
 // 服务端权威校验（D47）：必须是 30 分钟整点，且在 [now+30min, now+7d] 内。合法返回毫秒，非法返回 0。

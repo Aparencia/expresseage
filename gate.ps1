@@ -106,7 +106,7 @@ if ($status.Code -eq 0) {
     if ($raw.Length -lt 4) { continue }
     # porcelain 格式：XY<空格>path；不能先 Trim（会吃掉工作区变更路径的首字符），固定从第 4 个字符起取
     $path = $raw.Substring(3).Trim()
-    if ($path.Contains(' -> ')) { $path = $path.Split(' -> ')[-1].Trim() }
+    if ($path.Contains(' -> ')) { $path = ($path -split ' -> ')[-1].Trim() }
     $path = $path.Trim('"')
     if ($path -ne '') { $changed.Add($path) }
   }

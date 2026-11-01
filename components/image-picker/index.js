@@ -259,11 +259,6 @@ Component({
         .map((item) => (item && item.localPath) || '')
         .filter((url) => !!url);
       wx.previewImage({ urls, current: file.localPath });
-    },
-
-    // 页面提交成功/切换手填后清空（含内部状态；change 由页面自己重置）
-    clear() {
-      this.setData({ files: [], uploading: false, progressText: '', maxReached: false });
     }
   }
 });

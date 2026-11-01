@@ -1,7 +1,10 @@
-// pkg-partner/pages/stats/parts/summary-copy.js · D48「复制汇总」文案纯件（顾客群口径；零 wx/零 I/O）
+// pages/partner/workbench/parts/summary-copy.js · D48「复制汇总」文案纯件（顾客群口径；零 wx/零 I/O）
+// 单源：工作台 pages/partner/workbench 与统计页 pkg-partner/pages/stats 共用（先例 pick-list → batch-view）。
 // 口径：CONTRACT §13 D48 / UX_PARTNER §9 / DATA_MODEL §7.5：只消费服务端 order.listPartner({view:'workbench'})
 //       下发的 summary（按苑/栋聚合 + 进行中/已取件/已送达计数 + 总单/总件）。文案只到苑+楼栋级，
 //       不含房间号/roomTag/取件码/尾号/昵称/订单编号；空数据不产出可复制文案；≤200 字、超出按栋数省略。
+// P1-6：summary.truncated（服务端扫描触达上限、聚合可能少报）→ 文案末尾追加如实说明，不静默少报；
+//       truncated=服务端数据截断、textOmitted=文案按 200 字省略苑/栋，两个标记分开、语义不混。
 'use strict';
 
 const zones = require('../../../../shared/zones');
@@ -9,6 +12,8 @@ const zones = require('../../../../shared/zones');
 const COPY_TITLE = '【代取汇总】';
 const MAX_TEXT_CHARS = 200;
 const OMIT_MARK = '…等 ';
+const SHORT_NOTE_HEAD = '（仅统计最近 ';
+const SHORT_NOTE_TAIL = ' 单，可能少报）';
 
 function emptyCopy() {
   return {
@@ -18,7 +23,8 @@ function emptyCopy() {
     total: 0,
     parcels: 0,
     dormCount: 0,
-    truncated: false
+    truncated: false,
+    textOmitted: false
   };
 }
 
@@ -73,7 +79,9 @@ function normalizeSummary(raw) {
       delivered: countOf(status.delivered),
       ongoing: countOf(status.ongoing)
     },
-    byDorm: normalizeDorm(raw.byDorm)
+    byDorm: normalizeDorm(raw.byDorm),
+    // 只有服务端明确给 boolean true 才算截断（契约字段，缺省/脏值一律按完整统计展示）
+    truncated: raw.truncated === true
   };
 }
 
@@ -99,7 +107,13 @@ function progressTextOf(byStatus) {
     + ' / 已送达 ' + byStatus.delivered + '。';
 }
 
+// P1-6：扫描触顶时文案末尾如实说明「仅统计最近 N 单，可能少报」（N=本次实际聚合行数）。
+function shortNoteOf(summary) {
+  return summary.truncated ? SHORT_NOTE_HEAD + summary.total + SHORT_NOTE_TAIL : '';
+}
+
 // 先给完整文案；超上限时从尾部逐栋减少并补「…等 N 栋」，尾句（进度）与总单/总件始终保留。
+// P1-6 的少报说明与尾句一起计入 200 字上限（省略更多栋，不丢如实说明）。
 function summaryTextOf(summary, options) {
   const opts = options || {};
   const labels = opts.zoneLabels && typeof opts.zoneLabels === 'object' ? opts.zoneLabels : null;
@@ -107,21 +121,23 @@ function summaryTextOf(summary, options) {
   const maxChars = isFinite(configured) && configured > 0 ? Math.floor(configured) : MAX_TEXT_CHARS;
   const head = COPY_TITLE + '当前 ' + summary.total + ' 单（' + summary.parcels + ' 件）';
   const tail = progressTextOf(summary.byStatus);
+  const note = shortNoteOf(summary);
   for (let count = summary.byDorm.length; count >= 0; count -= 1) {
     const omitted = summary.byDorm.length - count;
     const body = count > 0 ? '；' + renderDormRows(summary.byDorm, count, labels) : '';
     const marker = omitted > 0 ? OMIT_MARK + omitted + ' 栋' : '';
-    const text = head + body + marker + tail;
+    const text = head + body + marker + tail + note;
     if (text.length <= maxChars) {
-      return { text: text, truncated: omitted > 0 };
+      return { text: text, omitted: omitted > 0 };
     }
   }
-  return { text: head + tail, truncated: summary.byDorm.length > 0 };
+  return { text: head + tail + note, omitted: summary.byDorm.length > 0 };
 }
 
 /**
  * 复制汇总视图：raw = 服务端 order.listPartner({view:'workbench'}).summary。
  * total=0/缺字段/非对象 → visible=false（页面据此不复制假文案）。
+ * truncated=服务端统计可能少报（页面 toast 如实提示）；textOmitted=文案按 200 字省略了苑/栋。
  */
 function copyOf(raw, options) {
   const summary = normalizeSummary(raw);
@@ -136,7 +152,8 @@ function copyOf(raw, options) {
     total: summary.total,
     parcels: summary.parcels,
     dormCount: summary.byDorm.length,
-    truncated: built.truncated
+    truncated: summary.truncated,
+    textOmitted: built.omitted
   };
 }
 

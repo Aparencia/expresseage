@@ -14,6 +14,7 @@
  *   H. 注册与文档联动（app.json=32 页、tools/lib/project.js ALL_PAGES=32、CONTRACT §7/ARCHITECTURE/
  *      UX_PARTNER/QA/docs README 页数读数、工作台入口、sync 副本一致）
  *   I. 零金额扫描（新文件 5 件）+ 行数闸（页面/纯件 ≤500、本套件 ≤1000）
+ *   J. 修复批 T4：复制前自动拉全（P1-7）/ 批量失败重试条与取消不刷新（P1-8）/ 卸载与请求序号守卫（P2）
  *
  * 纪律：纯件 + 静态接线断言；不 mock 全局 wx、不连网络；先合法基线再反例；样本非空；
  *      EXPECTED_ASSERTIONS 与实际断言数精确相等（少算/多算都判红）。
@@ -26,7 +27,7 @@ const fsutil = require('./lib/fsutil');
 const zeroMoney = require('./zero-money-scan');
 const project = require('./lib/project');
 
-const EXPECTED_ASSERTIONS = 116; // 实跑读数：node tools/selftest-pick-list.js
+const EXPECTED_ASSERTIONS = 135; // 实跑读数：node tools/selftest-pick-list.js（116 + 19：修复批 T4 P1-7/P1-8/P2）
 
 const PAGE_DIR = 'pkg-partner/pages/pick-list';
 const FILES = {
@@ -301,8 +302,8 @@ function register(h) {
     t.eq(wxml.indexOf('<switch-bar') !== -1
       && wxml.indexOf('<switch-bar') < wxml.indexOf('<view class="head-row"'), true,
       'F6 switch-bar 为页面根节点首个子节点（门禁 #23 会话条接入）');
-    t.eq(page.indexOf('view.copyText(') !== -1 && page.indexOf('setClipboardData') !== -1, true,
-      'F7 复制按钮接线：纯件生成文案 + wx.setClipboardData');
+    t.eq(page.indexOf('view.copyPlanOf(') !== -1 && page.indexOf('setClipboardData') !== -1, true,
+      'F7 复制按钮接线：纯件复制计划（拉全后）+ wx.setClipboardData');
     t.eq(wxml.indexOf('row.roomText') !== -1 && wxml.indexOf('row.roomTagText') !== -1, true,
       'F8 页面展示房间号/roomTag（本人订单 L3，D46 允许）');
     t.eq(page.indexOf('console.log') === -1, true, 'F9 页面无 console.log（不落 L3 日志）');
@@ -388,6 +389,66 @@ function register(h) {
       'I8 shared/zones.js ≤500 行（' + linesOf(ZONES) + '）');
     t.check(linesOf('tools/selftest-pick-list.js') <= 1000, 'I9 本套件文件 ≤1000 行（测试行数闸）');
     t.check(linesOf(FILES.wxml) <= 500, 'I10 页面 wxml ≤500 行');
+  });
+
+  // ------------------------------------------------------------ J. 修复批 T4（P1-7/P1-8/P2）
+  h.section('J 复制自动拉全（P1-7）+ 失败重试条（P1-8）+ 卸载/请求序号守卫（P2）', (t) => {
+    const page = readText(FILES.page);
+    const wxml = readText(FILES.wxml);
+    if (!view) {
+      t.check(false, 'J1 楼层清单纯件缺失');
+      return;
+    }
+    const firstGroups = view.buildGroups(view.rowsOf(floorFixtures().slice(0, 4)));
+    const fullGroups = view.buildGroups(view.rowsOf(floorFixtures()));
+    // P1-7：未加载完不复制半量清单；拉全后给全量文案
+    const morePlan = view.copyPlanOf(firstGroups, { sortValue: 1, orderNo: '20261101-0005' }, 0);
+    t.check(morePlan.ok === false && morePlan.needMore === true && morePlan.text === '',
+      'J1 还有下一页 → 复制计划 needMore 且不给半量文案（P1-7 漏单场景）');
+    t.eq(view.copyText(firstGroups).indexOf('共 4 单待送达') >= 0, true,
+      'J2 只加载 4 单时文案只有 4 单（旧缺陷基线：复制前会漏 3 单）');
+    const fullPlan = view.copyPlanOf(fullGroups, null, 0);
+    t.check(fullPlan.ok === true && fullPlan.text === view.copyText(fullGroups)
+      && fullPlan.text.indexOf('共 7 单待送达') !== -1,
+    'J3 拉全后复制计划给全量文案（共 7 单，不再漏单）');
+    const cappedPlan = view.copyPlanOf(fullGroups, { sortValue: 9 }, view.MAX_AUTO_PAGES);
+    t.check(cappedPlan.ok === false && cappedPlan.needMore === true && cappedPlan.capped === true
+      && cappedPlan.message.indexOf('上拉') !== -1,
+    'J4 到页数上限仍有下一页 → 不复制并提示先上拉（不一次点按拉爆）');
+    t.check(view.MAX_AUTO_PAGES > 0 && view.MAX_AUTO_PAGES * 20 >= 100, true,
+      'J5 自动拉全页数上限为正且覆盖常规清单量（' + view.MAX_AUTO_PAGES + ' 页 × 20 行）');
+    t.eq(view.copyPlanOf([], null, 0).message, '当前没有可复制的清单', 'J6 空清单复制计划给兜底提示');
+    // 页头汇总：「已加载 N 单」只在还有下一页时出现
+    const moreSummary = view.summaryLineOf(view.summaryOf(firstGroups), { sortValue: 1 });
+    t.check(moreSummary.loadedText.indexOf('已加载 4 单') >= 0 && moreSummary.text.indexOf('共 4 单') >= 0,
+      'J7 有下一页时页头明示「已加载 N 单」（不把部分清单当全量）');
+    const doneSummary = view.summaryLineOf(view.summaryOf(fullGroups), null);
+    t.check(doneSummary.loadedText === '' && doneSummary.text.indexOf('共 7 单') >= 0,
+      'J8 加载完 → 页头不再显示「已加载」（全量口径）');
+    // P1-8：持久失败重试条 + 取消不刷新
+    t.check(wxml.indexOf('batchResult.failedOrderNos.length') !== -1 && wxml.indexOf('onBatchRetry') !== -1,
+      'J9 wxml 有持久失败重试条并接 onBatchRetry（P1-8）');
+    t.check(wxml.indexOf('单失败') !== -1 && wxml.indexOf('重试失败单') !== -1,
+      'J10 重试条文案「N 单失败 · 重试失败单」');
+    t.check(/showCancel: !summary\.allOk/.test(page), 'J11 部分失败弹窗保留「稍后处理」取消入口');
+    t.check(/if \(summary\.allOk \|\| res\.confirm\) \{\s*this\.refresh\(\)/.test(page),
+      'J12 仅成功/确认路径才 refresh（取消不刷新，保留行/勾选/失败态）');
+    t.check(/batchResult: null, copyLoading: false/.test(page),
+      'J13 刷新路径清 batchResult 与复制临时态（P1-8 状态不残留）');
+    // P2：卸载守卫 + 请求序号
+    t.check(/onUnload\(\)\s*\{[\s\S]{0,80}this\._unloaded = true/.test(page),
+      'J14 onUnload 置 _unloaded（离页后迟到回调不再 setData/toast/modal）');
+    t.check(/token !== this\._loadToken/.test(page) && /this\._loadToken = token/.test(page),
+      'J15 refresh/分页请求序号：过期响应（含 more）丢弃不追加');
+    t.check((page.match(/_unloaded/g) || []).length >= 6, 'J16 异步落点普遍先判 _unloaded（≥6 处）');
+    t.check(/this\._copying/.test(page) && page.indexOf('loadPendingForCopy(') !== -1
+      && page.indexOf('view.MAX_AUTO_PAGES') !== -1,
+    'J17 复制防重入 + 循环拉全接线（_copying / loadPendingForCopy / MAX_AUTO_PAGES）');
+    t.check(wxml.indexOf('copyLoading') !== -1 && wxml.indexOf('summary.loadedText') !== -1,
+      'J18 wxml 展示复制加载提示 + 页头已加载文案');
+    t.check(/applyBatchResult\(summary\)/.test(page) && /this\._selected = failedMap/.test(page)
+      && /summary\.failedOrderNos\.forEach/.test(page),
+    'J19 批量结果落状态：仅失败项保留勾选（成功项取消勾选，避免重复送达）');
   });
 }
 

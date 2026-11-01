@@ -12,7 +12,10 @@
  *   D. seed-dev CLI 可用：`--json` 的 stdout 是纯 JSON（可 parse）；
  *   E. 批 16 门禁 #35/#36 扫描器本体：导出提取（对象字面量/简写/别名/逐键）、页面/组件函数识别、
  *      生命周期豁免、基线结构（reasons 枚举/必填字段/无重复/非空集）；组件 status-pill 文案单源
- *      （短文案从 shared/enums.ORDER_STATUS_TEXT 派生，组件内零硬编码七状态中文）。
+ *      （短文案从 shared/enums.ORDER_STATUS_TEXT 派生，组件内零硬编码七状态中文）；
+ *   F. 批 T2 门禁 #36 语法级引用判定：扫描范围 = ALL_PAGES 全量页面目录（含 depth-2 主包页）+ 组件目录；
+ *      合成用例覆盖「跨目录无关同名属性不算引用 / 同目录 this.NAME / WXML 绑定 / 解构 require 跨目录 /
+ *      depth-2 纳入扫描 / 测试引用只在 require 该目录时生效 / 页面死函数基线结构」。
  *
  * 纪律：不 mock wx、不连云端、不写任何数据（dry-run）；期望值全部来自权威文档/注册表，不抄现状。
  * 取数：node tools/selftest-tools.js | Select-Object -Last 2
@@ -23,13 +26,31 @@ const { execFileSync } = require('child_process');
 const { createHarness, installCrashGuard } = require('./selftest');
 const F = require('./lib/fsutil');
 const deadCode = require('./lib/dead-code');
+const PROJECT = require('./lib/project');
 const { ALL_COLLECTIONS } = require(path.join(__dirname, '..', 'shared/collections.js'));
 
 const ROOT = path.resolve(__dirname, '..');
-const EXPECTED_ASSERTIONS = 24; // 实跑读数：node tools/selftest-tools.js（10 原有 + 14 批 16 #35/#36/组件单源）
+const EXPECTED_ASSERTIONS = 35; // 实跑读数：node tools/selftest-tools.js（10 原有 + 14 批 16 + 11 批 T2 #36 语法级引用/覆盖/基线结构）
 
 function read(rel) {
   return fs.readFileSync(path.join(ROOT, rel), 'utf8');
+}
+
+/** 合成扫描视图（#36 扫描器自检用：不落盘、不依赖实仓页面内容）。 */
+function syntheticScan(files) {
+  const rels = Object.keys(files).sort();
+  const text = {};
+  const stripped = {};
+  rels.forEach((rel) => {
+    text[rel] = files[rel];
+    stripped[rel] = rel.endsWith('.js') ? F.stripComments(files[rel]) : files[rel];
+  });
+  return { rels: rels, text: text, stripped: stripped };
+}
+
+/** #36 findings 的可读键（file#name）。 */
+function findingKeys(list) {
+  return list.map((item) => item.file + '#' + item.name);
 }
 
 /** 解析 docs/data/V4_DATA_MODEL.md §5.1 的唯一索引：目标集 = `collection.field`（不写死条数）。 */
@@ -139,6 +160,81 @@ function register(h) {
     const pillCode = F.stripComments(pillJs);
     t.eq(['待接单', '已接单', '已取件', '已送达', '已完成', '已取消', '异常'].filter((s) => pillCode.indexOf(s) !== -1), [],
       '组件 status-pill 内零硬编码七状态中文（文案单源 = shared/enums）');
+  });
+
+  // 批 T2：门禁 #36 语法级引用判定 + 全页覆盖（合成用例先红后绿；防「裸 token 计数」假阴性回归）
+  h.section('§8.2 #36 页面死函数扫描：语法级引用判定与扫描范围（T2）', (t) => {
+    const realScan = deadCode.walkRepo();
+    const realDirs = deadCode.pageDirs(realScan);
+    const pageDirList = realDirs.filter((dir) => dir.indexOf('components/') !== 0);
+    const componentDirList = realDirs.filter((dir) => dir.indexOf('components/') === 0);
+    t.eq(pageDirList.length, PROJECT.ALL_PAGES.length,
+      '#36 实仓扫描页面目录数 = project.ALL_PAGES 条数（含 depth-2 主包页；不写死）');
+    t.check(componentDirList.length > 0, '#36 实仓扫描组件目录数 > 0（防空集全绿）');
+    const depth2Dirs = PROJECT.ALL_PAGES.map((page) => page.slice(0, page.lastIndexOf('/')))
+      .filter((dir) => dir.split('/').length === 2);
+    t.eq(depth2Dirs.filter((dir) => realDirs.indexOf(dir) === -1), [],
+      '#36 pageDirs 覆盖全部 depth-2 主包页目录（pages/launch|profile|role 不再漏扫）');
+
+    const scanUnrelated = syntheticScan({
+      'pages/launch/index.js': 'Page({\n  data: {},\n  clear() {\n    return 1;\n  }\n});\n',
+      'pages/launch/index.wxml': '<view class="x"></view>\n',
+      'utils/other.js': 'function tidy(invite) {\n  return invite.clear();\n}\nmodule.exports = { tidy };\n'
+    });
+    t.eq(findingKeys(deadCode.scanPageFunctions(scanUnrelated)), ['pages/launch/index.js#clear'],
+      '#36(i) 跨目录无关对象同名属性（invite.clear()）不算引用，页面 clear() 仍判死（防假阴性回归）');
+
+    const scanThis = syntheticScan({
+      'pages/role/index.js': 'Page({\n  data: {},\n  clear() {\n    return 1;\n  },\n  onTap() {\n    this.clear();\n  }\n});\n',
+      'pages/role/index.wxml': '<view bindtap="onTap"></view>\n'
+    });
+    t.eq(findingKeys(deadCode.scanPageFunctions(scanThis)), [],
+      '#36(ii) 同目录 this.NAME() 引用 → 函数存活（clear/onTap 均不计死）');
+
+    const scanWxml = syntheticScan({
+      'pages/profile/index.js': 'Page({\n  data: {},\n  onOpen() {\n    return 1;\n  }\n});\n',
+      'pages/profile/index.wxml': '<view bind:tap="onOpen"></view>\n'
+    });
+    t.eq(findingKeys(deadCode.scanPageFunctions(scanWxml)), [],
+      '#36(iii) WXML 事件绑定 bind:tap="NAME" → 函数存活（不误判事件处理器）');
+
+    const scanRequire = syntheticScan({
+      'pages/profile/index.js': 'Page({\n  data: {}\n});\n',
+      'pages/profile/index.wxml': '<view></view>\n',
+      'pages/profile/parts/helper.js': 'function formatName(value) {\n  return String(value || "").trim();\n}\nmodule.exports = { formatName };\n',
+      'pkg-partner/pages/pick-list/index.js': 'const { formatName } = require("../../../pages/profile/parts/helper");\nPage({\n  data: {},\n  onLoad() {\n    formatName("x");\n  }\n});\n'
+    });
+    t.eq(findingKeys(deadCode.scanPageFunctions(scanRequire)), [],
+      '#36(iv) 解构 require 跨目录调用 → 函数存活（require 目标归一化后落在定义目录才计）');
+
+    const scanDepth2 = syntheticScan({
+      'pages/launch/index.js': 'Page({\n  data: {},\n  onTap() {\n    return 1;\n  }\n});\n',
+      'pages/launch/index.wxml': '<view></view>\n'
+    });
+    t.eq(findingKeys(deadCode.scanPageFunctions(scanDepth2)), ['pages/launch/index.js#onTap'],
+      '#36(v) depth-2 主包页目录（pages/launch）纳入扫描：未绑定的 onTap 被判死');
+
+    const scanTestRef = syntheticScan({
+      'pages/launch/index.js': 'Page({\n  data: {},\n  clear() {\n    return 1;\n  }\n});\n',
+      'pages/launch/index.wxml': '<view></view>\n',
+      'tools/selftest-other.js': 'function tidy(invite) {\n  return invite.clear();\n}\nmodule.exports = { tidy };\n'
+    });
+    t.eq(findingKeys(deadCode.scanPageFunctions(scanTestRef)), ['pages/launch/index.js#clear'],
+      '#36 未 require 该目录的测试同名 token（invite.clear）不算测试引用');
+
+    const scanTestCall = syntheticScan({
+      'pages/launch/index.js': 'Page({\n  data: {},\n  clear() {\n    return 1;\n  }\n});\n',
+      'pages/launch/index.wxml': '<view></view>\n',
+      'tools/selftest-page.js': 'const page = require(path.join(ROOT, "pages/launch/index.js"));\npage.clear();\n'
+    });
+    t.eq(findingKeys(deadCode.scanPageFunctions(scanTestCall)), [],
+      '#36 require 该目录的测试里 .clear() 调用 → 存活（测试覆盖的页面函数不算死函数）');
+
+    const pageBaseline = JSON.parse(fs.readFileSync(path.join(ROOT, 'tools/dead-export-baseline.json'), 'utf8'));
+    const pageEntries = Array.isArray(pageBaseline.pageDeadFunctions) ? pageBaseline.pageDeadFunctions : [];
+    t.eq(pageEntries.filter((e) => !e || typeof e.file !== 'string' || !e.file || typeof e.function !== 'string'
+      || !e.function || !deadCode.REASONS.has(e.reason) || typeof e.evidence !== 'string'), [],
+    '#36 页面死函数基线每项含 file+function+合法 reason+evidence（缺失/理由非法判红）');
   });
 }
 

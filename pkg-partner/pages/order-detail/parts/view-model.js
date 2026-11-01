@@ -29,6 +29,8 @@ function buildView(order, events, options) {
   const item = order || {};
   const readonly = opts.readonly === true;
   const nowMs = nowMsOf(opts);
+  // D43：送达文案按公开配置 config.autoCompleteAt（调用方注入 store 里的 configPublic；缺则纯件回退出厂默认）
+  const config = opts.config || null;
   const detail = orderView.buildDetail(item, nowMs);
   const actions = hideBlockedActions(item, actionsPart.buildVisibleActions(item, { readonly: readonly }));
   const voucher = voucherPart.buildVoucher(item, events);
@@ -42,9 +44,9 @@ function buildView(order, events, options) {
     voucher: voucher,
     correctPanel: correctPanel.buildPanel(item),
     exceptionPanel: exceptionPanel.buildPanel(),
-    deliveryPanel: deliveryPanel.buildPanel(item),
+    deliveryPanel: deliveryPanel.buildPanel(item, config),
     deliveredChip: deliveryPanel.deliveredChip(item),
-    guestAutoHint: deliveryPanel.guestAutoCompleteHint(item),
+    guestAutoHint: deliveryPanel.guestAutoCompleteHint(item, config),
     undoBar: undoBar,
     customerNoText: detail.customerNoText,
     partnerNoText: detail.partnerNoText,

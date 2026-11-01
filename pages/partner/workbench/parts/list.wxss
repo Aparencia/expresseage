@@ -61,6 +61,13 @@
   margin-top: 8rpx;
 }
 
+/* D48/P1-5：复制汇总行（只到苑/栋的顾客群口径） */
+.copy-row {
+  margin-top: 12rpx;
+  padding-top: 12rpx;
+  border-top: 1rpx solid #EEF1F6;
+}
+
 .warn-card {
   background: #FFF4CE;
 }

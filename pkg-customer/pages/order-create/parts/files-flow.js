@@ -19,11 +19,14 @@ const FAIL_NEXT_UPLOAD = '可以重新选择截图；也可以不传截图，手
 function applyIdentify(page, items, perImage, patch) {
   const built = model.buildImages(perImage);
   const defaults = page.itemDefaults();
+  // P0-1：件级 imageIndex 是文件序号，必须先按 buildImages 的映射改成 images[] 下标（被过滤图对应件置 -1）
+  const mapped = model.remapImageIndexes((items || []).slice(0, MAX_PARCELS)
+    .map((item) => model.makeItem(item, defaults)), built.imageIndexMap);
   const next = Object.assign({
     perImage: perImage,
     images: built.images,
     tickets: built.tickets,
-    items: (items || []).slice(0, MAX_PARCELS).map((item) => model.makeItem(item, defaults))
+    items: mapped
   }, patch || {});
   if (next.ocrState === 'done' && page.data.step === 1) next.step = 2;
   page.setData(next);
@@ -36,10 +39,30 @@ function discardSession(page) {
   return session;
 }
 
+/** 取消代次（页面实例态，不进 data）：取消/手动填写后旧会话进度与迟到收口据此作废 */
+function cancelGenOf(page) {
+  return typeof page._ocrCancelGen === 'number' ? page._ocrCancelGen : 0;
+}
+
+/** 迟到收口判据：取消代次已变 → 本轮结果作废（不覆盖已手填/已取消态、不自动跳步骤） */
+function runCanceled(page, gen) {
+  return cancelGenOf(page) !== gen;
+}
+
+/** 放弃本次智能识别（§4.3.1 ③）：丢弃在飞会话并让迟到结果作废（取消/先手动填写共用单源） */
+function cancelRun(page) {
+  discardSession(page);
+  page._ocrCancelGen = cancelGenOf(page) + 1;
+  return page._ocrCancelGen;
+}
+
 /** 当前选图轮的识别会话（P0-1：同一轮多批上传共用一个会话；会话只在页面实例上，不进 data） */
 function sessionOf(page) {
   if (!page._ocrSession) {
+    const gen = cancelGenOf(page);
     page._ocrSession = ocrFlow.createIdentifySession(function onState(state) {
+      // P1-10：取消后旧会话的进度事件同样不上屏（避免取消后界面又跳回识别中）
+      if (runCanceled(page, gen)) return;
       page.onOcrPhase(state);
     });
   }
@@ -107,11 +130,18 @@ function retryPlanOf(data) {
 /** 现有件/来源图按 fileId 对齐到新 files 顺序（手填件保留，换图/删图不丢手填） */
 function alignToFiles(page, files) {
   const byFileId = {};
-  const oldFileIdOfIndex = {};
   (page.data.perImage || []).forEach(function index(entry) {
     const fid = (entry.image && entry.image.fileId) || '';
-    oldFileIdOfIndex[entry.imageIndex] = fid;
     if (fid) byFileId[fid] = entry;
+  });
+  // P0-1：页面件的 imageIndex 已是 images[] 下标（applyIdentify 重映射后），先还原为来源图 fileId，
+  // 再按新 files 顺序重新定位——不能拿它直接当文件序号（过滤过图时两者不相等）。
+  const fileIdByImageIndex = (page.data.images || []).map(function map(image) {
+    return (image && image.fileId) || '';
+  });
+  const indexByFileId = {};
+  files.forEach(function order(file, newIndex) {
+    if (file && file.fileId) indexByFileId[file.fileId] = newIndex;
   });
   const perImage = [];
   files.forEach(function order(file, newIndex) {
@@ -123,11 +153,8 @@ function alignToFiles(page, files) {
       items.push(Object.assign({}, item, { imageIndex: -1 }));
       return;
     }
-    const fid = oldFileIdOfIndex[item.imageIndex] || '';
-    let newIndex = -1;
-    files.forEach(function find(file, i) {
-      if (fid && file.fileId === fid) newIndex = i;
-    });
+    const fid = fileIdByImageIndex[item.imageIndex] || '';
+    const newIndex = fid && Object.prototype.hasOwnProperty.call(indexByFileId, fid) ? indexByFileId[fid] : -1;
     if (newIndex >= 0) items.push(Object.assign({}, item, { imageIndex: newIndex }));
   });
   const added = files.filter(function picked(file) {
@@ -162,17 +189,24 @@ function resultPatchOf(result, merged) {
 /**
  * 跑一轮识别并把结果写回页面（选图与重新识别共用；识别本身不重新上传）。
  * session 非空时走「已经边上传边识别」的会话收口（同一 fileId 不重复识别），否则退化为一次性识别。
+ * P1-10：收口前记录取消代次——用户取消/先手动填写后，迟到的识别结果整轮作废（不覆盖、不自动跳步骤）。
  */
 async function runIdentify(page, files, keptItems, keptPerImage, session) {
   const list = (Array.isArray(files) ? files : []).slice(0, MAX_IMAGES);
+  const gen = cancelGenOf(page);
+  const phase = function phase(state) {
+    if (!runCanceled(page, gen)) page.onOcrPhase(state);
+  };
   page.setData({ ocrState: 'upload' });
   try {
     const result = session
       ? await session.finish(list)
-      : await ocrFlow.identifyMany(list, (state) => page.onOcrPhase(state));
+      : await ocrFlow.identifyMany(list, phase);
+    if (runCanceled(page, gen)) return;
     const merged = ocrFlow.mergeItems(keptItems, keptPerImage, result);
     applyIdentify(page, merged.items, merged.perImage, resultPatchOf(result, merged));
   } catch (err) {
+    if (runCanceled(page, gen)) return;
     applyIdentify(page, keptItems, keptPerImage, {
       ocrState: 'failed',
       ocrError: (err && err.message) || '识别失败，可手动填写'
@@ -228,6 +262,22 @@ async function onRetryOcr(page) {
     discardSession(page); // 重新识别：先丢弃可能还在飞的旧会话，迟到的旧结果不再参与收口
     page.setData({ failureText: '', failureNext: '', ocrError: '', imageFailures: [], aiHint: '' });
     return runIdentify(page, files, manualItems, []);
+  });
+}
+
+/**
+ * §4.3.1 ③「取消」：放弃本次智能识别——丢弃在飞会话并推进取消代次，迟到的进度事件与识别结果
+ * 都不再上屏，也不自动跳步骤（文案仍按 USER_CANCEL，口径在 parts/ai-fallback 单源）。
+ */
+function onCancelAi(page) {
+  cancelRun(page);
+  const copy = ocrFlow.aiFallbackCopy('USER_CANCEL');
+  page.setData({
+    manualPicked: true,
+    ocrState: 'failed',
+    failureText: copy.text,
+    failureNext: copy.next,
+    aiHint: ''
   });
 }
 
@@ -294,9 +344,12 @@ function onPickError(page, e) {
 module.exports = {
   FAIL_NEXT_UPLOAD,
   applyIdentify,
+  cancelRun,
   retryPlanOf,
   onUploaded,
   onPickFile,
   onPickError,
-  onRetryOcr
+  onRetryOcr,
+  onCancelAi,
+  runIdentify
 };

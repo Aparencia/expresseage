@@ -15,6 +15,8 @@
  * Q5 D48（批 17）：order.listPartner 工作台响应只增 summary（按苑/栋聚合 + 已取件/已送达/进行中计数 +
  *    总单数/总件数）——必须复用本次 find 的命中行（分页前候选集），零额外查询/零二次 find；
  *    history/customer 视图不返回 summary（既有形状不变）。纯件聚合与 handler 端到端都断言。
+ *    P1-6（修复批 T3）：任一状态 find 触达扫描上限（行数 >= scanLimit）→ summary.truncated=true 如实标注
+ *    （合法基线/恰好触达/未触达三档对照；触顶也不额外扫描；history 形状不变）。
  * TD-044（关键词部分匹配受扫描窗限制）：本批不做——无索引的模糊匹配需要全量扫描或 DAO 暴露 RegExp/OR
  *   （跨域且会引入不可控扫描量），按任务要求如实回报而非硬做；完整订单号精确查询的越窗兜底仍由既有实现承担。
  *
@@ -44,8 +46,8 @@ const {
 } = cases;
 
 const MINUTE = 60 * 1000;
-// 23（Q1~Q4）+ 19（Q5 D48 summary）= 42；少算/多算都判红。
-const EXPECTED_ASSERTIONS = 42;
+// 23（Q1~Q4）+ 27（Q5 D48 summary，含 P1-6 truncated）= 50；少算/多算都判红。
+const EXPECTED_ASSERTIONS = 50;
 
 function pad4(value) {
   return String(value).padStart(4, '0');
@@ -401,7 +403,7 @@ async function sectionQ4(t) {
 // ================================================================ Q5 D48 summary
 // D48（批 17）：工作台响应只增 summary；聚合必须基于「分页前候选集」（本次 find 命中行），零额外查询。
 // 期望值逐字来自 CONTRACT §13 D48 / DATA_MODEL §7.5：按苑/栋聚合 + 进行中/已取件/已送达 + 总单/总件。
-const SUMMARY_TOP_KEYS = ['byDorm', 'byStatus', 'parcels', 'total'];
+const SUMMARY_TOP_KEYS = ['byDorm', 'byStatus', 'parcels', 'total', 'truncated'];
 const SUMMARY_STATUS_KEYS = ['delivered', 'ongoing', 'picked'];
 const SUMMARY_DORM_KEYS = ['buildingNo', 'count', 'zone'];
 const SUMMARY_BANNED = ['room', 'roomTag', 'dormKey', 'pickupCode', 'phoneTail', 'displayName',
@@ -452,12 +454,28 @@ function summaryExpected() {
       { zone: 'D', buildingNo: 10, count: 1 },
       { zone: 'X', buildingNo: 2, count: 1 },
       { zone: 'N', buildingNo: 1, count: 1 }
-    ]
+    ],
+    truncated: false
   };
 }
 
 function emptySummary() {
-  return { total: 0, parcels: 0, byStatus: { picked: 0, delivered: 0, ongoing: 0 }, byDorm: [] };
+  return {
+    total: 0,
+    parcels: 0,
+    byStatus: { picked: 0, delivered: 0, ongoing: 0 },
+    byDorm: [],
+    truncated: false
+  };
+}
+
+// P1-6：单状态 count 单进行中单（默认 limit=20 → scanLimit=min(max(60,60),300)=60，limit=5 也是 60）。
+function narrowWindowOrders(count) {
+  const list = [];
+  for (let i = 0; i < count; i += 1) {
+    list.push(orderAt('20261022-' + pad4(9400 + i), SUBMITTED, NOW - i * MINUTE));
+  }
+  return list;
 }
 
 async function sectionQ5(t) {
@@ -466,7 +484,7 @@ async function sectionQ5(t) {
   const pure = summaryPure ? summaryPure.buildSummary(summaryOrders()) : null;
   t.eq(pure, summaryExpected(), 'Q5.1 纯件聚合：苑/栋合并 + 已取件/已送达/进行中 + 总单 6/总件 7');
   t.eq(pure ? Object.keys(pure).sort() : null, SUMMARY_TOP_KEYS,
-    'Q5.2 summary 顶层键恰为 byDorm/byStatus/parcels/total');
+    'Q5.2 summary 顶层键恰为 byDorm/byStatus/parcels/total/truncated（D48 + P1-6 只增）');
   t.eq(pure ? Object.keys(pure.byStatus).sort() : null, SUMMARY_STATUS_KEYS,
     'Q5.3 byStatus 恰为 picked/delivered/ongoing 三键（异常归进行中）');
   t.eq(pure && pure.byDorm[0] ? Object.keys(pure.byDorm[0]).sort() : null, SUMMARY_DORM_KEYS,
@@ -536,8 +554,39 @@ async function sectionQ5(t) {
     total: 1,
     parcels: 2,
     byStatus: { picked: 1, delivered: 0, ongoing: 0 },
-    byDorm: [{ zone: 'D', buildingNo: 3, count: 1 }]
+    byDorm: [{ zone: 'D', buildingNo: 3, count: 1 }],
+    truncated: false
   }, 'Q5.18 summary 口径与本次筛选一致（status=PICKED 只汇总命中的 1 单 2 件）');
+
+  // P1-6：扫描触顶如实标注（合法基线不误报 → 触顶反例 → 边界 60/59 → 形状/查询次数不因截断变化）
+  const pureTruncated = summaryPure ? summaryPure.buildSummary(summaryOrders(), { truncated: true }) : null;
+  t.eq([pure ? pure.truncated : null, pureTruncated ? pureTruncated.truncated : null],
+    [false, true], 'Q5.19 纯件 truncated 只认显式 true：缺省 false、显式触顶 true（不静默少报也不误报）');
+  t.eq(workbench.data.summary.truncated, false,
+    'Q5.20 基线 6 单 handler 响应带 truncated=false（未触顶不误报）');
+  const wideDb = world({ orders: narrowWindowOrders(61) });
+  const wideApi = apiOf(wideDb, P1);
+  const wide = await wideApi.call('order.listPartner', { view: 'workbench', limit: 5 });
+  t.eq([wide.ok, wide.data.summary.truncated, wide.data.summary.total], [true, true, 60],
+    'Q5.21 单状态 61 单触达 scanLimit=60 → truncated=true，聚合只覆盖已取到的 60 行（不虚构总数）');
+  t.eq(wide.data.summary.byDorm.reduce((sum, row) => sum + row.count, 0), wide.data.summary.total,
+    'Q5.22 触顶时 byDorm 计数和 = summary.total（聚合行数自洽，不丢行）');
+  const exactApi = apiOf(world({ orders: narrowWindowOrders(60) }), P1);
+  const exact = await exactApi.call('order.listPartner', { view: 'workbench', limit: 5 });
+  t.eq([exact.data.summary.truncated, exact.data.summary.total], [true, 60],
+    'Q5.23 边界：恰好 60 行 = scanLimit → 触达即标注 truncated=true（宁可说明不可静默）');
+  const belowApi = apiOf(world({ orders: narrowWindowOrders(59) }), P1);
+  const below = await belowApi.call('order.listPartner', { view: 'workbench', limit: 5 });
+  t.eq([below.data.summary.truncated, below.data.summary.total], [false, 59],
+    'Q5.24 边界：59 行未触顶 → truncated=false（不误报少报）');
+  const wideHistory = await wideApi.call('order.listPartner', { view: 'history' });
+  t.eq([wideHistory.ok, wideHistory.data.summary, Object.keys(wideHistory.data).sort()],
+    [true, undefined, ['counts', 'list', 'nextCursor']],
+    'Q5.25 触顶数据下 history 视图仍无 summary（既有响应形状不变）');
+  const wideCounted = countingApiOf(wideDb, P1);
+  const wideCountedRes = await wideCounted.api.call('order.listPartner', { view: 'workbench', limit: 5 });
+  t.eq([wideCountedRes.ok, wideCounted.counters.orderCounts, wideCounted.counters.orderGets],
+    [true, 6, 5], 'Q5.26 触顶路径也零额外查询（仍 6 count + 5 find，不因 truncated 再扫一遍）');
 }
 
 // 段内自带独立 fake DB 世界与「合法基线 → 反例」结构；段之间互不依赖。

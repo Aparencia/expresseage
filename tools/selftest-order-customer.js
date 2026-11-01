@@ -50,7 +50,7 @@ const precheck = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/
 const orderScopeReq = fsutil.tryRequire(path.join(ROOT, 'utils/order-scope.js'));
 const orderScope = orderScopeReq.value || {};
 
-const EXPECTED_ASSERTIONS = 285; // 274 + 11：D47 预约详情展示/到点标红/历史 SLOT // 实际断言总数（273 + 1：D43 送达等待提示改日结批时刻）
+const EXPECTED_ASSERTIONS = 290; // 285 + 5：N 组首页 refresh 在途切 tab/卸载守卫（P2） // 274 + 11：D47 预约详情展示/到点标红/历史 SLOT // 实际断言总数（273 + 1：D43 送达等待提示改日结批时刻）
 const caseLib = require('./lib/order-customer-cases');
 const {
   STATUS, STATUS_LITERALS, PAGES, ISO, NOW, DOC_MS, textOf, actionsFor, dto, event, orderDoc,
@@ -894,6 +894,40 @@ function register(h) {
     t.check(/pageExtras\(payload\.order, this\.data\.config, Date\.now\(\)\)/.test(detailFlow),
       'M9 详情页每次刷新用当前时钟重算标红（不必等用户重进页面）');
     t.notEmpty(latestAt, 'M 组样本非空');
+  });
+
+  // ---------------------------------------------------------------- N 首页 refresh 在途切 tab/卸载守卫（P2）
+  h.section('N. 首页 refresh 在途切 tab/卸载守卫：迟到结果不写已隐藏页、不启 ticker（P2）', (t) => {
+    const home = textOf(PAGES.home);
+    // 判据①：await Promise.all 之后、结果 setData 之前必须判 _hidden（有牙：旧实现无守卫被判否）
+    const guardedAfterAwait = (src) => {
+      const awaitAt = src.indexOf('await Promise.all(tasks)');
+      const guardAt = src.indexOf('if (this._hidden === true) return;', awaitAt);
+      const setDataAt = src.indexOf('this.setData(plan.setData)');
+      return awaitAt >= 0 && guardAt > awaitAt && setDataAt > guardAt;
+    };
+    // 判据②：startTicker 创建定时器之前必须判 _hidden
+    const tickerGuarded = (src) => {
+      const tickerAt = src.indexOf('startTicker() {');
+      const guardAt = src.indexOf('if (this._hidden === true) return;', tickerAt);
+      const intervalAt = src.indexOf('setInterval(', tickerAt);
+      return tickerAt >= 0 && guardAt > tickerAt && intervalAt > guardAt;
+    };
+    const oldRefresh = 'async refresh() {\n'
+      + '  const results = await Promise.all(tasks);\n'
+      + '  this.setData(plan.setData);\n'
+      + '  this.startTicker();\n'
+      + '}\n';
+    t.check(guardedAfterAwait(oldRefresh) === false,
+      'N1 正控：旧 refresh 在途无隐藏守卫被判否（判据有牙）');
+    t.check(guardedAfterAwait(home) === true,
+      'N2 refresh await 后先判 _hidden 再 setData（切 tab/卸载的迟到结果不写已隐藏页）');
+    t.check(tickerGuarded(home) === true,
+      'N3 startTicker 建定时器前判 _hidden（已隐藏不启 ticker/不后台空转）');
+    t.check(/onHide\(\)\s*\{\s*this\._hidden = true;/.test(home)
+      && /onUnload\(\)\s*\{\s*this\._hidden = true;/.test(home),
+    'N4 onHide/onUnload 置 _hidden（守卫有真实状态来源，不是常量恒假）');
+    t.notEmpty(home, 'N 组样本非空');
   });
 }
 

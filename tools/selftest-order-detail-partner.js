@@ -31,7 +31,7 @@ const client = require(path.join(ROOT, 'api/client.js'));
 const orderApi = require(path.join(ROOT, 'api/modules/order.js'));
 const serverDto = require(path.join(ROOT, 'cloudfunctions/api/handlers/order/_dto.js'));
 
-const EXPECTED_ASSERTIONS = 182; // 172 + 10：D47 兼职详情预约文案/到点标红/历史 SLOT // 实际断言总数（171 + 1：D43 送达浮层「24h」旧口径清零）
+const EXPECTED_ASSERTIONS = 190; // 182 + 8：修复批 T4 P1-9 送达文案按 config.autoCompleteAt（D43 配置化）
 const STATUS = orderState.STATUS;
 const STATUS_LITERALS = enums.ORDER_STATUS_LIST.slice();
 const PAGE_JS = 'pkg-partner/pages/order-detail/index.js';
@@ -365,7 +365,7 @@ function register(h) {
   });
 
   // ---------------------------------------------------------------- D deliveryNote
-  h.section('D. 送达浮层：备注 ≤100/快捷标签/guest 24h 自动完成文案', async (t) => {
+  h.section('D. 送达浮层：备注 ≤100/快捷标签/guest 日结批自动完成文案（D43，按 config.autoCompleteAt）', async (t) => {
     const normal = await realDto(partnerDoc(STATUS.PICKED));
     const guestDoc = partnerDoc(STATUS.PICKED, {
       source: enums.ORDER_SOURCE.PARTNER,
@@ -408,6 +408,32 @@ function register(h) {
       'D14 备注去首尾空格后提交');
     t.check(viewModel.buildView(normal, [], { nowMs: NOW_MS }).deliveryPanel.confirmText.indexOf('待确认') >= 0,
       'D15 视图装配把送达浮层文案带进页面快照');
+    // P1-9：送达文案按公开配置 autoCompleteAt 生成（管理员改配置后兼职端不再固定 23:50）
+    const guestPanel22 = deliveryPanel.buildPanel(guest, { autoCompleteAt: '22:30' });
+    t.eq(guestPanel22.confirmText, '该顾客未绑定，无需确认；系统每天 22:30 自动完成',
+      'D16 配置 autoCompleteAt=22:30 → guest 确认框文案 22:30（不写死 23:50）');
+    t.check(guestPanel22.guestHint.indexOf('22:30') >= 0 && guestPanel22.guestHint.indexOf('23:50') < 0,
+      'D17 配置 22:30 → guest 提示整段按 22:30（旧 23:50 零残留）');
+    t.check(deliveryPanel.guestAutoCompleteHint(guestDelivered, { autoCompleteAt: '22:30' }).indexOf('22:30') >= 0
+      && deliveryPanel.guestAutoCompleteHint(guestDelivered, { autoCompleteAt: '22:30' }).indexOf('顺延次日') >= 0,
+    'D18 已送达 chip 提示也跟随配置（22:30 + 顺延次日）');
+    const fallback = deliveryPanel.buildPanel(guest, { autoCompleteAt: '24:00' });
+    t.check(fallback.confirmText.indexOf('23:50') >= 0
+      && deliveryPanel.buildPanel(guest).confirmText.indexOf('23:50') >= 0
+      && deliveryPanel.buildPanel(guest, {}).confirmText.indexOf('23:50') >= 0,
+    'D19 缺配置/非法配置 → 回退出厂默认 23:50（唯一默认常量在 config/defaults）');
+    t.check(viewModel.buildView(guest, [], { nowMs: NOW_MS, config: { autoCompleteAt: '22:30' } })
+      .deliveryPanel.confirmText.indexOf('22:30') >= 0,
+    'D20 视图装配把 config 注入送达浮层（页面快照按配置）');
+    t.check(viewModel.buildView(guestDelivered, [], { nowMs: NOW_MS, config: { autoCompleteAt: '22:30' } })
+      .guestAutoHint.indexOf('22:30') >= 0,
+    'D21 视图装配把 config 注入 guest 已送达提示');
+    const panelSource = textOf(partsDir + '/delivery-panel.js');
+    t.check(panelSource.indexOf('23:50') === -1 && panelSource.indexOf('config/defaults') >= 0,
+      'D22 零件零 23:50 硬编码，默认值单源 config/defaults（不再第二处写死）');
+    const pageSource = textOf(PAGE_JS);
+    t.check(/config: store\.get\('config'\)/.test(pageSource) && pageSource.indexOf("store.get('config')") >= 0,
+      'D23 页面用 store 里的 configPublic 注入（与顾客端 status-view 同源）');
     t.notEmpty(deliveryPanel.QUICK_TAGS, 'D 组样本非空');
   });
 

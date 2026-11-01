@@ -52,25 +52,9 @@ function load() {
   });
 }
 
-/** 服务类型目录变化后校准 serviceCode/serviceIndex（目录未到时回退第一项） */
-function serviceIndexes(items, services) {
-  const list = services || [];
-  return (items || []).map(function map(item) {
-    const next = Object.assign({}, item);
-    let index = -1;
-    for (let i = 0; i < list.length; i += 1) {
-      if (list[i] && list[i].code === next.serviceCode) index = i;
-    }
-    next.serviceIndex = index >= 0 ? index : 0;
-    next.serviceCode = list.length > 0 ? list[next.serviceIndex].code : '';
-    return next;
-  });
-}
-
 module.exports = {
   load,
   loadConfig,
   loadPartner,
-  loadProfile,
-  serviceIndexes
+  loadProfile
 };

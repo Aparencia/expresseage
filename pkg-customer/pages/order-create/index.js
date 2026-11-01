@@ -9,7 +9,6 @@ const orderApi = require('../../../api/modules/order');
 const route = require('../../../config/route');
 const model = require('./parts/model');
 const deliveryModel = require('./parts/delivery');
-const ocrFlow = require('./parts/ocr-flow');
 const bootstrap = require('./parts/bootstrap');
 const reorder = require('./parts/reorder');
 const filesFlow = require('./parts/files-flow');
@@ -173,8 +172,9 @@ Page({
     return reorder.defaultsFor({}, this.data.reorderPrefill, this.data.services);
   },
 
-  // §4.3.1 ③：识别进行中即可「先手动填写」——不阻塞手填，迟到的识别结果不再覆盖
+  // §4.3.1 ③：识别进行中即可「先手动填写」——不阻塞手填，迟到结果不再覆盖（丢弃在飞会话的判据在 parts/files-flow）
   onManualTap() {
+    filesFlow.cancelRun(this);
     const defaults = this.itemDefaults();
     this.setData({
       manualPicked: true,
@@ -217,16 +217,9 @@ Page({
     this.onManualTap();
   },
 
-  // §4.3.1 ③「取消」：放弃本次智能识别（迟到的建议丢弃），文案按取消态静默降级
+  // §4.3.1 ③「取消」：放弃本次智能识别（丢弃在飞会话；迟到结果不再覆盖/不自动跳步骤；编排在 parts/files-flow）
   onCancelAi() {
-    const copy = ocrFlow.aiFallbackCopy('USER_CANCEL');
-    this.setData({
-      manualPicked: true,
-      ocrState: 'failed',
-      failureText: copy.text,
-      failureNext: copy.next,
-      aiHint: ''
-    });
+    filesFlow.onCancelAi(this);
   },
 
   onPreviewImage() {

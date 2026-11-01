@@ -72,10 +72,6 @@ function pieceOf(order, itemIndex) {
   return list[index] || list[0];
 }
 
-function pieceCountOf(order) {
-  return piecesOf(order).length;
-}
-
 // 四档：1 需查明 → 2 快递柜 → 3 分段码 → 4 其他（整单取最差件，与 CONTRACT §5 组内四档同序）
 function tierOfPiece(piece) {
   const item = piece || {};
@@ -200,7 +196,6 @@ module.exports = {
   TIER_TEXT,
   piecesOf,
   pieceOf,
-  pieceCountOf,
   indexTextOf,
   codeTextOf,
   tierOfPiece,

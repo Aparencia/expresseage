@@ -15,6 +15,8 @@
  *   H. 复制汇总（D48，批 17）：纯件按苑/栋生成顾客群文案（只到楼栋级、无房间/尾号/码/昵称/单号）、
  *      空数据不出假文案、200 字上限按栋数省略、同栋合并/苑固定序/异常归进行中、页面按需调
  *      order.listPartner({view:'workbench',limit:1}) 取服务端 summary（不在 onShow 预拉、不本地聚合）。
+ *      P1-6（修复批 T3）：纯件移主包单源 pages/partner/workbench/parts/summary-copy.js（统计页/工作台共用）；
+ *      summary.truncated=true 时文案末尾追加「仅统计最近 N 单，可能少报」，toast 同步提示。
  * 纪律：不 mock 全局 wx（本套只测纯件与静态文本）；先合法基线再反例；不空集判绿；
  *       EXPECTED_ASSERTIONS 与实际断言数精确相等。取数：node tools/selftest-partner-stats.js
  */
@@ -30,17 +32,18 @@ const ROOT = path.resolve(__dirname, '..');
 const viewModel = require(path.join(ROOT, 'pkg-partner/pages/stats/parts/view-model.js'));
 const dailyReport = require(path.join(ROOT, 'pkg-partner/pages/stats/parts/daily-report.js'));
 // D48 纯件：未实现时 try/catch 兜住，让 H 段逐条给出「缺件/缺字段」首红，而不是整套 require 崩溃。
+// P1-6：纯件单源已移到主包 pages/partner/workbench/parts/summary-copy.js（统计页与工作台共用）。
 function loadSummaryCopy() {
   try {
-    return require(path.join(ROOT, 'pkg-partner/pages/stats/parts/summary-copy.js'));
+    return require(path.join(ROOT, 'pages/partner/workbench/parts/summary-copy.js'));
   } catch (error) {
     return null;
   }
 }
 const summaryCopy = loadSummaryCopy();
 
-// 203（A~G 既有）+ 36（H D48 复制汇总）= 239；少算/多算都判红。
-const EXPECTED_ASSERTIONS = 239;
+// 203（A~G 既有）+ 45（H D48 复制汇总，含 P1-6 truncated/单源）= 248；少算/多算都判红。
+const EXPECTED_ASSERTIONS = 248;
 
 const P = {
   page: 'pkg-partner/pages/stats/index.js',
@@ -49,9 +52,12 @@ const P = {
   json: 'pkg-partner/pages/stats/index.json',
   viewModel: 'pkg-partner/pages/stats/parts/view-model.js',
   report: 'pkg-partner/pages/stats/parts/daily-report.js',
-  summaryCopy: 'pkg-partner/pages/stats/parts/summary-copy.js',
+  summaryCopy: 'pages/partner/workbench/parts/summary-copy.js',
+  summaryCopyMoved: 'pkg-partner/pages/stats/parts/summary-copy.js',
   oldSummary: 'pkg-partner/pages/stats/parts/summary.js',
-  workbench: 'pages/partner/workbench/index.js'
+  workbench: 'pages/partner/workbench/index.js',
+  workbenchActions: 'pages/partner/workbench/parts/page-actions.js',
+  workbenchWxml: 'pages/partner/workbench/index.wxml'
 };
 const STATS_JS = [P.page, P.viewModel, P.report];
 
@@ -121,7 +127,8 @@ function emptyStatsDto(overrides) {
 // D48 复制汇总：空视图形状（纯件未实现时逐条首红，不做假绿）
 function emptyCopyShape() {
   return {
-    visible: false, text: '', copyText: '', total: 0, parcels: 0, dormCount: 0, truncated: false
+    visible: false, text: '', copyText: '', total: 0, parcels: 0, dormCount: 0,
+    truncated: false, textOmitted: false
   };
 }
 
@@ -564,8 +571,8 @@ function register(h) {
       'H02 D48 文案格式：总单/总件 + 苑/栋聚合（固定 D→X 序）+ 进行中/已取件/已送达');
     t.check(!!copy && copy.text.indexOf('【代取汇总】') === 0, 'H03 D48 标题固定【代取汇总】开头');
     t.eq(copy && copy.copyText, copy && copy.text, 'H04 D48 复制内容=展示内容（单源，不复制看不见的字段）');
-    t.eq(copy && [copy.visible, copy.total, copy.parcels, copy.dormCount, copy.truncated],
-      [true, 8, 10, 3, false], 'H05 D48 视图字段：可复制/总单 8/总件 10/3 栋/未截断');
+    t.eq(copy && [copy.visible, copy.total, copy.parcels, copy.dormCount, copy.truncated, copy.textOmitted],
+      [true, 8, 10, 3, false, false], 'H05 D48 视图字段：可复制/总单 8/总件 10/3 栋/未截断（数据与文案两个标记都 false）');
     t.eq(summaryCopy ? summaryCopy.copyOf(null) : null, emptyCopyShape(),
       'H06 D48 无 summary（null）→ 不可复制、零假文案');
     t.eq(summaryCopy ? summaryCopy.copyOf({}) : null, emptyCopyShape(),
@@ -604,8 +611,8 @@ function register(h) {
     t.check(!!many && /…等 \d+ 栋/.test(many.text), 'H14 D48 超长时给出省略栋数标记「…等 N 栋」');
     const included = many ? (many.text.match(/\d+栋 \d+单/g) || []).length : -1;
     const omitted = many ? Number((many.text.match(/…等 (\d+) 栋/) || [])[1]) : -1;
-    t.eq(many ? [included + omitted, many.truncated, many.dormCount] : null, [50, true, 50],
-      'H15 D48 省略口径：已列栋数 + 省略栋数 = 全部 50 栋，truncated=true');
+    t.eq(many ? [included + omitted, many.textOmitted, many.dormCount] : null, [50, true, 50],
+      'H15 D48 省略口径：已列栋数 + 省略栋数 = 全部 50 栋，textOmitted=true');
     t.check(!!many && many.text.indexOf('【代取汇总】当前 50 单（50 件）；') === 0
       && /。进度：进行中 50 \/ 已取件 0 \/ 已送达 0。$/.test(many.text),
     'H16 D48 超长截断只省略苑/栋部分，总单/进度尾句完整保留');
@@ -666,6 +673,36 @@ function register(h) {
       && moduleText.indexOf('setStorageSync') === -1, 'H35 D48 纯件零随机/零本地存储');
     t.check(moduleText.indexOf('MAX_TEXT_CHARS') !== -1 && occurrences(pageText, '200') === 0,
       'H36 D48 200 字上限在纯件常量单源声明（页面不重复写死上限）');
+
+    // ---- P1-6：扫描触顶如实说明 + 纯件移主包单源（统计页/工作台共用） ----
+    t.check(exists(P.summaryCopy) && !exists(P.summaryCopyMoved),
+      'H37 P1-6 纯件单源在主包 pages/partner/workbench/parts；旧 pkg-partner 路径已删除');
+    const truncatedCopy = summaryCopy
+      ? summaryCopy.copyOf(Object.assign({}, sampleSummary(), { truncated: true })) : null;
+    t.check(!!truncatedCopy && truncatedCopy.truncated === true
+      && truncatedCopy.text.indexOf('（仅统计最近 8 单，可能少报）') !== -1
+      && truncatedCopy.text.indexOf('进度：进行中 6 / 已取件 1 / 已送达 1。') !== -1,
+    'H38 P1-6 summary.truncated=true → 文案末尾如实说明「仅统计最近 N 单，可能少报」且进度尾句保留');
+    t.eq(truncatedCopy ? [truncatedCopy.textOmitted, truncatedCopy.dormCount] : null, [false, 3],
+      'H39 P1-6 少报说明不占用「省略栋数」标记（truncated 与 textOmitted 语义分开）');
+    t.check(!!copy && copy.text.indexOf('仅统计最近') === -1,
+      'H40 P1-6 未触顶时文案不出现少报说明（不虚报）');
+    const manyTruncated = summaryCopy
+      ? summaryCopy.copyOf(Object.assign({}, manyDormSummary(), { truncated: true })) : null;
+    t.check(!!manyTruncated && manyTruncated.text.length <= 200
+      && /…等 \d+ 栋/.test(manyTruncated.text) && manyTruncated.text.indexOf('可能少报') !== -1,
+    'H41 P1-6 少报说明计入 200 字上限：仍省略苑/栋并保留如实说明，不截半个字');
+    t.eq(summaryCopy ? [
+      summaryCopy.copyOf(Object.assign({}, sampleSummary(), { truncated: 1 })).truncated,
+      summaryCopy.copyOf(Object.assign({}, sampleSummary(), { truncated: 'true' })).truncated
+    ] : null, [false, false], 'H42 P1-6 truncated 只认 boolean true（脏值不误报少报）');
+    t.check(handlerBody.indexOf('copy.truncated') !== -1 && handlerBody.indexOf('可能少报') !== -1,
+      'H43 P1-6 统计页 toast 在 truncated 时如实提示可能少报');
+    t.check(textOf(P.page).indexOf("require('../../../pages/partner/workbench/parts/summary-copy')") !== -1,
+      'H44 P1-6 统计页 require 主包单源（不再依赖 pkg 子包副本）');
+    t.check(textOf(P.workbenchActions).indexOf('summary-copy') !== -1
+      && textOf(P.workbenchWxml).indexOf('onCopySummaryTap') !== -1,
+    'H45 P1-5 工作台复用同一纯件（page-actions require + WXML 复制汇总按钮）');
   });
 }
 

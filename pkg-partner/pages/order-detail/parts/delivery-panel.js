@@ -1,20 +1,19 @@
 // pkg-partner/pages/order-detail/parts/delivery-panel.js · 送达备注浮层纯件（deliveryNote / guest 日结批自动完成文案）
 // 契约：docs/ux/V4_UX_PARTNER.md §3.3「送达」、§4.14 代客单凭证；docs/data/V4_DATA_MODEL.md §7.5 order.markDelivered / §7.6 config.getPublic。
-// 边界：guest 判定只读服务端 DTO.source（= ORDER_SOURCE.PARTNER）；自动完成时刻按 D43 日结批（默认 23:50），
-//       本零件不推算状态、不等同服务端 AUTO_COMPLETED 事件（文案只说明默认口径，配置改动以服务端为准）。
+// 边界：guest 判定只读服务端 DTO.source（= ORDER_SOURCE.PARTNER）；自动完成时刻（D43 日结批）按调用方注入的公开配置
+//       config.autoCompleteAt 生成文案（缺配置/非法才回退出厂默认，默认值唯一单源 = config/defaults.DEFAULT_CONFIG）；
+//       本零件不推算状态、不等同服务端 AUTO_COMPLETED 事件（文案只说明口径，配置改动以服务端为准）。
+const defaults = require('../../../../config/defaults');
 const enums = require('../../../../shared/enums');
 
 const NOTE_MAX = 100;
-// D43（CONTRACT §13）：UTC+8 日结批默认时刻（config.autoCompleteAt 出厂值）；文案说明「每天该时刻」。
-const AUTO_COMPLETE_AT = '23:50';
 const QUICK_TAGS = ['放宿舍门口', '交到室友手里', '放 3 号柜'];
 const COPY = {
   title: '标记送达',
   normalConfirm: '确认已送达？顾客会看到进度到「已送达·待确认」。',
-  guestConfirm: '该顾客未绑定，无需确认；系统每天 ' + AUTO_COMPLETE_AT + ' 自动完成',
   guestChip: '已送达·待自动完成',
-  guestHint: '代客单没有顾客确认路径；系统每天 ' + AUTO_COMPLETE_AT + ' 自动完成（送达当天已过 '
-    + AUTO_COMPLETE_AT + ' 的顺延次日），请把交接位置写进送达备注，并线下告知顾客进度。',
+  guestConfirmPrefix: '该顾客未绑定，无需确认；系统每天 ',
+  guestHintPrefix: '代客单没有顾客确认路径；系统每天 ',
   notePlaceholder: '送达备注（选填，≤100 字；写清放在哪里）',
   noteTooLong: '送达备注最多 100 字',
   success: '已标记送达',
@@ -25,16 +24,34 @@ function textOf(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+// D43（CONTRACT §13）：UTC+8 日结批时刻 config.autoCompleteAt（HH:MM）；
+// 缺配置/非法一律回退出厂默认（唯一默认常量在 config/defaults，本零件不再写第二处处所时刻字面量）。
+function autoCompleteAtOf(config) {
+  const source = config && typeof config === 'object' ? config : {};
+  return defaults.normalizeClockText(source.autoCompleteAt) || defaults.DEFAULT_CONFIG.autoCompleteAt;
+}
+
 // guest 单 = 兼职代客下单（source=PARTNER）：无顾客确认路径，每日日结批自动完成
 function isGuestOrder(order) {
   return textOf(order && order.source) === enums.ORDER_SOURCE.PARTNER;
 }
 
-function guestAutoCompleteText() {
-  return '系统每天 ' + AUTO_COMPLETE_AT + ' 自动完成（送达当天已过 ' + AUTO_COMPLETE_AT + ' 的顺延次日）';
+function guestAutoCompleteText(config) {
+  const at = autoCompleteAtOf(config);
+  return '系统每天 ' + at + ' 自动完成（送达当天已过 ' + at + ' 的顺延次日）';
 }
 
-function buildPanel(order) {
+function guestConfirmText(config) {
+  return COPY.guestConfirmPrefix + autoCompleteAtOf(config) + ' 自动完成';
+}
+
+function guestHintText(config) {
+  const at = autoCompleteAtOf(config);
+  return COPY.guestHintPrefix + at + ' 自动完成（送达当天已过 ' + at
+    + ' 的顺延次日），请把交接位置写进送达备注，并线下告知顾客进度。';
+}
+
+function buildPanel(order, config) {
   const guest = isGuestOrder(order);
   return {
     visible: true,
@@ -44,8 +61,8 @@ function buildPanel(order) {
     placeholder: COPY.notePlaceholder,
     quickTags: QUICK_TAGS.slice(),
     quickTitle: COPY.quickTitle,
-    confirmText: guest ? COPY.guestConfirm : COPY.normalConfirm,
-    guestHint: guest ? COPY.guestHint : ''
+    confirmText: guest ? guestConfirmText(config) : COPY.normalConfirm,
+    guestHint: guest ? guestHintText(config) : ''
   };
 }
 
@@ -58,12 +75,12 @@ function deliveredChip(order) {
   return status === enums.ORDER_STATUS.DELIVERED ? COPY.guestChip : '';
 }
 
-function guestAutoCompleteHint(order) {
+function guestAutoCompleteHint(order, config) {
   if (!isGuestOrder(order)) {
     return '';
   }
   const status = textOf(order && order.status);
-  return status === enums.ORDER_STATUS.DELIVERED ? guestAutoCompleteText() : '';
+  return status === enums.ORDER_STATUS.DELIVERED ? guestAutoCompleteText(config) : '';
 }
 
 // 备注可空；非空时 ≤100（前端 maxlength 与服务端 shared/validate 同口径）
