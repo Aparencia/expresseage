@@ -78,9 +78,10 @@ function parcelPayloadOf(item, index, imageCount) {
 }
 
 // 请求体：v1.0 单入口 order.create（parcels 多件；无截图 manualEntry=true；代客单带 guest+delivery）
-function buildPayload(state) {
+// options.nowMs：提交时注入的「请求时」serverNow（透传 form-model.validateDetailed，TD-084④）
+function buildPayload(state, options) {
   const source = state || {};
-  const detailed = formModel.validateDetailed(source);
+  const detailed = formModel.validateDetailed(source, options);
   if (detailed.message) {
     return { ok: false, batch: false, data: null, message: detailed.message, step: detailed.step };
   }

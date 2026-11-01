@@ -90,6 +90,7 @@ Page({
   onLoad(options) {
     this.state = null;
     this.result = null;
+    this.config = null;
     this.requestKey = { clientRequestId: '', signature: '' };
     this.step = 1;
     this.recognizeToken = 0;
@@ -110,6 +111,8 @@ Page({
         const config = results[0] || {};
         const bindings = results[1] || {};
         const partner = store.get('partner') || {};
+        // TD-083：公开配置留本页一份（D43 autoCompleteAt 结果块文案 + 识别站点值域共用，不再各自取）
+        this.config = config;
         this.state = presetModel.applyPresetBinding(formModel.createInitialState({
           config: config,
           partner: partner,
@@ -292,7 +295,7 @@ Page({
     }
     const token = this.recognizeToken + 1;
     this.recognizeToken = token;
-    const config = configApi.getCachedPublic() || store.get('config') || {};
+    const config = this.config || configApi.getCachedPublic() || store.get('config') || {};
     this.setData({
       recognizing: true,
       recognizeText: recognizeModel.progressTextOf({ index: 1, total: list.length }),
@@ -322,9 +325,10 @@ Page({
       parcelSeq: merged.parcelSeq,
       reviewText: recognizeModel.recognitionTextOf({
         filled: merged.filled,
+        overflow: merged.overflow,
         failed: result.failed,
         lowSuggestions: result.low,
-        failureId: first.failureId || ''
+        failureId: first.failureId || result.failureId || ''
       })
     });
     const pending = (this.state.files || []).filter((file) => file && file.fileId && !this.recognized[file.fileId]);
@@ -360,7 +364,9 @@ Page({
     if (this.data.submitting || !this.state) {
       return;
     }
-    const built = payloadModel.buildPayload(this.state);
+    // TD-084④：本地校验取「请求时」最近一次服务端 serverNow（不用 onLoad 的时间快照——
+    // 长停留后快照会把已过的最晚时间放行，提交到服务端才被拒）
+    const built = payloadModel.buildPayload(this.state, { nowMs: serverNowMs() });
     if (!built.ok) {
       // D44：本地校验失败回到正确步骤（顾客问题回第 1 步、件/站点/截图回第 2 步、服务/备注回第 3 步）
       this.step = built.step || 1;
@@ -377,7 +383,11 @@ Page({
     // v1.0 单入口：多件包裹走同一 order.create（createBatch 已移除）
     orderApi.create(built.data, { clientRequestId: this.requestKey.clientRequestId })
       .then((result) => {
-        this.result = resultModel.buildResult(result || {}, { customerMode: this.state.customerMode });
+        // TD-083：guest 提示块的自动完成时刻按公开配置 config.autoCompleteAt 生成（缺配置回退出厂默认）
+        this.result = resultModel.buildResult(result || {}, {
+          customerMode: this.state.customerMode,
+          config: this.config || {}
+        });
         if (modeGuard.isTestWrite() && this.result.visible) {
           this.result = Object.assign({}, this.result, {
             hintLines: this.result.hintLines.concat(['本次写入的是测试数据（开发者切换会话）'])

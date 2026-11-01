@@ -162,7 +162,10 @@ module.exports = {
     if (this.data.batchRunning) {
       return;
     }
-    const intent = actionFlow.batchTapIntent(event.currentTarget.dataset.key, this.data.groups, this.data.readonly);
+    // TD-083：批量确认文案里的日结批自动完成时刻取自公开配置（缺/未拉到配置时纯件回退出厂默认）
+    const config = store.get('config');
+    const intent = actionFlow.batchTapIntent(
+      event.currentTarget.dataset.key, this.data.groups, this.data.readonly, config);
     if (intent.kind === 'toast') {
       this.toastMsg(intent.message);
       return;

@@ -16,6 +16,12 @@
  *   K. 修复批 T3：P1-4 已完结两阶段翻页状态机（窗口内 cursor 续页 → 窗口耗尽转 older 首屏无游标、
  *      hasMore 先 true 直到 older 空）+ 页面接线；P1-5 工作台复制汇总（主包单源纯件 + load 的 summary、
  *      零额外请求）；P1-6 summary.truncated 时文案/toast 如实说明「可能少报」。
+ *   L. 修复批 T5-B（TD-083）：批量送达确认文案的「系统每天 X 自动完成」时刻按调用方注入的
+ *      config.autoCompleteAt 生成；缺配置/非法一律回退出厂默认（唯一默认单源 = config/defaults），
+ *      纯件零第二处时刻字面量 + 页面/action-flow 注入接线静态守卫。
+ *
+ * 拆件：夹具/静态样本拆到 tools/lib/workbench-cases.js（控测试文件 ≤1000 行，门禁 #18；
+ *       tools/lib 不参与 selftest 注册完整性闸，先例 tools/lib/workbench-day-cases.js）。
  *
  * 纪律：不 mock 全局 wx（本套只测纯件与真实 DTO；storage 用显式 platform 注入是既有公开能力）；
  *       先合法基线再反例；样本非空；EXPECTED_ASSERTIONS 与实际断言数精确相等。
@@ -42,31 +48,18 @@ const enums = require(path.join(ROOT, 'shared/enums.js'));
 const orderState = require(path.join(ROOT, 'shared/order-state.js'));
 const storage = require(path.join(ROOT, 'utils/storage.js'));
 const serverDto = require(path.join(ROOT, 'cloudfunctions/api/handlers/order/_dto.js'));
+const defaults = require(path.join(ROOT, 'config/defaults.js'));
 const dayCases = require(path.join(__dirname, 'lib', 'workbench-day-cases.js'));
+// TD-083 拆件：夹具/静态样本拆到 tools/lib/workbench-cases.js（控测试文件 ≤1000 行，门禁 #18）
+const cases = require(path.join(__dirname, 'lib', 'workbench-cases.js'));
+const {
+  STATUS, STATUS_LITERALS, PAGES, ISO, DOC_MS,
+  actionsFor, dto, multiDto, manualDto, row, rowsOf, groupsOf, selectedNames, orderDoc, FAKE_DTO_CTX
+} = cases;
 // P1-5/P1-6：复制汇总纯件单源（主包 parts，工作台与统计页共用）；缺件时 optionalRequire 给逐条可定位红。
 const summaryCopy = optionalRequire('pages/partner/workbench/parts/summary-copy.js');
 
-const EXPECTED_ASSERTIONS = 235 + dayCases.EXPECTED_ASSERTIONS + 35; // 实际断言总数（含 K 段 P1-4/P1-5/P1-6）
-
-const STATUS = orderState.STATUS;
-const STATUS_LITERALS = ['SUBMITTED', 'ACCEPTED', 'PICKED', 'DELIVERED', 'COMPLETED', 'CANCELLED', 'EXCEPTION'];
-const BUCKETS = {
-  SUBMITTED: 'submitted',
-  ACCEPTED: 'accepted',
-  PICKED: 'picked',
-  DELIVERED: 'delivered',
-  COMPLETED: 'history',
-  CANCELLED: 'history',
-  EXCEPTION: 'exception'
-};
-const PAGES = {
-  index: 'pages/partner/workbench/index.js',
-  actions: 'pages/partner/workbench/parts/page-actions.js',
-  wxml: 'pages/partner/workbench/index.wxml',
-  wxss: 'pages/partner/workbench/index.wxss'
-};
-const ISO = '2026-10-22T01:20:00.000Z';
-const DOC_MS = Date.parse(ISO);
+const EXPECTED_ASSERTIONS = 235 + dayCases.EXPECTED_ASSERTIONS + 35 + 13; // 实际断言总数（含 K 段 P1-4/P1-5/P1-6、L 段 TD-083）
 
 function textOf(rel) {
   return fsutil.readText(path.join(ROOT, rel));
@@ -93,159 +86,6 @@ function layerHits(code) {
   });
   return hits;
 }
-
-// 服务端 DTO 夹具：字段形状 = 批 5/6 冻结 DTO（真实 _dto.buildOrderDto 产出见 G 组）
-function actionsFor(status) {
-  if (status === STATUS.SUBMITTED) {
-    return ['accept', 'reject', 'correct', 'cancel', 'message'];
-  }
-  if (status === STATUS.ACCEPTED) {
-    return ['pick', 'exception', 'correct', 'cancel', 'message'];
-  }
-  if (status === STATUS.PICKED) {
-    return ['deliver', 'undoPick', 'exception', 'correct', 'cancel', 'message'];
-  }
-  if (status === STATUS.DELIVERED) {
-    return ['undoDeliver', 'exception', 'cancel', 'message'];
-  }
-  if (status === STATUS.EXCEPTION) {
-    return ['resolve', 'correct', 'cancel', 'message'];
-  }
-  return [];
-}
-
-function dto(status, extra) {
-  const sample = {
-    orderNo: '20261022-0031',
-    status: status,
-    statusText: orderState.statusText(status),
-    bucket: BUCKETS[status] || '',
-    version: 3,
-    needCode: status === STATUS.SUBMITTED,
-    source: 'CUSTOMER',
-    service: { code: 'PICKUP_STD', name: '标准代取' },
-    parcel: {
-      stationId: 'P4',
-      stationName: '北部菜鸟驿站',
-      pickupCode: status === STATUS.SUBMITTED ? '' : '27-2-7016',
-      lockerNo: '',
-      trackingTail: '',
-      codeStatus: status === STATUS.SUBMITTED ? enums.CODE_STATUS.NEED_CODE : enums.CODE_STATUS.OK,
-      codeStatusText: ''
-    },
-    appoint: { type: 'ASAP', typeText: '尽快' },
-    note: '',
-    deliveryNote: '',
-    phoneTail: '6678',
-    dorm: { buildingText: 'D4', room: '522', dormKey: 'D4-522', roomTag: 'A' },
-    guest: null,
-    exception: null,
-    cancelReason: '',
-    cancelReasonText: '',
-    cancelledBy: '',
-    cancelledAt: status === STATUS.CANCELLED ? ISO : '',
-    completedAt: status === STATUS.COMPLETED ? ISO : '',
-    counterpart: { displayName: '小王' },
-    image: { hasImage: true, cleaned: false },
-    actions: actionsFor(status).map((key) => ({ key: key, label: rowActions.ACTIONS[key].label })),
-    statusUpdatedAt: ISO,
-    updatedAt: ISO
-  };
-  return Object.assign({}, sample, extra || {});
-}
-
-// v1.0 多包裹夹具（D23/D24）：parcels[] 3 件（首件 P4 已补全、第 2 件 P6 需查明+识别失败、第 3 件 P4 柜号）
-function multiDto(extra) {
-  const parcels = [
-    { stationId: 'P4', stationName: '北部菜鸟驿站', pickupCode: '27-2-7016', lockerNo: '', trackingTail: '', codeStatus: enums.CODE_STATUS.OK, codeStatusText: '已补全' },
-    { stationId: 'P6', stationName: '南苑菜鸟驿站', pickupCode: '', lockerNo: '', trackingTail: '12345', codeStatus: enums.CODE_STATUS.NEED_CODE, codeStatusText: '需查明', failureId: 'F-1' },
-    { stationId: 'P4', stationName: '北部菜鸟驿站', pickupCode: '109-2-3003', lockerNo: '3号柜', trackingTail: '', codeStatus: enums.CODE_STATUS.OK, codeStatusText: '已补全' }
-  ];
-  const base = { orderNo: 'H-1', parcels: parcels, parcel: undefined, needCode: true, manualEntry: false };
-  return dto(STATUS.ACCEPTED, Object.assign(base, extra || {}));
-}
-
-// v1.0 无截图手填夹具（D24）：images=[] + manualEntry=true + delivery
-function manualDto(extra) {
-  const base = {
-    orderNo: 'H-2',
-    parcels: [{ stationId: 'P4', stationName: '北部菜鸟驿站', pickupCode: '27-2-7016', lockerNo: '', trackingTail: '', codeStatus: enums.CODE_STATUS.OK, codeStatusText: '已补全' }],
-    parcel: undefined,
-    manualEntry: true,
-    needCode: false
-  };
-  return dto(STATUS.ACCEPTED, Object.assign(base, extra || {}));
-}
-
-function row(status, extra) {
-  return groupView.toRow(dto(status, extra));
-}
-
-function rowsOf(list) {
-  return list.map((item) => groupView.toRow(item));
-}
-
-function groupsOf(list) {
-  return groupView.buildGroups(list);
-}
-
-function selectedNames(groups) {
-  return groupView.selectedRows(groups).map((item) => item.orderNo);
-}
-
-// 七种状态原始订单文档（G 组真实 _dto 联调用；字段形状与 orders 集合一致）
-function orderDoc(status, extra) {
-  const doc = {
-    _id: 'order-' + status,
-    orderNo: '20261022-0011',
-    customerId: 'customer-it',
-    partnerId: 'partner-it',
-    customerNo: 'C-7K2M-9QX4',
-    partnerNo: 'P-7K2-M9X',
-    status: status,
-    version: 5,
-    source: 'CUSTOMER',
-    parcel: {
-      stationId: 'P4',
-      stationName: '北部菜鸟驿站',
-      pickupCode: '27-2-7016',
-      lockerNo: '',
-      trackingTail: '',
-      codeStatus: enums.CODE_STATUS.OK,
-      recognitionSource: enums.RECOGNITION_SOURCE.RULE
-    },
-    service: { code: 'PICKUP_STD', name: '标准代取' },
-    appoint: { type: 'ASAP' },
-    dorm: { zone: 'D', buildingNo: 4, buildingText: 'D4', room: '522', dormKey: 'D4-522', roomTag: 'A' },
-    note: '',
-    deliveryNote: '',
-    phoneTail: '6678',
-    image: { fileId: 'cloud://test.env/orders/TKT/image.jpg' },
-    exception: null,
-    pickedAt: DOC_MS,
-    deliveredAt: status === STATUS.DELIVERED ? DOC_MS : 0,
-    statusUpdatedAt: DOC_MS,
-    updatedAt: DOC_MS,
-    createdAt: DOC_MS
-  };
-  return Object.assign({}, doc, extra || {});
-}
-
-const FAKE_DTO_CTX = {
-  dao: {
-    get: function get() {
-      return Promise.resolve(null);
-    },
-    find: function find() {
-      return Promise.resolve([]);
-    },
-    findOne: function findOne() {
-      return Promise.resolve(null);
-    }
-  },
-  identity: {},
-  now: DOC_MS
-};
 
 function register(h) {
   // ── A. 多选资格 / 批量计划 / 部分失败重试 ───────────────────────────────────
@@ -982,6 +822,54 @@ function register(h) {
     t.eq(summaryCopy ? summaryCopy.copyOf(null).textOmitted : null, false, 'K33 空数据视图 textOmitted=false（不复制假文案）');
     t.check(!optionalRequire('pkg-partner/pages/stats/parts/summary-copy.js'), 'K34 旧 pkg-partner 路径已删除（纯件主包单源）');
     t.notEmpty([state0, copyBase], 'K35 状态机/复制样本非空');
+  });
+
+  // ── L. TD-083：日结批自动完成时刻配置化（batch-view 零第二处时刻字面量）─────────
+  h.section('L 自动完成时刻配置化', (t) => {
+    const fallbackAt = defaults.DEFAULT_CONFIG.autoCompleteAt;
+    const pickedRows = rowsOf([dto(STATUS.PICKED, { orderNo: 'L-1' }), dto(STATUS.PICKED, { orderNo: 'L-2' })]);
+    const at2230 = batchView.plan('deliver', pickedRows, { config: { autoCompleteAt: '22:30' } });
+    t.check(at2230.confirmText.indexOf('系统每天 22:30 自动完成送达单') >= 0,
+      'L01 TD-083 合法基线：注入 config.autoCompleteAt=22:30 → 送达确认文案按配置时刻生成');
+    t.eq([(at2230.confirmText.match(/22:30/g) || []).length, at2230.confirmText.indexOf(fallbackAt)],
+      [2, -1], 'L02 文案两处时刻全部替换为配置值（「系统每天」与「当天已过」不允许各写各的）');
+    const noConfig = batchView.plan('deliver', pickedRows, {});
+    t.check(noConfig.confirmText.indexOf('系统每天 ' + fallbackAt + ' 自动完成送达单') >= 0,
+      'L03 缺配置 → 回退出厂默认（唯一默认单源 = config/defaults.DEFAULT_CONFIG.autoCompleteAt）');
+    const outOfRange = batchView.plan('deliver', pickedRows, { config: { autoCompleteAt: '25:00' } });
+    t.eq([outOfRange.confirmText.indexOf(fallbackAt) >= 0, outOfRange.confirmText.indexOf('25:00')],
+      [true, -1], 'L04 非法配置（25:00 越界）→ 回退默认，不把非法时刻上屏');
+    const emptyClock = batchView.plan('deliver', pickedRows, { config: { autoCompleteAt: '' } });
+    t.eq(emptyClock.confirmText.indexOf('系统每天 ' + fallbackAt + ' 自动完成送达单') >= 0, true,
+      'L05 空串配置值 → 同样回退默认（不生成「系统每天  自动完成」残句）');
+    const nonString = batchView.plan('deliver', pickedRows, { config: { autoCompleteAt: 2230 } });
+    t.eq([nonString.confirmText.indexOf(fallbackAt) >= 0, nonString.confirmText.indexOf('2230')], [true, -1],
+      'L06 非字符串配置值（数字 2230）→ 回退默认，不上屏半截时刻');
+    const trimmed = batchView.plan('deliver', pickedRows, { config: { autoCompleteAt: ' 22:30 ' } });
+    t.check(trimmed.confirmText.indexOf('系统每天 22:30 自动完成送达单') >= 0,
+      'L07 配置前后空格归一后使用（normalizeClockText 单源，不把脏值直接拼进文案）');
+    const pickWithConfig = batchView.plan('pick', pickedRows, { config: { autoCompleteAt: '22:30' } });
+    const pickNoConfig = batchView.plan('pick', pickedRows, {});
+    t.eq(pickWithConfig.confirmText, pickNoConfig.confirmText,
+      'L08 其它批量动作不受影响（无占位模板逐字一致，配置化只作用于送达文案）');
+    t.check(at2230.confirmText.indexOf('将 2 单（共 2 件）') >= 0
+      && at2230.confirmText.indexOf('guest 单无需确认') >= 0,
+      'L09 配置化不影响件数替换与 guest 口径原文（N/M 与两处时刻同时正确）');
+    const batchSrc = fsutil.stripComments(textOf('pages/partner/workbench/parts/batch-view.js'));
+    t.check(batchSrc.indexOf(fallbackAt) === -1 && batchSrc.indexOf('{autoCompleteAt}') >= 0,
+      'L10 纯件零第二处时刻字面量（剥注释后无默认时刻）、模板用 {autoCompleteAt} 占位单源');
+    t.check(batchSrc.indexOf('defaults.DEFAULT_CONFIG.autoCompleteAt') >= 0
+      && batchSrc.indexOf('defaults.normalizeClockText(') >= 0,
+      'L11 默认值/归一判据都引用 config/defaults（唯一默认值来源），零件不本地写死时刻');
+    const actionSrc = textOf(PAGES.actions);
+    const tapBody = actionSrc.slice(actionSrc.indexOf('onBatchTap('));
+    t.check(tapBody.indexOf("store.get('config')") >= 0
+      && /batchTapIntent\([\s\S]{0,200}?this\.data\.readonly,\s*config\)/.test(tapBody),
+      "L12 页面接线：onBatchTap 读 store.get('config') 并注入 actionFlow.batchTapIntent");
+    const flowSrc = textOf('pages/partner/workbench/parts/action-flow.js');
+    t.check(/function batchTapIntent\(key, groups, readonly, config\)/.test(flowSrc)
+      && flowSrc.indexOf('batchView.plan(key, rows, { config: config })') >= 0,
+      'L13 action-flow 接线：config 参数透传到 batch-view.plan（不吞配置、不本地判时刻）');
   });
 }
 

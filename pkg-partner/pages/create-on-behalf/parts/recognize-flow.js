@@ -184,16 +184,13 @@ async function runOcr(localPath, isCancelled) {
   return { ok: true, text: (vision.texts || []).join('\n') };
 }
 
-/** 该件是否需要 AI 兜底：缺站点或缺可提交码（C2 触发口径，不以"是否抽到文本"为前置） */
-function needsAiOf(item) {
-  if (!item || !item.stationId) return true;
-  const checked = recognize.validateParcel(item);
-  return !!checked.errors.pickupCode || checked.codeStatus !== 'OK';
-}
-
-/** 单图 AI 兜底：服务端唯一外呼出口；D29 低置信不写入，只留提示。服务端负责失败入队（D33）。 */
-async function aiFallbackOf(file, item, maskedText) {
-  const requestId = recognizeModel.failureRequestIdOf(textOf(file.uploadTicketId), 0, maskedText);
+/**
+ * 单图单件 AI 兜底：服务端唯一外呼出口；幂等键按件派生（DATA_MODEL §4.9 同图多件不共键）。
+ * D29 低置信不写入由 recognize.applyAiSuggestion 统一判定（纯件回写在 recognize-model.applyAiFallbacksOf）。
+ * @returns {Promise<{ok:boolean, value:object}>} value=aiApi.parseParcel 返回值（异常统一 {error:true}）
+ */
+async function aiFallbackOf(file, item, maskedText, itemIndex) {
+  const requestId = recognizeModel.failureRequestIdOf(textOf(file.uploadTicketId), itemIndex, maskedText);
   try {
     const value = (await aiApi.parseParcel({
       ocrTextMasked: String(maskedText || ''),
@@ -202,25 +199,31 @@ async function aiFallbackOf(file, item, maskedText) {
       fileId: textOf(file.fileId),
       role: 'PARTNER'
     }, requestId ? { clientRequestId: requestId } : {})) || {};
-    const merged = recognize.applyAiSuggestion(item, value);
-    return {
-      item: merged.parcel,
-      changed: merged.changed.length,
-      suggestion: merged.suggestion || null,
-      failureId: textOf(value.failureId) || textOf(value.failureNo),
-      error: value.error === true
-    };
+    return { ok: true, value: value };
   } catch (err) {
-    return { item: item, changed: 0, suggestion: null, failureId: '', error: true };
+    return { ok: false, value: { error: true } };
   }
 }
 
+/** 逐件外呼（顺序、每步可取消）：calls=[{index,value}]；取消时返回 null（结果整图丢弃） */
+async function fallbackCallsOf(file, seeds, indexes, maskedText, context) {
+  const calls = [];
+  for (let k = 0; k < indexes.length; k += 1) {
+    const itemIndex = indexes[k];
+    const ai = await aiFallbackOf(file, seeds[itemIndex], maskedText, itemIndex);
+    if (context.isCancelled()) return null;
+    calls.push({ index: itemIndex, value: ai.value });
+  }
+  return calls;
+}
+
 /**
- * 单图识别：OCR → 规则解析 → 缺站点/码时 AI 兜底（有可外发文本才外呼；无文本时服务端只入队）。
- * 失败不阻塞手填：认不出时返回空件行，页面只给手填/复核引导。
+ * 单图识别：OCR → 规则解析 → 缺站点/缺码的件逐件 AI 兜底（同图 ≤件数 次外呼，各自独立 failureId）。
+ * 保留语义：cancelled（token 变化即丢弃）/progress（按图上报阶段）/low（低置信只给建议）/
+ * error（外呼异常不谎称已入队）；失败不阻塞手填，页面只给复核/手填引导。
  */
 async function identifyOne(file, context, imageIndex) {
-  const result = { items: [], failureId: '', failed: 0, low: 0, cancelled: false };
+  const result = { items: [], failureId: '', failed: 0, low: 0, error: 0, changed: 0, cancelled: false };
   const localPath = textOf(file && file.localPath) || textOf(file && file.path);
   let parsed = { items: [] };
   let ocrText = '';
@@ -240,31 +243,32 @@ async function identifyOne(file, context, imageIndex) {
     result.cancelled = true;
     return result;
   }
-  let items = (parsed.items || []).map(function clone(item) { return Object.assign({}, item); });
+  const ruleItems = (parsed.items || []).map(function clone(item) { return Object.assign({}, item); });
   const maskedText = recognize.maskForAi(ocrText);
-  const needAi = items.length === 0 || items.some(needsAiOf);
-  if (!needAi) {
-    result.items = items;
+  // 空图行也走一次服务端入队（NO_TEXT 也入队，DATA_MODEL §4.9）；有件时只对缺站点/缺码的件外呼
+  const seeds = ruleItems.length ? ruleItems : [recognize.makeEmptyParcel()];
+  const indexes = ruleItems.length ? recognizeModel.aiFallbackIndexesOf(seeds) : [0];
+  if (!indexes.length) {
+    result.items = seeds;
     return result;
   }
   context.onProgress({ phase: 'ai', index: imageIndex + 1, total: context.total });
-  const ai = await aiFallbackOf(file, items[0] || recognize.makeEmptyParcel(), maskedText);
-  if (context.isCancelled()) {
+  const calls = await fallbackCallsOf(file, seeds, indexes, maskedText, context);
+  if (!calls) {
     result.cancelled = true;
     return result;
   }
-  result.failureId = ai.failureId;
-  if (ai.suggestion) result.low = 1;
-  if (ai.changed > 0) {
-    if (items.length === 0) items = [ai.item];
-    else items[0] = ai.item;
+  const merged = recognizeModel.applyAiFallbacksOf(seeds, calls);
+  Object.assign(result, {
+    changed: merged.changed, failureId: merged.failureId, failed: merged.failed,
+    low: merged.low, error: merged.error
+  });
+  // 空图行：AI 真给了可填字段才落一件；否则留空（页面只给手填引导，不编空件行）
+  if (ruleItems.length === 0) {
+    result.items = merged.changed > 0 ? [merged.items[0]] : [];
+    return result;
   }
-  if (items.length === 0) {
-    // 只有真的入队拿到 failureId 才敢说「已反馈开发者复核」；外呼异常时不撒谎，只给手填引导
-    result.failed = ai.failureId ? 1 : 0;
-    result.error = ai.failureId ? 0 : 1;
-  }
-  result.items = items;
+  result.items = merged.items;
   return result;
 }
 
@@ -299,7 +303,8 @@ async function identifyFiles(files, options) {
     failed += one.failed;
     low += one.low;
     one.items.forEach(function append(item) {
-      items.push(Object.assign({ imageIndex: index, failureId: one.failureId }, item));
+      // failureId 随件携带（DATA_MODEL §4.9：同图多件逐件独立，不共用一个键）
+      items.push(Object.assign({}, item, { imageIndex: index }));
     });
   }
   return { cancelled: false, items: items, failed: failed, low: low };
@@ -315,6 +320,5 @@ module.exports = {
   hasVision,
   identifyFiles,
   identifyOne,
-  needsAiOf,
   runOcr
 };

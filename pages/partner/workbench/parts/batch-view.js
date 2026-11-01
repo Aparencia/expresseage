@@ -2,9 +2,12 @@
 // 口径：UX_PARTNER §4.6（范围=当前筛选下可见活动单；客户端循环逐单调用 + 同一 batchActionId；
 //       逐单结果、禁止把部分成功显示为全部成功；部分失败保留失败项选择态可重试）、§4.15（部分失败逐句文案）。
 // 纪律：可执行动作只按服务端行内 actions[] 求交集（不判断七状态）；接单按契约不带 batchActionId。
+// TD-083/D43：送达确认文案的「系统每天 X 自动完成」时刻由调用方注入公开配置 config.autoCompleteAt；
+//            缺配置/非法才回退出厂默认（默认值唯一单源 = config/defaults.DEFAULT_CONFIG，本零件零时刻字面量）。
 'use strict';
 
 const rowActions = require('./row-actions');
+const defaults = require('../../../../config/defaults');
 
 const BATCH_ACTIONS = [
   {
@@ -25,7 +28,7 @@ const BATCH_ACTIONS = [
     label: '送达',
     batch: true,
     undoable: true,
-    confirmText: '将 N 单（共 M 件）标记为已送达，顾客可确认；系统每天 23:50 自动完成送达单（当天已过 23:50 的顺延次日；guest 单无需确认）。'
+    confirmText: '将 N 单（共 M 件）标记为已送达，顾客可确认；系统每天 {autoCompleteAt} 自动完成送达单（当天已过 {autoCompleteAt} 的顺延次日；guest 单无需确认）。'
   },
   {
     key: 'undoPick',
@@ -48,6 +51,20 @@ function metaOf(key) {
 
 function textOf(value) {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+// D43/TD-083：日结批自动完成时刻（UTC+8 的 HH:MM）按调用方注入的公开配置生成文案；
+// 缺配置/非法才回退出厂默认（唯一默认值 = config/defaults.DEFAULT_CONFIG，本零件不再写第二处时刻字面量）。
+function autoCompleteAtOf(config) {
+  const source = config && typeof config === 'object' ? config : {};
+  return defaults.normalizeClockText(source.autoCompleteAt) || defaults.DEFAULT_CONFIG.autoCompleteAt;
+}
+
+const AUTO_COMPLETE_TOKEN = '{autoCompleteAt}';
+
+// 确认文案模板占位替换：送达文案里该时刻出现两处，split/join 全替换（不允许只换一处）
+function fillAutoCompleteAt(template, config) {
+  return String(template || '').split(AUTO_COMPLETE_TOKEN).join(autoCompleteAtOf(config));
 }
 
 function canRun(key, row) {
@@ -92,7 +109,7 @@ function plan(key, rows, options) {
     pieceCount: pieceCount,
     skipped: skipped,
     batchActionId: meta.batch ? (opts.batchActionId || '') : '',
-    confirmText: fillCounts(meta.confirmText, queue.length, pieceCount)
+    confirmText: fillAutoCompleteAt(fillCounts(meta.confirmText, queue.length, pieceCount), opts.config)
   };
 }
 

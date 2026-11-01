@@ -1,22 +1,18 @@
 // pkg-partner/pages/order-detail/index.js · 兼职订单详情（真实 DTO：order.actions 决定动作条；counterpart 只在 ACTIVE 绑定内下发）
 // 契约：docs/ux/V4_UX_PARTNER.md §3.3 / §4.4 / §4.7 / §4.13 / §4.14；docs/data/V4_DATA_MODEL.md §7.5（order.get/correct/undo）。
 // 边界：页面零状态机判断（动作/状态/编号/凭证全部消费服务端 DTO 与 parts 纯件）；只经 api/modules 出入。
+// TD-076：页面只留生命周期与 setData 编排——轮询/撤销倒计时 → parts/page-timers；浮层开关与提交 → parts/panel-actions。
 const orderApi = require('../../../api/modules/order');
 const messageApi = require('../../../api/modules/message');
 const modeGuard = require('../../../api/mode-guard');
 const actionsPart = require('./parts/actions');
-const correctPanel = require('./parts/correct-panel');
-const deliveryPanel = require('./parts/delivery-panel');
 const eventView = require('./parts/event-view');
 const exceptionPanel = require('./parts/exception-panel');
-const reasonPanel = require('./parts/reason-panel');
 const undoPart = require('./parts/undo');
 const viewModel = require('./parts/view-model');
 const messagePoll = require('./parts/message-poll');
 const share = require('../../../utils/share/handlers');
 const store = require('../../../store/index');
-const UNDO_TICK_MS = 1000;
-const MESSAGE_POLL_MS = 10000;
 const MESSAGE_MAX = 200;
 const COPY = {
   noOrderNo: '没有订单号，请回工作台重试',
@@ -37,7 +33,8 @@ function writeHint(text) {
   return modeGuard.isTestWrite() ? text + COPY.testSuffix : text;
 }
 
-Page({
+// TD-076：计时器（parts/page-timers）与浮层接线（parts/panel-actions）按「页面方法」并入 Page 配置
+Page(Object.assign({
   data: {
     orderNo: '',
     order: null,
@@ -96,24 +93,6 @@ Page({
     this.clearUndoTimer();
   },
 
-  // 留言 10s 轮询（页面可见时；离页/终态停止，不在后台空转）
-  startMessagePoll() {
-    if (this.messageTimer || !this.data.orderNo || messagePoll.isTerminal(this.data.order)) {
-      return;
-    }
-    this.messageTimer = setInterval(() => {
-      if (!this.data.loading) {
-        this.loadMessages();
-      }
-    }, MESSAGE_POLL_MS);
-  },
-  stopMessagePoll() {
-    if (this.messageTimer) {
-      clearInterval(this.messageTimer);
-      this.messageTimer = null;
-    }
-  },
-
   // 详情拉取：order.get 的 {order, events} 一次装配成页面快照（动作/凭证/面板/撤销条都由 parts 算）
   load() {
     if (!this.data.orderNo) {
@@ -153,30 +132,6 @@ Page({
     return messageApi.list({ orderNo: this.data.orderNo })
       .then((data) => this.setData({ messages: eventView.buildMessages(data && data.list) }))
       .catch(() => this.setData({ messages: [] }));
-  },
-
-  // ---------- 撤销条（5 秒窗由服务端 actions 判定，本地只做倒计时展示） ----------
-  syncUndoTimer() {
-    if (!this.data.undoBar.visible) {
-      this.clearUndoTimer();
-      return;
-    }
-    if (this.undoTimer) {
-      return;
-    }
-    this.undoTimer = setInterval(() => {
-      const bar = undoPart.buildBar(this.data.order, this.data.actions, Date.now());
-      this.setData({ undoBar: bar });
-      if (!bar.visible) {
-        this.clearUndoTimer();
-      }
-    }, UNDO_TICK_MS);
-  },
-  clearUndoTimer() {
-    if (this.undoTimer) {
-      clearInterval(this.undoTimer);
-      this.undoTimer = null;
-    }
   },
 
   // ---------- 只读二道闸（前端置灰 + 点击只 toast，不发请求；服务端仍二次拒绝） ----------
@@ -313,134 +268,6 @@ Page({
         }
       });
   },
-  // ---------- 补码/改站点面板（v1.0 一单多包裹：逐件 itemIndex 纠正，订单级动作不变） ----------
-  openCorrectPanel(itemIndex) {
-    const panel = this.data.correctPanel || {};
-    if (!panel.visible) {
-      wx.showToast({ title: panel.blockedCopy || '当前状态不能改取件码', icon: 'none' });
-      return;
-    }
-    const index = typeof itemIndex === 'number' && itemIndex >= 0 ? itemIndex : 0;
-    this.setData({
-      panel: 'correct',
-      correctItemIndex: index,
-      correctEditor: correctPanel.buildEditor(this.data.order, index),
-      correctError: ''
-    });
-  },
-  // 多包裹时逐件切换纠正目标（只换编辑对象，不提交）
-  onCorrectItemTap(event) {
-    this.openCorrectPanel(Number(event.currentTarget.dataset.index));
-  },
-  onCorrectInput(event) {
-    const field = event.currentTarget.dataset.field;
-    this.setData({ ['correctEditor.' + field]: (event.detail && event.detail.value) || '', correctError: '' });
-  },
-  onStationChange(event) {
-    const options = (this.data.correctPanel && this.data.correctPanel.stationOptions) || [];
-    const hit = options[Number(event.detail.value)];
-    if (hit) {
-      this.setData({ 'correctEditor.stationId': hit.id, correctError: '' });
-    }
-  },
-  onCorrectSave() {
-    const itemIndex = this.data.correctItemIndex || 0;
-    const checked = correctPanel.validateSave(this.data.correctEditor, this.data.order, itemIndex);
-    if (!checked.ok) {
-      this.setData({ correctError: checked.message });
-      return;
-    }
-    const submit = correctPanel.buildSubmit(this.data.order, checked.patch, itemIndex);
-    this.submitWrite(() => orderApi.correct(submit.data, submit.opts),
-      correctPanel.savedCopy(this.data.correctPanel), 'correct');
-  },
-  // ---------- 异常上报/解除 ----------
-  openExceptionPanel() {
-    this.setData({ panel: 'exception', exceptionIndex: 0, exceptionNote: '', exceptionError: '' });
-  },
-  onExceptionReasonTap(event) {
-    this.setData({ exceptionIndex: Number(event.currentTarget.dataset.index), exceptionError: '' });
-  },
-  onExceptionNoteInput(event) {
-    this.setData({
-      exceptionNote: ((event.detail && event.detail.value) || '').slice(0, exceptionPanel.NOTE_MAX),
-      exceptionError: ''
-    });
-  },
-  onExceptionSubmit() {
-    const reason = (this.data.exceptionPanel.reasons || [])[this.data.exceptionIndex] || {};
-    const checked = exceptionPanel.validateReport(reason.code, this.data.exceptionNote);
-    if (!checked.ok) {
-      this.setData({ exceptionError: checked.message });
-      return;
-    }
-    const submit = exceptionPanel.buildReportSubmit(this.data.order, checked.payload);
-    this.submitWrite(() => orderApi.reportException(submit.data, submit.opts),
-      exceptionPanel.COPY.report, 'exception');
-  },
-
-  // ---------- 送达浮层（deliveryNote + guest 24h 自动完成文案） ----------
-  openDeliveryPanel() {
-    this.setData({ panel: 'deliver', deliveryNote: '', deliveryError: '' });
-  },
-  onDeliveryNoteInput(event) {
-    this.setData({
-      deliveryNote: ((event.detail && event.detail.value) || '').slice(0, deliveryPanel.NOTE_MAX),
-      deliveryError: ''
-    });
-  },
-  onQuickTag(event) {
-    this.setData({ deliveryNote: event.currentTarget.dataset.tag || '', deliveryError: '' });
-  },
-  onDeliverySubmit() {
-    const panel = this.data.deliveryPanel || {};
-    wx.showModal({
-      title: panel.title || '标记送达',
-      content: panel.confirmText || '',
-      confirmText: '确认',
-      success: (res) => {
-        if (!res.confirm) {
-          return;
-        }
-        const submit = deliveryPanel.buildSubmit(this.data.order, this.data.deliveryNote);
-        this.submitWrite(() => orderApi.markDelivered(submit.data, submit.opts),
-          deliveryPanel.COPY.success, 'delivery');
-      }
-    });
-  },
-
-  // ---------- 取消/拒单（原因枚举 + OTHER 必填；取消不可恢复） ----------
-  openReasonPanel(key) {
-    this.setData({
-      panel: 'reason',
-      cancelKey: key,
-      reasonIndex: 0,
-      reasonNote: '',
-      reasonError: '',
-      cancelPanel: reasonPanel.buildPanel(key)
-    });
-  },
-  onReasonChange(event) {
-    this.setData({ reasonIndex: Number(event.detail.value), reasonError: '' });
-  },
-  onReasonNoteInput(event) {
-    this.setData({ reasonNote: ((event.detail && event.detail.value) || '').slice(0, reasonPanel.NOTE_MAX), reasonError: '' });
-  },
-  onReasonSubmit() {
-    const reasons = (this.data.cancelPanel && this.data.cancelPanel.reasons) || [];
-    const reason = reasons[this.data.reasonIndex] || {};
-    const checked = reasonPanel.validate(reason.code, this.data.reasonNote);
-    if (!checked.ok) {
-      this.setData({ reasonError: checked.message });
-      return;
-    }
-    const data = Object.assign({ orderNo: this.data.orderNo }, checked.data);
-    const opts = { expectedVersion: this.data.order && this.data.order.version };
-    const isReject = this.data.cancelKey === 'reject';
-    this.submitWrite(() => (isReject ? orderApi.reject(data, opts) : orderApi.cancel(data, opts)),
-      reasonPanel.successText(isReject), 'reason');
-  },
-
   // ---------- 撤销条（统一 order.undo；失败按服务端最新状态说真话） ----------
   onUndoTap() {
     if (!this.data.undoBar.visible || this.guardReadonly()) {
@@ -497,4 +324,4 @@ Page({
   onShareAppMessage() {
     return share.appMessage();
   }
-});
+}, require('./parts/page-timers'), require('./parts/panel-actions')));

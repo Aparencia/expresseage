@@ -1,8 +1,9 @@
 'use strict';
 /**
- * tools/selftest-partner-pages.js — 代客下单/客户档案端侧断言套件（A~N；D44 同批）。
+ * tools/selftest-partner-pages.js — 代客下单/客户档案端侧断言套件（A~O；D44 同批 + T5-A 收口）。
  * A 客户列表 / B 顾客详情 / C 解绑流程 / D 代客下单两路径 / E 字段校验矩阵 / F READONLY+transport /
- * G 静态纪律 / H 激活页邀请码 / I 代客缺陷回归 / J 服务类型目录 / K D42 头像 / N D44 站点按件+多图+识别预填。
+ * G 静态纪律 / H 激活页邀请码 / I 代客缺陷回归 / J 服务类型目录 / K D42 头像 / N D44 站点按件+多图+识别预填 /
+ * O T5-A TD-084 逐件识别兜底·幂等键按件·超限请分单·预约请求时校时（TD-083 结果块配置化在 D 段）。
  * 纪律：纯件 + api 层 fake transport（禁 mock 全局 wx、不连网络）；先合法基线再反例；样本非空；
  *      EXPECTED_ASSERTIONS 与实际断言数精确相等（少算/多算都判红）。
  * 取数：node tools/selftest-partner-pages.js | Select-Object -Last 2
@@ -20,9 +21,7 @@ const orderApi = require(path.join(ROOT, 'api/modules/order.js'));
 const aiApi = require(path.join(ROOT, 'api/modules/ai.js'));
 const errorCopy = require(path.join(ROOT, 'shared/error-copy.js'));
 const enums = require(path.join(ROOT, 'shared/enums.js'));
-const orderState = require(path.join(ROOT, 'shared/order-state.js'));
 const stations = require(path.join(ROOT, 'shared/stations.js'));
-const zones = require(path.join(ROOT, 'shared/zones.js'));
 const customerView = require(path.join(ROOT, 'utils/customer-view.js'));
 const listModel = require(path.join(ROOT, 'pages/partner/customers/parts/list-model.js'));
 const detailView = require(path.join(ROOT, 'pkg-partner/pages/customer-detail/parts/detail-view.js'));
@@ -32,187 +31,24 @@ const resultModel = require(path.join(ROOT, 'pkg-partner/pages/create-on-behalf/
 const payloadModel = require(path.join(ROOT, 'pkg-partner/pages/create-on-behalf/parts/payload-model.js'));
 const presetModel = require(path.join(ROOT, 'pkg-partner/pages/create-on-behalf/parts/preset-model.js'));
 const recognizeModel = require(path.join(ROOT, 'pkg-partner/pages/create-on-behalf/parts/recognize-model.js'));
-const viewModel = require(path.join(ROOT, 'pkg-partner/pages/create-on-behalf/parts/view-model.js'));
-const pickerState = require(path.join(ROOT, 'components/image-picker/state.js'));
-const uploadApi = require(path.join(ROOT, 'api/upload.js'));
 const serviceSettingsModel = require(path.join(ROOT, 'pkg-partner/pages/service-settings/parts/service-model.js'));
 const shareCard = require(path.join(ROOT, 'pages/profile/parts/share-card.js'));
 const codeInput = require(path.join(ROOT, 'pkg-partner/pages/activate/parts/code-input-model.js'));
 
 // 注意：F 段（异步 fake transport）必须注册在最后——harness 的异步断言在 await 之后才计入，
 // 若后面再注册同步段，console 的节标题会被后注册的段名覆盖。
-// 211 + D44 新增 N 组 10 条 = 221（K10 被 D 的死组件删除 reconcile 掉后净数；少算/多算都判红）
-const EXPECTED_ASSERTIONS = 226; // 221 + 5：D47 代客下单预约同模型（载荷/摘要/签名/拦截/UI 静态）
+// 226 + 17：T5-A 收口（TD-083 结果块配置化 3 条 + TD-084 逐件兜底/幂等粒度/超限/请求时校时 14 条）
+const EXPECTED_ASSERTIONS = 243;
 
-const HOUR = 60 * 60 * 1000;
-const DAY = 24 * HOUR;
-const NOW = new Date(2026, 9, 22, 10, 0, 0).getTime();
-const BOUND_MS = new Date(2026, 9, 18, 14, 20, 0).getTime();
-
-const CONFIG = {
-  zoneLabels: { D: 'D 区', X: 'X 区', N: 'N 区', B: 'B 区', C: 'C 区' },
-  // D41（2026-10-28 用户拍板）：目录固定 5 类，CUSTOM 仍末项
-  serviceCatalog: [
-    { code: 'PICKUP_STD', name: '标准代取', desc: '驿站取件送到寝室门口（上楼）' },
-    { code: 'PICKUP_LOW', name: '送至楼下', desc: '驿站取件送到宿舍楼下/约定地点（不上楼）' },
-    { code: 'PICKUP_URGENT', name: '加急代取', desc: '优先处理，承诺更快时效' },
-    { code: 'DROP_OFF', name: '代寄快递', desc: '顾客把件交给兼职，兼职送驿站寄出' },
-    { code: 'CUSTOM', name: '其他代办', desc: '需备注说明；兼职可拒单' }
-  ]
-};
-const PARTNER = {
-  serviceConfig: {
-    services: [
-      { code: 'PICKUP_STD', enabled: true },
-      { code: 'PICKUP_LOW', enabled: true },
-      { code: 'DROP_OFF', enabled: false }
-    ],
-    zones: ['D', 'X'],
-    acceptingOrders: true
-  }
-};
-
-function bindingRow(id, overrides) {
-  return Object.assign({
-    bindingId: id,
-    customerNo: 'C7K2M9QX4',
-    dormKey: 'D4-522',
-    roomTag: 'A',
-    displayName: '小王',
-    avatarFileId: 'cloud://test.env/avatars/x.jpg',
-    phoneTail: '6678',
-    buildingText: 'D4',
-    partnerNote: '常放门口鞋柜',
-    boundAt: BOUND_MS,
-    activeOrderCount: 2
-  }, overrides || {});
-}
-const ROW_1 = bindingRow('b1', { roomTag: 'a' });
-const ROW_2 = bindingRow('b2', {
-  customerNo: 'C9X1N2B3', dormKey: 'X2-301', roomTag: 'B', displayName: '',
-  phoneTail: '', buildingText: 'X2', boundAt: 0, activeOrderCount: 0, avatarFileId: '', partnerNote: ''
-});
-
-// order.listPartner 行 DTO：状态/文案 + service{name} + ISO 时间戳（与 cloud _dto.buildOrderDto 同形）
-function orderRow(orderNo, status, statusText, at, overrides) {
-  const row = Object.assign({
-    orderNo: orderNo,
-    status: status,
-    statusText: statusText,
-    service: { code: 'PICKUP_STD', name: '标准代取' },
-    createdAt: at,
-    deliveredAt: 0,
-    completedAt: 0,
-    cancelledAt: 0
-  }, overrides || {});
-  ['createdAt', 'deliveredAt', 'completedAt', 'cancelledAt'].forEach((key) => {
-    if (typeof row[key] === 'number' && row[key] > 0) {
-      row[key] = new Date(row[key]).toISOString();
-    }
-  });
-  return row;
-}
-// 该顾客订单（order.listPartner view=customer 的 list；历史单单一来源）
-function customerOrders() {
-  return [
-    orderRow('20261022-0001', enums.ORDER_STATUS.COMPLETED, '已完成', NOW - 2 * HOUR, { completedAt: NOW - 2 * HOUR }),
-    orderRow('20261022-0002', enums.ORDER_STATUS.ACCEPTED, '已接单', NOW - 3 * HOUR),
-    orderRow('20261021-0003', enums.ORDER_STATUS.DELIVERED, '已送达·待确认', NOW - DAY - 2 * HOUR, { deliveredAt: NOW - DAY - 2 * HOUR }),
-    orderRow('20261015-0004', enums.ORDER_STATUS.SUBMITTED, '待接单', NOW - 7 * DAY)
-  ];
-}
-// partner.getCustomer 只取档案+解绑资格（orders 字段本页不消费）
-function profileData(overrides) {
-  return Object.assign({
-    customer: ROW_1,
-    activeOrderCount: 2,
-    unbindEligibility: { canUnbind: false, activeOrderCount: 2 },
-    partnerNo: 'P8F3K2M'
-  }, overrides || {});
-}
-// D44：每件包裹自带站点；withStation 把件补成「合法基线件」（默认 P4，可覆盖）
-function withStation(item, stationId) {
-  const id = stationId || 'P4';
-  const options = formModel.stationOptionsOf();
-  return Object.assign({}, item, {
-    stationId: id,
-    stationName: stations.stationNameOf(id),
-    stationIndex: formModel.stationIndexOf(options, id),
-    stationTouched: true
-  });
-}
-function parcelOf(fields) {
-  const value = Object.assign({ pickupCode: '', lockerNo: '', trackingTail: '' }, fields || {});
-  return withStation(value, value.stationId || 'P4');
-}
-function ticketFile(index) {
-  const seq = String(index || 1);
-  return {
-    localPath: 'wxfile://tmp/ticket-' + seq + '.jpg',
-    fileId: 'cloud://test.env/orders/TKT' + seq + '/image.jpg',
-    uploadTicketId: 'TICKET' + seq.padStart(26, '0'),
-    size: 320 * 1024,
-    name: 'ticket-' + seq + '.jpg',
-    type: 'image'
-  };
-}
-function boundState() {
-  const state = formModel.createInitialState({
-    config: CONFIG, partner: PARTNER, bindingList: [ROW_1, ROW_2], nowMs: NOW
-  });
-  state.items = [parcelOf({ pickupCode: '27-2-7016', lockerNo: '3 号柜', trackingTail: '66785' })];
-  state.files = [ticketFile(1)];
-  return state;
-}
-function guestState() {
-  const state = formModel.createInitialState({ config: CONFIG, partner: PARTNER, bindingList: [], nowMs: NOW });
-  state.customerMode = 'GUEST';
-  state.guest = { displayName: '小张', phoneTail: '6678', zone: 'D', buildingNo: '4', room: '522', dormKey: '' };
-  state.items = [parcelOf({ pickupCode: '27-2-7016', lockerNo: '3 号柜', trackingTail: '66785' })];
-  state.files = [ticketFile(1)];
-  return state;
-}
-function mutate(state, patch) {
-  return Object.assign({}, state, patch);
-}
-function textOfRel(rel) {
-  return fsutil.readText(path.join(ROOT, rel)) || '';
-}
-function stubTransport(fn) {
-  client.setTransport(fn);
-}
-const MY_FILES = [
-  'pages/partner/customers/index.js',
-  'pages/partner/customers/index.wxml',
-  'pages/partner/customers/parts/list-model.js',
-  'pkg-partner/pages/customer-detail/index.js',
-  'pkg-partner/pages/customer-detail/index.wxml',
-  'pkg-partner/pages/customer-detail/parts/detail-view.js',
-  'pkg-partner/pages/customer-detail/parts/unbind-flow.js',
-  'pkg-partner/pages/create-on-behalf/index.js',
-  'pkg-partner/pages/create-on-behalf/index.wxml',
-  'pkg-partner/pages/create-on-behalf/parts/form-model.js',
-  'pkg-partner/pages/create-on-behalf/parts/payload-model.js',
-  'pkg-partner/pages/create-on-behalf/parts/recognize-model.js',
-  'pkg-partner/pages/create-on-behalf/parts/recognize-flow.js',
-  'pkg-partner/pages/create-on-behalf/parts/view-model.js',
-  'pkg-partner/pages/create-on-behalf/parts/result-model.js',
-  'components/image-picker/state.js',
-  'components/image-picker/index.js',
-  'utils/customer-view.js'
-];
-
-const PAGE_SCRIPTS = [
-  'pages/partner/customers/index.js',
-  'pkg-partner/pages/customer-detail/index.js',
-  'pkg-partner/pages/create-on-behalf/index.js'
-];
-
-const PAGE_FILES = [
-  'pages/partner/customers/index',
-  'pkg-partner/pages/customer-detail/index',
-  'pkg-partner/pages/create-on-behalf/index'
-];
+// TD-083/T5-A 拆件：夹具/静态扫描样本拆到 tools/lib/partner-pages-cases.js（控测试文件 ≤950 行，门禁 #18；
+// tools/lib 不参与 tools/selftest.js 注册完整性闸，先例 tools/lib/workbench-cases.js）。
+const cases = require(path.join(__dirname, 'lib', 'partner-pages-cases.js'));
+const {
+  CONFIG, PARTNER, NOW, DAY, ROW_1, ROW_2, STATUS_LITERALS, bindingRow, orderRow,
+  customerOrders, profileData, withStation, parcelOf, ticketFile,
+  boundState, guestState, mutate, textOfRel, stubTransport,
+  MY_FILES, PAGE_SCRIPTS, PAGE_FILES
+} = cases;
 
 function register(h) {
   // ------------------------------------------------------------------ A 客户列表
@@ -414,7 +250,7 @@ function register(h) {
     t.eq(formModel.BATCH_MAX, 10, 'D22 单次一图多码上限 = 10（CONTRACT D23：一单 1~10 件）');
     t.eq(formModel.validate(mutate(bound, {
       items: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((index) => parcelOf({ pickupCode: '码' + index }))
-    })), '一图多码最多 10 件，请分次提交', 'D23 超过 10 件被挡（不拆单不静默丢件）');
+    })), '一单最多 10 件，请分单', 'D23 超过 10 件被挡（不拆单不静默丢件；件数上限文案单源 formModel.PARCEL_LIMIT_TEXT）');
     const goodSignature = payloadModel.contentSignature(bound);
     const reused = formModel.ensureRequestKey({ clientRequestId: 'REQ_ABCDEFGHIJKLMNOP', signature: goodSignature },
       goodSignature, { makeId: () => 'NEW_ID_1234567890', isValid: () => true });
@@ -448,6 +284,15 @@ function register(h) {
       && guestResult.hintLines.join('').indexOf('未绑定') >= 0
       && guestResult.hintLines.join('').indexOf('自动完成') >= 0,
     'D33 guest 成功必须展示未绑定/线下告知/自动完成提示块（§3.4）');
+    const guestLate = resultModel.buildResult({ orderNo: '20261022-0033' },
+      { customerMode: 'GUEST', config: { autoCompleteAt: '22:30' } });
+    t.check(guestLate.hintLines.length === 4 && guestLate.hintLines[3].indexOf('每天 22:30 自动完成') >= 0
+      && guestLate.hintLines.join('').indexOf('23:50') < 0,
+    'D33b guest 提示块自动完成时刻随公开配置 config.autoCompleteAt（TD-083：22:30 不再写死 23:50）');
+    const guestDefault = resultModel.buildResult({ orderNo: '20261022-0034' },
+      { customerMode: 'GUEST', config: { autoCompleteAt: '25:99' } });
+    t.check(guestDefault.hintLines[3].indexOf('每天 23:50 自动完成') >= 0,
+      'D33c 配置缺失/非法（25:99）回退出厂默认 23:50（config/defaults 唯一默认）');
     const oneOrderResult = resultModel.buildResult({ orderNo: '20261022-0031', parcels: [{}, {}, {}] }, { customerMode: 'BOUND' });
     t.check(oneOrderResult.rows.length === 1 && oneOrderResult.title === '订单已提交'
       && oneOrderResult.rows[0].label === '点开查看进度',
@@ -503,6 +348,10 @@ function register(h) {
     const createPage = textOfRel('pkg-partner/pages/create-on-behalf/index.js');
     t.check(createPage.indexOf('payloadModel.buildPayload') >= 0 && createPage.indexOf('orderApi.createBatch') === -1,
       'D46 页面接线到 v1.0 单入口（order.create），不再 createBatch');
+    const resultSrc = textOfRel('pkg-partner/pages/create-on-behalf/parts/result-model.js');
+    t.check(createPage.indexOf('config: this.config') >= 0
+      && resultSrc.indexOf('DEFAULT_CONFIG.autoCompleteAt') >= 0 && resultSrc.indexOf('23:50') < 0,
+    'D46b 结果块接线：页面注入公开配置、纯件零时刻字面量（D43/TD-083 单源 config/defaults）');
     t.notEmpty(boundPayload.data.parcels[0].pickupCode, 'D 组样本非空（防止空集全绿）');
   });
   // ------------------------------------------------------------------ E 字段校验矩阵
@@ -594,13 +443,12 @@ function register(h) {
   });
   // ------------------------------------------------------------------ G 静态纪律
   h.section('G. 静态纪律：页面零判据/零绑定入口/零金额/行数/四件套（§2 铁律、门禁 #18/#21/#22/#28）', (t) => {
-    const statusLiterals = ['SUBMITTED', 'ACCEPTED', 'PICKED', 'DELIVERED', 'COMPLETED', 'CANCELLED', 'EXCEPTION'];
     const layerBad = [];
     PAGE_SCRIPTS.forEach((rel) => {
       const code = fsutil.stripComments(textOfRel(rel));
       if (/wx\.cloud\./.test(code)) layerBad.push(rel + ':wx.cloud');
       if (/Math\.random|\brandom\(/.test(code)) layerBad.push(rel + ':random');
-      statusLiterals.forEach((status) => {
+      STATUS_LITERALS.forEach((status) => {
         if (new RegExp("['\"]" + status + "['\"]").test(code)) layerBad.push(rel + ':' + status);
       });
     });
@@ -669,8 +517,9 @@ function register(h) {
       if (lines > 500) tooLong.push(rel + ':' + lines);
     });
     t.eq(tooLong, [], 'G14 页面/纯件脚本均 ≤500 行（#18）');
-    t.check(fsutil.countLines(path.join(ROOT, 'tools/selftest-partner-pages.js')) <= 1000,
-      'G15 本测试文件 ≤1000 行（#18 测试档）');
+    t.check(fsutil.countLines(path.join(ROOT, 'tools/selftest-partner-pages.js')) <= 950
+      && fsutil.countLines(path.join(ROOT, 'tools/lib/partner-pages-cases.js')) <= 950,
+    'G15 本测试文件与 tools/lib/partner-pages-cases.js 均 ≤950 行（#18 测试档 + 本批拆件预算）');
     const missing = [];
     PAGE_FILES.forEach((base) => {
       ['js', 'wxml', 'wxss', 'json'].forEach((ext) => {
@@ -869,6 +718,74 @@ function register(h) {
     'K15 代客下单页 kebab-case max-count="{{imageMax}}"（D44 多图 0~10；数值单源 formModel.IMAGE_MAX）');
     t.check(textOfRel('components/image-picker/index.js').indexOf('maxCount: { type: Number, value: 1 }') >= 0,
       'K16 组件仍声明 maxCount 属性且默认值=1（kebab-case 自动映射，显式传 1 行为不变）');
+  });
+  // ------------------------------------------------------------------ O TD-084 识别兜底/幂等粒度与提示收口
+  h.section('O. TD-084 识别兜底/幂等粒度与提示：逐件 AI 兜底/幂等键按件/超限「请分单」/预约取请求时 serverNow', (t) => {
+    const createPage = textOfRel('pkg-partner/pages/create-on-behalf/index.js');
+    const flowSrc = textOfRel('pkg-partner/pages/create-on-behalf/parts/recognize-flow.js');
+    const modelSrc = textOfRel('pkg-partner/pages/create-on-behalf/parts/recognize-model.js');
+    const formSrc = textOfRel('pkg-partner/pages/create-on-behalf/parts/form-model.js');
+    const payloadSrc = textOfRel('pkg-partner/pages/create-on-behalf/parts/payload-model.js');
+    // ① 逐件兜底目标：缺码/缺站点才算，规则可用的件不外呼（AI 次数按件有界）
+    const targets = [
+      Object.assign(parcelOf({ pickupCode: '' }), { stationId: 'P4' }),
+      parcelOf({ pickupCode: '27-2-7016', trackingTail: '66785' }),
+      Object.assign(parcelOf({ pickupCode: '' }), { stationId: '', stationName: '', stationIndex: 0 })
+    ];
+    const indexes = recognizeModel.aiFallbackIndexesOf(targets);
+    t.eq([indexes, targets.length], [[0, 2], 3],
+      'O1 兜底目标逐件判定：只列缺站点/缺码件（规则已填好的件不外呼，外呼次数 ≤件数）');
+    // ② 逐件兜底结果回写 + failureId 按件派生（同图多件不共键，DATA_MODEL §4.9）
+    const calls = [
+      { index: 0, value: { recognized: true, confidence: 'HIGH', source: 'DEEPSEEK', pickupCode: '207-3-1014', failureId: 'F-20261101-AAAAAA' } },
+      { index: 2, value: { recognized: true, confidence: 'HIGH', source: 'DEEPSEEK', stationId: 'P6', pickupCode: '12345678', failureId: 'F-20261101-BBBBBB' } }
+    ];
+    const merged = recognizeModel.applyAiFallbacksOf(targets, calls);
+    t.eq([merged.items[0].pickupCode, merged.items[2].pickupCode, merged.items[2].stationId],
+      ['207-3-1014', '12345678', 'P6'], 'O2 同图多缺码件逐件兜底并各自回写到对应件（不再只回写第一件）');
+    t.eq([merged.items[0].failureId, merged.items[2].failureId, merged.items[0].failureId !== merged.items[2].failureId],
+      ['F-20261101-AAAAAA', 'F-20261101-BBBBBB', true],
+      'O3 failureId 按件落（同图多件不共键；建单可按件关联各自复核记录）');
+    t.eq([merged.items[1].pickupCode, merged.changed], ['27-2-7016', 2],
+      'O4 规则已填好的件不被兜底改写；changed 只计实际回写件');
+    const ticket = ticketFile(1).uploadTicketId;
+    const ids = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((index) => recognizeModel.failureRequestIdOf(ticket, index, '取件码 207-3-1014'));
+    t.eq(new Set(ids).size, 10,
+      'O5 同图 10 件派生的入队幂等键两两不同（逐件各一条失败记录，服务端不按文本相似度合并）');
+    // ③ 超限不静默丢件：合并达上限返回 overflow，用 formModel 唯一文案显式提示「请分单」
+    const twelve = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((seq) => ({ pickupCode: '27-2-70' + (10 + seq) }));
+    const capped = recognizeModel.mergeRecognizedItems(mutate(boundState(), { items: [], parcelSeq: 0 }), twelve);
+    t.eq([capped.items.length, capped.overflow], [10, 2], 'O6 识别结果超过 10 件：合并 10 件、overflow=2（不再静默丢弃）');
+    t.eq([recognizeModel.recognitionTextOf({ filled: 0, overflow: capped.overflow }),
+      recognizeModel.recognitionTextOf({ overflow: 1 })],
+    [formModel.PARCEL_LIMIT_TEXT, formModel.PARCEL_LIMIT_TEXT],
+    'O7 超限提示走 formModel.PARCEL_LIMIT_TEXT（文案单源，不造第二处字面量）');
+    t.check(formModel.PARCEL_LIMIT_TEXT === '一单最多 10 件，请分单'
+      && (modelSrc.match(/一单最多/g) || []).length === 0 && (createPage.match(/一单最多/g) || []).length === 0
+      && formSrc.indexOf('PARCEL_LIMIT_TEXT =') >= 0,
+    'O8 「一单最多 10 件，请分单」唯一字面量在 form-model（TD-084③ 文案单源）');
+    t.eq(recognizeModel.recognitionTextOf({ filled: 2, overflow: 1 }),
+      recognizeModel.PREFILL_TEXT + '；' + formModel.PARCEL_LIMIT_TEXT,
+      'O9 有预填也有溢出：先请核对再提示分单（两个提示都不丢）');
+    t.check(createPage.indexOf('overflow: merged.overflow') >= 0,
+      'O10 页面把 overflow 交给提示文案（识别完成即显式告知，不静默）');
+    // ④ 预约校验取「请求时」serverNow：旧快照放行 → 请求时拒绝
+    const appointAt = Object.assign({}, formModel.createAppointState(NOW), { type: 'LATEST', date: '2026-10-22', time: '12:00' });
+    const stalePass = formModel.validate(mutate(boundState(), { appoint: appointAt, nowMs: NOW }));
+    const fresh = formModel.validateDetailed(mutate(boundState(), { appoint: appointAt, nowMs: NOW }),
+      { nowMs: Date.parse('2026-10-22T12:30:00+08:00') });
+    t.eq([stalePass, fresh.step, fresh.message.indexOf('30 分钟') >= 0], ['', formModel.STEP_SERVICE, true],
+      'O11 旧 nowMs 快照放行、请求时 serverNow 拒绝（TD-084④ 反例：长停留不再先放行后被服务端拒）');
+    const submitSrc = createPage.slice(createPage.indexOf('onSubmit()'));
+    t.check(submitSrc.indexOf('payloadModel.buildPayload(this.state, { nowMs: serverNowMs() })') >= 0
+      && payloadSrc.indexOf('validateDetailed(source, options)') >= 0
+      && createPage.indexOf('serverTimeSkew') >= 0,
+    'O12 页面提交时现取 serverNow（store.serverTimeSkew 校时），纯件按 options.nowMs 校验（不再用 onLoad 快照）');
+    t.check(flowSrc.indexOf('recognizeModel.aiFallbackIndexesOf') >= 0 && flowSrc.indexOf('recognizeModel.applyAiFallbacksOf') >= 0
+      && flowSrc.indexOf('failureRequestIdOf(textOf(file.uploadTicketId), itemIndex, maskedText)') >= 0
+      && flowSrc.indexOf('failureId: one.failureId') < 0,
+    'O13 识别编排接线：逐件兜底 + 幂等键按件下标派生 + 不再把整图 failureId 复制给每件');
+    t.notEmpty(merged.items, 'O 组样本非空（防止空集全绿）');
   });
   // ------------------------------------------------------------------ F READONLY/TEST_WRITE + transport
   h.section('F. READONLY/TEST_WRITE 与 fake transport：包络/零请求/票据/分享（§6.3、§6.4）', async (t) => {

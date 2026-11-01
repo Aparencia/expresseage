@@ -135,12 +135,13 @@ function afterWriteIntent(key, groups, row, values) {
 }
 
 // 批量按钮 → 意图：toast / panel（改站点需选站点）/ confirm
-function batchTapIntent(key, groups, readonly) {
+// TD-083：config = 调用方注入的公开配置（页面 store.get('config')），只用于日结批自动完成时刻文案。
+function batchTapIntent(key, groups, readonly, config) {
   if (readonly) {
     return { kind: 'toast', message: READONLY_COPY };
   }
   const rows = groupView.selectedRows(groups);
-  const plan = batchView.plan(key, rows);
+  const plan = batchView.plan(key, rows, { config: config });
   if (!plan.ok) {
     return { kind: 'toast', message: plan.message || '选中的单里没有可执行的动作' };
   }

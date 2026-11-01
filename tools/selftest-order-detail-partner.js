@@ -31,7 +31,7 @@ const client = require(path.join(ROOT, 'api/client.js'));
 const orderApi = require(path.join(ROOT, 'api/modules/order.js'));
 const serverDto = require(path.join(ROOT, 'cloudfunctions/api/handlers/order/_dto.js'));
 
-const EXPECTED_ASSERTIONS = 190; // 182 + 8：修复批 T4 P1-9 送达文案按 config.autoCompleteAt（D43 配置化）
+const EXPECTED_ASSERTIONS = 191; // 190 + 1：TD-076 拆 parts 后「页面 ≤450 行」静态断言（G20b，拆前 500 行贴顶）
 const STATUS = orderState.STATUS;
 const STATUS_LITERALS = enums.ORDER_STATUS_LIST.slice();
 const PAGE_JS = 'pkg-partner/pages/order-detail/index.js';
@@ -571,7 +571,9 @@ function register(h) {
     t.check(wxml.indexOf('undoBar.visible') >= 0, 'G18 WXML 撤销条按视图快照渲染');
     t.check(wxml.indexOf('顾客编号') >= 0 && wxml.indexOf('customerNoText') >= 0,
       'G19 顾客编号独立小字行（不显示 openid）');
-    t.check(/MESSAGE_POLL_MS = 10000/.test(page) && /onShow\(\)[\s\S]*startMessagePoll/.test(page),
+    // TD-076 拆 parts 后：计时器常量在 parts/page-timers，页面只留 onShow/onHide/onUnload 接线
+    const timersSrc = textOf(partsDir + '/page-timers.js');
+    t.check(/MESSAGE_POLL_MS = 10000/.test(timersSrc) && /onShow\(\)[\s\S]*startMessagePoll/.test(page),
       'G19b 留言 10s 轮询：onShow 起，onHide/onUnload 停（离开页面不空转）');
     t.check(page.indexOf('messagePoll.isTerminal') >= 0 && page.indexOf('stopMessagePoll();') >= 0,
       'G19c 终态订单停止留言轮询：applyDetail 后 stop + startMessagePoll 终态守卫（P0-3）');
@@ -579,6 +581,9 @@ function register(h) {
       'G19c 留言轮询与撤销倒计时在 onHide/onUnload 统一清理');
     const jsLines = fsutil.countLines(path.join(ROOT, PAGE_JS));
     t.check(jsLines > 0 && jsLines <= 500, 'G20 页面脚本 ≤500 行（实际 ' + jsLines + ' 行）');
+    // TD-076 关闭证据：拆 parts 后页面编排留出 #18 余量（拆前 500 行贴顶，任何新增必红）
+    t.check(jsLines > 0 && jsLines <= 450,
+      'G20b TD-076 页面编排 ≤450 行留余量（实际 ' + jsLines + ' 行；#18 上限 500）');
     const selfLines = fsutil.countLines(path.join(ROOT, 'tools/selftest-order-detail-partner.js'));
     t.check(selfLines > 0 && selfLines <= 1000, 'G21 本测试文件 ≤1000 行（实际 ' + selfLines + ' 行）');
     // 端到端：fake transport 断言包络（expectedVersion / clientRequestId / 只带差异字段）
@@ -717,7 +722,8 @@ function register(h) {
     t.eq([correctPanel.buildSubmit(multi, perItem.patch, 1).data.itemIndex,
       'itemIndex' in correctPanel.buildSubmit(multi, perItem.patch, 0).data], [1, false],
       'H10 提交带 itemIndex（逐件纠正）；首件缺省 0 不传（兼容契约缺省）');
-    const pageSrc = textOf(PAGE_JS);
+    // TD-076 拆 parts 后：逐件纠正接线在 parts/panel-actions（页面方法合并），静态判据扫「页面 + 该接线件」
+    const pageSrc = textOf(PAGE_JS) + '\n' + textOf(partsDir + '/panel-actions.js');
     const wxmlSrc = textOf(PAGE_WXML);
     t.check(pageSrc.indexOf('itemIndex') >= 0 && pageSrc.indexOf('correctPanel.buildEditor(this.data.order, index)') >= 0,
       'H11 页面按 itemIndex 打开/提交逐件纠正（不改订单级动作）');

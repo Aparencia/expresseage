@@ -5,6 +5,7 @@
 'use strict';
 
 const stations = require('../../../../shared/stations');
+const recognize = require('../../../../utils/recognize/index');
 const formModel = require('./form-model');
 
 const BATCH_MAX = formModel.BATCH_MAX;
@@ -75,6 +76,52 @@ function failureRequestIdOf(uploadTicketId, itemIndex, ocrTextMasked) {
   return ticket.slice(0, 16) + contentHashOf(ocrTextMasked) + 'AI' + indexText;
 }
 
+/** 该件是否需要 AI 兜底：缺站点或缺可提交码（C2 触发口径，不以"是否抽到文本"为前置） */
+function needsAiOf(item) {
+  if (!item || !item.stationId) return true;
+  const checked = recognize.validateParcel(item);
+  return !!checked.errors.pickupCode || checked.codeStatus !== 'OK';
+}
+
+/** 单图兜底目标（纯件）：只列缺站点/缺码的件下标——规则已可用的件不外呼，AI 次数按件有界（≤件数） */
+function aiFallbackIndexesOf(items) {
+  const list = listOf(items);
+  const indexes = [];
+  for (let index = 0; index < list.length; index += 1) {
+    if (needsAiOf(list[index])) indexes.push(index);
+  }
+  return indexes;
+}
+
+/**
+ * 逐件 AI 兜底结果回写（纯件，DATA_MODEL §4.9）：calls=[{index,value}]，value=aiApi.parseParcel 返回值。
+ * 只写对应件（各自独立 failureId，同图多件不共键）、只填空字段（手填优先，applyAiSuggestion 统一完成）；
+ * 某件失败只降级该件，不污染其它件的建议/失败关联。
+ * @returns {{items:object[],changed:number,failed:number,low:number,error:number,failureId:string}}
+ */
+function applyAiFallbacksOf(items, calls) {
+  const list = listOf(items).map(function clone(item) { return Object.assign({}, item || {}); });
+  const out = { items: list, changed: 0, failed: 0, low: 0, error: 0, failureId: '' };
+  listOf(calls).forEach(function each(call) {
+    const index = numberOr(call && call.index, -1);
+    if (index < 0 || index >= list.length) return;
+    const value = Object.assign({}, (call && call.value) || {});
+    // 兼容服务端旧 DTO 字段名：缺 failureId 时用 failureNo 兜底（建单仍按件关联失败记录）
+    if (!textOf(value.failureId) && textOf(value.failureNo)) value.failureId = textOf(value.failureNo);
+    const merged = recognize.applyAiSuggestion(list[index], value);
+    list[index] = merged.parcel;
+    if (merged.changed.length > 0) out.changed += 1;
+    if (merged.suggestion) out.low += 1;
+    const failureId = textOf(list[index].failureId);
+    if (failureId) {
+      out.failed += 1;
+      if (!out.failureId) out.failureId = failureId;
+    }
+    if (value.error === true) out.error += 1;
+  });
+  return out;
+}
+
 /** 只填空白字段（手填优先）：返回 {item, changed}；站点命中 P1~P8 才写入（非法站点不猜） */
 function fillBlank(target, row) {
   const item = Object.assign({}, target || {});
@@ -99,7 +146,8 @@ function fillBlank(target, row) {
 /**
  * 识别结果 → 表单预填（D44：一图多码按件拆；只填空白字段、手填优先、不覆盖用户输入）。
  * 每行优先填进第一件「还没码也没尾号」的空件；没有空件才追加新件（上限 10 件）。
- * @returns {{items:object[], parcelSeq:number, filled:number}}
+ * TD-084③：已达上限仍有可填结果时不再静默丢弃——overflow=放不下的行数，交页面显式「请分单」提示。
+ * @returns {{items:object[], parcelSeq:number, filled:number, overflow:number}}
  */
 function mergeRecognizedItems(state, recognized) {
   const source = state || {};
@@ -107,6 +155,7 @@ function mergeRecognizedItems(state, recognized) {
   let seq = numberOr(source.parcelSeq, items.length) || items.length;
   const used = {};
   let filled = 0;
+  let overflow = 0;
   listOf(recognized).forEach(function each(raw) {
     const row = raw || {};
     if (!row.pickupCode && !textOf(row.trackingTail) && !row.stationId) {
@@ -123,6 +172,7 @@ function mergeRecognizedItems(state, recognized) {
       index = items.length - 1;
     }
     if (index < 0) {
+      overflow += 1;
       return;
     }
     used[index] = true;
@@ -130,12 +180,16 @@ function mergeRecognizedItems(state, recognized) {
     items[index] = result.item;
     if (result.changed > 0) filled += 1;
   });
-  return { items: items, parcelSeq: seq, filled: filled };
+  return { items: items, parcelSeq: seq, filled: filled, overflow: overflow };
 }
 
 /** 预填提示文案：有预填→请核对；低置信→没把握；无预填但有失败→已反馈复核；都没有→手填引导 */
 function recognitionTextOf(result) {
   const info = result || {};
+  if (numberOr(info.overflow, 0) > 0) {
+    // TD-084③：超限不静默丢件——复用 form-model 的件数上限唯一文案（不在本文件再造第二处字面量）
+    return (numberOr(info.filled, 0) > 0 ? PREFILL_TEXT + '；' : '') + formModel.PARCEL_LIMIT_TEXT;
+  }
   if (info.filled > 0) {
     return info.lowSuggestions > 0 ? PREFILL_TEXT + '（部分字段没把握，未自动填）' : PREFILL_TEXT;
   }
@@ -156,11 +210,14 @@ module.exports = {
   LOW_TEXT,
   PREFILL_TEXT,
   START_TEXT,
+  aiFallbackIndexesOf,
+  applyAiFallbacksOf,
   contentHashOf,
   failureRequestIdOf,
   fillBlank,
   isCancelled,
   mergeRecognizedItems,
+  needsAiOf,
   progressTextOf,
   recognitionTextOf
 };

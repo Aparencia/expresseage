@@ -264,7 +264,12 @@ function register(h) {
     t.check(appSrc.indexOf('router.getHandler(') >= 0, 'E18 请求热路径走 getHandler（首请求只加载首用域）');
     t.check(appSrc.indexOf('router.getRouter()[request.action]') < 0, 'E19 不再每请求 getRouter() 全量构建（回归即红）');
     const checkRaw = textOf('tools/check.js');
-    t.check(checkRaw.indexOf('staticRegistryProblems') >= 0, 'E20 补偿判据进 check.js #13（未用域错配构建期暴露）');
+    // 批 19 拆件后：#13 判据体搬到 tools/lib/check-rules-cloud.js；E20 断言「check.js 仍在 #13 委托该规则模块」
+    // 且「实现模块含 staticRegistryProblems 补偿判据」——不再依赖单文件注释锚点（防删注释后假红/漏判）。
+    const cloudRuleRaw = textOf('tools/lib/check-rules-cloud.js');
+    t.check(checkRaw.indexOf('cloudRules.actionRegistry') >= 0
+      && cloudRuleRaw.indexOf('staticRegistryProblems') >= 0,
+      'E20 补偿判据进 check.js #13（未用域错配构建期暴露）');
     const arch = textOf('docs/engineering/V4_ARCHITECTURE.md');
     t.check(arch.indexOf('按域懒加载') >= 0 && arch.indexOf('fail-fast') >= 0, 'E21 架构文档写明懒加载与 fail-fast 落差');
   });

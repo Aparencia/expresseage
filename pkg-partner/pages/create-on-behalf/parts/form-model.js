@@ -32,6 +32,8 @@ const STEP_PARCELS = 2;
 const STEP_SERVICE = 3;
 const STATION_MISSING_TEXT = '请选择驿站站点';
 const IMAGE_LIMIT_TEXT = '一单最多 ' + IMAGE_MAX + ' 张截图，请分多次提交';
+// 一单件数上限唯一文案（TD-084③：提交校验与识别合并超限共用这一处字面量，不在别处再写一遍）
+const PARCEL_LIMIT_TEXT = '一单最多 ' + BATCH_MAX + ' 件，请分单';
 
 function textOf(value) { return typeof value === 'string' ? value.trim() : ''; }
 function listOf(value) { return Array.isArray(value) ? value : []; }
@@ -42,6 +44,14 @@ function numberOr(value, fallback) {
 function cloneParcel(item) { return Object.assign({}, item || {}); }
 
 function emptyGuest() { return { displayName: '', phoneTail: '', zone: '', buildingNo: '', room: '', dormKey: '' }; }
+
+// 时间校验基准（TD-084④）：优先调用方在「请求时」注入的 serverNow（页面按 store.serverTimeSkew 现算），
+// 其次页面状态快照 nowMs，最后才回退本机时钟（纯件安全回退；服务端仍是唯一权威）。
+function nowMsOf(state, options) {
+  const override = numberOr((options || {}).nowMs, 0);
+  if (override > 0) return override;
+  return numberOr((state || {}).nowMs, 0) || Date.now();
+}
 
 // 每件包裹独立站点（D44）：stationTouched=false 表示用户尚未单独改过 → 首件站点变化时继承。
 // key 供 wx:key 用稳定键（不允许用 index：删除中间件时 index 会漂移，视图会错位）。
@@ -328,7 +338,8 @@ function imagePairErrorOf(state) {
 }
 
 // 校验明细：message + 失败步骤（D44：本地校验失败回到正确步骤，不再一律跳第 1 步）
-function validateDetailed(state) {
+// options.nowMs：提交时注入的「请求时」serverNow（TD-084④：长停留后预约校验不拿旧快照放行）
+function validateDetailed(state, options) {
   const source = state || emptyState();
   if (!listOf(source.services).length) {
     return { message: '还没有启用任何服务类型，先去「服务类型与范围」启用后再代客下单', step: STEP_SERVICE };
@@ -342,7 +353,7 @@ function validateDetailed(state) {
     return { message: '至少填一件取件信息', step: STEP_PARCELS };
   }
   if (items.length > BATCH_MAX) {
-    return { message: '一图多码最多 ' + BATCH_MAX + ' 件，请分次提交', step: STEP_PARCELS };
+    return { message: PARCEL_LIMIT_TEXT, step: STEP_PARCELS };
   }
   for (let index = 0; index < items.length; index += 1) {
     const stationText = validateStation(items[index], index);
@@ -358,7 +369,7 @@ function validateDetailed(state) {
   if (note.length > NOTE_MAX) {
     return { message: '备注最多 ' + NOTE_MAX + ' 字', step: STEP_SERVICE };
   }
-  const appointCheck = appointUtil.validateOf(source.appoint, numberOr(source.nowMs, 0) || Date.now());
+  const appointCheck = appointUtil.validateOf(source.appoint, nowMsOf(source, options));
   if (!appointCheck.ok) {
     return { message: appointCheck.reason, step: STEP_SERVICE };
   }
@@ -370,8 +381,8 @@ function validateDetailed(state) {
 }
 
 // 提交前整体校验（服务类型启用/逐件站点/逐件取件信息/备注/截图票据成对）
-function validate(state) {
-  return validateDetailed(state).message;
+function validate(state, options) {
+  return validateDetailed(state, options).message;
 }
 
 // 幂等键生命周期：同内容复用上次键（失败重试不重复建单）；内容变了重新生成（helpers 由页面注入 api/client 单源）
@@ -423,6 +434,7 @@ module.exports = {
   LOCKER_NO_MAX,
   MODE_LABEL,
   NOTE_MAX,
+  PARCEL_LIMIT_TEXT,
   PICKUP_CODE_MAX,
   STEP_CUSTOMER,
   STEP_PARCELS,

@@ -4,6 +4,7 @@
  * A 站点 / B 服务类型 / C canSubmit / D buildPayload / E submission id / F api/client transport /
  * G 页面静态 / H 逐件 AI 兜底 / J ocr-flow 纯件 / K image-picker（P1-8/P1-4/D44 多图并发）/
  * L 范围预检+CUSTOM 备注 / M 重新识别失败卡出路 / N 取件码标签+Step1 回迁 / O D44 上传链路 size 解析。
+ * 夹具/样本/助手已外移 tools/lib/order-flow-cases.js（拆出以控门禁 #18 行数；主套件与夹具文件均 ≤950 行）。
  * 纪律：不 mock 全局 wx（api/client 用 setTransport 注入替身）；fake 数据、不连真云；先合法基线再反例；
  *       样本非空；EXPECTED_ASSERTIONS 与实际断言数精确相等（少算/多算都判红）。
  * 取数：node tools/selftest-order-flow.js | Select-Object -Last 2
@@ -30,178 +31,22 @@ const filesFlow = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts
 const precheck = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/precheck.js'));
 const pickerState = require(path.join(ROOT, 'components/image-picker/state.js'));
 const uploadApi = require(path.join(ROOT, 'api/upload.js'));
-const { createFakeDb } = require('./fake-db');
 const orderFlowClientCases = require('./lib/order-flow-client-cases');
 const orderFlowPipelineCases = require('./lib/order-flow-pipeline-cases');
 const CLOUD_API = path.join(ROOT, 'cloudfunctions/api');
-const app = require(path.join(CLOUD_API, 'app.js'));
 const parcelsInput = require(path.join(CLOUD_API, 'handlers/order/_parcels-input.js'));
-const { COLLECTIONS } = require(path.join(CLOUD_API, 'shared/collections.js'));
 const serverEnums = require(path.join(CLOUD_API, 'shared/enums.js'));
+
+const caseLib = require('./lib/order-flow-cases');
+
+const {
+  ORDER_CREATE_PAGE, ORDER_CREATE_WXML, ORDER_MODEL, PAGE_SCOPE, RECOGNITION_SOURCES,
+  CONFIDENCE_VALUES, TICKET, IMAGE, IT_TICKET, IT_IMAGE, IT_TICKET_BATCH, IT_IMAGE_BATCH,
+  textOf, listJs, stationItem, identifyPageOf, imageFileOf, payloadOf, orderFlowSource,
+  createOrderDb, orderApiOf, pageLayerHits
+} = caseLib;
+
 const EXPECTED_ASSERTIONS = 277; // 256 + 21：R 组 P0-1 多图 imageIndex 重映射 9 + S 组 P1-10 取消识别 8 + Q13~Q16 日历日回算 4 // 242 + 14：D47 预约客户端 Q 组（选项/载荷/摘要/指纹/文案/接线） // 210 + 32（P0-1：P1~P30 + P26b 流水线化 31 + P 组样本非空 1）
-
-const ORDER_CREATE_PAGE = 'pkg-customer/pages/order-create/index.js';
-const ORDER_CREATE_WXML = 'pkg-customer/pages/order-create/index.wxml';
-const ORDER_MODEL = 'pkg-customer/pages/order-create/parts/model.js';
-const PAGE_SCOPE = 'pkg-customer/pages/order-create/';
-const STATUS_LITERALS = ['SUBMITTED', 'ACCEPTED', 'PICKED', 'DELIVERED', 'COMPLETED', 'CANCELLED', 'EXCEPTION'];
-// 与云端 handlers/order/_parcel.js 同值域（客户端只透传/归一手填，不新增值）
-const RECOGNITION_SOURCES = ['RULE', 'MANUAL', 'DEEPSEEK'];
-const CONFIDENCE_VALUES = ['HIGH', 'MEDIUM', 'LOW'];
-
-const TICKET = 'TK-ORDER-FLOW-0001';
-const IMAGE = { fileId: 'cloud://test.env/orders/TKT/image.jpg', width: 1080, height: 1440, size: 320000 };
-
-const ITEM_A = 'item-a';
-
-function textOf(rel) {
-  return fsutil.readText(path.join(ROOT, rel));
-}
-
-function listJs(dirRel) {
-  const out = [];
-  const walk = (rel) => {
-    fs.readdirSync(path.join(ROOT, rel), { withFileTypes: true }).forEach((entry) => {
-      const child = rel + '/' + entry.name;
-      if (entry.isDirectory()) {
-        walk(child);
-      } else if (entry.isFile() && entry.name.endsWith('.js')) {
-        out.push(child);
-      }
-    });
-  };
-  walk(dirRel);
-  return out.sort();
-}
-
-function stationItem(extra) {
-  return model.makeItem(Object.assign({ stationId: 'P3', pickupCode: 'A12345' }, extra || {}), {
-    serviceCode: enums.SERVICE_CODES[0]
-  });
-}
-
-// P0-1/P1-10 收口用例的页面实例桩：只提供 applyIdentify/runIdentify 消费的 data/setData/itemDefaults/onOcrPhase
-function identifyPageOf() {
-  return {
-    data: { step: 1, ocrState: 'idle', files: [], perImage: [], images: [], tickets: [], items: [] },
-    itemDefaults: function defaults() { return {}; },
-    setData: function setData(patch) { Object.assign(this.data, patch); },
-    onOcrPhase: function onOcrPhase(state) { this.data.ocrState = (state && state.phase) || this.data.ocrState; }
-  };
-}
-
-// P0-1 多图夹具：第 seq 张截图（localPath/fileId/上传票据齐全）
-function imageFileOf(seq) {
-  return { localPath: 'wxfile://tmp/ticket-' + seq + '.jpg',
-    fileId: 'cloud://test.env/orders/TKT/image-' + seq + '.jpg', uploadTicketId: 'TK-ORDER-FLOW-00' + seq };
-}
-
-// v1.0（D23）：order.create 单入口载荷：{parcels[], images[], tickets[], serviceCode, appoint, note, delivery?, manualEntry}
-function payloadOf(items, options) {
-  const opt = options || {};
-  const images = opt.images === undefined ? [IMAGE] : opt.images;
-  const tickets = opt.tickets === undefined ? (images.length ? [TICKET] : []) : opt.tickets;
-  return model.buildPayload({
-    items: items,
-    images: images,
-    tickets: tickets,
-    serviceCode: opt.serviceCode === undefined ? enums.SERVICE_CODES[0] : opt.serviceCode,
-    appoint: opt.appoint || { type: 'ASAP' },
-    note: opt.note || '',
-    delivery: opt.delivery || null
-  });
-}
-
-// 页面层全文（页面 + parts）：v1.0 逻辑已拆到 parts/，静态断言需扫整条下单链路
-function orderFlowSource() {
-  return listJs(PAGE_SCOPE).map((rel) => textOf(rel)).join('\n');
-}
-
-// ── I 组联调夹具：fake DB + 真实 order handler（不连真云、不 mock wx）────────────
-const IT_NOW = Date.parse('2026-10-22T12:00:00+08:00');
-const IT_TICKET = 'TK-IT-SINGLE-0001';
-const IT_IMAGE = { fileId: 'cloud://test.env/orders/TKT/image.jpg', width: 1080, height: 1440, size: 320000 };
-const IT_TICKET_BATCH = 'TK-IT-BATCH-0001';
-const IT_IMAGE_BATCH = { fileId: 'cloud://test.env/orders/BTCH/image.jpg', width: 1080, height: 1440, size: 300000 };
-
-function ticketDoc(ticketId, cloudPath) {
-  return {
-    _id: 'upload-' + ticketId, ticket: ticketId, openid: 'openid-it-c', cloudPath: cloudPath,
-    purpose: serverEnums.UPLOAD_PURPOSE.TICKET, draftId: 'draft-it',
-    createdAt: IT_NOW, expiresAt: IT_NOW + 3600000, usedAt: 0
-  };
-}
-
-function uniqueIndexesForApi() {
-  return {
-    users: [['_id']],
-    customers: [['customerNo'], ['_id']],
-    partners: [['openid'], ['partnerNo']],
-    bindings: [['activeKey'], ['tagKey']],
-    orders: [['orderNo'], ['requestKey']],
-    order_events: [['requestKey']],
-    order_messages: [['requestKey']],
-    counters: [['key']],
-    upload_tickets: [['ticket']],
-    recognition_failures: [['failureNo'], ['requestKey']],
-    config: [['key']]
-  };
-}
-
-function createOrderDb() {
-  const db = createFakeDb({ uniqueIndexes: uniqueIndexesForApi() });
-  Object.keys(COLLECTIONS).forEach((key) => db.seed(COLLECTIONS[key], []));
-  db.seed('users', [
-    { _id: 'openid-it-c', roles: ['CUSTOMER'], status: 'ACTIVE', isTestAccount: false, createdAt: IT_NOW, updatedAt: IT_NOW },
-    { _id: 'openid-it-p', roles: ['PARTNER'], status: 'ACTIVE', isTestAccount: false, createdAt: IT_NOW, updatedAt: IT_NOW }
-  ]);
-  db.seed('customers', [{
-    _id: 'openid-it-c', customerNo: 'CITFIXTUR', displayName: '小测', phoneTail: '1234',
-    zone: 'D', buildingNo: 4, room: '522', dormKey: 'D4-522', profileCompleted: true,
-    avatarFileId: '', createdAt: IT_NOW, updatedAt: IT_NOW
-  }]);
-  db.seed('partners', [{
-    _id: 'partner-it', openid: 'openid-it-p', partnerNo: 'PITFIX1', displayName: '小兼',
-    status: 'ACTIVE', avatarFileId: '', stats: {},
-    serviceConfig: {
-      services: [{ code: serverEnums.SERVICE_CODES[0], enabled: true },
-        { code: serverEnums.SERVICE_CODES[1], enabled: true }],
-      zones: ['D', 'X', 'N', 'B', 'C'],
-      acceptingOrders: true
-    },
-    createdAt: IT_NOW, updatedAt: IT_NOW
-  }]);
-  db.seed('bindings', [{
-    _id: 'binding-it', activeKey: 'openid-it-c', customerId: 'openid-it-c', partnerId: 'partner-it',
-    status: 'ACTIVE', roomTag: 'A', allocSeq: 1, tagKey: 'partner-it:D4-522:A',
-    dormSnapshot: { zone: 'D', buildingNo: 4, room: '522', dormKey: 'D4-522', buildingText: 'D4' },
-    partnerNote: '', boundAt: IT_NOW, updatedAt: IT_NOW,
-    releasedAt: null, releaseReason: '', releaseNote: '', releasedBy: ''
-  }]);
-  db.seed('upload_tickets', [
-    ticketDoc(IT_TICKET, 'orders/TKT/image.jpg'),
-    ticketDoc(IT_TICKET_BATCH, 'orders/BTCH/image.jpg')
-  ]);
-  return db;
-}
-
-function orderApiOf(db) {
-  return app.createApi({ db: db, now: () => IT_NOW, openid: 'openid-it-c', env: {}, cloud: {} });
-}
-
-// 有牙扫描（G 组）：同一函数既扫真实页面层，也接受合成样本做正控/反例
-function pageLayerHits(code) {
-  const hits = [];
-  const src = fsutil.stripComments(String(code || ''));
-  if (/wx\.cloud\./.test(src)) hits.push('wx.cloud.*');
-  if (/(^|[^.\w])fetch\s*\(/.test(src)) hits.push('fetch(');
-  if (/Math\.random|\brandom\(/.test(src)) hits.push('random');
-  STATUS_LITERALS.forEach((status) => {
-    if (new RegExp("['\"]" + status + "['\"]").test(src)) hits.push('状态字面量 ' + status);
-  });
-  if (/['"]order\.(create|createBatch)['"]/.test(src)) hits.push('自拼 action 名 order.create');
-  return hits;
-}
 
 function register(h) {
   // ---------------------------------------------------------------- A 站点选择器（P1~P8）
