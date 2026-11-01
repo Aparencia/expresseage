@@ -1009,3 +1009,20 @@ selftest：运行 36 套；失败 0 套；SKIP 0 套（无）；完整性 0 项
 - 填真实值并按 `05` 提审；提审前如需清空测试数据按 RUNBOOK §10.2.1；审核后按 `05` §6 清理（邀请码作废、测试数据清空、录屏留档）。
 - 截图使用测试账号会话（蓝条 + `TEST` 角标为内部测试标记），图注与解释见 `02` §1/§6；真机补拍项见 `02` §7。
 
+### 17.4 gate 与提交
+
+```text
+$ powershell -File gate.ps1 -Anchor bcfb930 -ScopeFiles "docs/,CHANGELOG.md,STATE.md" -Estimate 1200
+[PASS] 锚点可解析：bcfb930（HEAD=bd85f2e）
+[PASS] 变更集 41 件（锚点..HEAD + 工作区）
+[PASS] 范围前缀匹配（3 个前缀，41 件变更）
+[PASS] 行数检查完成（全文本口径，UTF-8）
+[PASS] 无 lockfile/package.json 变更
+[PASS] 体量 1686 行 ≤ 预估 1200 × 1.5 = 1800
+[PASS] 提交信息格式合规
+gate.ps1：红色 0 项；黄色 0 项（退出码 0）
+```
+
+- 提交：`bd85f2e`（feat，41 文件 +1686/−2：6 文档 + 25 截图 + 4 示意图 + README/STATE/CHANGELOG/REVIEW_MATERIALS 回写）+ 本证据提交；工作树干净、未 push、未 tag/提审/发布。
+- 截图原始文件与生成脚本留在本机临时目录（含第三方自动化依赖，不入库）；材料只入库最终图片与说明文档。
+
