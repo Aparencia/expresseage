@@ -16,6 +16,7 @@ const text = require(path.join(ROOT, 'utils/recognize/text.js'));
 const codes = require(path.join(ROOT, 'utils/recognize/codes.js'));
 const station = require(path.join(ROOT, 'utils/recognize/station.js'));
 const recognize = require(path.join(ROOT, 'utils/recognize/index.js'));
+const localCodes = require(path.join(ROOT, 'utils/recognize/local-codes.js'));
 const frame = require(path.join(ROOT, 'utils/ocr/frame.js'));
 const vision = require(path.join(ROOT, 'utils/ocr/vision.js'));
 const ocr = require(path.join(ROOT, 'utils/ocr/index.js'));
@@ -28,7 +29,7 @@ const recognizeModel = require(path.join(ROOT, 'pkg-partner/pages/create-on-beha
 const viewModel = require(path.join(ROOT, 'pkg-partner/pages/create-on-behalf/parts/view-model.js'));
 const pickerState = require(path.join(ROOT, 'components/image-picker/state.js'));
 
-const EXPECTED_ASSERTIONS = 276; // 250 + 13：⑦ 噪声语料；+13：D44 代客下单多图/识别预填/上传并发
+const EXPECTED_ASSERTIONS = 295; // 250 + 13：⑦ 噪声语料；+13：D44 代客下单多图/识别预填/上传并发；+19：D57 本机取件码粘贴解析
 
 // v3 真机语料（sha256 指纹钉：改动语料必须同步改这里的期望与解析断言）
 const CORPUS_ONE = [
@@ -685,6 +686,73 @@ function sectionCodeNoise(h) {
 
 function fsRead(rel) { return require('fs').readFileSync(path.join(ROOT, rel), 'utf8'); }
 
+// ---------------------------------------------------------------- D57 本机取件码解析
+// D57（用户 2026-11-01 拍板）：顾客本机取件码清单的粘贴文本解析/合并纯件；只服务本机清单，零上传零云函数。
+// 判据同时钉「认得出的正例」（标签/纯码/一行多码/站点下传/配置站点表）与「必须拒绝的反例」（噪音数字/地址行）。
+function sectionLocalCodes(h) {
+  h.section('§4.3/D57 本机取件码粘贴解析（parseCodeText/mergeEntries，纯件零 wx）', (t) => {
+    const SMS = [
+      '【菜鸟驿站】您的包裹已到西苑一栋南面快递中心',
+      '取件码：207-3-1014',
+      '取件码：2-3-4056 8-2-3021'
+    ].join('\n');
+    const sms = localCodes.parseCodeText(SMS);
+    t.eq(sms.items.map((item) => item.code), ['207-3-1014', '2-3-4056', '8-2-3021'],
+      'D57 多行粘贴逐行抽码（含一行多码）');
+    t.eq(sms.items.map((item) => item.stationId), ['P3', 'P3', 'P3'],
+      'D57 站点行下传：码行自身无站点时沿用最近站点行（统一 P3）');
+    t.eq(sms.items[0].stationName, '西苑一栋南面快递中心', 'D57 站点名走 shared/stations 归一的正式名');
+    t.eq(sms.rejected, [], 'D57 典型驿站短信零拒绝');
+    const multi = localCodes.parseCodeText('取件码：A12345、B23456');
+    t.eq(multi.items.map((item) => item.code), ['A12345', 'B23456'], 'D57 标签行一行多码（顿号/空格分隔）');
+    const pure = localCodes.parseCodeText('20731014\n2-3-4056');
+    t.eq([pure.items.length, pure.items[0].code, pure.items[0].stationId], [2, '20731014', ''],
+      'D57 纯码行可直接入库；无站点留空（不猜站点）');
+    t.eq(localCodes.parseCodeText('取货码 A12345\n提货码 B23456\n取件号 C34567').items.length, 3,
+      'D57 取货码/提货码/取件号 三种标签都认');
+    const sameLine = localCodes.parseCodeText('取件码：207-3-1014 取件时间：2026-10-27 18:30');
+    t.eq([sameLine.items.map((item) => item.code), sameLine.rejected], [['207-3-1014'], []],
+      'D57 同一行「取件时间」内不误收（码区在噪音标签前收口）');
+    const spaced = localCodes.parseCodeText('取件码：2 0 7 3 1 0 1 4');
+    t.eq([spaced.items.map((item) => item.code), spaced.rejected], [['20731014'], []],
+      'D57 OCR 逐字空格分组可拼回一个码');
+    const noise = localCodes.parseCodeText(
+      '取件码：2026-10-27\n13800138000\n取件码：1234567890123\n取件码：12\n湖工大西苑3栋522室');
+    t.eq([noise.items.length, noise.rejected],
+      [0, ['2026-10-27', '13800138000', '1234567890123', '12', '湖工大西苑3栋522室']],
+      'D57 拒绝清单有牙：日期形/手机号/≥13 位纯数字/不足 4 位/地址行全进 rejected');
+    const renamed = sharedStations.listStations().map((item) => ({
+      id: item.id,
+      name: item.id === 'P6' ? '南苑东门驿站' : item.name
+    }));
+    const renamedHit = localCodes.parseCodeText('取件码 A12345 南苑东门驿站', { stations: renamed });
+    t.eq([renamedHit.items[0].stationId, renamedHit.items[0].stationName], ['P6', '南苑东门驿站'],
+      'D57 options.stations 可注入配置站点表（与识别站点归一单源）');
+    t.eq(localCodes.parseCodeText('取件码：8-2-3021\n取件码：8-2-3021').items.length, 1,
+      'D57 同码跨行去重（先到先得）');
+    const fillStation = localCodes.parseCodeText('8-2-3021\n西苑菜鸟驿站\n8-2-3021');
+    t.eq([fillStation.items.length, fillStation.items[0].stationId], [1, 'P5'],
+      'D57 后到同码带站点 → 补前排空站点（与 storage 同语义）');
+    const empty = localCodes.parseCodeText('');
+    t.eq([empty.items.length, empty.rejected.length], [0, 0], 'D57 空文本 → 空结果（不抛）');
+    t.eq(localCodes.parseCodeText(null).items.length, 0, 'D57 非字符串入参不抛（空结果）');
+    t.eq(localCodes.parseCodeText('取件码 8-2-3021 地址 3栋522室').items.map((item) => item.code),
+      ['8-2-3021'], 'D57 带码行不因含「地址」字被整行拒（有码优先）');
+    const merged = localCodes.mergeEntries([
+      { code: ' 8-2-3021 ' },
+      { code: '8-2-3021', stationId: 'P3', stationName: ' x ' },
+      { code: 'bad' },
+      { code: 'A1234', stationId: 'P9', stationName: 'y' },
+      { code: '13800138000' }
+    ]);
+    t.eq(merged.map((item) => [item.code, item.stationId, item.stationName]),
+      [['8-2-3021', 'P3', 'x'], ['A1234', '', 'y']],
+      'D57 mergeEntries 同 parse 语义：去重/补站点/拒非法与手机号');
+    t.eq(localCodes.mergeEntries(null), [], 'D57 mergeEntries 非数组 → 空数组（不抛）');
+    t.notEmpty(sms.items, 'D57 样本非空（防空集全绿）');
+  });
+}
+
 function register(h) {
   sectionText(h);
   sectionMask(h);
@@ -702,6 +770,7 @@ function register(h) {
   sectionMergeParcels(h);
   sectionD35(h);
   sectionCodeNoise(h);
+  sectionLocalCodes(h);
   sectionD44(h);
 }
 

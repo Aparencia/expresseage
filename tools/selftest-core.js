@@ -24,6 +24,7 @@ const route = require(path.join(ROOT, 'config/route.js'));
 const pendingInvite = require(path.join(ROOT, 'utils/share/pending-invite.js'));
 const privacyGate = require(path.join(ROOT, 'utils/privacy-gate.js'));
 const store = require(path.join(ROOT, 'store/index.js'));
+const storage = require(path.join(ROOT, 'utils/storage.js'));
 const ZM = require('./zero-money-scan');
 
 // 构造样本（源码中不出现连续词面，防止门禁自命中）
@@ -34,7 +35,150 @@ const SAMPLE_FEN = 'total' + 'Fen';
 const FEE_ACTION_RE = new RegExp(['[Ff]' + 'en', 'pri' + 'ce', 'f' + 'ee'].join('|'));
 const CLEAN_TEXT = '订单状态与取件码信息整理，本程序只做下单/接单/履约与消息通知。';
 
-const EXPECTED_ASSERTIONS = 160; // 89 骨架 + 30 D37 入口白名单 + 25 D38 待绑定邀请/接线 + 16 D37-b 直落页隐私兜底
+const EXPECTED_ASSERTIONS = 202; // 89 骨架 + 30 D37 入口白名单 + 25 D38 待绑定邀请/接线 + 16 D37-b 直落页隐私兜底 + 42 D57 本机取件码清单
+
+// D57 本机取件码清单：注入式假平台（按键隔离；平台 storage API 只允许出现在 utils/storage.js，
+// 本测试不 mock 全局 wx，只经该模块的 platform 注入点）。
+function fakeLocalPlatform(seed) {
+  const data = Object.assign({}, seed || {});
+  return {
+    data: data,
+    getStorageSync: function (key) {
+      return data[key] === undefined ? '' : data[key];
+    },
+    setStorageSync: function (key, value) {
+      data[key] = value;
+    },
+    removeStorageSync: function (key) {
+      delete data[key];
+    }
+  };
+}
+
+// ── §5.6/D57 本机取件码清单（D57 唯一「L3 明文存本机」例外；只存本机、零上传）────────────
+function sectionLocalCodes(h) {
+  const PICK_KEY = storage.PICKCODES_KEY;
+  h.section('§5.6/D57 本机取件码清单（独立键 / 归一白名单 / 去重 / 上限 50 / 清空两键）', (t) => {
+    const p = fakeLocalPlatform();
+    t.eq([PICK_KEY, storage.LOCAL_CODE_MAX], ['ex_college_v4.pickcodes', 50],
+      'D57 本机取件码键与上限常量（独立于 ex_college_v4.store；页面经 storage 取常量，不写死）');
+    const empty = storage.loadLocalCodes(p);
+    t.eq([empty.v, empty.items.length], [1, 0], 'D57 无数据 → {v:1, items:[]}（不抛）');
+    t.eq(storage.addLocalCodes(null, p).added, 0, 'D57 非数组入参按空批处理（不抛）');
+
+    const added = storage.addLocalCodes([
+      { code: ' 8-2-3021 ', stationId: 'P3', stationName: '西苑一栋南面快递中心', roomNo: '3-522' },
+      { code: '20731014', stationId: 'P9', stationName: '  某驿站  ' },
+      { code: 'A*1', stationId: 'P1' },
+      { code: 'X'.repeat(41), stationId: 'P1' }
+    ], p);
+    t.eq([added.ok, added.added, added.skipped], [true, 2, 2],
+      'D57 合法码归一入库；非法码/超长码跳过（ok/added/skipped）');
+    t.eq(added.items.map((item) => item.code), ['20731014', '8-2-3021'],
+      'D57 最新在前（同一批按入参顺序递推 addedAt，后加入的在前）');
+    t.eq(Object.keys(added.items[1]).sort(), ['addedAt', 'checked', 'code', 'stationId', 'stationName'],
+      'D57 未知字段丢弃（行只留白名单 5 键）');
+    t.eq([added.items[1].stationId, added.items[1].stationName, added.items[1].checked],
+      ['P3', '西苑一栋南面快递中心', false], 'D57 站点/勾选初值（未勾选；站点名按配置口径存）');
+    t.check(Number.isInteger(added.items[0].addedAt) && added.items[0].addedAt > 0,
+      'D57 addedAt 为毫秒整数');
+    t.eq(added.items[0].stationId, '', 'D57 非法站点 P9 → 空串（不猜站点）');
+    t.eq(added.items[0].stationName, '某驿站', 'D57 stationName 首尾空白归一');
+    t.eq(storage.loadLocalCodes(p).items, added.items, 'D57 落盘后可读回同一清单（JSON 往返稳定）');
+
+    const longName = storage.addLocalCodes([{ code: 'ZZ1234', stationName: '一'.repeat(25) }], p);
+    t.eq([longName.items[0].code, longName.items[0].stationName.length], ['ZZ1234', 20],
+      'D57 站点名超 20 字收口（本机不留超长字段）');
+    t.eq(longName.items.length, 3, 'D57 追加后清单条数递增');
+
+    const fill = storage.addLocalCodes([
+      { code: 'A1B2C3' },
+      { code: 'A1B2C3', stationId: 'P5', stationName: '西苑菜鸟驿站' }
+    ], p);
+    t.eq([fill.added, fill.skipped], [1, 1], 'D57 同批同码只留一条（先到先得，后者计入 skipped）');
+    const filled = fill.items.filter((item) => item.code === 'A1B2C3')[0];
+    t.eq([filled.stationId, filled.stationName], ['P5', '西苑菜鸟驿站'],
+      'D57 后到条目带站点 → 补全先到条目的空站点（不重复建行）');
+    const dupExisting = storage.addLocalCodes([{ code: '8-2-3021', stationId: 'P1', stationName: '错站点' }], p);
+    t.eq([dupExisting.added, dupExisting.skipped], [0, 1],
+      'D57 已存在同码不重复新增（先到先得）');
+    t.eq(dupExisting.items.filter((item) => item.code === '8-2-3021')[0].stationId, 'P3',
+      'D57 先到条目的站点不被后到覆盖（不猜、不改用户既有数据）');
+    t.eq(storage.addLocalCodes([{ code: '3 0 7 3 1 0 1 5' }], p).items[0].code, '30731015',
+      'D57 码去所有内部空白后入库（OCR 逐字空格也能存）');
+
+    const toggled = storage.setLocalCodeChecked('30731015', true, p);
+    t.eq([toggled.ok, toggled.items[0].checked], [true, true], 'D57 勾选「我已取到」可写（只改本机标记）');
+    t.eq(storage.setLocalCodeChecked('NO-SUCH-CODE', true, p).ok, false, 'D57 不存在的码勾选 → ok:false（不造假行）');
+    t.eq(storage.setLocalCodeChecked('a*1', true, p).ok, false, 'D57 非法码勾选 → ok:false');
+    t.eq(storage.setLocalCodeChecked('30731015', false, p).items[0].checked, false, 'D57 取消勾选可回退');
+    const removed = storage.removeLocalCode('30731015', p);
+    t.eq([removed.ok, removed.items.filter((item) => item.code === '30731015').length], [true, 0],
+      'D57 删除单条生效');
+    t.eq(storage.removeLocalCode('30731015', p).ok, false, 'D57 重复删除 → ok:false');
+    t.eq(storage.removeLocalCode('bad', p).ok, false, 'D57 非法码删除 → ok:false');
+
+    const p2 = fakeLocalPlatform();
+    const many = [];
+    for (let i = 0; i < 55; i += 1) many.push({ code: 'C' + (100000 + i) });
+    const capped = storage.addLocalCodes(many, p2);
+    t.eq([capped.ok, capped.added, capped.items.length], [true, 55, 50],
+      'D57 一次加 55 条 → 实存 50 条（added 报本次新增，便于页面算挤掉几条）');
+    t.eq(capped.items[0].code, 'C100054', 'D57 最新在前（队首是最后加入的码）');
+    t.check(['C100000', 'C100001', 'C100002', 'C100003', 'C100004'].every(
+      (code) => capped.items.every((item) => item.code !== code)), 'D57 超限丢最旧（最早 5 条被挤掉）');
+    t.eq(capped.added + 0 - capped.items.length, 5, 'D57 挤掉条数 = before + added − items.length（页面 limitHint 口径）');
+    const afterCap = storage.addLocalCodes([{ code: 'C999999' }], p2);
+    t.eq([afterCap.added, afterCap.items.length, afterCap.items[0].code], [1, 50, 'C999999'],
+      'D57 到上限后新增仍进队首、最旧一条被挤掉');
+
+    const p3 = fakeLocalPlatform({ [PICK_KEY]: '{not-json' });
+    t.eq(storage.loadLocalCodes(p3).items.length, 0, 'D57 脏 JSON → 空清单（静默归一，不抛）');
+    p3.data[PICK_KEY] = JSON.stringify({ v: 1, items: [
+      { code: 'A1234', extra: 'drop' },
+      { code: 'bad' },
+      { code: 'B2345', stationId: 'P2', stationName: 'xx', checked: 'yes', addedAt: 'nope' },
+      { code: 'A1234', stationId: 'P1', stationName: '补站点' }
+    ] });
+    const dirty = storage.loadLocalCodes(p3).items;
+    t.eq(dirty.map((item) => item.code), ['A1234', 'B2345'], 'D57 脏条目归一：非法码丢弃、重复按首次位置保留');
+    t.eq([dirty[0].stationId, dirty[0].stationName, dirty[0].checked, dirty[0].addedAt],
+      ['P1', '补站点', false, 0], 'D57 脏值收口：后到补空站点 / 非 true 勾选归 false / 非法 addedAt 归 0');
+    t.eq(dirty[1].addedAt, 0, 'D57 缺 addedAt 的旧条目归 0（保留用户码，不整条丢）');
+
+    const brokenWrite = {
+      getStorageSync: function () { return ''; },
+      setStorageSync: function () { throw new Error('quota'); },
+      removeStorageSync: function () { throw new Error('quota'); }
+    };
+    const failed = storage.addLocalCodes([{ code: 'A1234' }], brokenWrite);
+    t.eq([failed.ok, failed.added, failed.items.length], [false, 1, 0],
+      'D57 写失败 → ok:false（added 仍报本次新增，items 回旧清单；页面提示重试）');
+    t.eq(storage.clearLocalCodes(brokenWrite), false, 'D57 清空写失败 → false');
+    const brokenRead = {
+      getStorageSync: function () { throw new Error('io'); },
+      setStorageSync: function () {},
+      removeStorageSync: function () {}
+    };
+    t.eq(storage.loadLocalCodes(brokenRead).items.length, 0, 'D57 读失败 → 空清单（永不抛）');
+
+    const p4 = fakeLocalPlatform();
+    t.check(storage.setLastRole('CUSTOMER', p4) === true
+      && storage.addLocalCodes([{ code: 'A1234' }], p4).ok === true, 'D57 两个键可并存（各自独立）');
+    t.eq(Object.keys(p4.data).sort(), ['ex_college_v4.pickcodes', 'ex_college_v4.store'],
+      'D57 本机两个键并存互不覆盖（pickcodes 独立于 store）');
+    t.eq(storage.clearAll(p4), true, 'D57 clearAll 返回 true（换账号/隐私清理）');
+    t.eq([storage.loadLocalCodes(p4).items.length, storage.getLastRole(p4), Object.keys(p4.data).length],
+      [0, null, 0], 'D57 clearAll 同时删两键（本机取件码一并清，隐私口径）');
+
+    const p5 = fakeLocalPlatform();
+    storage.setLastRole('PARTNER', p5);
+    storage.addLocalCodes([{ code: 'B1234' }], p5);
+    storage.clearLocalCodes(p5);
+    t.eq([storage.getLastRole(p5), storage.loadLocalCodes(p5).items.length], ['PARTNER', 0],
+      'D57 清空本机取件码不动 lastRole（键隔离）');
+  });
+}
 
 function register(h) {
   // ---------------------------------------------------------------- §7.1 编号
@@ -353,6 +497,9 @@ function register(h) {
       'D38 已绑同号兜底：不重复 create（与「已绑定·去下单」同口径）');
     t.check(roleWxml.indexOf('已绑定·去下单') !== -1, 'D38 已绑同号提示「已绑定·去下单」');
   });
+
+  // ---------------------------------------------------------------- §5.6/D57 本机取件码清单
+  sectionLocalCodes(h);
 
   // ---------------------------------------------------------------- §7.6 零金额扫描器牙口
   h.section('§7.6 零金额扫描器（门禁自测）', (t) => {

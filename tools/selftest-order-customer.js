@@ -17,6 +17,8 @@
  *   I. 截图区 v1.0：images[]{index,status,hasImage,cleaned} 三态/多图下标/历史单兼容/零存储句柄
  *   K. 顾客端 UI 修复（兼职卡/服务范围/服务类型/头像兜底/tab 居中/tabBar 选中态）
  *   L. C 批单点欠账收口（TD-068 服务范围预检单源 / TD-070「其他代办」码常量单源 / TD-064 死导出清除）
+ *   P. 批21-D57「我的取件码（本机）」：行/时间/汇总/上限提示纯件 + 页面零上传/零 wx.cloud/
+ *      零第三方 AI 外呼/READONLY 静态接线（宽口径断言在 tools/lib/pickup-local-cases.js，拆件守 #18）
  *
  * 纪律：不 mock 全局 wx（api/client 用 setTransport 注入替身）；fake DTO/事件，不连真云；
  *       先合法基线再反例；样本非空；EXPECTED_ASSERTIONS 与实际断言数精确相等（少算/多算都判红）。
@@ -50,11 +52,11 @@ const precheck = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/
 const orderScopeReq = fsutil.tryRequire(path.join(ROOT, 'utils/order-scope.js'));
 const orderScope = orderScopeReq.value || {};
 
-const EXPECTED_ASSERTIONS = 300; // 290 + 10：O 组批20-C 顾客高频页首屏灰色占位/刷新保留旧内容
+const EXPECTED_ASSERTIONS = 323; // 300 + 23：P 组批21-D57 本机取件码清单（纯件/页面零上传静态接线）
 const caseLib = require('./lib/order-customer-cases');
 const {
-  STATUS, STATUS_LITERALS, PAGES, ISO, NOW, DOC_MS, textOf, actionsFor, dto, event, orderDoc,
-  FAKE_DTO_CTX, layerHits
+  STATUS, PAGES, ISO, NOW, DOC_MS, textOf, actionsFor, dto, event, orderDoc,
+  FAKE_DTO_CTX
 } = caseLib;
 const ACTION_KEYS = view.ACTION_KEYS;
 
@@ -348,71 +350,9 @@ function register(h) {
     });
   });
 
-  // ---------------------------------------------------------------- F 页面静态
+  // ---------------------------------------------------------------- F 页面静态（断言在 tools/lib/order-customer-cases.js#registerF，守 #18 行数）
   h.section('F. 页面静态：零 wx.cloud/零七状态字面量/零 random/轮询停接线/expectedVersion/只经 api', (t) => {
-    const control = layerHits(
-      "wx.cloud.callFunction({ name: 'api' });\n"
-      + "const s = 'CANCELLED';\n"
-      + 'const r = Math.random();\n'
-      + "client.call('order.get', {});\n"
-    );
-    t.eq(control.length, 4, 'F1 正控：合成违规样本被扫描命中 4 类（扫描有牙）');
-    t.eq(layerHits('const x = 1; // wx.cloud.callFunction 与 Math.random 在注释里\n'), [],
-      'F2 反例：注释内违规字样不误伤（剥注释后扫描）');
-    const scanned = [PAGES.detail, PAGES.orders, PAGES.messages, PAGES.home];
-    const pageHits = [];
-    scanned.forEach(function each(rel) {
-      layerHits(textOf(rel)).forEach(function push(hit) { pageHits.push(rel + ':' + hit); });
-    });
-    t.eq(pageHits, [], 'F3 四个页面 JS 零 wx.cloud.*/零七状态字面量/零 random/零直调 client.call');
-    scanned.forEach(function each(rel) {
-      t.check(textOf(rel).indexOf("api/modules/") >= 0, 'F4 ' + rel + ' 只经 api/modules 出入（action 字符串不落页面）');
-    });
-    const detail = textOf(PAGES.detail);
-    t.check(/onShow\(\)[\s\S]*flow\.startPoll/.test(detail), 'F5 详情 onShow 恢复轮询（flow.startPoll）');
-    t.check(/onHide\(\)[\s\S]*flow\.stopPoll/.test(detail) && /onUnload\(\)[\s\S]*flow\.stopPoll/.test(detail),
-      'F6 详情 onHide/onUnload 必停轮询（AC-C-29：离开页面不再排程）');
-    t.check(/clearTimer\(\)/.test(detail) && /setTimeout/.test(detail) && /flow\.pollDelay/.test(detail),
-      'F7 浏览器定时器接线：setTimeout + flow.pollDelay，clearTimer 统一清理');
-    t.check(!/\.status\s*===/.test(detail) && !/\.status\s*==/.test(detail),
-      'F8 详情页无 status 字面量比较（动作/进度只消费 DTO 与 parts）');
-    t.check(/writeAction\(orderApi\.cancel/.test(detail) && /writeAction\(orderApi\.confirmDelivery/.test(detail)
-      && /writeAction\(orderApi\.deleteRecord/.test(detail) && /expectedVersion:\s*version/.test(detail),
-    'F9 取消/确认/删除都经 writeAction 且带 expectedVersion（服务端乐观锁）');
-    t.check(/onCopyOrderNo/.test(detail) && /wx\.setClipboardData/.test(detail) && /onCopyOrderNo/.test(textOf(PAGES.detailWxml)),
-      'F10 头部订单号复制（wx.setClipboardData + 成功 toast）');
-    t.check(/onViewImage/.test(detail) && /view\.imageErrorText/.test(detail) && /wx\.previewImage/.test(detail)
-      && /image\.canView/.test(textOf(PAGES.detailWxml)),
-    'F11 截图四态接线：可看（previewImage）/加载失败/过期/已清理人话（imageErrorText 单源）');
-    t.check(/reorder=/.test(detail) && /actions\.reorder/.test(textOf(PAGES.detailWxml))
-      && /message\.inputVisible/.test(textOf(PAGES.detailWxml)) && /message\.archiveText/.test(textOf(PAGES.detailWxml)),
-    'F12 详情 WXML：再次下单入口 / 留言输入按 DTO message / 已完成归档提示');
-    const orders = textOf(PAGES.orders);
-    t.check(/ordersView\.tabsWithCounts/.test(orders) && /data\.counts|counts/.test(orders)
-      && /(ordersView\.tickRows|tickerPatch\.build)/.test(orders) && /ordersView\.serverNowMs/.test(orders),
-    'F13 列表：tab 计数取服务端 counts、倒计时按 serverTimeSkew 校时、tick 走纯件（P0-6 行级补丁）');
-    t.check(/onHide\(\)[\s\S]*stopTicker/.test(orders) && /onUnload\(\)[\s\S]*stopTicker/.test(orders),
-      'F14 列表 onHide/onUnload 清倒计时定时器（不在后台空转）');
-    t.check(/刷新成功/.test(orders), 'F15 下拉刷新成功 toast「刷新成功」');
-    t.check(/onReorderTap/.test(textOf(PAGES.ordersWxml)) && /catchtap="onReorderTap"/.test(textOf(PAGES.ordersWxml))
-      && /tab-count/.test(textOf(PAGES.ordersWxml)),
-    'F16 列表 WXML：分组计数 + 行内再次下单入口（catchtap 不冒泡到详情）');
-    t.check(/clearBadge/.test(textOf(PAGES.messages)) && /badges/.test(textOf(PAGES.messages))
-      && /messages:\s*0/.test(textOf(PAGES.messages)),
-    'F17 消息中心全部已读后红点归零（store.badges.messages）');
-    const home = textOf(PAGES.home);
-    t.check(/messageApi\.list\(\{\s*limit:\s*1\s*\}\)/.test(home) && /unread/.test(home) && /badges/.test(home),
-      'F18 首页 onShow 用 message.list({limit:1}).unread 更新 store.badges.messages（E13）');
-    t.check(/vm\.badges\.messages/.test(textOf(PAGES.homeWxml)), 'F19 首页铃铛红点按 badges.messages 渲染');
-    const create = textOf(PAGES.create);
-    t.check(/reorder\.orderNoOf\(options\)/.test(create) && /reorder\.load\(/.test(create)
-      && /reorder\.defaultsFor\(/.test(create) && /bootstrap\.load\(\)/.test(create),
-    'F20 下单页 support options.reorder：预填快照/默认值装配走 parts/reorder + parts/bootstrap');
-    t.check(/'\?reorder='/.test(detail) && /'\?reorder='/.test(orders),
-      'F21 详情/列表的再次下单跳同一入口 order-create?reorder=orderNo');
-    t.check(/switch-bar/.test(textOf(PAGES.detailWxml)) && /switch-bar/.test(textOf(PAGES.ordersWxml))
-      && /switch-bar/.test(textOf(PAGES.homeWxml)), 'F22 顾客三页保留切换会话顶栏（#23 不旁路）');
-    t.notEmpty(scanned, 'F 组样本非空');
+    caseLib.registerF(t);
   });
 
   // ---------------------------------------------------------------- G 端到端 fake transport
@@ -966,6 +906,11 @@ function register(h) {
     t.check(refreshBody.length > 0 && refreshBody.indexOf('order: null') < 0 && refreshBody.indexOf('vm:') < 0,
       'O9 首页 refresh 不清空旧内容（在途仍显示上次兼职卡/订单，结果到达才覆盖）');
     t.notEmpty([ordersWxml, homeWxml, ordersWxss, homeWxss], 'O 组样本非空');
+  });
+
+  // ---------------------------------------------------------------- P 批21 D57 本机取件码清单
+  h.section('P. D57 本机取件码清单：行/时间/汇总/上限纯件 + 页面零上传零外呼静态接线', (t) => {
+    require('./lib/pickup-local-cases').registerP(t);
   });
 }
 

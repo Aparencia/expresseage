@@ -1109,3 +1109,13 @@ cleanup(serverNow):
 - **D53 今日已送达汇总**：`view=day` 返回 `summary = {scope:'deliveredToday', total, parcels, completed, pending, byDorm:[{zone,buildingNo,count}], truncated}`——口径 `deliveredAt ∈ [今日 0 点, now]` 且 `status ∈ {DELIVERED, COMPLETED}`，**取消单不计**；`byDorm` 只到苑+楼栋；`truncated`=任一状态扫描触顶（文案注明可能少报）；旧 D48 `byStatus` 形状仅在 `view=workbench` 保留（向后兼容，不在 day 视图出现）。
 - **D54 客户列表 `partner.listBindings`**：排序 = 非空 `dormKey` 自然序（苑 D→X→N→B→C → 楼栋号 → 宿舍号数值）桶在前、空 `dormKey`（资料未完善）桶恒置底（桶内按 `allocSeq`）；游标允许 `{dormKey:'', allocSeq}`，`isAfterBindingCursor` 与排序同一全序（空桶后只返回更晚空行）；`activeOrderCount` 只统计本页 ≤limit 个顾客（5 个进行中状态 × `customerId in 本页 ids`，单状态 >300 按 `_id` 续扫保精确），空页零查询。
 - **D56 `admin.listOrders` 行称呼**：行增 `customerDisplayName`/`partnerDisplayName`（`maskedName` 脱敏，不返回完整昵称/openid/_id/customerId/partnerId）；代客单（无 customerId）顾客称呼回退 `guest.displayName` 快照；无归属/已删留空；取名按本页 `customerId`/`partnerId` 各 ≤1 次批量 `in`（每批 ≤100，不逐单 N+1）。
+
+---
+
+## 16. 批 21 本机取件码清单（2026-11-01，D57）
+
+> **本节声明：本机清单不是服务端数据，不新增任何集合/字段/索引/清理任务。** 与上文所有集合定义无交集。
+
+- **形态**：顾客设备本地存储 `ex_college_v4.pickcodes`（`utils/storage.js` 单一写口，独立于 `ex_college_v4.store`）；结构 `{v:1, items:[{code, stationId?, stationName?, checked, addedAt}]}`（归一化白名单，未知字段丢弃）。
+- **约束**：仅顾客本人设备；不上传、不下发、不入日志/通知/分享卡片/URL；**兼职端与开发者后台（含只读视角）不可见**（服务端没有可下发通道）；上限 50 条、按码去重、最新在前、可一键清空；换设备/清缓存丢失。
+- **口径归属**：D57（CONTRACT §13）；隐私例外见 CONTRACT §11.1/§11.2 v1.8/§11.3；存储/门禁见 ENGINEERING §5.6/§8.2 #15；页面/纯件落点见 ARCHITECTURE §3.5。**无接口/动作/事件/索引/留存期变化**；截图识别为端侧能力，不产生上传票据与云存储对象。

@@ -21,6 +21,11 @@
  *      （端内全文 / 定稿文档 / 补充文档派生物）关键句一致 + 旧「截图必须」口径反例锁死。
  *   I. 性别收集项（2026-10-27 task-1）：第一节新增第 19 项（默认按苑/楼栋推断、可手动修改、
  *      仅本人可见、未知不影响保存、注销删除）；旧「不采集微信头像以外的微信资料（如性别…）」表述删除。
+ *   L. D57 本机取件码清单（2026-11-01）：第一节新增第 20 项「本机取件码清单」；端内全文/定稿文档/
+ *      补充文档派生物三处同源写明「仅存本机、不上传不共享、可随时清空、换机/清缓存丢失」；
+ *      兼职端与开发者后台（含只读视角）不可见、不强制建单或绑定、上限 50 条、端侧识别不外呼第三方 AI；
+ *      定稿文档登记本机键 ex_college_v4.pickcodes 与 D57 留痕（附录 A 差异表 + 附录 C 核对表）；
+ *      QA §AD AD1~AD6 与附录 E 计数 336 同源锁定。
  *
  * 纪律：不 mock 全局 wx；只读文档/源码 + 纯件；先合法基线再反例；EXPECTED_ASSERTIONS 与实际断言数精确相等。
  * 取数：node tools/selftest-privacy-text.js | Select-Object -Last 2
@@ -33,7 +38,7 @@ const privacyText = require(path.join(__dirname, '..', 'pkg-customer/parts/priva
 const defaults = require(path.join(__dirname, '..', 'config/defaults.js'));
 
 const ROOT = path.resolve(__dirname, '..');
-const EXPECTED_ASSERTIONS = 259; // 249 + 10（TD-061 帮助页官方隐私保护指引入口静态判据）
+const EXPECTED_ASSERTIONS = 289; // 259 + 30（2026-11-01 D57 本机取件码清单：三处同源四关键句 + 边界/上限/键留痕 + QA §AD 与计数）
 
 const PART_FILE = 'pkg-customer/parts/privacy-text.js';
 const HELP_JS = 'pkg-customer/pages/help/index.js';
@@ -467,6 +472,60 @@ function register(h) {
     const entryAt = helpWxml.indexOf('bindtap="onOpenPrivacyContract"');
     t.check(entryAt >= 0 && helpWxml.indexOf('version-card') > entryAt,
       'K10 入口位于隐私政策区与版本卡之间（帮助页可发现，不挤占既有 FAQ/全文）');
+  });
+
+  // ------------------------------------------------------------ L. D57 本机取件码清单（2026-11-01）
+  h.section('L. D57 本机取件码清单（仅存本机/不上传不共享/可随时清空/换机或清缓存丢失）', (t) => {
+    const supplementFile = 'docs/privacy/补充文档.txt';
+    const supplement = exists(supplementFile) ? readSource(supplementFile) : '';
+    const SIDES = [['端内全文', TEXT], ['定稿文档', privacyTextDocCache], ['补充文档派生物', supplement]];
+    const D57_SENTENCES = ['仅存本机', '不上传不共享', '可随时清空', '换机/清缓存丢失'];
+    D57_SENTENCES.forEach((term) => {
+      SIDES.forEach((pair) => {
+        t.check(pair[1].indexOf(term) !== -1, pair[0] + '覆盖 D57 关键句「' + term + '」（本机清单边界）');
+      });
+    });
+    t.check(TEXT.indexOf('20. 本机取件码清单') !== -1,
+      '端内全文第一节数据项新增「本机取件码清单」（第 20 项）');
+    t.check(privacyText.SECTIONS[1].paragraphs.some((line) => line.indexOf('20. 本机取件码清单') === 0),
+      '本机清单条款落在第一节数据项列表（与收集清单同一结构，非散落正文）');
+    t.check(privacyTextDocCache.indexOf('| 20 | 本机取件码清单') !== -1,
+      '定稿文档 §一 数据表新增第 20 项「本机取件码清单」');
+    t.check(supplement.indexOf('20. 本机取件码清单') !== -1,
+      '补充文档派生物含第 20 项（三处同源；派生物=端内全文逐字节副本）');
+    t.check(TEXT.indexOf('兼职端与开发者后台（含只读视角）') !== -1
+      && privacyTextDocCache.indexOf('兼职端与开发者后台（含只读视角）') !== -1,
+    '端内全文 + 定稿文档：兼职端与开发者后台（含只读视角）均不可见（「不开放」边界）');
+    t.check(TEXT.indexOf('不强制建单或绑定') !== -1 && privacyTextDocCache.indexOf('不强制建单或绑定') !== -1,
+      '端内全文 + 定稿文档：不强制建单或绑定（「不强制绑定」边界）');
+    t.check(TEXT.indexOf('上限 50 条') !== -1 && privacyTextDocCache.indexOf('上限 50 条') !== -1,
+      '端内全文 + 定稿文档：本机清单上限 50 条（与 CONTRACT §11.2 同值，不写死其它数字）');
+    t.check(TEXT.indexOf('唯一允许「取件码明文存本机」的例外') !== -1,
+      '端内全文明确本机清单是本程序唯一允许「取件码明文存本机」的例外（L3 口径）');
+    t.check(privacyTextDocCache.indexOf('取件码属 L3') !== -1
+      && privacyTextDocCache.indexOf('唯一例外') !== -1,
+    '定稿文档登记「取件码属 L3、本机存储为唯一例外」（可追溯 CONTRACT §11.2/§11.3）');
+    t.check(TEXT.indexOf('不外呼第三方 AI') !== -1 && privacyTextDocCache.indexOf('不外呼第三方 AI') !== -1,
+      '端内全文 + 定稿文档：截图识别为端侧能力、不外呼第三方 AI（零外呼，与 §R AI 兜底链路区分）');
+    t.check(TEXT.indexOf('添加方式为手动输入或粘贴') !== -1 && TEXT.indexOf('端侧识别截图') !== -1,
+      '端内全文写明添加方式=手动输入/粘贴 + 端侧识别截图（截图不上传）');
+    t.check(TEXT.indexOf('ex_college_v4') === -1,
+      '端内全文不出现本机存储键名（用户面不暴露实现键；键只登记在文档/CONTRACT）');
+    t.check(privacyTextDocCache.indexOf('ex_college_v4.pickcodes') !== -1,
+      '定稿文档登记本机键 ex_college_v4.pickcodes（独立于 ex_college_v4.store）');
+    t.check(privacyTextDocCache.indexOf('2026-11-01 口径增补（D57 本机取件码清单）') !== -1,
+      '定稿文档头部有 2026-11-01 D57 口径增补段落（改文本留痕可追溯）');
+    t.check(privacyTextDocCache.split('本机取件码清单（2026-11-01，D57）').length - 1 >= 2,
+      '定稿文档附录 A 差异表 + 附录 C 一致性核对表均登记 D57 本机清单（两处留痕）');
+    t.check(TEXT.indexOf('无法找回') !== -1 && privacyTextDocCache.indexOf('换机/清缓存丢失') !== -1,
+      '端内全文写明丢失后不可找回（与定稿文档「换机/清缓存丢失」同口径）');
+    const qaDoc = readSource('docs/delivery/V4_QA_CHECKLIST.md');
+    t.check(qaDoc.indexOf('## AD. v1.8 批 21 增补（D57 本机取件码清单') !== -1
+      && qaDoc.indexOf('| AD1 |') !== -1 && qaDoc.indexOf('| AD6 |') !== -1,
+    'QA 真机清单新增 §AD AD1~AD6（人（真机），agent 不代勾）');
+    t.check(/^> 维护规则：[\s\S]{0,120}当前 \*\*336\*\* 条/m.test(qaDoc)
+      && /→ \*\*336\*\*/.test(qaDoc),
+    'QA 附录 E 计数与取数命令真实输出同步为 336（330 + §AD 6 条）');
   });
 }
 

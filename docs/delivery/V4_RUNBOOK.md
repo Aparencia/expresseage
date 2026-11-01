@@ -391,3 +391,13 @@
 3. 重新进入开发者后台 → 配置页：应显示「智能识别兜底：已开启 · 模型 … · 凭据已配置」。
 4. 冒烟：用一张识别失败图走一次识别 → 后台「识别失败复核」记录 `aiTried` 应为 true；云函数日志 `ai.parseParcel` 有外呼且 `aiErrorCode` 为空/无 `DISABLED`。若仍失败，按复核详情 `aiErrorCode`（TIMEOUT/HTTP_5XX/HTTP_4xx/QUOTA_EXCEEDED/PARSE_ERROR）与日志定位，不要改客户端。
 5. 关闭/回滚（AI 事故）：把 `config.aiFallback.enabled` 改回 `false`（或清空 `DEEPSEEK_API_KEY`）→ 静默降级且失败照常入队，再决定是否回滚 `api` 版本。
+
+---
+
+## 17. 批 21 本机取件码清单上线（2026-11-01，D57）
+
+- **本批只改客户端**（`utils/storage.js`、`utils/recognize/local-codes.js`、`utils/ocr/wx-platform.js`、`pkg-customer/pages/pickup-list/**`）：**无需重部署云函数、无需 `sync-cloud-shared`、无集合/索引/触发器/环境变量变化**。
+- 上线操作：微信开发者工具上传部署客户端体验版（含批 16~21 全部改动）→ 真机点检 QA §AD1~AD6（D57）+ 之前未勾项（§AC/§Z/§AA/§AB 等）。
+- 回滚：回退体验版即可；本机清单只存用户设备，无服务端数据需迁移/清理。**边界（本地口径的已知代价）**：已存清单无法由服务端远程清除——只能用户点「清空本机清单」或清小程序缓存；回滚前请知悉。
+- 隐私文本：上线前确认微信后台《用户隐私保护指引》与端内帮助页包含「本机取件码清单（仅存本机/不上传/可清空/换机丢失）」条款（批 21 已同源回写：`docs/privacy/隐私保护指引.md`、`docs/privacy/补充文档.txt`、`pkg-customer/parts/privacy-text.js`）。
+- 取证（用户点检，agent 不代勾）：本机清单添加/识别/清空界面截图；抓包与云函数日志显示零上传零外呼（QA §AD5）。

@@ -5,16 +5,29 @@
 //   ② AI 兜底口径（CONTRACT §4.3 v1.0）：规则解析任一包裹缺站点/码即调 AI 兜底接口（经 api/modules/ai）；
 //      端侧 OCR 失败/无文本也**一定**调一次（ocrTextMasked 可为空串）——服务端负责入队 NO_TEXT、不外呼；
 //   ③ OCR 画布帧按 frameSize 降采样到长边 ≤1440 再取像素（P0-10，降低大图内存峰值）。
+// v1.1（D57 前置重构）：wx 平台适配层（VKSession/画布/图片信息/帧计划/依赖注入）已抽到
+//   utils/ocr/wx-platform.js；本零件只保留识别编排，frameSizeOf/hasVision/imageInfo 按原名重导出
+//   （既有测试与页面调用不变，后续本机清单页复用同一份平台层）。
 'use strict';
 
 const aiApi = require('../../../../api/modules/ai');
 const configApi = require('../../../../api/modules/config');
 const ocr = require('../../../../utils/ocr/index');
+const wxPlatform = require('../../../../utils/ocr/wx-platform');
 const recognize = require('../../../../utils/recognize/index');
 const model = require('./model');
 const aiFallback = require('./ai-fallback');
 const pipeline = require('./pipeline');
 const aggregate = require('./recognize-aggregate');
+
+const {
+  VISION_MAX_EDGE,
+  frameSizeOf,
+  hasVision,
+  imageInfo,
+  ocrDeps
+} = wxPlatform;
+
 const {
   AI_SUGGESTION_HINT,
   AI_FALLBACK_COPY,
@@ -28,177 +41,8 @@ const {
 } = aiFallback;
 
 const OCR_TIMEOUT_MS = 40000;
-const VISION_MAX_EDGE = 1440;
 const MAX_PARCELS = recognize.MAX_PARCELS_PER_ORDER;
 const MAX_IMAGES = recognize.MAX_IMAGES_PER_ORDER;
-
-function hasVision() {
-  return typeof wx !== 'undefined' && typeof wx.createVKSession === 'function';
-}
-
-/**
- * OCR 画布帧尺寸（纯函数，P0-10）：长边压到 ≤VISION_MAX_EDGE，保持比例。
- * 测试直接断言本函数（不 mock wx），保证大图不会按原尺寸建画布/取像素。
- */
-function frameSizeOf(img, maxEdge) {
-  const width = img && img.width;
-  const height = img && img.height;
-  return ocr.frame.frameSize(width, height, maxEdge || VISION_MAX_EDGE);
-}
-
-function imageInfo(filePath) {
-  return new Promise(function executor(resolve) {
-    wx.getImageInfo({
-      src: filePath,
-      success: function ok(res) {
-        resolve({ ok: true, width: res.width, height: res.height, path: res.path || filePath });
-      },
-      fail: function no(err) {
-        resolve({ ok: false, code: 'IMAGE_DECODE_FAILED', detail: (err && err.errMsg) || '' });
-      }
-    });
-  });
-}
-
-/** 帧计划（条带裁剪矩形 + 输出尺寸）：纯计算，便于排错与复用 */
-function framePlanOf(img, band) {
-  const spec = band || {};
-  const count = Math.max(1, Math.min(4, Number(spec.bands) || 1));
-  const index = Math.max(0, Math.min(count - 1, Number(spec.index) || 0));
-  const src = ocr.frame.bandSourceOf(img.width, img.height, count, index);
-  if (!src.ok) return { ok: false, code: src.code, detail: src.detail };
-  const sized = count === 1
-    ? frameSizeOf(img)
-    : ocr.frame.frameSize(src.width, src.height, VISION_MAX_EDGE);
-  if (!sized.ok) return { ok: false, code: sized.code, detail: sized.detail };
-  return { ok: true, src: src, sized: sized, count: count, index: index };
-}
-
-/** 把「原图条带」画到离屏画布并取精确 RGBA 像素（D35：先裁后缩 + buffer 精确切片） */
-function drawFrame(imageSrc, plan) {
-  return new Promise(function executor(resolve) {
-    const sized = plan.sized;
-    const src = plan.src;
-    let canvas = null;
-    try {
-      canvas = wx.createOffscreenCanvas({ type: '2d', width: sized.width, height: sized.height });
-    } catch (err) {
-      resolve({ ok: false, code: 'VK_UNSUPPORTED', detail: '当前环境没有离屏画布' });
-      return;
-    }
-    const ctx = canvas.getContext('2d');
-    const image = canvas.createImage();
-    image.onload = function onload() {
-      try {
-        ctx.drawImage(image, src.x, src.y, src.width, src.height, 0, 0, sized.width, sized.height);
-        const data = ctx.getImageData(0, 0, sized.width, sized.height);
-        const buffer = ocr.frame.rgbaBufferOf(data.data);
-        if (!buffer) {
-          resolve({ ok: false, code: 'IMAGE_DECODE_FAILED', detail: '画布取像素为空' });
-          return;
-        }
-        resolve({
-          ok: true,
-          frame: {
-            width: sized.width,
-            height: sized.height,
-            data: data.data,
-            buffer: buffer,
-            bandCount: plan.count,
-            bandIndex: plan.index
-          }
-        });
-      } catch (err) {
-        resolve({ ok: false, code: 'IMAGE_DECODE_FAILED', detail: '画布取像素失败' });
-      }
-    };
-    image.onerror = function onerror() {
-      resolve({ ok: false, code: 'IMAGE_DECODE_FAILED', detail: '图片解码失败' });
-    };
-    image.src = imageSrc;
-  });
-}
-
-// P0-10 + D35：按条带从原图裁剪再缩放到长边 ≤VISION_MAX_EDGE（先裁后缩，条带重试才有放大收益）
-function canvasFrame(img, band) {
-  const plan = framePlanOf(img, band);
-  if (!plan.ok) {
-    return Promise.resolve({ ok: false, code: plan.code, detail: plan.detail });
-  }
-  return drawFrame(img.path || img.src, plan);
-}
-
-function runVision(frame, opts) {
-  return new Promise(function executor(resolve) {
-    let session = null;
-    const texts = [];
-    let settled = false;
-    let idleTimer = null;
-    let deadlineTimer = null;
-    const idle = (opts && opts.idleMs) || 300;
-    const maxWait = (opts && opts.maxWaitMs) || 8000;
-    const finish = function finish(result) {
-      if (settled) return;
-      settled = true;
-      if (idleTimer) clearTimeout(idleTimer);
-      if (deadlineTimer) clearTimeout(deadlineTimer);
-      try {
-        if (session && typeof session.destroy === 'function') session.destroy();
-      } catch (err) {
-        // 会话销毁失败不覆盖识别结果
-      }
-      resolve(result);
-    };
-    try {
-      session = wx.createVKSession({ track: { OCR: { mode: 2 } } });
-    } catch (err) {
-      finish({ ok: false, code: 'VK_UNSUPPORTED', detail: '当前微信/机型不支持端侧识别' });
-      return;
-    }
-    session.on('updateAnchors', function onUpdate(anchors) {
-      (anchors || []).forEach(function each(anchor) {
-        if (anchor && anchor.text) texts.push(anchor.text);
-      });
-      if (texts.length > 0) {
-        if (idleTimer) clearTimeout(idleTimer);
-        idleTimer = setTimeout(function done() {
-          finish({ ok: true, texts: texts, partial: false });
-        }, idle);
-      }
-    });
-    deadlineTimer = setTimeout(function timeout() {
-      if (texts.length > 0) finish({ ok: true, texts: texts, partial: true });
-      else finish({ ok: false, code: 'NO_TEXT', detail: '图里没认出文字' });
-    }, maxWait);
-    session.start(function onStart(err) {
-      if (err) {
-        const classified = ocr.vision.classifyStartErrno(err.errno || err);
-        finish({ ok: false, code: classified.reason, detail: classified.detail });
-        return;
-      }
-      try {
-        session.runOCR({
-          frameBuffer: frame.buffer || (frame.data && frame.data.buffer) || frame.data,
-          width: frame.width,
-          height: frame.height
-        });
-      } catch (runErr) {
-        finish({ ok: false, code: 'VK_INIT_FAILED', detail: '识别执行失败' });
-      }
-    });
-  });
-}
-
-function ocrDeps(img) {
-  return {
-    hasVision: hasVision(),
-    loadFrame: function loadFrame(filePath, band) {
-      return canvasFrame(img, band);
-    },
-    runVision: runVision,
-    now: function now() { return Date.now(); }
-  };
-}
 
 // AI 兜底成功态提示（§4.3.1 ④：只填空字段、手填优先，仍需人核对；AI_SUGGESTION_HINT 单源在 ai-fallback）
 

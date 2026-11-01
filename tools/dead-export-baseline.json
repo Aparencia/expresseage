@@ -487,13 +487,6 @@
     },
     {
       "file": "utils/recognize/station.js",
-      "symbol": "ALIASES",
-      "reason": "test-only",
-      "evidence": "tools/selftest-recognize.js:105",
-      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
-    },
-    {
-      "file": "utils/recognize/station.js",
       "symbol": "stationIdOfName",
       "reason": "test-only",
       "evidence": "tools/selftest-recognize.js:113",

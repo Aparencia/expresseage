@@ -83,6 +83,15 @@ function localStorageOnly() {
     ['viewTicket', 'viewContext', 'viewMode', 'targetIsTest'].forEach((k) => {
       if (st.indexOf(k) !== -1) out.push('utils/storage.js 出现票据字段: ' + k);
     });
+    // D57（2026-11-01 用户拍板）：本机取件码键是唯一「L3 明文存本机」例外——
+    // 只允许由 utils/storage.js 读写；客户端其它文件直接引用键名 = 绕过唯一写口，判红。
+    const pickKey = 'ex_college_v4.pickcodes';
+    if (st.indexOf(pickKey) === -1) out.push('utils/storage.js 缺 D57 本机取件码键: ' + pickKey);
+    files.forEach((rel) => {
+      if (rel === 'utils/storage.js') return;
+      const code = F.stripComments(text(rel) || '');
+      if (code.indexOf(pickKey) !== -1) out.push(rel + ': 直接引用本机取件码键（应经 utils/storage.js）');
+    });
   }
   return out.length ? shortList(out, 10) : null;
 }

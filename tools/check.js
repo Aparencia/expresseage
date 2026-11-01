@@ -215,7 +215,7 @@ check(13, 'action 注册表', 'shared/actions.js 覆盖 §5.3 全集 + visibilit
 check(14, '客户端禁直连', 'wx.cloud.database 零命中；callFunction 仅 api/client.js；uploadFile 仅 api/upload.js', clientRules.clientNoDirectConnect);
 
 // ---------------------------------------------------------------- #15（实现：tools/lib/check-rules-client.js）
-check(15, '本地存储唯一写口', 'wx.*Storage* 仅 utils/storage.js（剥注释；空集判红）；票据不落盘', clientRules.localStorageOnly);
+check(15, '本地存储唯一写口', 'wx.*Storage* 仅 utils/storage.js（剥注释；空集判红）；票据不落盘；D57 本机取件码键仅 storage.js 可引用', clientRules.localStorageOnly);
 
 // ---------------------------------------------------------------- #16
 check(16, '云函数依赖白名单', '两 package.json 依赖只允许 wx-server-sdk；非相对 require 只允许 sdk/Node 内置', () => {

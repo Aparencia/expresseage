@@ -14,7 +14,7 @@
 - 不回答：产品规则（CONTRACT）、逐字段/索引/action 入参（DATA_MODEL）、逐页交互（三份 UX）、裁决理由（DECISIONS）。
 - 三种口径状态：①已定稿（CONTRACT v0.9 / DATA_MODEL（v0.9 字段增量待其回写，最新字段口径以 CONTRACT 为准）/ UX 三份）；②工程提案（本文 `[E#]`，仅余 E5/E12 平台实测、E11 待用户确认）；③已裁决（D1~D22 于 2026-10-22 全部闭环，见 CONTRACT §13 与 `docs/contract/V4_DECISIONS.md` §0.1；D5/D6/D20/D21 早前已定）。
 - **零金额铁律（v0.7）**：本程序不涉及任何费用收付；全部工程产物（源码/页面文案/DTO/`config`/审计/测试/文档）不得出现费用语义。全文只在"口径声明、门禁定义、已废弃说明"处出现相关词，且这些行统一登记进零金额白名单（§8.2 #22）；实现侧一律以门禁扫描结果为准。
-- 数据敏感级别统一写 **L1/L2/L3**（L3=取件码/手机尾号/门牌/截图等），**不写 "D3"**（避免与裁决编号 D1~D22 混淆）；L3 明文字段禁入本地存储/日志/通知/分享卡片；**开发者后台默认脱敏（不展示头像、昵称脱敏），完整 L3 只经 READONLY 只读视角（带审计）**。
+- 数据敏感级别统一写 **L1/L2/L3**（L3=取件码/手机尾号/门牌/截图等），**不写 "D3"**（避免与裁决编号 D1~D22 混淆）；L3 明文字段禁入本地存储/日志/通知/分享卡片；**唯一例外 = D57 顾客本机取件码清单（`ex_college_v4.pickcodes`，仅 utils/storage.js 写、只存本机、不上传/不共享、不进日志/通知/分享、可一键清空、只读视角不可见，见 §5.6/§8.2 #15）**；**开发者后台默认脱敏（不展示头像、昵称脱敏），完整 L3 只经 READONLY 只读视角（带审计）**。
 - **编号规格单源**：`utils/ids.js`（格式/校验/展示/错前缀提示，纯件零 `wx`）同步为云函数 `shared/ids.js`；随机生成只在云端（§5.3）。
 - **AI 兜底铁律（v0.8）**：仅当端侧 OCR + 规则解析不出站点或取件码时触发；外呼**只在云函数层**（`ai.parseParcel`），客户端零外呼、零 Key（`DEEPSEEK_API_KEY` 只存云函数环境变量）；**只发去敏文本**（字段白名单，不发原图/openid/订单归属）；8s 超时、仅网络/5xx 重试 1 次、连续 5 次失败熔断 10 分钟、**不设每人每日次数上限（D40，2026-10-28 用户拍板「AI 不限额」；`config.aiFallback.maxPerUserPerDay=0` 表示不限）** + 全局日配额（`config.aiFallback.dailyQuota` 默认 200）；任何失败/超限**静默降级**（返回 `recognized=false`）且**不新增错误码**；失败必写 `recognition_failures`，原图只在复核页临时 URL 查看并逐次审计。
 - **识别失败复核（v0.8）**：开发者后台 `pkg-admin/pages/recognition-review/index` 一页；补录只回填订单识别字段（不改状态/归属、不建单）；忽略须备注；原图仅白名单开发者 + 5 分钟临时 URL + 每次 `FAILURE_IMAGE_VIEW` 审计；不批量/不下载/不导出。
@@ -599,7 +599,7 @@ expressage_college_v4/
 - **审计感知**：页面不展示审计细节；帮助/隐私页说明"开发者后台默认脱敏；真实账号只读查看，测试账号为后台合成账号，均留审计"。
 ### 5.6 store 与本地存储
 - `store/index.js`：单例内存快照 `{roles,activeRole,me,customer,partner,binding,config,badges,messageReadAt,serverTimeSkew,viewContext}` + `get/set/patch/subscribe`；页面按 key 订阅做行级 `setData` 补丁。
-- 本地存储只允许一个键 `ex_college_v4.store`（lastRole、引导已读、取件清单勾选），由 `utils/storage.js` 单一出口读写；`draftPointer` 历史键只保留在 normalize 白名单里用于剥旧脏值（草稿指针三件套生产 0 引用，批 16 已删除）；⛔ **不存 `viewContext`/`viewTicket`/`viewMode`/`targetIsTest`**、不读不写 v1/v2/v3 键（D2）；**L3 敏感字段（尾号/取件码/openid）不入本地存储**。
+- 本地存储**两个键**，均由 `utils/storage.js` 单一出口读写：①`ex_college_v4.store`（lastRole、引导已读、取件清单勾选）——`draftPointer` 历史键只保留在 normalize 白名单里用于剥旧脏值（草稿指针三件套生产 0 引用，批 16 已删除）；⛔ **不存 `viewContext`/`viewTicket`/`viewMode`/`targetIsTest`**、不读不写 v1/v2/v3 键（D2）；**L3 敏感字段（尾号/取件码/openid）不入本地存储**——**唯一例外（D57，2026-11-01 用户拍板）**：②`ex_college_v4.pickcodes` = 顾客「我的取件码（本机）」清单，允许 L3 明文存本机，约束：仅顾客角色、只存本机、不上传/不共享、不进日志/通知/分享卡片/URL、只读视角与后台不可见、上限 50 条按码去重、可一键清空、换机/清缓存丢失；页面/其它模块**不得直接拼接该键或绕过 `utils/storage.js`**（门禁 #15 扫描该键字面量只允许出现在 `utils/storage.js` 与测试/文档）。
 - `config` 缓存 TTL 5 分钟 + onShow 刷新；维护模式只读放行。
 ### 5.7 组件清单
 | 组件 | 职责 | 约束 |
@@ -806,7 +806,7 @@ expressage_college_v4/
 | 12 | 集合名注册表：`cloudfunctions/**` 的 `db.collection('…')` 字面量 ∈ `shared/collections.js`；客户端任何位置不得出现集合名字面量 | 集合写错/客户端直连 | v4 新增 |
 | 13 | action 注册表：`shared/actions.js` 覆盖 CONTRACT §5.3 全集并标 `visibility`（client/internal）与 `write`；internal = `admin.bootstrap`/`health.check`/`cleanup.*`；client 含 `bind.getCurrent`/`ai.parseParcel`/`admin.viewAsStart`/`admin.viewAsEnd`/复核四动作/**测试账号四动作**；`api/modules` 调用 ⊆ client 集；router 只开放 client；handler 与注册表双向相等；**router 静态注册表（P0-5，批 10 扩围）**：11 域覆盖全部 client/放行 internal 动作前缀、每域 `handlers/<domain>` 导出集 = 注册表集且逐个为函数、`cloudfunctions/api/app.js` 热路径必须走 `router.getHandler(`（首请求只加载首用域；运行期域级 fail-fast 保留） | 路由漏配/内部动作外泄/懒加载退回全量 | v4 新增（v0.9 全量；批 10 P0-5 扩围） |
 | 14 | 客户端禁直连：`wx.cloud.database` 全仓零命中；`callFunction` 仅 `api/client.js`；`uploadFile` 仅 `api/upload.js` | 绕过服务端鉴权 | v4 新增（CONTRACT §4 铁律） |
-| 15 | 本地存储唯一写口：`wx.*Storage*` 仅在 `utils/storage.js`（剥注释后比对；空集判红）；**`viewTicket`/`viewContext`/`viewMode`/`targetIsTest` 不得出现在 storage** | 第二份写盘/票据落盘 | v3 第 11 条改造 + v0.9 |
+| 15 | 本地存储唯一写口：`wx.*Storage*` 仅在 `utils/storage.js`（剥注释后比对；空集判红）；**`viewTicket`/`viewContext`/`viewMode`/`targetIsTest` 不得出现在 storage**；**D57 例外（2026-11-01 用户拍板）**：允许 `ex_college_v4.pickcodes`（顾客本机取件码清单，L3 明文）由 `utils/storage.js` 读写，且该键字面量只允许出现在 `utils/storage.js`（其它客户端文件出现即红）；清洗/上限/去重/清空由 storage 归一化保证 | 第二份写盘/票据落盘；L3 例外失控 | v3 第 11 条改造 + v0.9 + 批 21/D57 |
 | 16 | 云函数依赖白名单：两 `package.json` 依赖只允许 `wx-server-sdk`；非相对 require 只允许 sdk | 引第三方/部署失败 | v4 新增 |
 | 17 | shared 副本对帐：`shared/**` + **`utils/ids.js → shared/ids.js`** + **`utils/room-tag.js → shared/room-tag.js`** + **`config/defaults.js → shared/defaults.js`** 与两云函数 `shared/` 逐字节 hash 相等 | 两端口径漂移（编号/roomTag/错误码/默认配置） | v4 新增（v0.9 扩围） |
 | 18 | 行数：小程序源码（pages/pkg/api/shared/utils/store/config/cloudfunctions）≤500；`tools/*.js` 与测试文件 ≤1000（**全文本口径**；docs 由 check-docs 管） | 文件过长难审/超预算 | v3 AGENTS §11.1 + 修 TD-062 |
@@ -1087,3 +1087,12 @@ powershell -File tools/mutation.ps1 -Case M19
 - **pick-list 双阶段（D55）**：纯件拆为 `parts/pick-view.js`（待取件）、`parts/stage-flows.js`（阶段页面方法）；`index.js` 496/500 贴边；无服务端/ app.json/页数变化；`selftest-pick-list` 断言以实跑为准。
 - **admin.listOrders 行称呼（D56）**：`admin/_dto.buildOrderBrief` 增脱敏双方称呼 + 每页 2 次批量取名；用例拆件 `tools/lib/admin-orders-cases.js`（server 由 `selftest-cloud`、client 由 `selftest-admin-pages` 注册）；`selftest-cloud.js` 恰 1000 行。
 - **工具链**：`tools/check-docs.js` 的 D 裁决上限 `D_MAX` 50→57（新增 D51~D57 定义即须同步，否则引用判红）；`check.ps1` 钉数不变（check.js 36 条 / check-docs 12 条 / selftest 36 套）。
+
+## 16. 批 21 工程变更（2026-11-01，D57 本机取件码清单）
+
+- **本地存储（D57）**：`utils/storage.js` 增第二键 `ex_college_v4.pickcodes`（D57 唯一 L3 本机例外；`PICKCODES_KEY`/`LOCAL_CODE_MAX=50`；`loadLocalCodes/addLocalCodes/removeLocalCode/setLocalCodeChecked/clearLocalCodes`；归一化白名单/按码去重/最新在前/超限丢最旧/写失败 ok:false/脏数据静默归一；`clearAll()` 同时删两键）；`wx.*Storage*` 仍只在本文件（门禁 #15），并新增「该键字面量只允许出现在 utils/storage.js」断言（客户端其余文件出现即红）。
+- **解析纯件**：新增 `utils/recognize/local-codes.js`（零 wx）：`parseCodeText(rawText, {stations})` 逐行归一站点 + 抽码（拒绝手机号/日期形/≥13 位纯数字长串/地址行），`mergeEntries` 去重（后者可补前者空站点）；用户手输/粘贴与 OCR 文本同一条解析路径。
+- **页面**：`pkg-customer/pages/pickup-list/index` 顶部新增本机清单区；纯件 `parts/local-view.js`（行/汇总/只读判断）、页面零件 `parts/local-ocr.js`（`wx.chooseMedia` 选图 → 端侧 OCR → 文本；**零上传/零外呼**）；READONLY 会话仅渲染说明卡（不渲染本机数据/入口）且拒写；固定说明「只存在这台手机…」；上限/去重/清空全走 storage API（页面不拼接键）。
+- **OCR 适配器抽取**：新增 `utils/ocr/wx-platform.js`（`hasVision/imageInfo/frameSizeOf/framePlanOf/canvasFrame/runVision/ocrDeps/VISION_MAX_EDGE`，从顾客下单页 `parts/ocr-flow.js` 纯搬移），`ocr-flow.js` 改为 require 并保留原有导出名/语义（`selftest-order-flow`/`selftest-ai` 保持全绿）；兼职端副本登记 TD-089（批 22+ 统一）。
+- **隐私/门禁口径**：CONTRACT §11.1 收集清单加「本机取件码清单」行、§11.2 增 v1.8 披露、§11.3 增本机清单边界；ENGINEERING §5.6 双键 + L3 例外、§8.2 #15 加牙；ARCHITECTURE §3.5 落点；DATA_MODEL §16 声明非服务端集合；RUNBOOK §17 上线操作（仅客户端上传、无需云函数重部署）。
+- **测试/钉数**：不新增 selftest 套件（check.ps1 仍 36 套）、不新增 check.js 判据（仍 36 条）；`selftest-core`（storage）、`selftest-recognize`（解析纯件）、`selftest-order-customer` + 拆件 `tools/lib/pickup-local-cases.js`（页面/纯件/静态接线）、`selftest-privacy-text`（隐私三处同源）断言同批更新，`EXPECTED_ASSERTIONS` 以实跑精确值为准；断言总数以 `node tools/selftest.js` 汇总输出为准（不写死）。

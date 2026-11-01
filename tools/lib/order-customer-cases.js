@@ -150,6 +150,77 @@ function layerHits(code) {
   return hits;
 }
 
+/**
+ * F 组「页面静态」断言（批21-C 从 selftest-order-customer.js 逐字搬入，纯文本扫描；判据/条数零变更）。
+ * 为什么搬：门禁 #18 主套件行数预算（≤1000 且目标 ≤950），宽口径静态扫描断言放本夹具 lib；
+ * 搬移纪律：断言顺序/消息/条件一字不改，主套件只留 require + registerF 接线行。
+ */
+function registerF(t) {
+  const control = layerHits(
+    "wx.cloud.callFunction({ name: 'api' });\n"
+    + "const s = 'CANCELLED';\n"
+    + 'const r = Math.random();\n'
+    + "client.call('order.get', {});\n"
+  );
+  t.eq(control.length, 4, 'F1 正控：合成违规样本被扫描命中 4 类（扫描有牙）');
+  t.eq(layerHits('const x = 1; // wx.cloud.callFunction 与 Math.random 在注释里\n'), [],
+    'F2 反例：注释内违规字样不误伤（剥注释后扫描）');
+  const scanned = [PAGES.detail, PAGES.orders, PAGES.messages, PAGES.home];
+  const pageHits = [];
+  scanned.forEach(function each(rel) {
+    layerHits(textOf(rel)).forEach(function push(hit) { pageHits.push(rel + ':' + hit); });
+  });
+  t.eq(pageHits, [], 'F3 四个页面 JS 零 wx.cloud.*/零七状态字面量/零 random/零直调 client.call');
+  scanned.forEach(function each(rel) {
+    t.check(textOf(rel).indexOf("api/modules/") >= 0, 'F4 ' + rel + ' 只经 api/modules 出入（action 字符串不落页面）');
+  });
+  const detail = textOf(PAGES.detail);
+  t.check(/onShow\(\)[\s\S]*flow\.startPoll/.test(detail), 'F5 详情 onShow 恢复轮询（flow.startPoll）');
+  t.check(/onHide\(\)[\s\S]*flow\.stopPoll/.test(detail) && /onUnload\(\)[\s\S]*flow\.stopPoll/.test(detail),
+    'F6 详情 onHide/onUnload 必停轮询（AC-C-29：离开页面不再排程）');
+  t.check(/clearTimer\(\)/.test(detail) && /setTimeout/.test(detail) && /flow\.pollDelay/.test(detail),
+    'F7 浏览器定时器接线：setTimeout + flow.pollDelay，clearTimer 统一清理');
+  t.check(!/\.status\s*===/.test(detail) && !/\.status\s*==/.test(detail),
+    'F8 详情页无 status 字面量比较（动作/进度只消费 DTO 与 parts）');
+  t.check(/writeAction\(orderApi\.cancel/.test(detail) && /writeAction\(orderApi\.confirmDelivery/.test(detail)
+    && /writeAction\(orderApi\.deleteRecord/.test(detail) && /expectedVersion:\s*version/.test(detail),
+  'F9 取消/确认/删除都经 writeAction 且带 expectedVersion（服务端乐观锁）');
+  t.check(/onCopyOrderNo/.test(detail) && /wx\.setClipboardData/.test(detail) && /onCopyOrderNo/.test(textOf(PAGES.detailWxml)),
+    'F10 头部订单号复制（wx.setClipboardData + 成功 toast）');
+  t.check(/onViewImage/.test(detail) && /view\.imageErrorText/.test(detail) && /wx\.previewImage/.test(detail)
+    && /image\.canView/.test(textOf(PAGES.detailWxml)),
+  'F11 截图四态接线：可看（previewImage）/加载失败/过期/已清理人话（imageErrorText 单源）');
+  t.check(/reorder=/.test(detail) && /actions\.reorder/.test(textOf(PAGES.detailWxml))
+    && /message\.inputVisible/.test(textOf(PAGES.detailWxml)) && /message\.archiveText/.test(textOf(PAGES.detailWxml)),
+  'F12 详情 WXML：再次下单入口 / 留言输入按 DTO message / 已完成归档提示');
+  const orders = textOf(PAGES.orders);
+  t.check(/ordersView\.tabsWithCounts/.test(orders) && /data\.counts|counts/.test(orders)
+    && /(ordersView\.tickRows|tickerPatch\.build)/.test(orders) && /ordersView\.serverNowMs/.test(orders),
+  'F13 列表：tab 计数取服务端 counts、倒计时按 serverTimeSkew 校时、tick 走纯件（P0-6 行级补丁）');
+  t.check(/onHide\(\)[\s\S]*stopTicker/.test(orders) && /onUnload\(\)[\s\S]*stopTicker/.test(orders),
+    'F14 列表 onHide/onUnload 清倒计时定时器（不在后台空转）');
+  t.check(/刷新成功/.test(orders), 'F15 下拉刷新成功 toast「刷新成功」');
+  t.check(/onReorderTap/.test(textOf(PAGES.ordersWxml)) && /catchtap="onReorderTap"/.test(textOf(PAGES.ordersWxml))
+    && /tab-count/.test(textOf(PAGES.ordersWxml)),
+  'F16 列表 WXML：分组计数 + 行内再次下单入口（catchtap 不冒泡到详情）');
+  t.check(/clearBadge/.test(textOf(PAGES.messages)) && /badges/.test(textOf(PAGES.messages))
+    && /messages:\s*0/.test(textOf(PAGES.messages)),
+  'F17 消息中心全部已读后红点归零（store.badges.messages）');
+  const home = textOf(PAGES.home);
+  t.check(/messageApi\.list\(\{\s*limit:\s*1\s*\}\)/.test(home) && /unread/.test(home) && /badges/.test(home),
+    'F18 首页 onShow 用 message.list({limit:1}).unread 更新 store.badges.messages（E13）');
+  t.check(/vm\.badges\.messages/.test(textOf(PAGES.homeWxml)), 'F19 首页铃铛红点按 badges.messages 渲染');
+  const create = textOf(PAGES.create);
+  t.check(/reorder\.orderNoOf\(options\)/.test(create) && /reorder\.load\(/.test(create)
+    && /reorder\.defaultsFor\(/.test(create) && /bootstrap\.load\(\)/.test(create),
+  'F20 下单页 support options.reorder：预填快照/默认值装配走 parts/reorder + parts/bootstrap');
+  t.check(/'\?reorder='/.test(detail) && /'\?reorder='/.test(orders),
+    'F21 详情/列表的再次下单跳同一入口 order-create?reorder=orderNo');
+  t.check(/switch-bar/.test(textOf(PAGES.detailWxml)) && /switch-bar/.test(textOf(PAGES.ordersWxml))
+    && /switch-bar/.test(textOf(PAGES.homeWxml)), 'F22 顾客三页保留切换会话顶栏（#23 不旁路）');
+  t.notEmpty(scanned, 'F 组样本非空');
+}
+
 
 module.exports = {
   ROOT: ROOT,
@@ -165,5 +236,6 @@ module.exports = {
   event: event,
   orderDoc: orderDoc,
   FAKE_DTO_CTX: FAKE_DTO_CTX,
-  layerHits: layerHits
+  layerHits: layerHits,
+  registerF: registerF
 };
