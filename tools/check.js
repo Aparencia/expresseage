@@ -194,7 +194,7 @@ check(2, 'JS 语法', '客户端 + shared/api/store/utils + tools + cloudfunctio
 });
 
 // ---------------------------------------------------------------- #03
-check(3, '页面四件套', '主包 7 + 分包 23（顾客 5 / 兼职 7 / 开发者 11）', () => {
+check(3, '页面四件套', '主包 7 + 分包 25（顾客 6 / 兼职 8 / 开发者 11）', () => {
   const bad = [];
   for (const page of P.ALL_PAGES) {
     for (const ext of P.PAGE_EXTS) {
@@ -651,7 +651,7 @@ check(22, '零金额扫描（源码+页面文案）', '§7.6 词表命中 0；�
 });
 
 // ---------------------------------------------------------------- #23
-check(23, '切换会话接入', '17 页引用 switch-bar；pkg-admin 零引用；viewTicket 只允许 api/client.js 与 store/', () => {
+check(23, '切换会话接入', '业务页引用 switch-bar（清单见 tools/lib/project.js）；pkg-admin 零引用；viewTicket 只允许 api/client.js 与 store/', () => {
   const out = [];
   P.SWITCH_BAR_PAGES.forEach((page) => {
     const s = text(page + '.wxml');
@@ -966,7 +966,7 @@ check(32, '单函数行数', '生产源码单函数 ≤50 行（全文本口径�
 });
 
 // ---------------------------------------------------------------- #33
-check(33, '分享卡口中性', '19 页挂好友转发/3 页朋友圈/后台零分享；卡片单源 utils/share；固定中性封面；会话禁分享收口 switch-bar', () => require('./lib/check-share').run());
+check(33, '分享卡口中性', '业务页挂好友转发（清单见 tools/lib/share-pages.js）/3 页朋友圈/后台零分享；卡片单源 utils/share；固定中性封面；会话禁分享收口 switch-bar', () => require('./lib/check-share').run());
 // ---------------------------------------------------------------- #34
 check(34, '打包忽略清单', '根目录每个目录 ∈ 源码白名单 或 project.config.json packOptions.ignore folder 项；配置缺失/不可解析/空集判红（TD-071）', () => require('./lib/check-pack-ignore').run());
 // ---------------------------------------------------------------- #35/#36

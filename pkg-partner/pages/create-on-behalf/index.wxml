@@ -149,10 +149,35 @@
       <view wx:if="{{serviceDesc}}" class="small service-desc">{{serviceDesc}}</view>
       <view class="form-row">
         <view class="form-label">预约</view>
-        <picker range="{{appointOptions}}" range-key="label" value="{{appointIndex}}" bindchange="onAppointChange">
-          <view class="form-input picker-value">{{appointLabel || '尽快'}}</view>
-        </picker>
+        <radio-group class="appoint-radio" bindchange="onAppointType">
+          <label class="radio-row"><radio value="ASAP" checked="{{appointType === 'ASAP'}}" />尽快</label>
+          <label class="radio-row"><radio value="LATEST" checked="{{appointType === 'LATEST'}}" />最晚时间</label>
+        </radio-group>
       </view>
+      <!-- D47：最晚时间只表达期望——不改变接单时限、到点未送达不会自动取消（30 分钟粒度/≤7 天/提前 30 分钟） -->
+      <block wx:if="{{appointType === 'LATEST'}}">
+        <view class="small muted appoint-note">{{appointNote}}</view>
+        <picker mode="date" start="{{appointMinDate}}" end="{{appointMaxDate}}" value="{{appointDate}}" bindchange="onAppointDate">
+          <view class="form-row">
+            <view class="form-label">日期</view>
+            <view class="form-input picker-value">{{appointDateText || '请选择日期（7 天内）'}}</view>
+          </view>
+        </picker>
+        <view class="form-row">
+          <view class="form-label">快捷时间</view>
+          <view class="preset-row">
+            <view wx:for="{{appointPresets}}" wx:key="*this" class="preset-chip" data-time="{{item}}" bindtap="onAppointPreset">{{item}}</view>
+          </view>
+        </view>
+        <picker range="{{appointTimes}}" range-key="label" value="{{appointTimeIndex}}" bindchange="onAppointTime">
+          <view class="form-row">
+            <view class="form-label">时间</view>
+            <view class="form-input picker-value">{{appointTimeIndex >= 0 ? appointTimes[appointTimeIndex].label : '请选择时间'}}</view>
+          </view>
+        </picker>
+        <view class="small muted">时间按 30 分钟一档；最近可选 30 分钟后，最远 7 天内。</view>
+        <view wx:if="{{appointError}}" class="small error-text">{{appointError}}</view>
+      </block>
       <view wx:if="{{appointNotice}}" class="small warn-text">{{appointNotice}}</view>
       <view class="form-row">
         <view class="form-label">备注</view>
@@ -164,7 +189,7 @@
       <view class="small">顾客：{{customerSummary}}</view>
       <view class="small">件数：{{itemsCount}} 件{{imageCount > 1 ? '（多张截图逐图识别）' : ''}}</view>
       <view wx:for="{{stationLines}}" wx:key="key" class="small">第 {{item.index}} 件 · {{item.text}}</view>
-      <view class="small">服务：{{serviceName || '未选择'}} · 预约：{{appointLabel || '尽快'}}</view>
+      <view class="small">服务：{{serviceName || '未选择'}} · 预约：{{appointText || '尽快'}}</view>
       <view class="small">截图：{{noImage ? '无截图·手填' : imageCount + ' 张'}}</view>
     </view>
 

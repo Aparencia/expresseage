@@ -43,14 +43,9 @@ function servicesViewOf(state) {
   };
 }
 
+// 预约视图（D47）：尽快/最晚时间的状态与文案单源 formModel.appointViewOf（shared/appoint）
 function appointViewOf(state) {
-  const appoint = formModel.currentAppoint(state);
-  return {
-    appointOptions: listOf(state.appointOptions),
-    appointIndex: numberOr(state.appointIndex, 0),
-    appointLabel: appoint.label || '',
-    appointNotice: state.appointNotice || ''
-  };
+  return formModel.appointViewOf(state);
 }
 
 function imagesViewOf(state) {

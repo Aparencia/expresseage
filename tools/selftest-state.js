@@ -24,8 +24,9 @@ const route = require(path.join(ROOT, 'config/route.js'));
 const defaults = require(path.join(ROOT, 'config/defaults.js'));
 const statusView = require(path.join(ROOT, 'pkg-customer/parts/status-view.js'));
 const createModel = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/model.js'));
+const appointUtil = require(path.join(ROOT, 'shared/appoint.js'));
 
-const EXPECTED_ASSERTIONS = 344; // D43：送达自动完成提示改日结批（+2：配置时刻跟随/非法回落）；同步 `node tools/selftest-state.js` 读数
+const EXPECTED_ASSERTIONS = 354; // 344 + 10：D47 预约 LATEST 枚举/文案/选项/边界/载荷/摘要/指纹/拦截 // D43：送达自动完成提示改日结批（+2：配置时刻跟随/非法回落）；同步 `node tools/selftest-state.js` 读数
 
 const STATUS = state.STATUS;
 const ALL_ROLES = ['CUSTOMER', 'PARTNER', 'SYSTEM', 'ADMIN'];
@@ -211,7 +212,10 @@ function sectionEnumsCopy(h) {
     t.check(enums.EXCEPTION_CODES.some((i) => i.code === enums.EXCEPTION_OTHER_CODE), '§5.2 异常含 OTHER');
     t.eq(Object.keys(enums.CODE_STATUS).sort(), ['NEED_CODE', 'OK'], '§5.2 codeStatus 两值');
     t.eq(enums.CODE_STATUS_TEXT.NEED_CODE, '需补充取件码', '§5.2 codeStatus 文案');
-    t.eq(Object.keys(enums.APPOINT_TYPE).sort(), ['ASAP', 'SLOT'], '§5.2 预约类型两值');
+    t.eq(Object.keys(enums.APPOINT_TYPE).sort(), ['ASAP', 'LATEST', 'SLOT'],
+      '§5.2 预约类型三值：ASAP/LATEST 可下单，SLOT 仅历史展示（D47）');
+    t.eq([enums.APPOINT_TYPE_TEXT.ASAP, enums.APPOINT_TYPE_TEXT.LATEST, enums.APPOINT_TYPE_TEXT.SLOT],
+      ['尽快', '最晚时间', '预约时段'], '§5.2 预约类型文案（尽快/最晚时间/预约时段）');
     t.eq(enums.PARTNER_STATUS_LABELS.CLOSED, '已注销', '§1 兼职状态文案');
     t.eq(enums.VIEW_MODE_TEXT.READONLY, '开发者只读视角', '§1.3 只读视角文案');
     t.eq(enums.ROLE_LABELS.CUSTOMER, '顾客', '§1 角色文案');
@@ -597,13 +601,42 @@ function sectionOrderCreateModel(h) {
     t.eq(createModel.stepTitle(9), '', '§7 越界步骤返回空串');
     t.eq([createModel.MAX_PARCELS, createModel.MAX_IMAGES], [10, 10], '§7 一单上限：包裹 10 / 截图 10（D40）');
 
-    const now = new Date(2026, 0, 5, 21, 30, 0);
-    const slots = createModel.appointmentSlots(now);
-    t.eq(slots.length, 6, '§7 六个预约时段');
-    t.eq(slots[0].label, '今天 08:00-12:00', '§7 时段标签');
-    t.eq(slots.map((slot) => slot.expired), [true, true, false, false, false, false],
-      '§7 已结束时段标记 expired');
-    t.check(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00\+08:00$/.test(slots[0].startAt), '§7 时段起点 ISO 形状');
+    // D47 预约「最晚可接受时间」：选项/校验/预选/载荷/摘要/指纹全部落在 shared/appoint 纯件
+    const nowMs = Date.parse('2026-11-01T10:00:00+08:00');
+    t.eq([appointUtil.STEP_MINUTES, appointUtil.MAX_DAYS, appointUtil.MIN_LEAD_MINUTES], [30, 7, 30],
+      '§7 最晚时间约束：30 分钟粒度 / ≤7 天 / 最小提前 30 分钟（D47）');
+    t.eq(appointUtil.PRESET_TIMES.slice(), ['12:00', '18:00', '22:00'], '§7 预设时间 12:00/18:00/22:00');
+    t.eq([appointUtil.dayOptions(nowMs).length, appointUtil.timeOptions().length], [8, 48],
+      '§7 日期选项（今天+7 天）与 30 分钟粒度时间档 48 个');
+    t.eq(appointUtil.dayOptions(nowMs).map(function label(item) { return item.label; }).slice(0, 3),
+      ['今天', '明天', '11月3日'], '§7 日期选项文案（今天/明天/其后按月日）');
+    const slotDowngraded = appointUtil.createState(nowMs, 'SLOT');
+    t.eq([slotDowngraded.type, slotDowngraded.notice.indexOf('最晚时间') >= 0], ['ASAP', true],
+      '§7 历史 SLOT 预填 → 降级「尽快」并提示（新单不可选 SLOT）');
+    t.eq([appointUtil.payloadOf(slotDowngraded, nowMs), appointUtil.summaryOf(slotDowngraded)],
+      [{ type: 'ASAP' }, '尽快'], '§7 尽快：载荷不带时间 / 摘要「尽快」');
+    const latest = appointUtil.setType(slotDowngraded, 'LATEST', nowMs);
+    t.eq([latest.type, latest.date, latest.time, latest.latestText],
+      ['LATEST', '2026-11-01', '12:00', '最晚 11月1日 12:00'],
+      '§7 切「最晚时间」自动预选今天最近预设（12:00）');
+    t.eq(appointUtil.payloadOf(latest, nowMs), { type: 'LATEST', latestAt: '2026-11-01T12:00:00+08:00' },
+      '§7 最晚时间载荷 {type:LATEST, latestAt:ISO+08:00}');
+    t.eq(appointUtil.summaryOf(latest), '最晚 11月1日 12:00', '§7 Step3/Step4 摘要「最晚 X月X日 HH:MM」');
+    const preset = appointUtil.pickPreset(latest, '18:00', nowMs);
+    t.eq([preset.date, preset.time, appointUtil.fingerprintOf(preset) !== appointUtil.fingerprintOf(latest)],
+      ['2026-11-01', '18:00', true],
+      '§7 预设快捷改时间；同「最晚时间」改到另一刻 → 指纹变化（换幂等键）');
+    t.eq([!!appointUtil.normalizeLatestAt(Date.parse('2026-11-01T10:30:00+08:00'), nowMs),
+      !!appointUtil.normalizeLatestAt(Date.parse('2026-11-01T10:00:00+08:00'), nowMs),
+      !!appointUtil.normalizeLatestAt(Date.parse('2026-11-01T10:15:00+08:00'), nowMs),
+      !!appointUtil.normalizeLatestAt(Date.parse('2026-11-08T10:00:00+08:00'), nowMs),
+      !!appointUtil.normalizeLatestAt(Date.parse('2026-11-08T10:30:00+08:00'), nowMs)],
+    [true, false, false, true, false],
+    '§7 最晚时间边界：+30min 合法 / 当前时刻拒 / 非 30 分钟整点拒 / ≤7 天合法 / +7d 超界拒');
+    t.eq(appointUtil.validateOf(preset, nowMs), { ok: true, reason: '' }, '§7 合法最晚时间放行');
+    const badState = appointUtil.setTime(appointUtil.setDate(preset, '2026-11-01', nowMs), '00:00', nowMs);
+    t.check(badState.error.indexOf('30 分钟') >= 0 && appointUtil.validateOf(badState, nowMs).ok === false,
+      '§7 过去时间 → 行内提示 + 下一步拦截（服务端仍唯一权威）');
 
     const stationList = createModel.stationOptions();
     t.eq(stationList.length, 8, '§7 站点选择器 8 个');

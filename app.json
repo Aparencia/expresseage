@@ -29,7 +29,8 @@
         "pages/customer-detail/index",
         "pages/service-settings/index",
         "pages/stats/index",
-        "pages/messages/index"
+        "pages/messages/index",
+        "pages/pick-list/index"
       ]
     },
     {

@@ -3,6 +3,8 @@
 // P1-4：① 无本地图时「重新识别」改为打开选择器（不空转）；② 有图时原地重识别——复用已上传的
 //   fileId/票据，不重新上传；③ 清空已识别件前二次确认（UX §4.5「重新识别需确认清空」，手填件保留）；
 // ④ 上传失败卡给两条真实出路：重新选择截图 / 不传截图手动填写（D24 下两者都合法）。
+// P0-1（性能）：⑤ 组件每批上传完成即触发 uploaded——新增图立刻进识别会话（与后续上传重叠，不必等
+//   全部上传完成）；change 收口时按 files 顺序汇总，同一 fileId 只识别一次（累计/重复事件不重复识别）。
 'use strict';
 
 const model = require('./model');
@@ -25,6 +27,68 @@ function applyIdentify(page, items, perImage, patch) {
   }, patch || {});
   if (next.ocrState === 'done' && page.data.step === 1) next.step = 2;
   page.setData(next);
+}
+
+/** 丢弃当前识别会话（重新识别/失败卡先丢旧会话：迟到的旧结果不再参与本次收口） */
+function discardSession(page) {
+  const session = page._ocrSession || null;
+  page._ocrSession = null;
+  return session;
+}
+
+/** 当前选图轮的识别会话（P0-1：同一轮多批上传共用一个会话；会话只在页面实例上，不进 data） */
+function sessionOf(page) {
+  if (!page._ocrSession) {
+    page._ocrSession = ocrFlow.createIdentifySession(function onState(state) {
+      page.onOcrPhase(state);
+    });
+  }
+  return page._ocrSession;
+}
+
+/** 已识别/已失败过来源图的 fileId（重复的累计事件只识别真正新增的图） */
+function knownFileIdsOf(page) {
+  const known = {};
+  (page.data.perImage || []).forEach(function each(entry) {
+    const fileId = (entry && entry.image && entry.image.fileId) || '';
+    if (fileId) known[fileId] = true;
+  });
+  return known;
+}
+
+/** 本轮新增图（有本地路径且没识别过的来源图；手填件不算） */
+function freshFilesOf(page, files) {
+  const known = knownFileIdsOf(page);
+  return (Array.isArray(files) ? files : []).filter(function keep(file) {
+    return !!(file && file.localPath) && !known[file.fileId];
+  });
+}
+
+/**
+ * 组件 uploaded 事件（P0-1）：每批上传完成即把新增图交给识别会话——该图识别与后续批次上传重叠，
+ * 不必等全部上传完成；页面只更新文件快照与上传态，判据/编排都在 parts/。
+ */
+function onUploaded(page, e) {
+  if (page.data.readonly) return;
+  const files = ((e && e.detail && e.detail.files) || []).slice(0, MAX_IMAGES);
+  if (files.length === 0) return;
+  const fresh = freshFilesOf(page, files);
+  const patch = { files: files, ocrError: '' };
+  // 识别已在进行时不要把进度态打回「上传中」（并发图识别与后一批上传同时存在）
+  if (page.data.ocrState !== 'ocr' && page.data.ocrState !== 'ai') patch.ocrState = 'upload';
+  page.setData(patch);
+  if (fresh.length > 0) sessionOf(page).feed(fresh);
+}
+
+/**
+ * 串行化识别收口（P0-1）：两轮选图/重新识别的收口不并发改 page.items/perImage——
+ * 并发下后到的轮次会在前一轮合并完成后才对齐/合并，避免乱序或重复件（页面实例上排队，不进 data）。
+ */
+function queueRun(page, task) {
+  const previous = page._ocrChain || Promise.resolve();
+  const next = previous.then(task, task);
+  page._ocrChain = next.then(function noop() {}, function noop() {});
+  return next;
 }
 
 /** 失败卡出口计划（纯函数）：无本地图 → 打开选择器；有图 → 原地重识别（有已识别件先确认清空） */
@@ -95,11 +159,17 @@ function resultPatchOf(result, merged) {
   return patch;
 }
 
-/** 跑一轮识别并把结果写回页面（选图与重新识别共用；识别本身不重新上传） */
-async function runIdentify(page, files, keptItems, keptPerImage) {
+/**
+ * 跑一轮识别并把结果写回页面（选图与重新识别共用；识别本身不重新上传）。
+ * session 非空时走「已经边上传边识别」的会话收口（同一 fileId 不重复识别），否则退化为一次性识别。
+ */
+async function runIdentify(page, files, keptItems, keptPerImage, session) {
+  const list = (Array.isArray(files) ? files : []).slice(0, MAX_IMAGES);
   page.setData({ ocrState: 'upload' });
   try {
-    const result = await ocrFlow.identifyMany(files, (state) => page.onOcrPhase(state));
+    const result = session
+      ? await session.finish(list)
+      : await ocrFlow.identifyMany(list, (state) => page.onOcrPhase(state));
     const merged = ocrFlow.mergeItems(keptItems, keptPerImage, result);
     applyIdentify(page, merged.items, merged.perImage, resultPatchOf(result, merged));
   } catch (err) {
@@ -150,12 +220,15 @@ async function onRetryOcr(page) {
   if (plan.confirm && !(await confirmClear())) {
     return;
   }
-  const files = (page.data.files || []).slice(0, MAX_IMAGES);
-  const manualItems = (page.data.items || []).filter(function isManual(item) {
-    return !!item && item.manual === true;
+  return queueRun(page, function retryRound() {
+    const files = (page.data.files || []).slice(0, MAX_IMAGES);
+    const manualItems = (page.data.items || []).filter(function isManual(item) {
+      return !!item && item.manual === true;
+    });
+    discardSession(page); // 重新识别：先丢弃可能还在飞的旧会话，迟到的旧结果不再参与收口
+    page.setData({ failureText: '', failureNext: '', ocrError: '', imageFailures: [], aiHint: '' });
+    return runIdentify(page, files, manualItems, []);
   });
-  page.setData({ failureText: '', failureNext: '', ocrError: '', imageFailures: [], aiHint: '' });
-  await runIdentify(page, files, manualItems, []);
 }
 
 async function onPickFile(page, e) {
@@ -164,7 +237,17 @@ async function onPickFile(page, e) {
     return;
   }
   const files = ((e.detail && e.detail.files) || []).slice(0, MAX_IMAGES);
+  return queueRun(page, function pickRound() {
+    return pickRoundOf(page, files);
+  });
+}
+
+/** 一轮选图的收口：对齐已有件 → 用上传期间已边传边识别的会话收口 → 合并写回 */
+async function pickRoundOf(page, files) {
   const aligned = alignToFiles(page, files);
+  // P0-1：本轮上传期间 uploaded 可能已边传边识别——change 收口时用同一会话，按 files 顺序汇总。
+  const session = discardSession(page);
+  const added = freshFilesOf(page, aligned.added);
   page.setData({
     files: files,
     submission: model.clearSubmission(),
@@ -174,17 +257,18 @@ async function onPickFile(page, e) {
     imageFailures: [],
     aiHint: ''
   });
-  if (aligned.added.length === 0) {
+  if (added.length === 0 && !session) {
     applyIdentify(page, aligned.items, aligned.perImage, {
       ocrState: aligned.items.length > 0 ? page.data.ocrState : 'idle'
     });
     return;
   }
-  await runIdentify(page, aligned.added, aligned.items, aligned.perImage);
+  await runIdentify(page, added, aligned.items, aligned.perImage, session);
 }
 
 function onPickError(page, e) {
   const detail = (e && e.detail) || {};
+  discardSession(page);
   const files = (detail.files || page.data.files || []).slice(0, MAX_IMAGES);
   const message = detail.message || '截图上传失败。';
   if (files.length > 0) {
@@ -211,6 +295,7 @@ module.exports = {
   FAIL_NEXT_UPLOAD,
   applyIdentify,
   retryPlanOf,
+  onUploaded,
   onPickFile,
   onPickError,
   onRetryOcr

@@ -9,7 +9,7 @@
  *   B. 朋友圈卡片纯件：{title,query:'',imageUrl}，query 恒空、不自定义落地 path（平台限制）；
  *      单页模式场景 1154 判定与提示文案。
  *   C. 平台适配（注入假 api，不 mock 全局 wx）：切换会话隐藏/恢复菜单只调一次、单页模式识别与异常降级。
- *   D. 静态接线：19 页好友转发 / 3 页朋友圈 / 后台 11 页零分享；app.json 页面集与清单双向一致；
+ *   D. 静态接线：20 页好友转发 / 3 页朋友圈 / 后台 11 页零分享；app.json 页面集与清单双向一致；
  *      app.js 单页模式跳过云启动、switch-bar 会话禁分享收口、页面自拼卡片零命中（反例有牙）。
  *   E. 中性封面素材：存在、PNG 签名、尺寸 5:4 与 1:1、体积上限。
  *
@@ -22,7 +22,7 @@ const { createHarness, installCrashGuard } = require('./selftest');
 const zeroMoney = require('./zero-money-scan');
 
 const ROOT = path.resolve(__dirname, '..');
-const EXPECTED_ASSERTIONS = 194; // 实跑读数：node tools/selftest-share.js（D37 落地判据 +12）
+const EXPECTED_ASSERTIONS = 198; // 实跑读数：node tools/selftest-share.js（批 17 D46：第 32 页接入分享清单 +4）
 
 const sharePages = require('./lib/share-pages');
 const share = require(path.join(ROOT, 'utils/share/index.js'));
@@ -206,13 +206,13 @@ function register(h) {
   });
 
   // ------------------------------------------------------------ D. 静态接线
-  h.section('D 静态接线（19 页好友转发 / 3 页朋友圈 / 后台零分享 / 单源构造）', (t) => {
+  h.section('D 静态接线（20 页好友转发 / 3 页朋友圈 / 后台零分享 / 单源构造）', (t) => {
     const appJs = readText('app.js');
     const switchBarJs = readText('components/switch-bar/index.js');
     const cardsJs = readText('utils/share/index.js');
     const handlersJs = readText('utils/share/handlers.js');
 
-    t.eq(sharePages.APP_MESSAGE.length, 19, '好友转发页面清单 19 页');
+    t.eq(sharePages.APP_MESSAGE.length, 20, '好友转发页面清单 20 页');
     t.eq(sharePages.TIMELINE.length, 3, '朋友圈页面清单 3 页（role/home/help）');
     t.eq(sharePages.ADMIN_PAGES.length, 11, '后台页面清单 11 页（零分享）');
     const business = businessPageFiles().sort();

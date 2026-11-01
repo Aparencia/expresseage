@@ -12,6 +12,9 @@
  *    行级 activeOrderCount 必须精确（按状态分页全量扫描，不再 300 条窗口截断）。
  * Q4 TD-050：单状态月区间 >300 时 partner.stats 四格计数/series/todayCompleted 必须精确
  *    （按区间 count，不再按状态 300 条窗口取数；区间边界与测试/他人数据隔离不变）。
+ * Q5 D48（批 17）：order.listPartner 工作台响应只增 summary（按苑/栋聚合 + 已取件/已送达/进行中计数 +
+ *    总单数/总件数）——必须复用本次 find 的命中行（分页前候选集），零额外查询/零二次 find；
+ *    history/customer 视图不返回 summary（既有形状不变）。纯件聚合与 handler 端到端都断言。
  * TD-044（关键词部分匹配受扫描窗限制）：本批不做——无索引的模糊匹配需要全量扫描或 DAO 暴露 RegExp/OR
  *   （跨域且会引入不可控扫描量），按任务要求如实回报而非硬做；完整订单号精确查询的越窗兜底仍由既有实现承担。
  *
@@ -19,8 +22,19 @@
  * 纪律：先合法基线再反例，样本非空；EXPECTED_ASSERTIONS 与实际断言数精确相等（少算/多算都判红）。
  * 取数：node tools/selftest-query-window.js | Select-Object -Last 2
  */
+const path = require('path');
 const { createHarness, installCrashGuard } = require('./selftest');
 const cases = require('./selftest-partner-customers-cases');
+
+// D48 纯件：文件未实现时 try/catch 兜住，让 Q5 逐条给出「缺件/缺字段」首红，而不是整套 require 崩溃。
+function loadSummaryPure() {
+  try {
+    return require(path.join(cases.API, 'handlers/order/_summary.js'));
+  } catch (error) {
+    return null;
+  }
+}
+const summaryPure = loadSummaryPure();
 
 const {
   NOW, HOUR, DAY, TODAY_START, MONTH_START,
@@ -30,7 +44,8 @@ const {
 } = cases;
 
 const MINUTE = 60 * 1000;
-const EXPECTED_ASSERTIONS = 23;
+// 23（Q1~Q4）+ 19（Q5 D48 summary）= 42；少算/多算都判红。
+const EXPECTED_ASSERTIONS = 42;
 
 function pad4(value) {
   return String(value).padStart(4, '0');
@@ -383,6 +398,148 @@ async function sectionQ4(t) {
 }
 
 // ---------------------------------------------------------------- 注册
+// ================================================================ Q5 D48 summary
+// D48（批 17）：工作台响应只增 summary；聚合必须基于「分页前候选集」（本次 find 命中行），零额外查询。
+// 期望值逐字来自 CONTRACT §13 D48 / DATA_MODEL §7.5：按苑/栋聚合 + 进行中/已取件/已送达 + 总单/总件。
+const SUMMARY_TOP_KEYS = ['byDorm', 'byStatus', 'parcels', 'total'];
+const SUMMARY_STATUS_KEYS = ['delivered', 'ongoing', 'picked'];
+const SUMMARY_DORM_KEYS = ['buildingNo', 'count', 'zone'];
+const SUMMARY_BANNED = ['room', 'roomTag', 'dormKey', 'pickupCode', 'phoneTail', 'displayName',
+  'orderNo', 'customerNo', 'trackingTail', 'lockerNo'];
+
+function dormOf(zone, buildingNo, room, roomTag) {
+  return {
+    zone, buildingNo, room, roomTag,
+    buildingText: zone + buildingNo, dormKey: zone + buildingNo + '-' + room
+  };
+}
+
+function deliveryOfSummary(zone, buildingNo) {
+  return { zone, buildingNo, room: '522', buildingText: zone + buildingNo, dormKey: zone + buildingNo + '-522' };
+}
+
+// 6 单进行中：D4 两单（同栋合并）、D3 一单（2 件）、X2 一单、N1 一单（delivery 覆盖 dorm）、D10 一单（delivery）。
+function summaryOrders() {
+  return [
+    orderAt('20261022-9001', SUBMITTED, NOW - 1 * MINUTE),
+    orderAt('20261022-9002', ACCEPTED, NOW - 2 * MINUTE, { dorm: dormOf('D', 4, '522', 'Z9') }),
+    orderAt('20261022-9003', PICKED, NOW - 3 * MINUTE, {
+      dorm: dormOf('D', 3, '519', 'B'),
+      parcels: [
+        { stationId: 'P1', stationName: 'P1 一号站', pickupCode: 'D48-9003-A', codeStatus: 'OK' },
+        { stationId: 'P2', stationName: 'P2 二号站', pickupCode: 'D48-9003-B', codeStatus: 'OK' }
+      ]
+    }),
+    orderAt('20261022-9004', DELIVERED, NOW - 4 * MINUTE, { dorm: dormOf('X', 2, '301', 'A') }),
+    orderAt('20261022-9005', EXCEPTION, NOW - 5 * MINUTE, {
+      delivery: deliveryOfSummary('N', 1), dorm: dormOf('D', 4, '522', 'A')
+    }),
+    orderAt('20261022-9006', SUBMITTED, NOW - 6 * MINUTE, {
+      delivery: deliveryOfSummary('D', 10), dorm: dormOf('D', 4, '522', 'A'),
+      guest: { displayName: '隐私昵称X', phoneTail: '9999', dormKey: 'D4-522' }
+    })
+  ];
+}
+
+function summaryExpected() {
+  return {
+    total: 6,
+    parcels: 7,
+    byStatus: { picked: 1, delivered: 1, ongoing: 4 },
+    byDorm: [
+      { zone: 'D', buildingNo: 3, count: 1 },
+      { zone: 'D', buildingNo: 4, count: 2 },
+      { zone: 'D', buildingNo: 10, count: 1 },
+      { zone: 'X', buildingNo: 2, count: 1 },
+      { zone: 'N', buildingNo: 1, count: 1 }
+    ]
+  };
+}
+
+function emptySummary() {
+  return { total: 0, parcels: 0, byStatus: { picked: 0, delivered: 0, ongoing: 0 }, byDorm: [] };
+}
+
+async function sectionQ5(t) {
+  t.check(!!summaryPure && typeof summaryPure.buildSummary === 'function',
+    'Q5.0 D48 纯件 handlers/order/_summary.js 存在且导出 buildSummary');
+  const pure = summaryPure ? summaryPure.buildSummary(summaryOrders()) : null;
+  t.eq(pure, summaryExpected(), 'Q5.1 纯件聚合：苑/栋合并 + 已取件/已送达/进行中 + 总单 6/总件 7');
+  t.eq(pure ? Object.keys(pure).sort() : null, SUMMARY_TOP_KEYS,
+    'Q5.2 summary 顶层键恰为 byDorm/byStatus/parcels/total');
+  t.eq(pure ? Object.keys(pure.byStatus).sort() : null, SUMMARY_STATUS_KEYS,
+    'Q5.3 byStatus 恰为 picked/delivered/ongoing 三键（异常归进行中）');
+  t.eq(pure && pure.byDorm[0] ? Object.keys(pure.byDorm[0]).sort() : null, SUMMARY_DORM_KEYS,
+    'Q5.4 byDorm 行恰为 zone/buildingNo/count（楼栋级封顶，零房间号）');
+  const crossRows = [
+    orderAt('20261022-9101', SUBMITTED, NOW - 1 * MINUTE, { dorm: dormOf('X', 2, '301', 'A') }),
+    orderAt('20261022-9102', SUBMITTED, NOW - 2 * MINUTE, { dorm: dormOf('C', 1, '100', 'A') }),
+    orderAt('20261022-9103', SUBMITTED, NOW - 3 * MINUTE, { dorm: dormOf('D', 10, '1001', 'A') }),
+    orderAt('20261022-9104', SUBMITTED, NOW - 4 * MINUTE, { dorm: dormOf('B', 3, '300', 'A') }),
+    orderAt('20261022-9105', SUBMITTED, NOW - 5 * MINUTE, { dorm: dormOf('N', 1, '100', 'A') }),
+    orderAt('20261022-9106', SUBMITTED, NOW - 6 * MINUTE, { dorm: dormOf('D', 4, '522', 'A') })
+  ];
+  const cross = summaryPure ? summaryPure.buildSummary(crossRows) : null;
+  t.eq(cross ? cross.byDorm.map((row) => row.zone) : null, ['D', 'D', 'X', 'N', 'B', 'C'],
+    'Q5.5 苑排序按固定 D→X→N→B→C（非字母序）');
+  t.eq(cross ? cross.byDorm.slice(0, 2).map((row) => row.buildingNo) : null, [4, 10],
+    'Q5.6 同苑按楼栋号数值升序（4 在 10 前，不按字符串排）');
+  const merged = summaryPure ? summaryPure.buildSummary([
+    orderAt('20261022-9201', SUBMITTED, NOW - 1 * MINUTE, { dorm: dormOf('D', 4, '522', 'A') }),
+    orderAt('20261022-9202', ACCEPTED, NOW - 2 * MINUTE, { dorm: dormOf('D', 4, '1500', 'B') })
+  ]) : null;
+  t.eq(merged ? merged.byDorm : null, [{ zone: 'D', buildingNo: 4, count: 2 }],
+    'Q5.7 同苑同栋不同房间合并为一行（楼栋级计数）');
+  const noAddr = summaryPure ? summaryPure.buildSummary([
+    orderAt('20261022-9301', SUBMITTED, NOW - 1 * MINUTE),
+    orderAt('20261022-9302', SUBMITTED, NOW - 2 * MINUTE, { dorm: null, delivery: null })
+  ]) : null;
+  t.eq([noAddr ? noAddr.total : null, noAddr ? noAddr.byDorm : null,
+    noAddr && noAddr.byDorm ? noAddr.byDorm.reduce((sum, row) => sum + row.count, 0) : null],
+  [2, [{ zone: 'D', buildingNo: 4, count: 1 }], 1],
+  'Q5.8 缺地址单仍计入总单数，但不进苑/栋（不猜地址；有效行照常入栋）');
+  t.eq(summaryPure ? summaryPure.buildSummary([]) : null, emptySummary(),
+    'Q5.9 空 rows → 零值 summary（不产生假数据）');
+
+  const pApi = apiOf(world({ orders: summaryOrders() }), P1);
+  const workbench = await pApi.call('order.listPartner', { view: 'workbench' });
+  t.eq([workbench.ok, workbench.data && workbench.data.summary], [true, summaryExpected()],
+    'Q5.10 handler：workbench 响应 summary 与纯件聚合逐值一致（复用本次命中行）');
+  t.eq(Object.keys(workbench.data).sort(), ['counts', 'list', 'nextCursor', 'summary'],
+    'Q5.11 响应只增 summary：既有 counts/list/nextCursor 键不变');
+  const limited = await pApi.call('order.listPartner', { view: 'workbench', limit: 1 });
+  t.eq([limited.data.list.length, limited.data.summary], [1, summaryExpected()],
+    'Q5.12 summary 与分页切片无关：limit=1 仍汇总全部候选行（分页前聚合）');
+  const summaryJson = JSON.stringify(pure);
+  t.check(summaryJson.indexOf('522') === -1 && summaryJson.indexOf('Z9') === -1
+    && summaryJson.indexOf('D48-9003') === -1 && summaryJson.indexOf('6678') === -1
+    && summaryJson.indexOf('20261022') === -1 && summaryJson.indexOf('隐私昵称X') === -1,
+  'Q5.13 隐私红线：summary 不含房间号/roomTag/取件码/尾号/订单号/昵称');
+  t.eq(pure ? cases.collectKeyPaths(pure, SUMMARY_BANNED, '', []) : ['<pure 缺失>'],
+    [], 'Q5.14 summary 递归零敏感键（room/roomTag/dormKey/pickupCode/displayName/orderNo…）');
+
+  const counted = countingApiOf(world({ orders: summaryOrders() }), P1);
+  const countedRes = await counted.api.call('order.listPartner', { view: 'workbench' });
+  t.eq([countedRes.ok, counted.counters.orderCounts, counted.counters.orderGets],
+    [true, 6, 5],
+    'Q5.15 零额外查询：summary 不增 count（仍 6 次）也不二次 find（仍按 5 个状态各 1 次）');
+  const history = await pApi.call('order.listPartner', { view: 'history' });
+  t.eq([history.ok, history.data.summary, Object.keys(history.data).sort()],
+    [true, undefined, ['counts', 'list', 'nextCursor']],
+    'Q5.16 history 视图不返回 summary、既有响应形状不变');
+  const customer = await pApi.call('order.listPartner', { view: 'customer', bindingId: B1 });
+  t.eq([customer.ok, customer.data.summary, Object.keys(customer.data).sort()],
+    [true, undefined, ['list', 'nextCursor']],
+    'Q5.17 customer 视图不返回 summary（既有 {list,nextCursor} 形状不变）');
+  const pickedOnly = await pApi.call('order.listPartner', { view: 'workbench', status: PICKED });
+  t.eq(pickedOnly.data.summary, {
+    total: 1,
+    parcels: 2,
+    byStatus: { picked: 1, delivered: 0, ongoing: 0 },
+    byDorm: [{ zone: 'D', buildingNo: 3, count: 1 }]
+  }, 'Q5.18 summary 口径与本次筛选一致（status=PICKED 只汇总命中的 1 单 2 件）');
+}
+
 // 段内自带独立 fake DB 世界与「合法基线 → 反例」结构；段之间互不依赖。
 function register(h) {
   h.section('§Q 查询窗口簇：TD-040/043/050 精确计数与全量分页（先红后绿取证据）', async (t) => {
@@ -391,6 +548,7 @@ function register(h) {
     await sectionQ3(t);
     await sectionQ3b(t);
     await sectionQ4(t);
+    await sectionQ5(t);
   });
 }
 

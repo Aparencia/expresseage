@@ -227,3 +227,8 @@
   display: flex;
   align-items: center;
 }
+
+/* D47 预约「最晚可接受时间」：到点未送达行内标红（纯展示，不自动取消） */
+.appoint-overdue {
+  color: var(--v4-danger, #E54545);
+}

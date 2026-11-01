@@ -11,6 +11,8 @@ const zones = require('../../../../shared/zones');
 const enums = require('../../../../shared/enums');
 const orderState = require('../../../../shared/order-state');
 const errorCopy = require('../../../../shared/error-copy');
+const appointUtil = require('../../../../shared/appoint');
+const appointModel = require('./appoint-model');
 
 const NOTE_MAX = 200;
 const PICKUP_CODE_MAX = 40;
@@ -72,8 +74,8 @@ function emptyState() {
     items: [emptyParcel(1)],
     parcelSeq: 1,
     files: [],
-    appointOptions: buildAppointOptions(0),
-    appointIndex: 0,
+    appoint: createAppointState(0),
+    nowMs: 0,
     note: '',
     recognitionFailureId: '',
     reviewText: ''
@@ -152,40 +154,26 @@ function buildBindingOptions(bindingList) {
     .filter(function keep(item) { return item !== null; });
 }
 
-// 预约：尽快 + 今天未结束的时段（时段起止由端侧按服务端校时展开，服务端只收 type/startAt/endAt）
-function buildAppointOptions(nowMs) {
-  const now = numberOr(nowMs, 0) || Date.now();
-  const base = new Date(now);
-  const options = [{ key: enums.APPOINT_TYPE.ASAP, label: '尽快' }];
-  const slots = [
-    { label: '今天 上午 08:00-12:00', startHour: 8, endHour: 12 },
-    { label: '今天 下午 12:00-18:00', startHour: 12, endHour: 18 },
-    { label: '今天 晚上 18:00-22:00', startHour: 18, endHour: 22 }
-  ];
-  slots.forEach(function each(slot) {
-    const start = new Date(base.getFullYear(), base.getMonth(), base.getDate(), slot.startHour, 0, 0, 0).getTime();
-    const end = new Date(base.getFullYear(), base.getMonth(), base.getDate(), slot.endHour, 0, 0, 0).getTime();
-    if (end > now) options.push({ key: enums.APPOINT_TYPE.SLOT, label: slot.label, startAt: start, endAt: end });
-  });
-  return options;
-}
-
 // 页面初始状态：有档案优先走已绑定路径，否则默认新顾客路径
 function createInitialState(input) {
   const source = input || {};
   const state = emptyState();
   const services = serviceOptionsOf(source.config, source.partner);
   const bindingOptions = buildBindingOptions(source.bindingList);
-  const appointOptions = buildAppointOptions(source.nowMs);
   return Object.assign(state, {
     customerMode: bindingOptions.length ? 'BOUND' : 'GUEST',
     bindingOptions: bindingOptions,
     zones: zoneOptionsOf(source.config, source.partner),
     services: services,
     stationOptions: stationOptionsOf(),
-    appointOptions: appointOptions,
-    appointNotice: appointOptions.length > 1 ? '' : '今天的预约时段已过，只能选「尽快」；需要指定时间请稍后再约。'
+    appoint: createAppointState(numberOr(source.nowMs, 0) || Date.now()),
+    nowMs: numberOr(source.nowMs, 0) || Date.now()
   });
+}
+
+// 预约初始状态（D47）：判据与文案单源 shared/appoint，本文件只装配
+function createAppointState(nowMs, currentType) {
+  return appointModel.createState(nowMs, currentType);
 }
 
 function guestDormKey(guest) {
@@ -200,10 +188,6 @@ function currentBinding(state) {
 
 function currentService(state) {
   return listOf(state.services)[numberOr(state.serviceIndex, 0)] || null;
-}
-
-function currentAppoint(state) {
-  return listOf(state.appointOptions)[numberOr(state.appointIndex, 0)] || { key: enums.APPOINT_TYPE.ASAP, label: '尽快' };
 }
 
 function stationNameOfItem(item) {
@@ -374,6 +358,10 @@ function validateDetailed(state) {
   if (note.length > NOTE_MAX) {
     return { message: '备注最多 ' + NOTE_MAX + ' 字', step: STEP_SERVICE };
   }
+  const appointCheck = appointUtil.validateOf(source.appoint, numberOr(source.nowMs, 0) || Date.now());
+  if (!appointCheck.ok) {
+    return { message: appointCheck.reason, step: STEP_SERVICE };
+  }
   const pairText = imagePairErrorOf(source);
   if (pairText) {
     return { message: pairText, step: STEP_PARCELS };
@@ -442,10 +430,16 @@ module.exports = {
   TRACKING_TAIL_LENGTH,
   appendParcel,
   applyItemStation,
-  buildAppointOptions,
+  appointPatchWithDate: appointModel.patchWithDate,
+  appointPatchWithPreset: appointModel.patchWithPreset,
+  appointPatchWithTime: appointModel.patchWithTime,
+  appointPatchWithType: appointModel.patchWithType,
+  appointPayloadOf: appointModel.payloadOf,
+  appointSignatureOf: appointModel.signatureOf,
+  appointViewOf: appointModel.viewOf,
   buildBindingOptions,
+  createAppointState,
   createInitialState,
-  currentAppoint,
   currentBinding,
   currentService,
   emptyParcel,

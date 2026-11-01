@@ -1,14 +1,18 @@
 // pkg-partner/pages/stats/index.js · 单量统计（今日/本周/本月；近 7 天柱 + 今日日报；零费用口径）
 // 口径：docs/ux/V4_UX_PARTNER.md §3.8（三档 tab/四格指标/自绘柱/空态）、§9（单一来源 partner.stats、
 //       日报摘要可复制、页面不做历史页累加）；DATA_MODEL §7.4 partner.stats 出参（批 7 冻结）。
-// 页面只做取参/接线/setData：指标、柱、日报、空/错态全部在 parts/view-model.js、parts/daily-report.js。
+// D48（批 17）：新增「复制汇总」——点击时按需调一次 order.listPartner({view:'workbench',limit:1}) 取服务端
+//       summary（按需生成、不在 onShow 预拉、页面不本地聚合），文案纯件见 parts/summary-copy.js。
+// 页面只做取参/接线/setData：指标、柱、日报、汇总文案、空/错态全部在 parts/。
 'use strict';
 
 const partnerApi = require('../../../api/modules/partner');
+const orderApi = require('../../../api/modules/order');
 const store = require('../../../store/index');
 const route = require('../../../config/route');
 const viewModel = require('./parts/view-model');
 const dailyReport = require('./parts/daily-report');
+const summaryCopy = require('./parts/summary-copy');
 const share = require('../../../utils/share/handlers');
 
 Page({
@@ -18,6 +22,7 @@ Page({
     this._rangeDto = null;
     this._todayDto = null;
     this._loadToken = 0;
+    this._copying = false;
   },
 
   onShow() {
@@ -59,6 +64,35 @@ Page({
     wx.setClipboardData({
       data: report.text,
       success: () => wx.showToast({ title: '日报已复制', icon: 'none' })
+    });
+  },
+
+  // D48 复制汇总（顾客群口径）：点击时按需取一次工作台 summary（非 onShow 预拉），纯件生成文案。
+  // 无进行中订单不复制假文案；剪贴板失败如实提示并可重试。
+  onCopySummaryTap() {
+    if (this._copying) {
+      return;
+    }
+    this._copying = true;
+    wx.showLoading({ title: '正在生成汇总', mask: true });
+    orderApi.listPartner({ view: 'workbench', limit: 1 }).then((dto) => {
+      wx.hideLoading();
+      const config = store.get('config') || {};
+      const copy = summaryCopy.copyOf(dto && dto.summary, { zoneLabels: config.zoneLabels });
+      if (!copy.visible) {
+        wx.showToast({ title: '当前没有进行中的订单', icon: 'none' });
+        return;
+      }
+      wx.setClipboardData({
+        data: copy.text,
+        success: () => wx.showToast({ title: '已复制，可发到顾客群', icon: 'none' }),
+        fail: () => wx.showToast({ title: '复制没成功，请重试', icon: 'none' })
+      });
+    }).catch(() => {
+      wx.hideLoading();
+      wx.showToast({ title: '没连上服务器，汇总没生成，请重试', icon: 'none' });
+    }).then(() => {
+      this._copying = false;
     });
   },
 

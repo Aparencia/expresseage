@@ -14,6 +14,7 @@ const roomTag = require('../../../../utils/room-tag');
 const filterView = require('./filter-view');
 const rowActions = require('./row-actions');
 const parcelView = require('./parcel-view');
+const dayView = require('./day-view');
 
 const FALLBACK_GROUP_NAME = '全部待处理';
 const UNKNOWN_STATION_RANK = 999;
@@ -107,8 +108,9 @@ function parcelFieldsOf(item) {
   };
 }
 
-// 行字段表：页面/wxml 只消费这些稳定键（不直读服务端嵌套结构）
-function rowFieldsOf(item, identity, parcels) {
+// 行字段表：页面/wxml 只消费这些稳定键（不直读服务端嵌套结构）。
+// createdMs = 下单时刻（已完结区归档锚，D45）；delayDaysText = 「顺延 N 天」标签（未完成桶跨日才非空，文案在 day-view）
+function rowFieldsOf(item, identity, parcels, nowMs) {
   const primary = parcels.primary;
   const exception = item.exception || {};
   const status = textOf(item.status);
@@ -135,6 +137,8 @@ function rowFieldsOf(item, identity, parcels) {
     deliveryNote: textOf(item.deliveryNote),
     actions: actionsOf(item),
     version: typeof item.version === 'number' ? item.version : 0,
+    createdMs: dayView.createdMsOf(item),
+    delayDaysText: dayView.delayDaysTextOf(item, nowMs),
     timeText: timeTextOf(item.statusUpdatedAt) || timeTextOf(item.updatedAt) || textOf(item.updatedAtText),
     selectable: filterView.canSelect({ orderNo: item.orderNo, bucket }),
     selected: false,
@@ -151,9 +155,9 @@ function rowFieldsOf(item, identity, parcels) {
 }
 
 // DTO 行（order/_dto.buildOrderDto）；raw 文档兜底只为旧 response 形状，页面不依赖未下发字段
-function toRow(order) {
+function toRow(order, nowMs) {
   const item = order || {};
-  const row = rowFieldsOf(item, identityOf(item), parcelFieldsOf(item));
+  const row = rowFieldsOf(item, identityOf(item), parcelFieldsOf(item), nowMs);
   // 行工具条也进行视图：服务端 actions 变化时随行级补丁一起更新（只消费 actions[]，不判状态）
   row.toolbar = rowActions.buildToolbar(row, {});
   return row;
@@ -183,8 +187,8 @@ function sortForRoute(list) {
     .map((entry) => entry.order);
 }
 
-function toRows(orders) {
-  return sortForRoute(orders).map(toRow);
+function toRows(orders, nowMs) {
+  return sortForRoute(orders).map((order) => toRow(order, nowMs));
 }
 
 function stationRankOf(stationId) {
@@ -201,19 +205,19 @@ function stationRankOf(stationId) {
   return UNKNOWN_STATION_RANK;
 }
 
-function groupOf(stationId, stationName, orders) {
+function groupOf(stationId, stationName, orders, nowMs) {
   return {
     key: textOf(stationId) || '__NONE__',
     stationId: textOf(stationId),
     stationName: textOf(stationName) || FALLBACK_GROUP_NAME,
     count: orders.length,
-    rows: fillBucket(toRows(orders))
+    rows: fillBucket(toRows(orders, nowMs))
   };
 }
 
 // 服务端 list（DTO）按站点分区：站点取首件包裹（v1.0 跨站点单只归一组，行内聚合全部站点），
 // 顺序按 P1~P8 + 未指定站点兜底
-function buildGroupsFromList(list) {
+function buildGroupsFromList(list, nowMs) {
   const map = {};
   const keys = [];
   list.forEach((order) => {
@@ -231,24 +235,24 @@ function buildGroupsFromList(list) {
   return keys
     .map((key) => map[key])
     .sort((left, right) => stationRankOf(left.stationId) - stationRankOf(right.stationId))
-    .map((group) => groupOf(group.stationId, group.stationName, group.orders));
+    .map((group) => groupOf(group.stationId, group.stationName, group.orders, nowMs));
 }
 
-function buildGroupsFromGroups(groups) {
-  return groups.map((group) => groupOf(group.stationId, group.stationName, Array.isArray(group.orders) ? group.orders : []));
+function buildGroupsFromGroups(groups, nowMs) {
+  return groups.map((group) => groupOf(group.stationId, group.stationName, Array.isArray(group.orders) ? group.orders : [], nowMs));
 }
 
-function toGroups(data) {
+function toGroups(data, nowMs) {
   const source = data || {};
   const list = Array.isArray(source.list) ? source.list : [];
   if (list.length) {
     if (list[0] && Array.isArray(list[0].orders)) {
-      return buildGroupsFromGroups(list);
+      return buildGroupsFromGroups(list, nowMs);
     }
-    return buildGroupsFromList(list);
+    return buildGroupsFromList(list, nowMs);
   }
   if (Array.isArray(source.groups) && source.groups.length) {
-    return buildGroupsFromGroups(source.groups);
+    return buildGroupsFromGroups(source.groups, nowMs);
   }
   return [];
 }
@@ -372,6 +376,25 @@ function isPlainEqual(a, b) {
   return false;
 }
 
+// P0-5：结构变化时的最小 setData——从首个不同组起逐 index 打 `groups[n]` 路径补丁，未变化组不重发；
+// 新组数 < 旧组数（站点组减少/收窄）必须整表替换，否则尾部会残留已消失的站点卡。
+// 前置：页面已把首屏各分片 append 完（_chunkToken 空闲），否则路径下标与 data.groups 不一致 → 调用方回退 replace。
+function structuralPatch(oldGroups, newGroups) {
+  const prev = Array.isArray(oldGroups) ? oldGroups : [];
+  const next = Array.isArray(newGroups) ? newGroups : [];
+  if (next.length < prev.length) {
+    return { mode: 'replace', patches: {} };
+  }
+  const patches = {};
+  for (let index = 0; index < next.length; index += 1) {
+    if (index < prev.length && isPlainEqual(prev[index], next[index])) {
+      continue;
+    }
+    patches['groups[' + index + ']'] = next[index];
+  }
+  return { mode: Object.keys(patches).length ? 'groups' : 'none', patches: patches };
+}
+
 // 首次渲染分片（UX §4.11）：每片 ≤size 行；已加载顺序与分组不边，片内 group.key 加序号防 wx:key 冲突
 function splitByRows(groups, size) {
   const limit = size > 0 ? size : 20;
@@ -421,6 +444,7 @@ module.exports = {
   selectionMapOf,
   signatureOf,
   diffRowPatches,
+  structuralPatch,
   splitByRows,
   fillBucket
 };

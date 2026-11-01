@@ -3,6 +3,7 @@
 //           delivery/counterpart/guest/exception/needCode/failureHint/version/时间戳 ISO）。
 // 边界：本文件只做展示字段适配（不判断状态机、不拼动作、不派生判据——codeStatus/needCode 以服务端为准）。
 const enums = require('../../../../shared/enums');
+const appointUtil = require('../../../../shared/appoint');
 
 function textOf(value) {
   return typeof value === 'string' ? value.trim() : '';
@@ -29,17 +30,18 @@ function clockTextOf(value) {
   return pad2(date.getHours()) + ':' + pad2(date.getMinutes());
 }
 
+// 预约文案（D47）：ASAP「尽快」/ LATEST「最晚 M月D日 HH:MM」/ 历史 SLOT「预约时段 起-止」
 function appointTextOf(appoint) {
-  const input = appoint || {};
-  const type = textOf(input.type);
-  const typeText = textOf(input.typeText) || enums.APPOINT_TYPE_TEXT[type] || '';
-  if (type === enums.APPOINT_TYPE.SLOT) {
-    const start = clockTextOf(input.startAt);
-    const end = clockTextOf(input.endAt);
-    const range = start && end ? start + '-' + end : start || end;
-    return [typeText, range].filter(Boolean).join(' ');
-  }
-  return typeText || enums.APPOINT_TYPE_TEXT[enums.APPOINT_TYPE.ASAP];
+  const base = appointUtil.appointTextOf(appoint);
+  const slotRange = appointUtil.slotRangeTextOf(appoint);
+  return slotRange ? base + ' ' + slotRange : base;
+}
+
+// 到点未送达只标红提示（纯展示：不改状态、不自动取消；终态/已送达不标红）
+function appointViewOf(appoint, status, nowMs) {
+  const view = appointUtil.viewOf(appoint, status, nowMs);
+  const slotRange = appointUtil.slotRangeTextOf(appoint);
+  return Object.assign({}, view, { text: slotRange ? view.text + ' ' + slotRange : view.text });
 }
 
 // v1.0 一单多包裹：优先 parcels[]；兼容历史单包裹 parcel{}（同一视图，不新增分支判据）
@@ -107,15 +109,15 @@ function serviceNameOfOrder(order) {
 }
 
 // 详情页派生字段：wxml 只用这些稳定键，不直读服务端嵌套结构
-function buildDetail(order) {
+function buildDetail(order, nowMs) {
   const item = order || {};
   const appoint = item.appoint || {};
+  const appointView = appointViewOf(appoint, item.status, nowMs);
   const counterpart = item.counterpart || {};
   const exception = item.exception || {};
   const parcels = parcelListOf(item).map((parcel, index) => parcelViewOf(parcel, index));
   const first = parcels[0] || parcelViewOf({}, 0);
-  const images = listOf(item.images);
-  const image = item.image || images[0] || {};
+  const images = listOf(item.images); const image = item.image || images[0] || {};
   const manualEntry = item.manualEntry === true;
   const delivery = deliveryOf(item);
   return {
@@ -124,7 +126,9 @@ function buildDetail(order) {
     counterpartAvatarFileId: textOf(counterpart.avatarFileId),
     customerNoText: textOf(item.customerNo),
     partnerNoText: textOf(item.partnerNo),
-    appointText: appointTextOf(appoint),
+    appointText: appointView.text,
+    appointOverdue: appointView.overdue,
+    appointOverdueText: appointView.overdueText,
     hasImage: images.length > 0 || image.hasImage === true,
     imageCleaned: image.cleaned === true,
     imageCount: images.length || (image.fileId || image.hasImage ? 1 : 0),
@@ -158,6 +162,7 @@ function buildDetail(order) {
 
 module.exports = {
   appointTextOf,
+  appointViewOf,
   buildDetail,
   clockTextOf,
   deliveryOf,

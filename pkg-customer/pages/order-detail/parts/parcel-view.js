@@ -5,6 +5,7 @@
 
 const enums = require('../../../../shared/enums');
 const zones = require('../../../../shared/zones');
+const appointUtil = require('../../../../shared/appoint');
 
 function textOf(value) {
   return typeof value === 'string' ? value.trim() : '';
@@ -154,11 +155,26 @@ function serviceView(order, config) {
   };
 }
 
+// 预约展示（D47）：ASAP「尽快」/ LATEST「最晚 M月D日 HH:MM」/ 历史 SLOT「预约时段 起-止」；
+// 到点未送达只标红提示（纯展示：不改状态、不自动取消，服务端也不按最晚时间取消）。
+function appointView(order, nowMs) {
+  const item = order && typeof order === 'object' ? order : {};
+  const view = appointUtil.viewOf(item.appoint, item.status, nowMs);
+  const slotRange = appointUtil.slotRangeTextOf(item.appoint);
+  return {
+    appointText: slotRange ? view.text + ' ' + slotRange : view.text,
+    appointType: view.type,
+    appointOverdue: view.overdue,
+    appointOverdueText: view.overdueText
+  };
+}
+
 /** 页面可直接 Object.assign 的扩展字段（含 image，覆盖旧单图 imageView） */
-function pageExtras(order, config) {
+function pageExtras(order, config, nowMs) {
   const parcels = parcelsView(order);
   const delivery = deliveryView(order);
   const service = serviceView(order, config);
+  const appoint = appointView(order, nowMs);
   return {
     parcels: parcels,
     parcelCount: parcels.length,
@@ -169,7 +185,10 @@ function pageExtras(order, config) {
     manualEntryText: order && order.manualEntry === true ? '无截图·手填' : '',
     image: imagesView(order),
     serviceText: service.serviceText,
-    serviceDesc: service.serviceDesc
+    serviceDesc: service.serviceDesc,
+    appointText: appoint.appointText,
+    appointOverdue: appoint.appointOverdue,
+    appointOverdueText: appoint.appointOverdueText
   };
 }
 
@@ -181,5 +200,6 @@ module.exports = {
   deliveryView,
   imagesView,
   serviceView,
+  appointView,
   pageExtras
 };

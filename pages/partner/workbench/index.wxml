@@ -7,6 +7,8 @@
   <view class="head-row">
     <view class="title">工作台</view>
     <view class="row">
+      <!-- D46：独立「楼层配送清单」页入口（清单数据/动作在新页，工作台数据流不变） -->
+      <view class="mini-btn btn btn-ghost" bindtap="onPickListTap">楼层清单</view>
       <view class="mini-btn btn btn-ghost" bindtap="onRefreshTap">刷新</view>
       <view wx:if="{{!readonly && (selecting || hasRows)}}" class="mini-btn btn btn-primary" bindtap="onToggleSelecting">{{selecting ? '退出多选' : '多选'}}</view>
     </view>
@@ -120,6 +122,8 @@
           <view class="row line-title">
             <status-pill status="{{row.status}}" />
             <view class="code-text">{{row.codeText}}</view>
+            <!-- D45/M1：跨日未送达行标签（文案单源 parts/day-view.js；当日单/待确认/已完结不显示） -->
+            <view wx:if="{{row.delayDaysText}}" class="tag delay-tag">{{row.delayDaysText}}</view>
             <view wx:if="{{row.lockerText}}" class="small code-locker">{{row.lockerText}}</view>
             <view wx:if="{{row.isGuest}}" class="tag guest-tag">代客单</view>
             <view wx:if="{{row.parcelCountText}}" class="tag parcel-tag">{{row.parcelCountText}}</view>
@@ -277,7 +281,7 @@
   </view>
   <view wx:if="{{completed.expanded}}" class="card completed-card">
     <view class="row between completed-head" bindtap="onCompletedToggle">
-      <view class="strong">已完结</view>
+      <view class="strong">已完结 · 按下单日分</view>
       <view class="small">收起</view>
     </view>
     <block wx:for="{{completed.sections}}" wx:key="key" wx:for-item="section">

@@ -57,10 +57,20 @@ Page({
     itemsCount: 0,
     canAddItem: true,
     stationLines: [],
-    appointOptions: [],
-    appointIndex: 0,
-    appointLabel: '',
+    appointType: 'ASAP',
+    appointDate: '',
+    appointDateText: '',
+    appointTime: '',
+    appointTimeIndex: -1,
+    appointDays: [],
+    appointTimes: [],
+    appointPresets: [],
+    appointText: '',
+    appointError: '',
     appointNotice: '',
+    appointNote: '',
+    appointMinDate: '',
+    appointMaxDate: '',
     note: '',
     noteMax: formModel.NOTE_MAX,
     pickupCodeMax: formModel.PICKUP_CODE_MAX,
@@ -220,8 +230,28 @@ Page({
     this.update({ serviceIndex: Number(event.detail.value) });
   },
 
-  onAppointChange(event) {
-    this.update({ appointIndex: Number(event.detail.value) });
+  // D47 预约：尽快 / 最晚时间（日期 + 30 分钟一档时间 + 预设），判据在 shared/appoint
+  onAppointType(event) {
+    if (!this.state) return;
+    this.update(formModel.appointPatchWithType(this.state, event.detail.value, serverNowMs()));
+  },
+
+  onAppointDate(event) {
+    if (!this.state) return;
+    this.update(formModel.appointPatchWithDate(this.state, event.detail.value, serverNowMs()));
+  },
+
+  onAppointTime(event) {
+    if (!this.state) return;
+    const times = this.data.appointTimes || [];
+    const option = times[Number(event.detail.value)] || {};
+    this.update(formModel.appointPatchWithTime(this.state, option.value || '', serverNowMs()));
+  },
+
+  onAppointPreset(event) {
+    if (!this.state) return;
+    const dataset = event.currentTarget.dataset || {};
+    this.update(formModel.appointPatchWithPreset(this.state, String(dataset.time || ''), serverNowMs()));
   },
 
   onNoteInput(event) {

@@ -176,3 +176,23 @@
 .suggestion-adopt {
   margin-top: 12rpx;
 }
+
+/* D47 预约「最晚可接受时间」：说明条 + 快捷时间胶囊（30 分钟粒度） */
+.appoint-note {
+  margin: 8rpx 0 4rpx;
+}
+
+.preset-row {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+.preset-chip {
+  margin: 0 12rpx 8rpx 0;
+  padding: 6rpx 20rpx;
+  border: 1rpx solid var(--v4-brand);
+  border-radius: 24rpx;
+  color: var(--v4-brand);
+  font-size: 26rpx;
+}

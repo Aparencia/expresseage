@@ -88,8 +88,8 @@ async function sectionA(h) {
     const cApi = apiOf(db, C1);
 
     const workbench = await pApi.call('order.listPartner', { view: 'workbench' });
-    t.eq(Object.keys(workbench.data || {}).sort(), ['counts', 'list', 'nextCursor'],
-      'A1 listPartner 响应顶层键恰为 counts/list/nextCursor');
+    t.eq(Object.keys(workbench.data || {}).sort(), ['counts', 'list', 'nextCursor', 'summary'],
+      'A1 listPartner 工作台响应顶层键 = counts/list/nextCursor/summary（summary 只增、无 groups/raw）');
     t.eq(Object.keys(workbench.data.counts).sort(), COUNTS_KEYS.slice().sort(),
       'A2 counts 恰为六项（submitted/accepted/picked/delivered/exception/todayCompleted）');
     t.eq(workbench.data.counts, {

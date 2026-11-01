@@ -6,6 +6,7 @@ const enums = require('../../shared/enums');
 const validate = require('../../shared/validate');
 const stations = require('../../shared/stations');
 const zones = require('../../shared/zones');
+const appointUtil = require('../../shared/appoint');
 const time = require('../../lib/time');
 const { errors } = require('../../lib/errors');
 const { RECOGNITION_SOURCES } = require('../../lib/ai/parse');
@@ -86,33 +87,24 @@ function normalizeParcel(input, fallbackSource) {
   return normalized;
 }
 
-function parseSlotTime(value) {
-  if (typeof value === 'number' && isFinite(value) && value > 0) {
-    return value;
-  }
-  if (value instanceof Date) {
-    return value.getTime();
-  }
-  if (typeof value === 'string' && value !== '') {
-    const parsed = Date.parse(value);
-    return isNaN(parsed) ? 0 : parsed;
-  }
-  return 0;
-}
-
-// 预约：ASAP 不填时间；SLOT 必填未来时段且 start < end（下单后不可改，改时间需取消重下）
+// 预约（D47/CONTRACT §5.2）：ASAP 不填时间；LATEST 必填 latestAt（UTC+8 毫秒）且满足
+// 30 分钟粒度 / 最小提前 30 分钟 / ≤7 天（校验单源 shared/appoint.normalizeLatestAt，非法一律 VALIDATION_FAILED）。
+// SLOT（预约时段）已改为仅历史订单展示：新单不可选，收到即拒绝（历史单 DTO 仍按 startAt/endAt 输出）。
 function normalizeAppoint(input, nowMs) {
   const appoint = isPlainObject(input) ? input : {};
-  const type = appoint.type === enums.APPOINT_TYPE.SLOT ? enums.APPOINT_TYPE.SLOT : enums.APPOINT_TYPE.ASAP;
+  const type = appoint.type === enums.APPOINT_TYPE.LATEST ? enums.APPOINT_TYPE.LATEST : enums.APPOINT_TYPE.ASAP;
+  if (appoint.type === enums.APPOINT_TYPE.SLOT) {
+    throw errors.validation('appoint', '预约方式已更新：请选择「尽快」或「最晚时间」');
+  }
   if (type === enums.APPOINT_TYPE.ASAP) {
-    return { type };
+    return { type: type };
   }
-  const startAt = parseSlotTime(appoint.startAt);
-  const endAt = parseSlotTime(appoint.endAt);
-  if (!startAt || !endAt || startAt < nowMs || endAt <= startAt) {
-    throw errors.validation('appoint', '预约时段不合法，请选择未来的时间段');
+  const now = typeof nowMs === 'number' && isFinite(nowMs) ? nowMs : Date.now();
+  const latestAt = appointUtil.normalizeLatestAt(appoint.latestAt, now);
+  if (!latestAt) {
+    throw errors.validation('appoint', '最晚时间不合法：请选择 30 分钟后、7 天内的 30 分钟整点（如 18:30）');
   }
-  return { type, startAt: new Date(startAt), endAt: new Date(endAt) };
+  return { type: type, latestAt: new Date(latestAt) };
 }
 
 function findServiceEntry(partner, serviceCode) {
@@ -321,6 +313,5 @@ module.exports = {
   boundCustomerContext,
   normalizeGuest,
   normalizeOrderNote,
-  parseSlotTime,
   time
 };

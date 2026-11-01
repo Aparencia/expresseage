@@ -23,6 +23,7 @@ const APP_MESSAGE = [
   'pkg-partner/pages/order-detail/index.js',
   'pkg-partner/pages/create-on-behalf/index.js',
   'pkg-partner/pages/customer-detail/index.js',
+  'pkg-partner/pages/pick-list/index.js',
   'pkg-partner/pages/service-settings/index.js',
   'pkg-partner/pages/stats/index.js',
   'pkg-partner/pages/messages/index.js'

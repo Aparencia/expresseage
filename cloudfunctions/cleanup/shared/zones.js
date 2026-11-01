@@ -64,6 +64,15 @@ function canonicalRoom(value) {
   return digits;
 }
 
+// 楼层 = floor(room/100)（D46；room≥100 保证 ≥1；非法/越界返回 0，调用方按"地址待同步"兜底）
+function floorOf(room) {
+  const text = canonicalRoom(room);
+  if (!text) {
+    return 0;
+  }
+  return Math.floor(Number(text) / 100);
+}
+
 function buildingText(zone, buildingNo) {
   const code = normalizeZone(zone);
   if (!code || !isBuildingNo(buildingNo)) {
@@ -127,6 +136,7 @@ module.exports = {
   zoneLabel,
   isBuildingNo,
   canonicalRoom,
+  floorOf,
   buildingText,
   dormKey,
   parseDormKey,

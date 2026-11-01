@@ -6,6 +6,7 @@
 const deliveryModel = require('./delivery');
 const model = require('./model');
 const precheck = require('./precheck');
+const appointUtil = require('../../../../shared/appoint');
 
 const NOTE_MAX = 200;
 
@@ -26,17 +27,35 @@ function setService(page, e) {
   });
 }
 
+// 预约（D47）：切换尽快/最晚时间、选日期/时间/预设后都清空提交幂等键（内容变了要换键）
 function setAppointType(page, e) {
-  page.setData({ appointType: e.detail.value, submission: model.clearSubmission() });
+  page.setData({
+    appoint: appointUtil.setType(page.data.appoint, e.detail.value, Date.now()),
+    submission: model.clearSubmission()
+  });
 }
 
-function setSlot(page, e) {
-  const slotIndex = Number(e.detail.value);
-  const slot = page.data.slots[slotIndex] || {};
+function setLatestDate(page, e) {
   page.setData({
-    slotIndex: slotIndex,
-    startAt: slot.startAt || '',
-    endAt: slot.endAt || '',
+    appoint: appointUtil.setDate(page.data.appoint, e.detail.value, Date.now()),
+    submission: model.clearSubmission()
+  });
+}
+
+function setLatestTime(page, e) {
+  const times = page.data.appoint.times || [];
+  const option = times[Number(e.detail.value)] || {};
+  page.setData({
+    appoint: appointUtil.setTime(page.data.appoint, option.value || '', Date.now()),
+    submission: model.clearSubmission()
+  });
+}
+
+function setLatestPreset(page, e) {
+  const dataset = (e.currentTarget && e.currentTarget.dataset) || {};
+  const time = String(dataset.time || '');
+  page.setData({
+    appoint: appointUtil.pickPreset(page.data.appoint, time, Date.now()),
     submission: model.clearSubmission()
   });
 }
@@ -98,12 +117,12 @@ function goNext(page) {
     wx.showToast({ title: precheck.CUSTOM_NOTE_TOAST, icon: 'none' });
     return;
   }
-  if (page.data.appointType === 'SLOT') {
-    const slot = page.data.slots[page.data.slotIndex];
-    if (!slot || slot.expired) {
-      wx.showToast({ title: '请选择有效预约时段', icon: 'none' });
-      return;
-    }
+  const appointNow = Date.now();
+  const appointCheck = appointUtil.validateOf(page.data.appoint, appointNow);
+  if (!appointCheck.ok) {
+    page.setData({ appoint: appointUtil.refreshState(page.data.appoint, appointNow) });
+    wx.showToast({ title: appointCheck.reason, icon: 'none' });
+    return;
   }
   if (String(page.data.note || '').length > NOTE_MAX) {
     wx.showToast({ title: '备注最多 ' + NOTE_MAX + ' 字', icon: 'none' });
@@ -125,7 +144,9 @@ module.exports = {
   syncNoteError,
   setService,
   setAppointType,
-  setSlot,
+  setLatestDate,
+  setLatestTime,
+  setLatestPreset,
   setNote,
   setMode,
   setZone,

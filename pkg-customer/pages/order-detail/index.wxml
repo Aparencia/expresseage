@@ -86,10 +86,12 @@
         <view class="muted">同寝室标识</view>
         <room-tag-text dorm-key="{{order.dorm.dormKey}}" tag="{{order.dorm.roomTag}}" />
       </view>
-      <view class="row between line" wx:if="{{order.appoint.type}}">
+      <view class="row between line" wx:if="{{appointText}}">
         <view class="muted">预约</view>
-        <view class="flex-1 right">{{order.appoint.typeText || order.appoint.type}}</view>
+        <view class="flex-1 right {{appointOverdue ? 'appoint-overdue' : ''}}">{{appointText}}</view>
       </view>
+      <!-- D47：到点未送达只标红提示（纯展示，不自动取消、不改状态） -->
+      <view class="small appoint-overdue" wx:if="{{appointOverdueText}}">{{appointOverdueText}}</view>
       <view class="row between line" wx:if="{{order.note}}">
         <view class="muted">备注</view>
         <view class="flex-1 right">{{order.note}}</view>

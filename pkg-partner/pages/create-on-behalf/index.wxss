@@ -195,3 +195,40 @@
   color: #8A6D00;
   font-size: 26rpx;
 }
+
+/* D47 预约「最晚可接受时间」：单选行 + 快捷时间胶囊（30 分钟粒度） */
+.appoint-radio {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+.appoint-note {
+  margin: 4rpx 0 8rpx;
+}
+
+.preset-row {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+.preset-chip {
+  margin: 0 12rpx 8rpx 0;
+  padding: 6rpx 20rpx;
+  border: 1rpx solid var(--v4-brand);
+  border-radius: 24rpx;
+  color: var(--v4-brand);
+  font-size: 26rpx;
+}
+
+/* D47 预约单选行与行内红字（页面级样式，与顾客下单页 radio-row 同构） */
+.radio-row {
+  display: flex;
+  align-items: center;
+  margin: 8rpx 24rpx 8rpx 0;
+}
+
+.error-text {
+  color: var(--v4-danger, #E54545);
+}

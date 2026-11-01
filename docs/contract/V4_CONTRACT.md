@@ -329,7 +329,7 @@
 
 ### 5.2 枚举与取图口径
 
-- `appoint.type`：`'ASAP'`（尽快）｜`'SLOT'`（预约时段）。`SLOT` 时 `startAt/endAt` 必填；MVP 时段 UI 为「今天/明天 × 上午(08:00-12:00)/下午(12:00-18:00)/晚上(18:00-22:00)」，服务端按 `serverTime` 校验未来时间。
+- `appoint.type`（D47 修订）：`'ASAP'`（尽快）｜`'LATEST'`（最晚可接受时间，`{type:'LATEST', latestAt}`，UTC+8 毫秒）；**`'SLOT'`（预约时段）仅历史订单展示、新单不可选**（新单提交 `SLOT` → `VALIDATION_FAILED`）。`LATEST` 约束：**30 分钟粒度**（整点/半点）、**最小提前 30 分钟**、**最晚 ≤7 天**，非法值服务端 `VALIDATION_FAILED(field=appoint)`；客户端只做预选与行内提示，**服务端校验为唯一权威**。语义边界：最晚时间**只表达顾客期望**——**不改变 `config.orderTimeoutMinutes`（默认 120 分钟）接单超时**、**到点未送达不自动取消/不改状态**，仅在详情与订单页**标红提示**；门店/兼职侧筛选不按最晚时间排序（P1 若做再立 D 编号）。历史 `SLOT` 订单按 `startAt/endAt` 原样展示，不做数据迁移。文案：ASAP=「尽快」、LATEST=「最晚时间」、SLOT=「预约时段」（`shared/enums` 与 `shared/appoint` 单源）。
 - `exception.code`：`CODE_INVALID`（取件码/柜号无效或已被取走）｜`PARCEL_NOT_FOUND`（驿站找不到件）｜`CABINET_ERROR`（柜门/设备故障）｜`CUSTOMER_UNREACHABLE`（联系不上顾客）｜`ADDRESS_ISSUE`（宿舍地址问题）｜`OTHER`（必须填备注）。中文文案由服务端下发。
 - **截图与订单关系（v1.0 修订，D23/D24）**：**一个订单 = 1~10 件包裹**（`order.parcels[]`），可来自 0~10 张截图（`order.images[]`，一张截图一个 ticket、可一图多码拆成多件；也可多图合并为同一单）。**短间隔重复提交自动并入同一订单**：同一顾客 + 同一绑定兼职 + 已存在 `status=SUBMITTED` 且 `createdAt` 在 `config.orderMergeWindowMinutes`（默认 10 分钟，0=关闭，0~60）内且 `delivery` 相同的订单 → 新提交包裹**追加**到该订单（包裹/图片追加、`version+1`、写 `PARCELS_APPENDED` 事件、状态不变）；不满足任一条件则新建订单。合并仅限 `SUBMITTED`（兼职已接单后的新提交另建新单）；订单包裹上限 10、图片上限 10，超出另建新单；**兼职代客单不参与合并**。**无截图手填（D24）**：`images=[]` 且 `manualEntry=true` 允许提交，兼职端/订单详情/后台显示「无截图·手填」标识；截图仍为推荐路径（识别更快）。**多张截图超过上限时分多单**（按提交批次拆分，最多 10 张/单）。
 - **图片来源**：相册、拍照、微信聊天文件（系统选择器）。隐私指引覆盖"相册/摄像头/文件选择"三类，上线前按微信后台隐私接口清单逐项核对（人执行）。
@@ -346,7 +346,7 @@
 | `customer` | `saveProfile`（首次保存时生成 `customerNo`，幂等；含 `displayName` 昵称与 `avatarFileId`）、`getProfile` |
 | `partner` | `activate`（入参 `invitationCode` + 昵称，激活时可一键取微信昵称/头像）、`saveProfile`（昵称/头像可改）、`saveServiceConfig`、`getPublic`（凭完整 `partnerNo`，未绑定可、限流；**绑定前只回昵称，绑定后回头像/昵称**；测试账号返回 `NOT_FOUND`）、`listBindings`（客户档案，服务端搜索 + 游标分页）、`getCustomer`（`bindingId` 反查自己绑定顾客：档案 + 解绑资格；**不含订单分页**，该顾客历史订单统一走 `order.listPartner({view:'customer'})` 单一来源，批 8 TD-049 收敛）、`unbindCustomer`、`saveCustomerNote`、`stats`（**只含单量**：今日/本周/本月完成量、进行中/异常/取消、完成率、近 7 日单量、日报摘要源；**排除测试账号与 `isTest` 订单**；无任何收入类字段） |
 | `bind` | `create`（**仅顾客可调**；凭完整 `partnerNo`；测试账号只能绑测试账号）、`release`（reason 必填枚举 + note≤100）、`getCurrent`（当前 ACTIVE 绑定摘要 + partner 公开资料（头像/昵称 + `avatarUrl` 临时 URL，D42）+ roomTag）、`claimGuestOrder`（P1，顾客认领） |
-| `order` | `create`（**v1.0 单入口**：入参 `{parcels[1~10], images[0~10], tickets?[], serviceCode, appoint, note, ticket?/tickets?, recognition?, guest?, bindingId?, delivery?, mergeAppend?:boolean, clientRequestId}`；满足合并窗口时追加到同单，见 §5.2/D23）、`get`、`listCustomer`、`listPartner`（返回列表 + `counts` 6 项）、`accept`、`reject`、`markPicked`、`unmarkPicked`、`markDelivered`、`unmarkDelivered`、`reportException`、`resolveException`、`cancel`、`confirmDelivery`（一次确认整单全部包裹）、`correct`（按 `itemIndex` 逐包裹纠正）、`undo`、`deleteRecord`、`imageUrl`（`{orderNo,index}` 取 `images[index]` 临时 URL）。**`order.createBatch` 已于 v1.0 移除**（一图多码能力并入 `create` 的 `parcels[]`/`images[]`；调用未登记动作 → `FORBIDDEN`「不支持的操作」，与全局未登记动作口径一致） |
+| `order` | `create`（**v1.0 单入口**：入参 `{parcels[1~10], images[0~10], tickets?[], serviceCode, appoint, note, ticket?/tickets?, recognition?, guest?, bindingId?, delivery?, mergeAppend?:boolean, clientRequestId}`；满足合并窗口时追加到同单，见 §5.2/D23）、`get`、`listCustomer`、`listPartner`（返回列表 + `counts` 6 项；**工作台视图另只增 `summary`**（D48：按苑/栋聚合 + 取件/送达/进行中计数 + 总件数，复用本次查询、零额外扫描），history/customer 视图不返回该键）、`accept`、`reject`、`markPicked`、`unmarkPicked`、`markDelivered`、`unmarkDelivered`、`reportException`、`resolveException`、`cancel`、`confirmDelivery`（一次确认整单全部包裹）、`correct`（按 `itemIndex` 逐包裹纠正）、`undo`、`deleteRecord`、`imageUrl`（`{orderNo,index}` 取 `images[index]` 临时 URL）。**`order.createBatch` 已于 v1.0 移除**（一图多码能力并入 `create` 的 `parcels[]`/`images[]`；调用未登记动作 → `FORBIDDEN`「不支持的操作」，与全局未登记动作口径一致） |
 | `message` | `send`、`list`（消息中心聚合）、`markRead` |
 | `upload` | `prepare`（`purpose:'TICKET'|'AVATAR'`；头像路径 `avatars/{role}/{random}.jpg`、≤200KB、jpg/png）、`cancel` |
 | `config` | `getPublic`（返回 `zoneLabels/serviceCatalog(仅类型名与说明，无任何交易字段)/announcement/maintenance/screenshotRetentionDays/orderTimeoutMinutes/autoCompleteAt/privacyVersion` 等公开配置；`autoCompleteAt` 为 UTC+8 日结批时刻，D43） |
@@ -411,6 +411,7 @@ pkg-partner/pages/customer-detail/index  兼职侧顾客详情（历史订单/�
 pkg-partner/pages/service-settings/index 服务配置（启用服务类型/范围/接单开关，无价格）
 pkg-partner/pages/stats/index          单量统计（今日/本周完成量、状态分布，无金额）
 pkg-partner/pages/messages/index       消息中心
+pkg-partner/pages/pick-list/index      楼层配送清单（独立第 32 页：苑→栋→楼层分组展示已取件待送达单，分页/分片 ≤20 行、不参与工作台轮询、切页才刷新、可复用批量送达；D46）
 pkg-admin/pages/overview/index         开发者总览（统计卡/审计区块/账号切换入口）
 pkg-admin/pages/invite-codes/index     邀请码生成/批量/作废/状态
 pkg-admin/pages/customers/index        顾客列表/搜索（按顾客编号/宿舍/昵称，脱敏；不展示头像）

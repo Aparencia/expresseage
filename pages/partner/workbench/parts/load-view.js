@@ -120,7 +120,7 @@ function applyRefresh(prevIn, data, options) {
     }
   });
   // 多选中刷新：先把旧选集落到新行上再 diff，避免轮询补丁把行勾选态冲掉
-  const upstream = filterView.filterRows(groupView.buildGroups(merged), opts.filterKey);
+  const upstream = filterView.filterRows(groupView.buildGroups(merged, opts.nowMs), opts.filterKey);
   const groups = opts.selectedMap ? groupView.applySelection(upstream, opts.selectedMap).groups : upstream;
   const diff = prev.groups
     ? groupView.diffRowPatches(prev.groups, groups)
@@ -163,7 +163,7 @@ function applyAppend(prevIn, data, options) {
       merged.push(order);
     }
   });
-  const upstream = filterView.filterRows(groupView.buildGroups(merged), opts.filterKey);
+  const upstream = filterView.filterRows(groupView.buildGroups(merged, opts.nowMs), opts.filterKey);
   const groups = opts.selectedMap ? groupView.applySelection(upstream, opts.selectedMap).groups : upstream;
   return {
     list: merged,
@@ -246,14 +246,47 @@ function resultPatch(plan, options) {
     patch.selectionText = batchViewText(applied.selectedCount, applied.selectableCount);
   }
   if (opts.poll && !plan.structural) {
-    return { mode: 'patch', setData: Object.assign(patch, plan.patches), chunk: null };
+    return { mode: 'patch', setData: Object.assign(patch, plan.patches), chunk: null, appendPatches: [] };
+  }
+  // P0-5：结构变化但首屏分片已全部追加完 → 只发变化组（groups[n] 路径），未变化组与已渲染行不重发。
+  // 站点组减少/收窄时 structuralPatch 回 replace（避免尾部残留旧站点卡）。
+  if (plan.structural && Array.isArray(opts.prevGroups) && opts.prevGroups.length) {
+    const delta = groupView.structuralPatch(opts.prevGroups, groups);
+    if (delta.mode !== 'replace') {
+      return { mode: delta.mode, setData: Object.assign(patch, delta.patches), chunk: null, appendPatches: [] };
+    }
   }
   const chunk = chunkPlanOf(groups);
+  const append = appendPlanOf(chunk);
   return {
     mode: 'replace',
     setData: Object.assign(patch, { groups: chunk.first }),
-    chunk: chunk
+    chunk: chunk,
+    appendPatches: append.appendPatches
   };
+}
+
+// P0-5：分片追加的最小 setData——只发新片各组 `groups[n]`，不重发已渲染组（不再 concat 整表重发）
+function appendGroupPatches(renderedCount, chunk) {
+  const start = typeof renderedCount === 'number' && renderedCount > 0 ? Math.floor(renderedCount) : 0;
+  const list = Array.isArray(chunk) ? chunk : [];
+  const patches = {};
+  list.forEach((group, offset) => {
+    patches['groups[' + (start + offset) + ']'] = group;
+  });
+  return { patches: patches, renderedCount: start + list.length };
+}
+
+// 首屏分片计划 → 逐片追加补丁（页面按帧 setData(appendPatches[i])，不重发已渲染组）
+function appendPlanOf(plan) {
+  const source = plan || {};
+  let rendered = Array.isArray(source.first) ? source.first.length : 0;
+  const appendPatches = (Array.isArray(source.rest) ? source.rest : []).map((groupsChunk) => {
+    const step = appendGroupPatches(rendered, groupsChunk);
+    rendered = step.renderedCount;
+    return step.patches;
+  });
+  return { appendPatches: appendPatches, renderedCount: rendered };
 }
 
 // 本零件不反向依赖 batch-view（避免环）：选中条文案与 batch-view.selectionText 同口径

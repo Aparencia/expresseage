@@ -28,293 +28,21 @@
  *       EXPECTED_ASSERTIONS 与实际断言数精确相等（少算/多算都判红）。
  * 取数：node tools/selftest-order.js | Select-Object -Last 2
  */
-const fs = require('fs');
-const path = require('path');
-const fsutil = require('./lib/fsutil');
 const { createHarness, installCrashGuard } = require('./selftest');
-const { createFakeDb } = require('./fake-db');
+const caseLib = require('./lib/order-server-cases');
 
-const ROOT = path.resolve(__dirname, '..');
-const API = path.join(ROOT, 'cloudfunctions/api');
+// 装配/种子/助手见 tools/lib/order-server-cases.js（门禁 #18：本文件只留 A~H 断言段落）
+const {
+  ROOT, API, fs, path, fsutil, app, createDao, COLLECTIONS, enums, stations, orderState,
+  ROLES, USER_STATUS, PARTNER_STATUS, BINDING_STATUS, ORDER_STATUS, SERVICE_CODES, UPLOAD_PURPOSE,
+  NOW, DAY_KEY, ORDER_NO_RE, CLIENT_ID_RE, ALL_COLLECTION_NAMES,
+  uniqueIndexesForApi, createTestDb, cloudStub, apiOf, userDoc, customerDoc, serviceConfigOf, partnerDoc,
+  bindingDoc, seedWorld, nextCrid, parcelOf, createPayload, seedTicket, parcelsOf, parcel0, imagesOf,
+  imageOf, failureNoOf, seedFailure, resField, expectCode, expectField, collectKeys, dtoLeaksOf, handlerCtx,
+  lowercaseCollectionKeyHitsInText, listJs, scanLowercaseKeys, serial
+} = caseLib;
 
-const app = require(path.join(API, 'app.js'));
-const { createDao } = require(path.join(API, 'db/dao.js'));
-const { COLLECTIONS } = require(path.join(API, 'shared/collections.js'));
-const enums = require(path.join(API, 'shared/enums.js'));
-const stations = require(path.join(API, 'shared/stations.js'));
-const orderState = require(path.join(API, 'shared/order-state.js'));
-
-const { ROLES, USER_STATUS, PARTNER_STATUS, BINDING_STATUS, ORDER_STATUS, SERVICE_CODES, UPLOAD_PURPOSE } = enums;
-const NOW = Date.parse('2026-10-22T10:00:00+08:00');
-const DAY_KEY = '20261022';
-const ORDER_NO_RE = /^\d{8}-\d{4}$/;
-const CLIENT_ID_RE = /^[A-Za-z0-9_-]{16,32}$/;
-
-const EXPECTED_ASSERTIONS = 140; // 137 + 3：D40 10 张截图合法 / 11 张截图拒绝 / 合并追加将超 10 张不并入
-
-const ALL_COLLECTION_NAMES = Object.keys(COLLECTIONS).map((key) => COLLECTIONS[key]);
-
-// ---------------------------------------------------------------- fake DB / api 装配
-function uniqueIndexesForApi() {
-  return {
-    users: [['_id']],
-    customers: [['customerNo'], ['_id']],
-    partners: [['openid'], ['partnerNo']],
-    bindings: [['activeKey'], ['tagKey']],
-    orders: [['orderNo'], ['requestKey']],
-    order_events: [['requestKey']],
-    counters: [['key']],
-    admin_audit: [['requestKey']],
-    admin_view_sessions: [['requestKey']],
-    upload_tickets: [['ticket']],
-    recognition_failures: [['failureNo'], ['requestKey']]
-  };
-}
-
-function createTestDb() {
-  const db = createFakeDb({ uniqueIndexes: uniqueIndexesForApi() });
-  ALL_COLLECTION_NAMES.forEach((name) => db.seed(name, []));
-  return db;
-}
-
-function cloudStub() {
-  return {
-    openapi: { security: { msgSecCheck: async () => ({ errCode: 0, result: { suggest: 'pass', label: 100 } }) } },
-    getTempFileURL: async (input) => ({ fileList: (input.fileList || []).map((f) => ({ fileID: f.fileID, tempFileURL: 'https://tmp.example/x', status: 0 })) }),
-    deleteFile: async () => ({ fileList: [] })
-  };
-}
-
-function apiOf(db, openid, cloud) {
-  return app.createApi({ db, now: () => NOW, openid, env: {}, cloud: cloud || cloudStub() });
-}
-
-// ---------------------------------------------------------------- 文档种子
-function userDoc(id, roles, extra) {
-  return Object.assign({
-    _id: id, roles: roles || [], status: USER_STATUS.ACTIVE, isTestAccount: false, createdByDeveloperNo: '',
-    privacyConsent: null, messageReadAt: 0, deletionRequestedAt: 0, createdAt: NOW, updatedAt: NOW
-  }, extra || {});
-}
-
-function customerDoc(id, extra) {
-  return Object.assign({
-    _id: id, customerNo: 'CABCDEFGH', displayName: '小王', phoneTail: '1234',
-    zone: 'D', buildingNo: 4, room: '522', dormKey: 'D4-522', profileCompleted: true,
-    avatarFileId: '', createdAt: NOW, updatedAt: NOW
-  }, extra || {});
-}
-
-function serviceConfigOf(extra) {
-  return Object.assign({
-    services: SERVICE_CODES.map((code) => ({ code, enabled: true })),
-    zones: ['D', 'X', 'N', 'B', 'C'],
-    acceptingOrders: true
-  }, extra || {});
-}
-
-function partnerDoc(id, openid, partnerNo, extra) {
-  return Object.assign({
-    _id: id, openid, partnerNo, displayName: '小李', status: PARTNER_STATUS.ACTIVE,
-    avatarFileId: '', serviceConfig: serviceConfigOf(), stats: {}, createdAt: NOW, updatedAt: NOW
-  }, extra || {});
-}
-
-function bindingDoc(id, customerId, partnerId, extra) {
-  const opts = extra || {};
-  return Object.assign({
-    _id: id, activeKey: customerId, customerId, partnerId, status: BINDING_STATUS.ACTIVE,
-    roomTag: 'A', allocSeq: 1, tagKey: partnerId + ':D4-522:A',
-    dormSnapshot: { zone: 'D', buildingNo: 4, room: '522', dormKey: 'D4-522', buildingText: 'D4' },
-    partnerNote: '', boundAt: NOW, updatedAt: NOW, releasedAt: null, releaseReason: '', releaseNote: '', releasedBy: ''
-  }, opts);
-}
-
-// 顾客世界：users/customers/partners/bindings 四件套；可选测试/停用/无绑定等变体
-function seedWorld(options) {
-  const opt = options || {};
-  const db = opt.db || createTestDb();
-  const cOpenid = opt.customerOpenid || 'openid-oc-c';
-  const pOpenid = opt.partnerOpenid || 'openid-oc-p';
-  const pId = opt.partnerId || 'partner-oc';
-  const cNo = opt.customerNo || 'CABCDEFGH';
-  db.seed('users', [
-    userDoc(cOpenid, opt.customerRoles || [ROLES.CUSTOMER], { isTestAccount: opt.customerIsTest === true }),
-    userDoc(pOpenid, opt.partnerRoles || [ROLES.PARTNER], { isTestAccount: opt.partnerIsTest === true })
-  ].concat(opt.extraUsers || []));
-  db.seed('customers', [customerDoc(cOpenid, Object.assign({ customerNo: cNo }, opt.customer || {}))]);
-  const partner = partnerDoc(pId, pOpenid, opt.partnerNo || 'PABC234', opt.partner || {});
-  db.seed('partners', [partner]);
-  if (opt.binding !== false) {
-    db.seed('bindings', [bindingDoc(opt.bindingId || 'binding-oc', cOpenid, pId, opt.binding || {})]);
-  }
-  return { db, customerOpenid: cOpenid, partnerOpenid: pOpenid, partnerId: pId, partner, customerNo: cNo };
-}
-
-// ---------------------------------------------------------------- 入参构造
-let CRID_SEQ = 0;
-function nextCrid(tag) {
-  CRID_SEQ += 1;
-  return 'oc-' + (tag || 'x') + '-' + String(CRID_SEQ).padStart(12, '0');
-}
-
-function parcelOf(extra) {
-  return Object.assign({ stationId: 'P3', pickupCode: 'A12345', lockerNo: 'B-01', trackingTail: '12345' }, extra || {});
-}
-
-function createPayload(extra) {
-  const opt = Object.assign({ parcel: parcelOf(), serviceCode: 'PICKUP_STD', appoint: { type: 'ASAP' }, note: '放门口' }, extra || {});
-  const payload = Object.assign({}, opt);
-  const parcel = payload.parcel === undefined ? parcelOf() : payload.parcel;
-  delete payload.parcel;
-  payload.parcels = payload.parcels || [{ parcel }];
-  return payload;
-}
-
-let TICKET_SEQ = 0;
-function seedTicket(db, openid, extra) {
-  TICKET_SEQ += 1;
-  const ticket = 'T' + String(TICKET_SEQ).padStart(31, '0');
-  const doc = Object.assign({
-    ticket, openid, purpose: UPLOAD_PURPOSE.TICKET, cloudPath: 'orders/' + ticket + '/image.jpg',
-    draftId: 'DRAFT0000000000000001', size: 1024, contentType: '', expiresAt: NOW + 5 * 60 * 1000,
-    usedAt: null, createdAt: new Date(NOW)
-  }, extra || {});
-  db.seed('upload_tickets', [doc]);
-  return doc;
-}
-
-function parcelsOf(order) {
-  const list = order && Array.isArray(order.parcels) ? order.parcels : [];
-  if (list.length > 0) return list;
-  return order && order.parcel ? [order.parcel] : [];
-}
-function parcel0(order) {
-  return parcelsOf(order)[0] || {};
-}
-function imagesOf(order) {
-  const list = order && Array.isArray(order.images) ? order.images : [];
-  if (list.length > 0) return list;
-  return order && order.image ? [order.image] : [];
-}
-function imageOf(ticket, extra) {
-  return Object.assign({ fileId: 'cloud://env.bucket/' + ticket.cloudPath, width: 800, height: 1200, size: 1024 }, extra || {});
-}
-
-let FAIL_SEQ = 0;
-function failureNoOf() {
-  FAIL_SEQ += 1;
-  return 'F-' + DAY_KEY + '-' + String(FAIL_SEQ).padStart(6, '2').replace(/0/g, 'A').replace(/1/g, 'B');
-}
-
-function seedFailure(db, openid, extra) {
-  const failureNo = (extra && extra.failureNo) || failureNoOf();
-  const doc = Object.assign({
-    _id: 'failure-' + failureNo,
-    failureNo, requestKey: openid + ':ai-' + failureNo, failureCode: 'PARSE_MISS', sourceRole: 'CUSTOMER',
-    uploaderOpenid: openid, uploadTicketId: '', fileId: '', orderId: '', ocrTextMasked: '',
-    ruleResult: {}, aiTried: false, aiModel: '', aiResult: null, aiErrorCode: '',
-    status: 'PENDING', retentionDays: 30, createdAt: new Date(NOW), reviewedAt: null
-  }, extra || {});
-  db.seed('recognition_failures', [doc]);
-  return doc;
-}
-
-// ---------------------------------------------------------------- 断言小工具
-function resField(res) {
-  return res && res.data && res.data.field;
-}
-
-async function expectCode(t, resPromise, code, label) {
-  const res = await resPromise;
-  const ok = res && res.ok !== true && res.code === code;
-  t.check(ok, label + '（实际 code=' + (res && res.code) + '）');
-  return res;
-}
-
-async function expectField(t, resPromise, code, field, label) {
-  const res = await resPromise;
-  const ok = res && res.ok !== true && res.code === code && resField(res) === field;
-  t.check(ok, label + '（实际 code=' + (res && res.code) + ', field=' + resField(res) + '）');
-  return res;
-}
-
-function collectKeys(value, out) {
-  if (!value || typeof value !== 'object') return out;
-  if (Array.isArray(value)) { value.forEach((item) => collectKeys(item, out)); return out; }
-  Object.keys(value).forEach((key) => { out.add(key); collectKeys(value[key], out); });
-  return out;
-}
-
-const DTO_FORBIDDEN_KEYS = ['_id', 'requestKey', 'customerOpenid', 'partnerOpenid', 'customerId', 'partnerId',
-  'clientRequestId', 'batchActionId', 'cloudPath', 'claimTokenHash', 'isTest', 'impersonatedBy'];
-
-function dtoLeaksOf(dto) {
-  const keys = collectKeys(dto, new Set());
-  return DTO_FORBIDDEN_KEYS.filter((key) => keys.has(key));
-}
-
-// ---------------------------------------------------------------- 直调 handler（绕中间件：只读视角/事务注入）
-function handlerCtx(db, openid, extra) {
-  const opts = extra || {};
-  const realDao = createDao(db);
-  const ctx = {
-    dao: opts.dao || realDao,
-    ids: app.bindIds(opts.dao || realDao, NOW),
-    now: NOW,
-    env: {},
-    cloud: cloudStub(),
-    openid,
-    identity: Object.assign(app.baseIdentity(openid), opts.identity || {}),
-    requestId: 'req-order-selftest',
-    clientRequestId: opts.clientRequestId || nextCrid('handler'),
-    expectedVersion: undefined,
-    config: {}
-  };
-  return ctx;
-}
-
-// 小写集合键静态回归（口径同 selftest-bind-cloud §H：COLLECTIONS.<小写> 让 dao 抛未登记集合）
-const LOWERCASE_COLLECTION_KEY_RE = /(^|[^A-Za-z0-9_$])COLLECTIONS\.([a-z][A-Za-z0-9_$]*)/;
-
-function lowercaseCollectionKeyHitsInText(code) {
-  const hits = [];
-  String(code).split('\n').forEach((line, index) => {
-    LOWERCASE_COLLECTION_KEY_RE.lastIndex = 0;
-    const match = line.match(LOWERCASE_COLLECTION_KEY_RE);
-    if (!match) return;
-    if (match[2] === 'length' || match[2] === 'indexOf') return;
-    hits.push(':' + (index + 1) + ': ' + line.trim());
-  });
-  return hits;
-}
-
-function listJs(dir, out) {
-  const acc = out || [];
-  fs.readdirSync(dir, { withFileTypes: true }).forEach((entry) => {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) listJs(full, acc);
-    else if (entry.isFile() && entry.name.endsWith('.js')) acc.push(full);
-  });
-  return acc;
-}
-
-function scanLowercaseKeys(fileList) {
-  const hits = [];
-  fileList.forEach((full) => {
-    const code = fsutil.stripComments(fs.readFileSync(full, 'utf8'));
-    lowercaseCollectionKeyHitsInText(code).forEach((hit) => hits.push(path.relative(ROOT, full).replace(/\\/g, '/') + hit));
-  });
-  return hits;
-}
-
-// ---------------------------------------------------------------- 分节装配（异步串行：sectionTitle 是全局的）
-let serialQueue = Promise.resolve();
-function serial(fn) {
-  const run = serialQueue.then(fn);
-  serialQueue = run.catch(() => {});
-  return run;
-}
+const EXPECTED_ASSERTIONS = 153; // 140 + 13：D47 预约 LATEST 服务端归一/拒绝样例/落库/DTO/合并同值 // 137 + 3：D40 10 张截图合法 / 11 张截图拒绝 / 合并追加将超 10 张不并入
 
 function register(h) {
   const asyncSection = (title, fn) => h.section(title, (t) => serial(() => {
@@ -748,13 +476,15 @@ function register(h) {
     await expectField(t, cApi.call('order.create', createPayload({ note: 'x'.repeat(201) }),
       { clientRequestId: crid('9') }), 'VALIDATION_FAILED', 'note', 'F8 备注 >200 字 → VALIDATION(data.field=note)');
     await expectField(t, cApi.call('order.create', createPayload({
-      appoint: { type: 'SLOT', startAt: NOW - 3600000, endAt: NOW - 1800000 }
-    }), { clientRequestId: crid('10') }), 'VALIDATION_FAILED', 'appoint', 'F9 预约过去时段 → VALIDATION(data.field=appoint)');
-    const slotOrder = await cApi.call('order.create', createPayload({
-      appoint: { type: 'SLOT', startAt: NOW + 3600000, endAt: NOW + 7200000 }
+      appoint: { type: 'LATEST', latestAt: '2026-10-22T09:00:00+08:00' }
+    }), { clientRequestId: crid('10') }), 'VALIDATION_FAILED', 'appoint',
+    'F9 预约过去时间 → VALIDATION(data.field=appoint)（D47 最晚时间）');
+    const latestOrder = await cApi.call('order.create', createPayload({
+      appoint: { type: 'LATEST', latestAt: '2026-10-22T12:00:00+08:00' }
     }), { clientRequestId: crid('11') });
-    t.eq([slotOrder.ok, slotOrder.data.order.appoint.type, slotOrder.data.order.appoint.startAt],
-      [true, 'SLOT', new Date(NOW + 3600000).toISOString()], 'F10 预约未来时段成功且 DTO 回 ISO 时间');
+    t.eq([latestOrder.ok, latestOrder.data.order.appoint.type, latestOrder.data.order.appoint.latestAt],
+      [true, 'LATEST', new Date(Date.parse('2026-10-22T12:00:00+08:00')).toISOString()],
+      'F10 预约最晚时间成功且 DTO 回 ISO 时间（D47；SLOT 时段已不可新选）');
     await expectField(t, cApi.call('order.create', createPayload({ serviceCode: 'NOT_A_SERVICE' }),
       { clientRequestId: crid('12') }), 'VALIDATION_FAILED', 'serviceCode', 'F11 服务类型不在 SERVICE_CODES → VALIDATION(data.field=serviceCode)');
     const disabledWorld = seedWorld({ db: createTestDb(), partner: {
@@ -985,6 +715,53 @@ function register(h) {
     const legacyAction = await cApi.call('order.createBatch', { items: [] }, { clientRequestId: nextCrid('h8') });
     t.eq([legacyAction.ok, legacyAction.code], [false, 'FORBIDDEN'],
       'H8 order.createBatch 未登记 → FORBIDDEN（全局未登记动作口径，负向闸）');
+  });
+  // ---------------------------------------------------------------- I 预约「最晚可接受时间」（D47）
+  asyncSection('I. 预约 LATEST（D47）：归一/拒绝样例/落库/DTO/合并同值/历史 SLOT 只读', async (t) => {
+    const world = seedWorld();
+    const cApi = apiOf(world.db, world.customerOpenid);
+    const latestAt = '2026-10-22T12:00:00+08:00'; // NOW=10:00 → +2h，30 分钟整点
+    const created = await cApi.call('order.create',
+      createPayload({ appoint: { type: 'LATEST', latestAt: latestAt } }), { clientRequestId: nextCrid('i1') });
+    t.eq([created.ok, created.data.order.appoint.type], [true, 'LATEST'], 'I1 最晚时间下单成功（ASAP 之外的新类型）');
+    t.eq([created.data.order.appoint.latestAt, created.data.order.appoint.text],
+      [new Date(Date.parse(latestAt)).toISOString(), '最晚 10月22日 12:00'],
+      'I2 DTO appoint 输出 latestAt(ISO)+text（最晚 M月D日 HH:MM，UTC+8 展示）');
+    t.eq(created.data.order.appoint.typeText, '最晚时间', 'I3 DTO typeText 与 shared/enums 文案同源');
+    t.eq([created.data.order.appoint.startAt, created.data.order.appoint.endAt], ['', ''],
+      'I4 最晚时间不带时段字段（不复用 SLOT 的 startAt/endAt 语义）');
+    const row = world.db.dump('orders').filter((item) => item.orderNo === created.data.orderNo)[0] || {};
+    t.eq([row.appoint.type, new Date(row.appoint.latestAt).getTime()], ['LATEST', Date.parse(latestAt)],
+      'I5 落库快照 {type,latestAt}（UTC+8 毫秒时间戳）');
+    await expectField(t, cApi.call('order.create',
+      createPayload({ appoint: { type: 'LATEST', latestAt: '2026-10-22T09:00:00+08:00' } }),
+      { clientRequestId: nextCrid('i6') }), 'VALIDATION_FAILED', 'appoint', 'I6 过去时间 → VALIDATION(appoint)');
+    await expectField(t, cApi.call('order.create',
+      createPayload({ appoint: { type: 'LATEST', latestAt: '2026-10-22T12:15:00+08:00' } }),
+      { clientRequestId: nextCrid('i7') }), 'VALIDATION_FAILED', 'appoint', 'I7 非 30 分钟整点 → VALIDATION(appoint)');
+    await expectField(t, cApi.call('order.create',
+      createPayload({ appoint: { type: 'LATEST', latestAt: '2026-10-29T12:00:00+08:00' } }),
+      { clientRequestId: nextCrid('i8') }), 'VALIDATION_FAILED', 'appoint', 'I8 超过 7 天 → VALIDATION(appoint)');
+    await expectField(t, cApi.call('order.create',
+      createPayload({ appoint: { type: 'LATEST' } }),
+      { clientRequestId: nextCrid('i9') }), 'VALIDATION_FAILED', 'appoint', 'I9 缺 latestAt → VALIDATION(appoint)');
+    await expectField(t, cApi.call('order.create',
+      createPayload({ appoint: { type: 'SLOT', startAt: '2026-10-22T14:00:00+08:00', endAt: '2026-10-22T18:00:00+08:00' } }),
+      { clientRequestId: nextCrid('i10') }), 'VALIDATION_FAILED', 'appoint',
+    'I10 SLOT 新单不可选 → VALIDATION(appoint)（历史 SLOT 只读展示）');
+    const mergedSame = await cApi.call('order.create',
+      createPayload({ parcel: parcelOf({ pickupCode: 'B22345' }), appoint: { type: 'LATEST', latestAt: latestAt } }),
+      { clientRequestId: nextCrid('i11') });
+    t.eq([mergedSame.ok, mergedSame.data.merged], [true, true],
+      'I11 同顾客同兼职同「最晚时间」窗口内 → 并入同单（_merge 同值判定含 latestAt）');
+    const mergedDiff = await cApi.call('order.create',
+      createPayload({ parcel: parcelOf({ pickupCode: 'C32345' }), appoint: { type: 'LATEST', latestAt: '2026-10-22T18:00:00+08:00' } }),
+      { clientRequestId: nextCrid('i12') });
+    t.eq([mergedDiff.ok, mergedDiff.data.merged, mergedDiff.data.order.appoint.type], [true, false, 'LATEST'],
+      'I12 同类型但最晚时间不同 → 另建新单（不静默覆盖顾客期望时间）');
+    const parcelSrc = fsutil.stripComments(fs.readFileSync(path.join(API, 'handlers/order/_parcel.js'), 'utf8'));
+    t.check(parcelSrc.indexOf('normalizeLatestAt') !== -1 && parcelSrc.indexOf('APPOINT_TYPE.LATEST') !== -1,
+      'I13 _parcel.normalizeAppoint 走 shared/appoint.normalizeLatestAt（服务端校验单源，不端侧自拼）');
   });
 }
 

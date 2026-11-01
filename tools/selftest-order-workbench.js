@@ -39,8 +39,9 @@ const enums = require(path.join(ROOT, 'shared/enums.js'));
 const orderState = require(path.join(ROOT, 'shared/order-state.js'));
 const storage = require(path.join(ROOT, 'utils/storage.js'));
 const serverDto = require(path.join(ROOT, 'cloudfunctions/api/handlers/order/_dto.js'));
+const dayCases = require(path.join(__dirname, 'lib', 'workbench-day-cases.js'));
 
-const EXPECTED_ASSERTIONS = 235; // 实际断言总数（少算/多算都判红）
+const EXPECTED_ASSERTIONS = 235 + dayCases.EXPECTED_ASSERTIONS; // 实际断言总数（少算/多算都判红）
 
 const STATUS = orderState.STATUS;
 const STATUS_LITERALS = ['SUBMITTED', 'ACCEPTED', 'PICKED', 'DELIVERED', 'COMPLETED', 'CANCELLED', 'EXCEPTION'];
@@ -64,6 +65,15 @@ const DOC_MS = Date.parse(ISO);
 
 function textOf(rel) {
   return fsutil.readText(path.join(ROOT, rel));
+}
+
+// 可选 require：新纯件缺失时给出可定位的红（J01），而不是整个套件崩掉
+function optionalRequire(rel) {
+  try {
+    return require(path.join(ROOT, rel));
+  } catch (err) {
+    return null;
+  }
 }
 
 // 页面层扫描（有牙正控/反例）：零 wx.cloud / 零七状态字面量 / 零 random / 不直调 client.call
@@ -858,6 +868,21 @@ function register(h) {
       'I12 页面空态统一走 loadView.emptyOf（initial/筛选/错误，actions 不再被覆盖）');
     t.notEmpty([vacuum.actions, emptyPatch.setData], 'I13 I 组样本非空');
   });
+
+  // ── J. 工作台日期分类（D45=M1）+ P0-5 增量渲染（用例表拆 tools/lib，控测试文件 ≤1000 行）──
+  h.section('J 日期分类与增量渲染', (t) => dayCases.dayGroupingChecks(t, {
+    dto: dto,
+    orderDoc: orderDoc,
+    STATUS: STATUS,
+    enums: enums,
+    ISO: ISO,
+    DOC_MS: DOC_MS,
+    groupView: groupView,
+    historyView: historyView,
+    loadView: loadView,
+    textOf: textOf,
+    PAGES: PAGES
+  }));
 }
 
 module.exports = { EXPECTED_ASSERTIONS, register };

@@ -5,7 +5,7 @@
 > 更新时机：每批开工/收口、用户裁决变化、风险新增或关闭、HEAD 变化需回读。
 > 本文只记**状态、待办与下一步**，不重复设计口径（口径看 CONTRACT，工程规则看 ENGINEERING，接口看 ARCHITECTURE）。
 
-**快照时间：2026-11-01（HEAD `f9ccefc` **批 16（2026-11-01 用户反馈裁决 D43~D50）已提交**：check.js 36 条 / check-docs 12 条；D43~D50 口径登记 + #1 死代码清理/门禁 #35/#36 + #2 送达次日 23:50 日结批 + #3 代客下单补全 + #8 送至楼下展示位/回填 + 性能 P0-1 组件侧~P0-4/P1-10 + #5 日期分类研究；P0-1 页面编排侧为批 16 补件）；`check.js` 36/36、`check-docs` 12/12、零金额 0 命中（白名单 108 项）、`selftest` 35 套 0 失败（断言数以 `node tools/selftest.js` 汇总行为准）；云端 `api` 已部署并复验、`DEEPSEEK_API_KEY` 已配置；真机/提审/灰度未做）**
+**快照时间：2026-11-01（HEAD `126b5e4` **批 16（D43~D50）+ 批 17（D45~D48 实现）+ 批 16 补件 P0-1 已实现（本次提交；批 16 收口 `f9ccefc`、证据回填 `126b5e4`）**：check.js 36 条 / check-docs 12 条；D43~D50 口径登记 + #1 死代码清理/门禁 #35/#36 + #2 送达次日 23:50 日结批 + #3 代客下单补全 + #8 送至楼下展示位/回填 + 性能 P0-1 组件侧~P0-4/P1-10 + #5 日期分类研究；P0-1 页面编排侧已交付；批 17：#5 日期分类 M1 + P0-5、#7 楼层清单页（32 页）、#9 预约 LATEST（D47）、#10 汇总复制（D48））；`check.js` 36/36、`check-docs` 12/12、零金额 0 命中（白名单 108 项）、`selftest` 36 套 0 失败（断言数以 `node tools/selftest.js` 汇总行为准）；云端 `api` 已部署并复验、`DEEPSEEK_API_KEY` 已配置；真机/提审/灰度未做）**
 > 临时总体说明（全局汇总，非状态源）：[`docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md`](docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md)（版本与取数快照由 Lead 统一维护；状态仍以本文件为准、口径以 CONTRACT 为准）。
 
 ## 1. 一句话状态
@@ -721,3 +721,33 @@ gate.ps1：红色 0 项；黄色 0 项（退出码 0）
 **关键分项读数（全部真实实跑）**：`selftest-pickup-low` 63/63（新增套件，聚合注册）、`selftest-cleanup` 234/234、`selftest-performance` 143/143、`selftest-query-window` 23/23、`selftest-partner-pages` 221/221、`selftest-profile` 192/192、`selftest-order-flow` 210/210、`selftest-recognize` 276/276、`selftest-tools` 24/24、`selftest-share` 194/194、`selftest-cloud` 192/192、`selftest-state` 344/344、`selftest-order-customer` 274/274、`selftest-order-detail-partner` 172/172。
 **首红/变异回红留证**：门禁 #35 注入 `zzDeadExportProbe` → `FAIL #35 未引用导出`、#36 注入 `zzDeadPageProbe` → `FAIL #36 页面死函数`，删除后 `通过 36 项；失败 0 项`；日结批/代客下单/性能断言均在旧代码上先红后绿（详见 CHANGELOG 条目与各任务报告）。
 **待用户/后续**：cleanup 10 分钟触发器需用户在控制台确认（RUNBOOK §3.6，未配置则送达单不会自动完成）；D49 存量回填需用户按 RUNBOOK §4.1 在控制台执行；真机项（QA §H18 23:50 窗口、§Z1~Z9 服务说明/停用标记/回填可见性/聊天选图/多图/站点逐件、性能体感）由用户点检，agent 不代勾；#5 日期分类按研究推荐 M1 于批 17 实施（D45 已更新）。
+
+## 12. 批 17 收口证据（2026-11-01，真实输出）
+
+> 批 17 范围：**#5 工作台按日期分类（D45=M1）+ 性能 P0-5**、**#7 独立楼层配送清单页（D46，31→32 页）**、**#9 预约「最晚可接受时间」（D47 LATEST）**、**#10 订单汇总复制（D48）**；另完成**批 16 补件 P0-1 顾客下单流水线化**。批次收口提交见 `CHANGELOG.md` 同日条目与 git log。
+
+```
+# powershell -NoProfile -ExecutionPolicy Bypass -File check.ps1
+PASS  check.js 代码/配置门禁（36 条）
+PASS  check-docs.js 设计文档门禁（--batch 1）
+PASS  zero-money-scan.js 零金额扫描（源码+页面+文档）
+PASS  selftest.js 全部断言 suite（EXPECTED_ASSERTIONS 闸）
+check.ps1：全部通过（4 步，退出码 0）
+
+# node tools/selftest.js（末行）
+selftest：运行 36 套；失败 0 套；SKIP 0 套（无）；完整性 0 项；非聚合辅助文件 4 件（已声明）
+结果：PASS
+
+# node tools/sync-cloud-shared.js --check
+同步完成：写 0 件、删 0 件；hash 对帐 OK（18 件 × 2 套）
+
+# 其它真实读数
+check.js：通过 36 项；失败 0 项
+check-docs（--batch 1）：通过 12 项；失败 0 项
+零金额扫描：0 命中（白名单 108 项）
+QA 条目取数：320（附录 E 已同步）
+```
+
+**关键分项读数（全部真实实跑）**：`selftest-order-workbench` 273/273（#5/P0-5）、`selftest-pick-list` 116/116（#7 新套件）、`selftest-state` 354/354、`selftest-order` 153/153、`selftest-order-flow` 256/256、`selftest-order-customer` 285/285、`selftest-order-detail-partner` 182/182、`selftest-partner-pages` 226/226（#9）；`selftest-query-window` 42/42、`selftest-partner-stats` 239/239（#10）；`selftest-order-flow` 242/242 与变异回红 7 项（P0-1 补件，首红 215/241）；`selftest-performance` 143/143。
+**首红/变异回红留证**：#5 J 组两波首红（day-view 缺失/分区锚仍完成时间/无 structuralPatch）→ 273/273；#7 首红 21/58 → 116/116 + check #9 `.batch-actions` 首红；#9 六套首红（state 347/354 等）→ 全绿；#10 首红 query-window 27/42、partner-stats 212/239 → 全绿；P0-1 首红 215/241 → 242/242 + 变异回红 25/32（7 红）。
+**待用户/后续**：cleanup 10 分钟触发器需用户控制台确认（RUNBOOK §3.6）；D49 存量回填需用户按 RUNBOOK §4.1 执行；真机项（QA §Z1~Z10、§AA1~AA3、F31~F34、D17~D18、§H18 等）由用户点检，agent 不代勾；#5 形态按研究推荐 M1 实施（用户可改判 M2/M4）；主包仅剩 `pages/profile`/工作台等页面行数余量小，后续改动先拆 parts。

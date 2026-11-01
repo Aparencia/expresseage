@@ -31,7 +31,7 @@ const client = require(path.join(ROOT, 'api/client.js'));
 const orderApi = require(path.join(ROOT, 'api/modules/order.js'));
 const serverDto = require(path.join(ROOT, 'cloudfunctions/api/handlers/order/_dto.js'));
 
-const EXPECTED_ASSERTIONS = 172; // 实际断言总数（171 + 1：D43 送达浮层「24h」旧口径清零）
+const EXPECTED_ASSERTIONS = 182; // 172 + 10：D47 兼职详情预约文案/到点标红/历史 SLOT // 实际断言总数（171 + 1：D43 送达浮层「24h」旧口径清零）
 const STATUS = orderState.STATUS;
 const STATUS_LITERALS = enums.ORDER_STATUS_LIST.slice();
 const PAGE_JS = 'pkg-partner/pages/order-detail/index.js';
@@ -706,6 +706,42 @@ function register(h) {
     t.eq(viewModel.buildView(multi, [], { nowMs: NOW_MS }).order.parcels.length, 2,
       'H15 视图快照透出 parcels[]（页面不直读服务端嵌套结构）');
     t.notEmpty(detail.parcels, 'H 组样本非空');
+  });
+
+  // ---------------------------------------------------------------- I 预约「最晚可接受时间」（D47）
+  h.section('I. 预约「最晚可接受时间」展示（D47）：最晚 M月D日 HH:MM + 到点标红 + 历史 SLOT', (t) => {
+    t.eq(typeof orderView.appointViewOf, 'function', 'I0 兼职详情纯件导出 appointViewOf（与顾客详情同口径）');
+    if (typeof orderView.appointViewOf !== 'function') return;
+    const latestAt = '2026-10-22T12:00:00+08:00';
+    const ms = Date.parse(latestAt);
+    const appoint = { type: 'LATEST', latestAt: latestAt, typeText: '最晚时间', text: '最晚 10月22日 12:00' };
+    const before = orderView.appointViewOf(appoint, STATUS.ACCEPTED, ms - 60000);
+    t.eq([before.text, before.overdue, before.overdueText], ['最晚 10月22日 12:00', false, ''],
+      'I1 兼职详情展示「最晚 M月D日 HH:MM」（含日期，不只时刻）');
+    const after = orderView.appointViewOf(appoint, STATUS.ACCEPTED, ms + 60000);
+    t.eq([after.overdue, after.overdueText.indexOf('不会自动取消') >= 0], [true, true],
+      'I2 到点未送达 → 标红提示（纯展示，不改状态/不自动取消）');
+    t.eq(orderView.appointViewOf(appoint, STATUS.DELIVERED, ms + 60000).overdue, false, 'I3 已送达不标红');
+    t.eq(orderView.appointViewOf({ type: 'ASAP' }, STATUS.ACCEPTED, ms + 60000).text, '尽快', 'I4 尽快单文案「尽快」');
+    t.eq(orderView.appointViewOf({
+      type: 'SLOT', typeText: '预约时段', startAt: '2026-10-22T08:00:00+08:00', endAt: '2026-10-22T12:00:00+08:00'
+    }, STATUS.ACCEPTED, ms + 60000).text, '预约时段 08:00-12:00',
+    'I5 历史 SLOT 单仍按「预约时段 + 起止」展示（不迁移历史数据）');
+    const detailDto = {
+      orderNo: '20261022-0031', status: STATUS.ACCEPTED, statusText: '已接单', version: 3,
+      appoint: appoint, parcels: [], images: [], manualEntry: false,
+      service: { code: 'PICKUP_STD', name: '标准代取' }
+    };
+    const view = orderView.buildDetail(detailDto, ms + 60000);
+    t.eq([view.appointText, view.appointOverdue, view.appointOverdueText.length > 0],
+      ['最晚 10月22日 12:00', true, true],
+      'I6 buildDetail 带 appointText/appointOverdue/appointOverdueText（页面只渲染稳定键）');
+    const wxml = textOf(PAGE_WXML);
+    t.check(/appointOverdue/.test(wxml) && /appointText/.test(wxml),
+      'I7 WXML 渲染预约时间 + 到点标红（不出现自动取消按钮）');
+    t.check(/buildDetail\(item, nowMs\)/.test(textOf(partsDir + '/view-model.js')),
+      'I8 视图每次刷新用当前时钟重算标红（nowMs 透传 buildDetail）');
+    t.notEmpty(latestAt, 'I 组样本非空');
   });
 }
 

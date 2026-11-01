@@ -7,6 +7,7 @@ const store = require('../../../../store/index');
 const deliveryModel = require('./delivery');
 const model = require('./model');
 const precheck = require('./precheck');
+const appointUtil = require('../../../../shared/appoint');
 
 const DETAIL_PAGE = '/pkg-customer/pages/order-detail/index';
 
@@ -28,9 +29,8 @@ function fingerprintOf(page) {
     images: page.data.images,
     tickets: page.data.tickets,
     serviceCode: page.data.serviceCode,
-    appointType: page.data.appointType,
-    startAt: page.data.startAt,
-    endAt: page.data.endAt,
+    appointType: page.data.appoint.type,
+    latestAt: appointUtil.payloadOf(page.data.appoint).latestAt || '',
     note: page.data.note,
     deliveryFingerprint: deliveryModel.fingerprintOf(page.data.delivery),
     manualEntry: page.data.images.length === 0
@@ -44,7 +44,7 @@ function buildPayloadOf(page) {
     images: page.data.images,
     tickets: page.data.tickets,
     serviceCode: page.data.serviceCode,
-    appoint: model.appointPayloadOf(page.data.appointType, page.data.slots[page.data.slotIndex]),
+    appoint: appointUtil.payloadOf(page.data.appoint, Date.now()),
     note: page.data.note,
     delivery: deliveryModel.toPayload(page.data.delivery)
   });

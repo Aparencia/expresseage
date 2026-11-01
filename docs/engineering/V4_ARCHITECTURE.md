@@ -124,7 +124,7 @@ const off = store.subscribe((snapshot) => { this.setData({ vm: snapshot }); });
 ### 3.5 页面与组件约定
 
 - 页面 `.js` 只做：取参 → 调 `api/` → `setData` → 事件转发。禁止：`wx.cloud.*`、七状态字符串字面量、编号/roomTag 生成或 `random`、拼状态文案、直接读集合名/action 字符串。
-- 每个业务页（主包 5 tab + `pkg-customer` 6 页 + `pkg-partner` 7 页）`index.wxml` 根节点第一个子节点必须是 `<switch-bar />`；`pkg-admin` 页面不引用 `switch-bar`/`test-badge`。**v1.0 新增** `pkg-customer/pages/pickup-list/index`（D26 顾客取件清单：独立入口，只读展示本站订单 `parcels[]` 的站点+取件码，本机勾选只经 `utils/storage.pickupChecks`，不回写服务端）。
+- 每个业务页（主包 5 tab + `pkg-customer` 6 页 + `pkg-partner` 8 页）`index.wxml` 根节点第一个子节点必须是 `<switch-bar />`；`pkg-admin` 页面不引用 `switch-bar`/`test-badge`。**v1.0 新增** `pkg-customer/pages/pickup-list/index`（D26 顾客取件清单：独立入口，只读展示本站订单 `parcels[]` 的站点+取件码，本机勾选只经 `utils/storage.pickupChecks`，不回写服务端）。**v1.4 批 17 新增** `pkg-partner/pages/pick-list/index`（D46 独立楼层配送清单：苑→栋→楼层分组展示已取件待送达单，纯件在 `pkg-partner/pages/pick-list/parts/view-model.js`，分页/分片 ≤20 行、不做定时轮询、复用工作台批量送达纯件，无服务端改动）。
 - 页面 `.json` 只写 `navigationBarTitleText` 等；组件已在 `app.json` 全局注册，页面无需再 `usingComponents`。
 - **页面纯件（批 6~8 扩展）**：可测的视图模型/表单校验/文案放同页 `parts/*.js`（纯函数、零 `wx`），页面 `index.js` 只做取参→调 `api/`→`setData`→事件转发；`pkg-admin` 11 页均有 `parts/view-model.js` + `common/copy.js`，`pkg-customer/pkg-partner` 部分页有 `parts/*`。例外组件 `components/maintenance-mask`（维护模式全屏公告）与纯件 `utils/maintenance.js` 采用**页面级 `usingComponents` 注册**（不改 `app.json`；仅 `pages/customer/home`、`pages/partner/workbench` 引用）。
 - **服务范围预检单源（TD-068）**：`utils/order-scope.js`（零 `wx` 纯件）是「苑归一 / 服务范围文案 / 范围判定」的唯一实现——导出 `SCOPE_ALL_TEXT`、`RANGE_BLOCK_TEXT`、`zonesOf`、`zoneTableOf`、`zoneKeyOf`、`scopeTextOf`、`zoneAllowedOf`；`pages/customer/home/parts/home-view.js` 与 `pkg-customer/pages/order-create/parts/precheck.js` 只 `require` 该件并 re-export 原导出名（两份重复实现清零，拦截文案同源）。服务端 `order.create` 的 `assertServiceRange` 仍是唯一权威，本地预检只省一次必失败请求。
@@ -231,7 +231,7 @@ const off = store.subscribe((snapshot) => { this.setData({ vm: snapshot }); });
 ## 6. 本批完成判据（Lead 统一验收）
 
 - `node tools/check.js` 汇总行存在且 0 失败；`node tools/check-docs.js --batch 0` 0 失败；`tools/selftest*.js` 全绿（EXPECTED_ASSERTIONS 闸通过）。
-- 31 个页面四件套齐全且与 `app.json` 双向一致（主包 7 + 3 分包 24：`pkg-customer` 6 / `pkg-partner` 7 / `pkg-admin` 11，含 `pkg-customer/pages/pickup-list/index`）；14 集合注册表、13 错误码、action 注册表双向一致。
+- 32 个页面四件套齐全且与 `app.json` 双向一致（主包 7 + 3 分包 25：`pkg-customer` 6 / `pkg-partner` 8 / `pkg-admin` 11，含 `pkg-customer/pages/pickup-list/index` 与 `pkg-partner/pages/pick-list/index`）；14 集合注册表、13 错误码、action 注册表双向一致。
 - 零金额扫描 0 命中（真实输出）；v0.9/v1.x 门禁 #28~#33 判据已登记（对象批次补"必须真红"证据）。
 - 云函数可在 fake DB 下跑通 `health.check` 与 `admin.bootstrap`；真实云环境联调等用户完成 D1/D2 前置后再做。
 

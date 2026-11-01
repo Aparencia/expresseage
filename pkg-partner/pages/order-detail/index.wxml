@@ -100,8 +100,10 @@
       </view>
       <view class="form-row">
         <view class="form-label">预约</view>
-        <view class="form-input">{{order.appointText || '尽快'}}</view>
+        <view class="form-input {{order.appointOverdue ? 'appoint-overdue' : ''}}">{{order.appointText || '尽快'}}</view>
       </view>
+      <!-- D47：到点未送达只标红提示（纯展示，不自动取消、不改状态） -->
+      <view wx:if="{{order.appointOverdueText}}" class="small appoint-overdue">{{order.appointOverdueText}}</view>
       <view class="form-row">
         <view class="form-label">备注</view>
         <view class="form-input">{{order.noteText || '—'}}</view>

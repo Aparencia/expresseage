@@ -15,14 +15,9 @@ function listOf(value) {
   return Array.isArray(value) ? value : [];
 }
 
+// 预约（D47）：ASAP 只带 type；LATEST 带 latestAt（UTC+8 ISO 串，服务端按 now 再收紧）
 function appointOf(state) {
-  const option = formModel.currentAppoint(state);
-  const appoint = { type: option.key || 'ASAP' };
-  if (appoint.type === 'SLOT') {
-    appoint.startAt = option.startAt;
-    appoint.endAt = option.endAt;
-  }
-  return appoint;
+  return formModel.appointPayloadOf(state);
 }
 
 // 截图 0~10 张（D40/D44）：顶层 images[] + tickets[] 同序一一对应；无截图 = 空数组 + manualEntry=true
@@ -142,7 +137,7 @@ function contentSignature(state) {
       room: textOf(guest.room)
     } : null,
     service: (formModel.currentService(source) || {}).code || '',
-    appoint: formModel.currentAppoint(source).key || '',
+    appoint: formModel.appointSignatureOf(source),
     parcels: listOf(source.items).map(function map(item) {
       return [
         textOf(item && item.stationId),

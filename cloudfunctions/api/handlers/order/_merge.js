@@ -52,6 +52,11 @@ function orderFieldsEqual(order, input) {
       || time.toMs(appoint.endAt) !== time.toMs(input.appoint.endAt))) {
     return false;
   }
+  // D47：LATEST 的期望时间也算整单字段——不同最晚时间不合并（绝不静默覆盖顾客期望）
+  if (input.appoint.type === enums.APPOINT_TYPE.LATEST
+    && time.toMs(appoint.latestAt) !== time.toMs(input.appoint.latestAt)) {
+    return false;
+  }
   return textOf(order.note) === (input.note || '');
 }
 

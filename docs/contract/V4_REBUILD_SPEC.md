@@ -321,7 +321,7 @@ config / admin_audit / upload_tickets 为支撑表
 完整页面清单、入口参数、导航规则见 CONTRACT §7。要点：
 - **tabBar 上限 5 项**：`pages/customer/home/index`（顾客首页）、`pages/customer/orders/index`（顾客订单）、`pages/partner/workbench/index`（兼职工作台）、`pages/partner/customers/index`（兼职客户）、`pages/profile/index`（我的，顾客/兼职共用，按角色渲染并显示头像/昵称与唯一编号）；`tabBar.custom=true`，自定义 tabBar 组件位于**项目根目录 `custom-tab-bar/`**，按角色只渲染 3 格；切换会话下渲染目标角色三格（只读黄条/测试蓝条）。
 - 非 tab 主包页：`pages/launch/index`（启动分流，含开发者分流）、`pages/role/index`（身份选择/邀请码入口/绑定卡片落地；**落地卡按目标角色渲染，兼职身份不显示顾客绑定入口**）。
-- 顾客分包 `pkg-customer`：绑定（展示兼职昵称，绑定后头像）、下单、订单详情、**取件清单（`pkg-customer/pages/pickup-list/index`，D26）**、消息、帮助/隐私（完整页面口径见 CONTRACT §7，共 31 页）。
+- 顾客分包 `pkg-customer`：绑定（展示兼职昵称，绑定后头像）、下单、订单详情、**取件清单（`pkg-customer/pages/pickup-list/index`，D26）**、消息、帮助/隐私（完整页面口径见 CONTRACT §7，共 32 页 = 主包 7 + 分包 25；批 17/D46 增 `pkg-partner/pages/pick-list/index`，本文写作时为 31 页快照）。
 - 兼职分包 `pkg-partner`：邀请码激活（昵称+头像可跳过）、订单详情、代客下单、顾客详情（顾客头像/昵称）、服务类型与范围、单量统计、消息（**无结算页**）。
 - 开发者分包 `pkg-admin`（无 tabBar，共 **11 页**）：总览（统计卡/审计区块/账号切换入口）、邀请码、顾客列表/详情、兼职列表、订单总览/详情、配置、**账号切换（`pkg-admin/pages/account-switch/index`：真实账号只读/测试账号可写 + 测试账号管理）**、后台消息、**识别失败复核（v0.8，原图+OCR 文本+AI 结果；补录/忽略/通知）**。
 - 切换会话：目标角色页面顶部黄条（只读）或蓝条（测试可写）+ `TEST` 角标 + 隐藏分享；读接口注入 `viewTicket`；退出回「切换账号」页。

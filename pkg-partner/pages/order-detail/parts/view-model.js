@@ -29,7 +29,7 @@ function buildView(order, events, options) {
   const item = order || {};
   const readonly = opts.readonly === true;
   const nowMs = nowMsOf(opts);
-  const detail = orderView.buildDetail(item);
+  const detail = orderView.buildDetail(item, nowMs);
   const actions = hideBlockedActions(item, actionsPart.buildVisibleActions(item, { readonly: readonly }));
   const voucher = voucherPart.buildVoucher(item, events);
   // 只读视角不出现撤销条（UX §4.7/§6.3：写操作全置灰/隐藏）

@@ -13,25 +13,12 @@ const selectionFlow = require('./parts/selection-flow');
 const actionFlow = require('./parts/action-flow');
 const loadView = require('./parts/load-view');
 const guideView = require('./parts/guide-view');
+const dayView = require('./parts/day-view');
 const share = require('../../../utils/share/handlers');
 
 const DETAIL_PAGE = '/pkg-partner/pages/order-detail/index?orderNo=';
 const ACCOUNT_SWITCH_PAGE = '/pkg-admin/pages/account-switch/index';
 const CHUNK_DELAY_MS = 16;
-const TZ_OFFSET_MS = 8 * 60 * 60 * 1000;
-const COMPLETED_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-
-// 统计页「今日完成」跳入参数：只接受 YYYY-MM-DD（其它/非法一律忽略，不改既有行为）
-function focusDateOf(options) {
-  const value = options && typeof options.completedDate === 'string' ? options.completedDate : '';
-  return COMPLETED_DATE_RE.test(value) ? value : '';
-}
-
-// 服务端自然日日期键（UTC+8，与统计页/云端同口径）
-function naturalDayKeyOf(ms) {
-  const now = typeof ms === 'number' && isFinite(ms) ? ms : Date.now();
-  return new Date(now + TZ_OFFSET_MS).toISOString().slice(0, 10);
-}
 
 const base = {
   data: {
@@ -81,7 +68,7 @@ const base = {
     this._maintenanceView = null;
     this._configFetchedAt = 0;
     this._historyDirty = false;
-    this._completedFocusDate = focusDateOf(options);
+    this._completedFocusDate = dayView.focusDateOf(options);
     this.syncMode();
     this.watchStore();
     this.loadGuide();
@@ -112,7 +99,7 @@ const base = {
       return;
     }
     this._completedFocusDate = '';
-    if (date !== naturalDayKeyOf(Date.now()) || this.data.completed.expanded) {
+    if (date !== dayView.dayDateKeyOf(Date.now()) || this.data.completed.expanded) {
       return;
     }
     this.onCompletedToggle();
@@ -152,7 +139,8 @@ const base = {
       const plan = loadView.applyAppend(prev, data, {
         filterKey: this.data.filter,
         keyword: this.data.keyword,
-        selectedMap: this.data.selecting ? groupView.selectionMapOf(this.data.groups) : null
+        selectedMap: this.data.selecting ? groupView.selectionMapOf(this.data.groups) : null,
+        nowMs: Date.now()
       });
       this._list = plan.list;
       const patch = {
@@ -279,39 +267,44 @@ const base = {
     const plan = loadView.applyRefresh(prev, data, {
       filterKey: this.data.filter,
       keyword: this.data.keyword,
-      selectedMap: this.data.selecting ? groupView.selectionMapOf(this.data.groups) : null
+      selectedMap: this.data.selecting ? groupView.selectionMapOf(this.data.groups) : null,
+      nowMs: Date.now()
     });
     this._list = plan.list;
     this._page1Keys = plan.page1Keys;
     const result = loadView.resultPatch(plan, {
       filterKey: this.data.filter,
       poll: opts.poll,
-      selecting: this.data.selecting
+      selecting: this.data.selecting,
+      prevGroups: prev.groups,
+      nowMs: Date.now()
     });
     this.setData(result.setData);
+    // P0-5：每个结果都作废旧分片追加（旧片不得落到新结构上）；replace 结果才继续分帧追加
+    const token = (this._chunkToken || 0) + 1;
+    this._chunkToken = token;
     if (result.chunk) {
-      this.appendChunks(result.chunk.rest);
+      this.appendChunks(result.appendPatches, token);
     }
     this.syncBadge(plan.counts);
     this.syncBanner(plan.counts);
   },
 
-  appendChunks(chunks) {
-    if (!chunks || !chunks.length) {
+  // P0-5：分片追加只发新片 `groups[n]` 路径补丁，不 concat 重发已渲染组
+  appendChunks(patches, token) {
+    if (!patches || !patches.length) {
       return;
     }
-    const token = (this._chunkToken || 0) + 1;
-    this._chunkToken = token;
     const step = (rest) => {
       if (this._chunkToken !== token || !rest.length) {
         return;
       }
-      this.setData({ groups: (this.data.groups || []).concat(rest[0]) });
+      this.setData(rest[0]);
       if (rest.length > 1) {
         setTimeout(() => step(rest.slice(1)), CHUNK_DELAY_MS);
       }
     };
-    setTimeout(() => step(chunks), CHUNK_DELAY_MS);
+    setTimeout(() => step(patches), CHUNK_DELAY_MS);
   },
 
   // P0-6：先判等再 store.patch（轮询无变化时零通知，隐藏页/其他订阅者不再重算）
@@ -476,6 +469,10 @@ const base = {
     wx.navigateTo({ url: DETAIL_PAGE + event.currentTarget.dataset.orderNo });
   },
 
+
+  onPickListTap() {
+    wx.navigateTo({ url: '/pkg-partner/pages/pick-list/index' });
+  },
 
   toastMsg(title) {
     wx.showToast({ title: title, icon: 'none' });

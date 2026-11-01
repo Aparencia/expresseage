@@ -145,6 +145,15 @@ function uploadPlanOf(count, rawConcurrency) {
 }
 
 /**
+ * P0-1 渐进上传事件快照：每批（≤并发 2）完成即给页面「已就绪」的累计文件。
+ * 与最终 change 快照同源（当前已传文件 + 已上传列表，按上限截断）：单图模式换图时只算新图；
+ * 快照随批次单调增，页面据此立刻开始该图识别（上传与识别重叠）。
+ */
+function uploadSnapshotOf(current, uploaded, rawMax) {
+  return mergeFiles(current, uploaded, rawMax);
+}
+
+/**
  * 组件事件里的文件快照：本地上传结果 + 选图元数据。
  * size 取上传链路读到的真实值（压缩后/读盘后），缺失回退选图接口值；name/type 原样透传，
  * 供页面与识别链路使用（聊天图 size/name/type 丢失是本轮修复的根因）。
@@ -175,6 +184,7 @@ module.exports = {
   pickedFileOf,
   pickedFilesOf,
   uploadPlanOf,
+  uploadSnapshotOf,
   fileSnapshotOf,
   isCancelOf,
   deniedCopyOf

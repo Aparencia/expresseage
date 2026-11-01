@@ -1,0 +1,86 @@
+<!-- pkg-partner/pages/pick-list/index.wxml · 独立「楼层配送清单」页（D46）
+     视图数据全部来自 parts/view-model（苑→栋→楼层分组/分片/复制文案/汇总）；行内动作只渲染服务端 actions[] 结果。
+     口径：UX_PARTNER §3.11、§6（READONLY 隐藏写控件 / TEST_WRITE 可写但只写测试数据）；不自动轮询，切页/下拉才刷新。 -->
+<view class="page-body">
+  <switch-bar />
+
+  <view class="head-row">
+    <view class="title">楼层配送清单</view>
+    <view class="row">
+      <view class="mini-btn btn btn-ghost copy-btn" bindtap="onCopyTap">复制清单</view>
+      <view wx:if="{{!readonly && stage === 'ready'}}" class="mini-btn btn btn-ghost" bindtap="onToggleSelecting">{{selecting ? '退出多选' : '多选'}}</view>
+    </view>
+  </view>
+
+  <view class="card intro-card">
+    <view class="small intro-text">按苑 → 栋 → 楼层分组，只列已取件待送达的单。不自动刷新：下拉或切回本页时更新。</view>
+    <view wx:if="{{summary.total}}" class="small intro-text intro-summary">{{summary.text}}</view>
+    <view wx:if="{{readonly}}" class="small intro-text readonly-tip">只读视角下不能改订单状态</view>
+    <view wx:elif="{{testWrite}}" class="small intro-text test-tip">测试账号会话：写操作只写入测试数据</view>
+  </view>
+
+  <view wx:if="{{stage === 'loading'}}" class="card"><view class="empty-text loading-text">加载中…</view></view>
+  <view wx:elif="{{stage === 'error'}}" class="card">
+    <empty-state text="{{errorText}}" actionText="重试" bind:action="onRetryTap" />
+  </view>
+  <view wx:elif="{{stage === 'empty'}}" class="card">
+    <empty-state text="{{emptyText}}" />
+  </view>
+
+  <block wx:for="{{chunks}}" wx:key="key" wx:for-item="chunk">
+    <view class="card floor-card">
+      <view class="row between floor-head">
+        <view class="strong floor-title">{{chunk.title}}</view>
+        <view class="small">{{chunk.count}} 单</view>
+      </view>
+      <view
+        wx:for="{{chunk.rows}}"
+        wx:key="orderNo"
+        wx:for-item="row"
+        class="order-line {{row.selected ? 'order-line-active' : ''}}"
+        data-order-no="{{row.orderNo}}"
+        bindtap="onRowTap"
+      >
+        <view wx:if="{{selecting}}" class="check-dot {{row.selected ? 'check-dot-on' : ''}}"></view>
+        <view class="flex-1 line-main">
+          <view class="row line-top">
+            <view class="strong room-text">{{row.roomText || '宿舍号待同步'}}</view>
+            <view wx:if="{{row.roomTagText}}" class="tag room-tag">{{row.roomTagText}}</view>
+            <view wx:if="{{row.parcelCountText}}" class="small parcel-count">{{row.parcelCountText}}</view>
+          </view>
+          <view class="muted ellipsis">{{row.nameText || '收件人待同步'}}</view>
+          <view class="row between small line-foot">
+            <text>{{row.serviceName}}</text>
+            <text>{{row.timeText}}</text>
+          </view>
+        </view>
+        <view
+          wx:if="{{!selecting && !readonly && row.canDeliver}}"
+          class="mini-btn btn btn-primary deliver-btn"
+          data-order-no="{{row.orderNo}}"
+          catchtap="onRowDeliver"
+        >已送达</view>
+      </view>
+    </view>
+  </block>
+
+  <view wx:if="{{loadingMore}}" class="small load-more">加载中…</view>
+  <view wx:elif="{{nextCursor}}" class="small load-more">上拉加载下一批</view>
+
+  <view class="bottom-safe"></view>
+
+  <view wx:if="{{selecting}}" class="batch-bar">
+    <view class="row between batch-head">
+      <text class="small">{{selectionText}}</text>
+      <view class="row">
+        <view class="mini-btn btn btn-ghost" bindtap="onSelectAll">全选</view>
+        <view class="mini-btn btn btn-ghost" bindtap="onClearSelection">清空</view>
+        <view class="mini-btn btn btn-ghost" bindtap="onToggleSelecting">退出多选</view>
+      </view>
+    </view>
+    <view class="row batch-actions">
+      <view class="btn btn-primary batch-btn {{batchRunning ? 'btn-disabled' : ''}}" bindtap="onBatchDeliver">批量送达</view>
+    </view>
+    <view wx:if="{{testWrite}}" class="small batch-tip">测试账号会话：批量送达只写入测试数据</view>
+  </view>
+</view>

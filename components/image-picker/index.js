@@ -6,7 +6,9 @@
 //   （尤其不请求 scope.writePhotosAlbum——那是「保存到相册」，不是选图所需）；首拒给替代路径文案。
 // P1-4：单图模式（maxCount=1）再选图 = 替换旧图（修复换图静默无效）；多图模式按 D23 追加。
 // change 事件：{files}（追加/替换/删除后全量快照）；error：{reason,message,files}（失败时仍带已成功文件）；
-// limit：{maxCount,message}（已达上限仍尝试添加）。页面只消费事件，不直接改组件内部状态。
+// limit：{maxCount,message}（已达上限仍尝试添加）。
+// uploaded 事件（P0-1）：{files}——每批（≤2 并发）上传完成即发一次累计快照，页面据此立刻识别该图
+//   （上传与识别重叠）；change 仍在全部批次结束后触发一次（既有消费不变）。页面只消费事件，不直接改组件内部状态。
 const uploadApi = require('../../api/upload');
 const state = require('./state');
 
@@ -186,6 +188,7 @@ Component({
             failed = (one && one.error) || {};
           }
         });
+        if (uploadedFiles.length > 0) this.emitUploaded(uploadedFiles);
         if (failed) break;
       }
       // 半途失败：已成功的文件仍然保留（不因一张失败把已上传的图丢掉），用 error.files 交给页面；
@@ -205,6 +208,15 @@ Component({
           files
         });
       }
+    },
+
+    // P0-1（页面编排侧）：每批上传完成即发渐进事件——页面按新 fileId 立刻开始该图识别，与后续
+    // 批次上传重叠（不必等全部上传完成）。只增事件：既有 change（全部批次结束后一次）与
+    // error/limit 的语义与时机不变（顾客端/代客端现有消费不受影响）。
+    emitUploaded(uploadedFiles) {
+      this.triggerEvent('uploaded', {
+        files: state.uploadSnapshotOf(this.data.files, uploadedFiles, this.data.maxCount)
+      });
     },
 
     async uploadOne(meta) {

@@ -12,6 +12,9 @@
  *   F. 反残留（真实缺陷锁）：删掉 history 4×100 累加、零 wx.cloud、零七状态字面量、零存储、零写守卫、
  *      零金额词表（复用 tools/zero-money-scan.js 单源）、workbench 只加最小入参解析。
  *   G. 跨域契约（DATA_MODEL §7.4 批 7 ③）：真实 DTO 形状 → 视图/日报端到端；空统计（测试会话）全 0。
+ *   H. 复制汇总（D48，批 17）：纯件按苑/栋生成顾客群文案（只到楼栋级、无房间/尾号/码/昵称/单号）、
+ *      空数据不出假文案、200 字上限按栋数省略、同栋合并/苑固定序/异常归进行中、页面按需调
+ *      order.listPartner({view:'workbench',limit:1}) 取服务端 summary（不在 onShow 预拉、不本地聚合）。
  * 纪律：不 mock 全局 wx（本套只测纯件与静态文本）；先合法基线再反例；不空集判绿；
  *       EXPECTED_ASSERTIONS 与实际断言数精确相等。取数：node tools/selftest-partner-stats.js
  */
@@ -26,8 +29,18 @@ const ROOT = path.resolve(__dirname, '..');
 
 const viewModel = require(path.join(ROOT, 'pkg-partner/pages/stats/parts/view-model.js'));
 const dailyReport = require(path.join(ROOT, 'pkg-partner/pages/stats/parts/daily-report.js'));
+// D48 纯件：未实现时 try/catch 兜住，让 H 段逐条给出「缺件/缺字段」首红，而不是整套 require 崩溃。
+function loadSummaryCopy() {
+  try {
+    return require(path.join(ROOT, 'pkg-partner/pages/stats/parts/summary-copy.js'));
+  } catch (error) {
+    return null;
+  }
+}
+const summaryCopy = loadSummaryCopy();
 
-const EXPECTED_ASSERTIONS = 203; // 本轮实测：selftest-partner-stats 断言 203/203（少算/多算都判红）
+// 203（A~G 既有）+ 36（H D48 复制汇总）= 239；少算/多算都判红。
+const EXPECTED_ASSERTIONS = 239;
 
 const P = {
   page: 'pkg-partner/pages/stats/index.js',
@@ -36,6 +49,7 @@ const P = {
   json: 'pkg-partner/pages/stats/index.json',
   viewModel: 'pkg-partner/pages/stats/parts/view-model.js',
   report: 'pkg-partner/pages/stats/parts/daily-report.js',
+  summaryCopy: 'pkg-partner/pages/stats/parts/summary-copy.js',
   oldSummary: 'pkg-partner/pages/stats/parts/summary.js',
   workbench: 'pages/partner/workbench/index.js'
 };
@@ -102,6 +116,38 @@ function emptyStatsDto(overrides) {
     recent: [],
     todayCompleted: 0
   }, overrides || {});
+}
+
+// D48 复制汇总：空视图形状（纯件未实现时逐条首红，不做假绿）
+function emptyCopyShape() {
+  return {
+    visible: false, text: '', copyText: '', total: 0, parcels: 0, dormCount: 0, truncated: false
+  };
+}
+
+// D48 复制汇总：顾客群口径样例（byDorm 故意乱序，验证苑序/栋号排序与同栋合并）
+function sampleSummary() {
+  return {
+    total: 8,
+    parcels: 10,
+    byStatus: { picked: 1, delivered: 1, ongoing: 6 },
+    byDorm: [
+      { zone: 'D', buildingNo: 4, count: 2 },
+      { zone: 'X', buildingNo: 2, count: 1 },
+      { zone: 'D', buildingNo: 3, count: 5 }
+    ]
+  };
+}
+
+// D48 截断样例：5 苑 × 10 栋，50 行必超 200 字
+function manyDormSummary() {
+  const byDorm = [];
+  ['D', 'X', 'N', 'B', 'C'].forEach(function eachZone(zone) {
+    for (let buildingNo = 1; buildingNo <= 10; buildingNo += 1) {
+      byDorm.push({ zone: zone, buildingNo: buildingNo, count: 1 });
+    }
+  });
+  return { total: 50, parcels: 50, byStatus: { picked: 0, delivered: 0, ongoing: 50 }, byDorm: byDorm };
 }
 
 function register(h) {
@@ -407,7 +453,8 @@ function register(h) {
   h.section('§9 F 反残留（history 累加/本地猜/测试数据/费用/状态字面量）', (t) => {
     t.check(!exists(P.oldSummary), 'F01 §9 旧 summary.js 客户端累加件已删除');
     const page = textOf(P.page);
-    t.check(page.indexOf('listPartner') === -1, 'F02 §9 页面零 order.listPartner（不再拉历史页）');
+    t.check(page.indexOf("view: 'history'") === -1,
+      'F02 §9 页面不为本地统计拉历史页（listPartner 只用于 workbench summary，零 history 视图）');
     t.check(page.indexOf('MAX_HISTORY_PAGES') === -1 && page.indexOf('HISTORY_PAGE_LIMIT') === -1,
       'F03 §9 零 4×100 页累加常量（>400 单偏小的真缺陷已废弃）');
     t.check(page.indexOf('fetchHistory') === -1, 'F04 §9 零客户端历史翻页累加函数');
@@ -446,8 +493,10 @@ function register(h) {
     t.check(workbench.indexOf('this.onCompletedToggle()') !== -1, 'F20 §3.8 既有已完结加载逻辑原样复用（不重写）');
     t.check(workbench.indexOf("Page(Object.assign(base, require('./parts/page-actions')))") !== -1,
       'F21 §3.8 workbench 入口合并方式未变（仅增量入参解析）');
-    t.check(workbench.indexOf('\\d{4}') !== -1 && workbench.indexOf('\\d{2}') !== -1,
-      'F22 §3.8 workbench 只接受 YYYY-MM-DD 形参（非法参数忽略）');
+    const dayView = textOf('pages/partner/workbench/parts/day-view.js');
+    t.check(workbench.indexOf('dayView.focusDateOf(') !== -1
+      && dayView.indexOf('\\d{4}') !== -1 && dayView.indexOf('\\d{2}') !== -1,
+      'F22 §3.8 workbench 只接受 YYYY-MM-DD 形参（日形参校验单源 parts/day-view；非法参数忽略）');
   });
 
   // ---------------------------------------------------------------- G 跨域契约
@@ -503,7 +552,120 @@ function register(h) {
     t.eq(readonlyView.metrics.rateText, '63%', 'G17 §6 READONLY 会话统计正常可读（不被写守卫挡）');
     t.eq(viewModel.seriesOf(sampleDto(), NOW_MS).length, 7, 'G18 §7.4 series 固定 7 项契约');
     t.check(STATUS_LITERALS.length === 7, 'G19 §7.4 七状态枚举来自 shared/order-state 单源');
-    t.eq(occurrences(textOf(P.wxml), 'bindtap'), 3, 'G20 §3.8 页面交互入口恰好 3 个（tab/复制/跳转）');
+    t.eq(occurrences(textOf(P.wxml), 'bindtap'), 4, 'G20 §3.8 页面交互入口恰好 4 个（tab/复制日报/复制汇总/跳转）');
+  });
+
+  // ---------------------------------------------------------------- H 复制汇总（D48，批 17）
+  h.section('§9/D48 H 复制汇总（顾客群口径：只到楼栋级/200 字/空数据不复制/服务端 summary）', (t) => {
+    t.check(exists(P.summaryCopy), 'H01 D48 文案纯件 parts/summary-copy.js 存在（页面零本地聚合）');
+    const copy = summaryCopy ? summaryCopy.copyOf(sampleSummary()) : null;
+    t.eq(copy && copy.text,
+      '【代取汇总】当前 8 单（10 件）；东苑 3栋 5单 · 4栋 2单；西苑 2栋 1单。进度：进行中 6 / 已取件 1 / 已送达 1。',
+      'H02 D48 文案格式：总单/总件 + 苑/栋聚合（固定 D→X 序）+ 进行中/已取件/已送达');
+    t.check(!!copy && copy.text.indexOf('【代取汇总】') === 0, 'H03 D48 标题固定【代取汇总】开头');
+    t.eq(copy && copy.copyText, copy && copy.text, 'H04 D48 复制内容=展示内容（单源，不复制看不见的字段）');
+    t.eq(copy && [copy.visible, copy.total, copy.parcels, copy.dormCount, copy.truncated],
+      [true, 8, 10, 3, false], 'H05 D48 视图字段：可复制/总单 8/总件 10/3 栋/未截断');
+    t.eq(summaryCopy ? summaryCopy.copyOf(null) : null, emptyCopyShape(),
+      'H06 D48 无 summary（null）→ 不可复制、零假文案');
+    t.eq(summaryCopy ? summaryCopy.copyOf({}) : null, emptyCopyShape(),
+      'H07 D48 空对象 → 不可复制（不产出「当前 0 单」假文案）');
+    t.eq(summaryCopy ? summaryCopy.copyOf({
+      total: 0, parcels: 0, byStatus: { picked: 0, delivered: 0, ongoing: 0 },
+      byDorm: [{ zone: 'D', buildingNo: 4, count: 3 }]
+    }) : null, emptyCopyShape(), 'H08 D48 total=0（即使有残留 byDorm）→ 不复制假汇总');
+    t.eq(summaryCopy ? summaryCopy.copyOf('bad') : null, emptyCopyShape(),
+      'H09 D48 非对象入参 → 不可复制（服务端契约外数据不猜）');
+    t.eq(summaryCopy ? summaryCopy.copyOf({
+      total: '7',
+      parcels: -2,
+      byStatus: { picked: '2', delivered: Infinity, ongoing: -1 },
+      byDorm: [
+        { zone: 'D4-522', buildingNo: 1, count: 2 },
+        { zone: 'D', buildingNo: 99, count: 3 },
+        { zone: 'X', buildingNo: 2, count: 0 },
+        { zone: ' D ', buildingNo: 4, count: 1 }
+      ]
+    }).text : null,
+    '【代取汇总】当前 7 单（0 件）；东苑 4栋 1单。进度：进行中 0 / 已取件 2 / 已送达 0。',
+    'H10 D48 脏值归一：非法苑/栋/0 单行丢弃，计数夹紧为非负整数');
+    t.eq(summaryCopy ? summaryCopy.copyOf(sampleSummary(), { zoneLabels: { D: 'D 区', X: 'X 区' } }).text : null,
+      '【代取汇总】当前 8 单（10 件）；D 区 3栋 5单 · 4栋 2单；X 区 2栋 1单。进度：进行中 6 / 已取件 1 / 已送达 1。',
+      'H11 D48 苑名走 config.zoneLabels 覆盖（与顾客端展示名同源）');
+    t.eq(summaryCopy ? summaryCopy.copyOf(Object.assign({}, sampleSummary(), {
+      byDorm: [{ zone: 'D', buildingNo: 4, count: 2 }, { zone: 'D', buildingNo: 4, count: 3 },
+        { zone: 'X', buildingNo: 2, count: 1 }]
+    })).text : null,
+    '【代取汇总】当前 8 单（10 件）；东苑 4栋 5单；西苑 2栋 1单。进度：进行中 6 / 已取件 1 / 已送达 1。',
+    'H12 D48 同苑同栋多行合并为一行（服务端应已合并，端侧再兜底不重复列栋）');
+    const many = summaryCopy ? summaryCopy.copyOf(manyDormSummary()) : null;
+    t.check(!!many && many.text.length <= 200,
+      'H13 D48 文案长度上限 200 字（超长按栋数省略，不截半个字/半个栋）');
+    t.check(!!many && /…等 \d+ 栋/.test(many.text), 'H14 D48 超长时给出省略栋数标记「…等 N 栋」');
+    const included = many ? (many.text.match(/\d+栋 \d+单/g) || []).length : -1;
+    const omitted = many ? Number((many.text.match(/…等 (\d+) 栋/) || [])[1]) : -1;
+    t.eq(many ? [included + omitted, many.truncated, many.dormCount] : null, [50, true, 50],
+      'H15 D48 省略口径：已列栋数 + 省略栋数 = 全部 50 栋，truncated=true');
+    t.check(!!many && many.text.indexOf('【代取汇总】当前 50 单（50 件）；') === 0
+      && /。进度：进行中 50 \/ 已取件 0 \/ 已送达 0。$/.test(many.text),
+    'H16 D48 超长截断只省略苑/栋部分，总单/进度尾句完整保留');
+    t.check(!!copy && copy.text.indexOf('…等') === -1, 'H17 D48 未超长时不加省略标记（不虚报省略）');
+    t.eq(summaryCopy ? summaryCopy.copyOf({
+      total: 2, parcels: 2, byStatus: { picked: 0, delivered: 0, ongoing: 2 }, byDorm: []
+    }).text : null,
+    '【代取汇总】当前 2 单（2 件）。进度：进行中 2 / 已取件 0 / 已送达 0。',
+    'H18 D48 无苑/栋数据（缺地址单）仍给总单/进度，不编造楼栋行');
+    const privacyRaw = Object.assign(sampleSummary(), {
+      room: '522', roomTag: 'Z9', pickupCode: '9-1-2333', phoneTail: '8888',
+      displayName: '小王', orderNo: '20261022-0001', customerNo: 'CABCDEFGH',
+      byDorm: [{ zone: 'D', buildingNo: 3, count: 5, room: '522', roomTag: 'Z9' }],
+      byStatus: { picked: 1, delivered: 1, ongoing: 6, exception: 0 }
+    });
+    const privacyText = summaryCopy ? summaryCopy.copyOf(privacyRaw).text : '';
+    t.check(privacyText.indexOf('522') === -1 && privacyText.indexOf('Z9') === -1
+      && privacyText.indexOf('9-1-2333') === -1 && privacyText.indexOf('8888') === -1
+      && privacyText.indexOf('小王') === -1 && privacyText.indexOf('20261022') === -1
+      && privacyText.indexOf('CABCDEFGH') === -1,
+    'H19 D48 隐私红线：楼栋级封顶——房间号/roomTag/取件码/尾号/昵称/订单号/顾客编号一概不进文案');
+    t.eq(['室', '房间', '取件码', '尾号', '昵称', '单号'].filter(function hit(word) {
+      return privacyText.indexOf(word) !== -1;
+    }), [], 'H20 D48 文案零敏感字段名（连字段名也不出现）');
+    t.check(/^[^A-Za-z]*$/.test(privacyText), 'H21 D48 不暴露原始苑代号/编号英文（只出现中文苑名与数字栋号）');
+    t.eq(zeroMoney.scanText(privacyText).length, 0, 'H22 D48 复制文案零金额词表 0 命中（D5/D6）');
+    const pageText = textOf(P.page);
+    const handlerStart = pageText.indexOf('onCopySummaryTap(');
+    const handlerEnd = pageText.indexOf('onTodayCompletedTap(');
+    const handlerBody = handlerStart >= 0 && handlerEnd > handlerStart
+      ? pageText.slice(handlerStart, handlerEnd) : '';
+    t.check(handlerStart !== -1, 'H23 D48 统计页有「复制汇总」点击入口 onCopySummaryTap');
+    t.eq(occurrences(pageText, 'orderApi.listPartner('), 1,
+      'H24 D48 页面只在复制汇总时调一次 order.listPartner（不预拉、不翻页）');
+    t.check(handlerBody.indexOf("view: 'workbench'") !== -1 && handlerBody.indexOf('limit: 1') !== -1,
+      'H25 D48 调用入参：view=workbench、limit=1（只为拿服务端 summary，不渲染 list）');
+    t.check(handlerBody.indexOf('summaryCopy.copyOf(') !== -1,
+      'H26 D48 文案由纯件生成（页面不拼字符串）');
+    t.check(pageText.indexOf('栋') === -1 && pageText.indexOf('东苑') === -1 && pageText.indexOf('byDorm') === -1,
+      'H27 D48 页面零本地聚合（无苑/栋文案与 byDorm 处理；聚合只在云函数）');
+    t.check(!!copy && handlerBody.indexOf('copy.visible') !== -1
+      && handlerBody.indexOf('copy.visible') < handlerBody.indexOf('setClipboardData'),
+    'H28 D48 无数据不复制：可见性判断先于 setClipboardData');
+    t.check(handlerBody.indexOf("'已复制，可发到顾客群'") !== -1,
+      'H29 D48 复制成功 toast「已复制，可发到顾客群」');
+    const wxmlText = textOf(P.wxml);
+    t.check(wxmlText.indexOf('复制汇总') !== -1 && wxmlText.indexOf('bindtap="onCopySummaryTap"') !== -1,
+      'H30 D48 WXML「复制汇总」按钮接 onCopySummaryTap');
+    t.check(wxmlText.indexOf('只到苑/栋') !== -1 || wxmlText.indexOf('只到楼栋') !== -1,
+      'H31 D48 WXML 明示隐私范围（只到苑/栋，读者知道可发群）');
+    const moduleText = exists(P.summaryCopy) ? textOf(P.summaryCopy) : '';
+    t.check(moduleText.indexOf('wx.cloud') === -1, 'H32 D48 纯件零 wx.cloud 直连');
+    t.eq(zeroMoney.scanText(moduleText).length, 0, 'H33 D48 纯件零金额词表 0 命中');
+    t.eq(STATUS_LITERALS.filter(function literal(literalText) {
+      return moduleText.indexOf("'" + literalText + "'") !== -1;
+    }), [], 'H34 D48 纯件零七状态字面量（只消费服务端计数）');
+    t.check(moduleText.indexOf('Math.random') === -1 && moduleText.indexOf('getStorageSync') === -1
+      && moduleText.indexOf('setStorageSync') === -1, 'H35 D48 纯件零随机/零本地存储');
+    t.check(moduleText.indexOf('MAX_TEXT_CHARS') !== -1 && occurrences(pageText, '200') === 0,
+      'H36 D48 200 字上限在纯件常量单源声明（页面不重复写死上限）');
   });
 }
 

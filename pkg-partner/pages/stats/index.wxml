@@ -83,6 +83,13 @@
       <view wx:else class="empty-text">今天还没有可复制的订单记录</view>
       <button wx:if="{{report.visible}}" class="btn btn-ghost btn-block" bindtap="onCopyReport">复制日报</button>
     </view>
+
+    <!-- D48 复制汇总（顾客群口径）：只到苑/栋；数据来自工作台 summary，点击时按需生成 -->
+    <view class="card">
+      <view class="section-title">订单汇总（可发顾客群）</view>
+      <view class="small">只到苑/栋，不含房间号、取件码、尾号等个人信息</view>
+      <button class="btn btn-ghost btn-block" bindtap="onCopySummaryTap">复制汇总</button>
+    </view>
   </block>
 
   <view class="small compliance-note">本程序不涉及任何费用收付。</view>

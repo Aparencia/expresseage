@@ -50,146 +50,13 @@ const precheck = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/
 const orderScopeReq = fsutil.tryRequire(path.join(ROOT, 'utils/order-scope.js'));
 const orderScope = orderScopeReq.value || {};
 
-const EXPECTED_ASSERTIONS = 274; // 实际断言总数（273 + 1：D43 送达等待提示改日结批时刻）
-
-const STATUS = orderState.STATUS;
+const EXPECTED_ASSERTIONS = 285; // 274 + 11：D47 预约详情展示/到点标红/历史 SLOT // 实际断言总数（273 + 1：D43 送达等待提示改日结批时刻）
+const caseLib = require('./lib/order-customer-cases');
+const {
+  STATUS, STATUS_LITERALS, PAGES, ISO, NOW, DOC_MS, textOf, actionsFor, dto, event, orderDoc,
+  FAKE_DTO_CTX, layerHits
+} = caseLib;
 const ACTION_KEYS = view.ACTION_KEYS;
-const STATUS_LITERALS = ['SUBMITTED', 'ACCEPTED', 'PICKED', 'DELIVERED', 'COMPLETED', 'CANCELLED', 'EXCEPTION'];
-const PAGES = {
-  detail: 'pkg-customer/pages/order-detail/index.js',
-  detailWxml: 'pkg-customer/pages/order-detail/index.wxml',
-  orders: 'pages/customer/orders/index.js',
-  ordersWxml: 'pages/customer/orders/index.wxml',
-  messages: 'pkg-customer/pages/messages/index.js',
-  home: 'pages/customer/home/index.js',
-  homePlan: 'pages/customer/home/parts/render-plan.js',
-  homeWxml: 'pages/customer/home/index.wxml',
-  create: 'pkg-customer/pages/order-create/index.js',
-  pickup: 'pkg-customer/pages/pickup-list/index.js',
-  pickupWxml: 'pkg-customer/pages/pickup-list/index.wxml',
-  pickupView: 'pkg-customer/pages/pickup-list/parts/pickup-view.js'
-};
-const ISO = '2026-10-22T12:00:00.000Z';
-const NOW = Date.parse('2026-10-22T12:00:03+08:00');
-
-function textOf(rel) {
-  return fsutil.readText(path.join(ROOT, rel));
-}
-
-// ── 顾客侧 order DTO 夹具（字段形状 = 批 5 冻结契约）────────────────────────────
-function actionsFor(status, exceptionFrom) {
-  if (status === STATUS.SUBMITTED || status === STATUS.ACCEPTED) {
-    return [{ key: 'cancel', label: '取消订单' }, { key: 'message', label: '留言' }];
-  }
-  if (status === STATUS.PICKED) return [{ key: 'message', label: '留言' }];
-  if (status === STATUS.DELIVERED) {
-    return [{ key: 'confirm', label: '确认已收到' }, { key: 'message', label: '留言' }];
-  }
-  if (status === STATUS.COMPLETED) {
-    return [{ key: 'deleteRecord', label: '删除这条记录' }, { key: 'reorder', label: '再次下单' }];
-  }
-  if (status === STATUS.CANCELLED) return [{ key: 'reorder', label: '再次下单' }];
-  if (status === STATUS.EXCEPTION) {
-    const list = [{ key: 'message', label: '留言' }];
-    if (exceptionFrom === STATUS.SUBMITTED || exceptionFrom === STATUS.ACCEPTED) {
-      list.unshift({ key: 'cancel', label: '取消订单' });
-    }
-    return list;
-  }
-  return [];
-}
-
-function dto(status, extra) {
-  const sample = {
-    orderNo: '20261022-0031',
-    status: status,
-    statusText: orderState.statusText(status),
-    version: 3,
-    needCode: false,
-    service: { code: 'PICKUP_STD', name: '标准代取' },
-    parcel: {
-      stationId: 'P3', stationName: '菜鸟驿站-3号楼', pickupCode: '8-2-3021',
-      lockerNo: '', trackingTail: '', codeStatus: 'OK', codeStatusText: '有取件码',
-      recognitionSource: 'RULE', recognitionSourceLabel: '截图识别', confidence: ''
-    },
-    appoint: { type: 'ASAP', typeText: '尽快', startAt: '', endAt: '' },
-    note: '', deliveryNote: '', phoneTail: '6678',
-    dorm: { buildingText: 'D4', room: '522', dormKey: 'D4-522', roomTag: 'A' },
-    customerNo: 'C-7K2M-9QX4', partnerNo: 'P-7K2-M9X',
-    counterpart: { displayName: '小兼', avatarFileId: 'cloud://test.env/avatars/partner/x.jpg' },
-    image: { hasImage: true, cleaned: false },
-    exception: null, cancelReason: '', cancelReasonText: '', cancelledBy: '', cancelledByText: '',
-    actions: actionsFor(status),
-    statusUpdatedAt: ISO, createdAt: ISO, updatedAt: ISO,
-    acceptedAt: '', pickedAt: '', deliveredAt: '', completedAt: '', cancelledAt: '',
-    deletedByCustomerAt: ''
-  };
-  return Object.assign(sample, extra || {});
-}
-
-function event(type, at, note) {
-  return { type: type, at: at || ISO, actorRole: 'PARTNER', note: note || '' };
-}
-
-// ── orders 集合文档夹具：交给真实 _dto.buildOrderDto 生成服务端 DTO（契约联调用）──
-const DOC_MS = Date.parse(ISO);
-function orderDoc(status, extra) {
-  const doc = {
-    _id: 'order-' + status,
-    orderNo: '20261022-0031',
-    customerId: 'openid-it-c',
-    partnerId: 'partner-it',
-    customerNo: 'C-7K2M-9QX4',
-    partnerNo: 'P-7K2-M9X',
-    status: status,
-    version: 3,
-    source: 'CUSTOMER',
-    parcel: {
-      stationId: 'P3', stationName: '菜鸟驿站-3号楼', pickupCode: '8-2-3021',
-      lockerNo: '', trackingTail: '', codeStatus: 'OK', recognitionSource: 'RULE'
-    },
-    service: { code: 'PICKUP_STD', name: '标准代取' },
-    appoint: { type: 'ASAP' },
-    dorm: { zone: 'D', buildingNo: 4, buildingText: 'D4', room: '522', dormKey: 'D4-522', roomTag: 'A' },
-    note: '', deliveryNote: '', phoneTail: '6678',
-    image: { fileId: 'cloud://test.env/orders/TKT/image.jpg' },
-    exception: null,
-    cancelReason: '', cancelledBy: '',
-    statusUpdatedAt: DOC_MS, createdAt: DOC_MS, updatedAt: DOC_MS,
-    acceptedAt: 0, pickedAt: 0, deliveredAt: 0, completedAt: 0, cancelledAt: 0
-  };
-  if (status === STATUS.EXCEPTION) {
-    doc.exception = { code: 'PARCEL_NOT_FOUND', text: '驿站暂时没找到这个件', fromStatus: STATUS.ACCEPTED, by: 'PARTNER', at: DOC_MS };
-  }
-  if (status === STATUS.CANCELLED) {
-    doc.cancelReason = 'CHANGED_MIND';
-    doc.cancelledBy = 'CUSTOMER';
-  }
-  return Object.assign(doc, extra || {});
-}
-
-const FAKE_DTO_CTX = {
-  dao: {
-    get: function get() { return Promise.resolve(null); },
-    find: function find() { return Promise.resolve([]); },
-    findOne: function findOne() { return Promise.resolve(null); }
-  },
-  identity: {},
-  now: DOC_MS
-};
-
-// 页面层扫描（有牙正控/反例）：只扫真实页面脚本，合成样本用于证明扫描能红
-function layerHits(code) {
-  const src = fsutil.stripComments(String(code || ''));
-  const hits = [];
-  if (/wx\.cloud\./.test(src)) hits.push('wx.cloud');
-  if (/Math\.random|\brandom\(/.test(src)) hits.push('random');
-  if (/client\.call\s*\(/.test(src)) hits.push('直调 client.call');
-  STATUS_LITERALS.forEach(function each(status) {
-    if (new RegExp("['\"]" + status + "['\"]").test(src)) hits.push('状态字面量 ' + status);
-  });
-  return hits;
-}
 
 function register(h) {
   // ---------------------------------------------------------------- A 七状态矩阵
@@ -985,6 +852,48 @@ function register(h) {
       .filter((full) => full !== __filename && stripped(fsutil.readText(full)).indexOf('scanPaged') >= 0)
       .map((full) => fsutil.rel(full));
     t.eq(scanResidue, [], 'L14 TD-064 scanPaged 死导出零残留（cloudfunctions + tools 全量去注释扫描）');
+  });
+
+  // ---------------------------------------------------------------- M 预约「最晚可接受时间」详情展示（D47）
+  h.section('M. 预约「最晚可接受时间」详情展示（D47）：文案/到点标红/不自动取消/历史 SLOT', (t) => {
+    t.eq(typeof parcelView.appointView, 'function', 'M0 详情视图纯件导出 appointView（顾客/兼职同口径）');
+    if (typeof parcelView.appointView !== 'function') return;
+    const latestAt = '2026-10-22T12:00:00+08:00';
+    const ms = Date.parse(latestAt);
+    const base = {
+      appoint: { type: 'LATEST', latestAt: latestAt, typeText: '最晚时间', text: '最晚 10月22日 12:00' },
+      status: STATUS.ACCEPTED
+    };
+    const before = parcelView.appointView(Object.assign({}, base), ms - 60000);
+    t.eq([before.appointText, before.appointOverdue, before.appointOverdueText],
+      ['最晚 10月22日 12:00', false, ''], 'M1 详情展示「最晚 M月D日 HH:MM」；未到点不标红');
+    const after = parcelView.appointView(Object.assign({}, base), ms + 60000);
+    t.eq([after.appointOverdue, after.appointOverdueText.indexOf('不会自动取消') >= 0],
+      [true, true], 'M2 到点未送达 → 行内标红提示「不会自动取消」（纯展示，不改状态）');
+    const delivered = parcelView.appointView(Object.assign({}, base, { status: STATUS.DELIVERED }), ms + 60000);
+    t.eq([delivered.appointOverdue, delivered.appointOverdueText], [false, ''],
+      'M3 已送达不标红（到点≠超时处罚；无自动取消/无状态变更）');
+    t.eq(parcelView.appointView(Object.assign({}, base, { status: STATUS.COMPLETED }), ms + 60000).appointOverdue,
+      false, 'M4 终态（已完成）不标红');
+    const asap = parcelView.appointView({ appoint: { type: 'ASAP', typeText: '尽快' }, status: STATUS.ACCEPTED }, ms + 60000);
+    t.eq([asap.appointText, asap.appointOverdue], ['尽快', false], 'M5 尽快单无标红、文案「尽快」');
+    const slot = parcelView.appointView({
+      appoint: { type: 'SLOT', typeText: '预约时段', startAt: '2026-10-22T08:00:00+08:00', endAt: '2026-10-22T12:00:00+08:00' },
+      status: STATUS.ACCEPTED
+    }, ms + 60000);
+    t.eq([slot.appointText, slot.appointOverdue], ['预约时段 08:00-12:00', false],
+      'M6 历史 SLOT 单仍按「预约时段 + 起止」展示，不按最晚时间标红');
+    const extras = parcelView.pageExtras(Object.assign({}, base), {}, ms + 60000);
+    t.eq([extras.appointText, extras.appointOverdue, extras.appointOverdueText.length > 0],
+      ['最晚 10月22日 12:00', true, true],
+      'M7 详情页派生字段 pageExtras 带 appointText/appointOverdue/appointOverdueText');
+    const detailWxml = textOf('pkg-customer/pages/order-detail/index.wxml');
+    t.check(/appointOverdue/.test(detailWxml) && /appointText/.test(detailWxml),
+      'M8 详情 WXML 渲染预约文案 + 到点标红（无自动取消按钮/无状态改写接线）');
+    const detailFlow = textOf('pkg-customer/pages/order-detail/index.js');
+    t.check(/pageExtras\(payload\.order, this\.data\.config, Date\.now\(\)\)/.test(detailFlow),
+      'M9 详情页每次刷新用当前时钟重算标红（不必等用户重进页面）');
+    t.notEmpty(latestAt, 'M 组样本非空');
   });
 }
 

@@ -95,7 +95,7 @@ docs/
 
 | 文档 | 摘要 |
 | :-- | :-- |
-| `docs/contract/V4_CONTRACT.md` | 唯一口径卡 v1.3：角色与账号（含账号切换两模式）、术语与字段唯一拼写、14 集合摘要、订单状态机七态、action 表 81 动作与 13 错误码、31 页页面地图、权限矩阵、隐私与留存、裁决索引 D1~D42、写作纪律。门禁直接解析其 §4/§5.3/§7/§13 等章节。 |
+| `docs/contract/V4_CONTRACT.md` | 唯一口径卡 v1.3：角色与账号（含账号切换两模式）、术语与字段唯一拼写、14 集合摘要、订单状态机七态、action 表 81 动作与 13 错误码、32 页页面地图、权限矩阵、隐私与留存、裁决索引 D1~D50、写作纪律。门禁直接解析其 §4/§5.3/§7/§13 等章节。 |
 | `docs/contract/V4_DECISIONS.md` | D1~D42 裁决台账：每条含用户原文留痕、推荐与被否方案、代价与落点；是理解「为什么这样设计」的第一手材料。 |
 | `docs/contract/V4_REBUILD_SPEC.md` | 重建主规格（v1.0 / 2026-10-21）：产品定义、铁律、架构、角色权限、流程、批次验收、风险。**历史快照**：与 CONTRACT 冲突处按 CONTRACT，文内冲突点已加更新指针。 |
 
@@ -141,11 +141,11 @@ docs/
 
 | 层 | 真实结构（2026-10-31 盘点） | 口径/文档对应 |
 | :-- | :-- | :-- |
-| 页面 | **31 页** = 主包 7（launch/role/customer home/orders/partner workbench/customers/profile）+ `pkg-customer` 6（bind/order-create/order-detail/pickup-list/messages/help）+ `pkg-partner` 7（activate/order-detail/create-on-behalf/customer-detail/service-settings/stats/messages）+ `pkg-admin` 11（overview/invite-codes/customers/customer-detail/partners/orders/order-detail/config/account-switch/messages/recognition-review） | `docs/contract/V4_CONTRACT.md` §7（`check-docs` #2 校验它 = `app.json`） |
+| 页面 | **32 页** = 主包 7（launch/role/customer home/orders/partner workbench/customers/profile）+ `pkg-customer` 6（bind/order-create/order-detail/pickup-list/messages/help）+ `pkg-partner` 8（activate/order-detail/create-on-behalf/customer-detail/service-settings/stats/messages/pick-list）+ `pkg-admin` 11（overview/invite-codes/customers/customer-detail/partners/orders/order-detail/config/account-switch/messages/recognition-review） | `docs/contract/V4_CONTRACT.md` §7（`check-docs` #2 校验它 = `app.json`） |
 | 组件/工具 | `components/` 16 套（含维护遮罩、切换条、测试角标、头像、空态/骨架等）+ 根 `custom-tab-bar/`；`api/` 唯一网络出口 + 10 个域模块 + upload/privacy/mode-guard；`store/` 内存快照；`shared/` 口径纯件；`utils/` 纯件（识别/OCR/编号/roomTag/头像/存储/隐私策略等） | `docs/engineering/V4_ARCHITECTURE.md` §3 |
 | 云函数 | `cloudfunctions/api`（入口/router/app + 7 中间件 + db/dao + lib + 11 域 handlers）与 `cloudfunctions/cleanup`（13 个幂等 sweep + 独立 dao）；依赖只 `wx-server-sdk` | `docs/engineering/V4_ARCHITECTURE.md` §4、`V4_ENGINEERING.md` §4 |
 | 数据 | 14 集合（users/customers/partners/bindings/orders/order_events/order_messages/invitation_codes/admin_view_sessions/counters/config/admin_audit/upload_tickets/recognition_failures）、13 错误码、16 审计枚举、81 动作（client 与 internal 分级） | `docs/contract/V4_CONTRACT.md` §4/§5.3、`docs/data/V4_DATA_MODEL.md` §1~§7 |
-| 门禁 | `check.ps1`（4 步）→ `tools/check.js`（36 条）、`tools/check-docs.js`（12 条）、`tools/zero-money-scan.js`（3 范围）、`tools/selftest.js`（35 套断言）；另 `tools/mutation.ps1` 变异电池、`tools/sync-cloud-shared.js` 副本对帐、`gate.ps1` 范围/体量闸、`doctor.ps1` 环境体检 | `docs/engineering/V4_ENGINEERING.md` §8 |
+| 门禁 | `check.ps1`（4 步）→ `tools/check.js`（36 条）、`tools/check-docs.js`（12 条）、`tools/zero-money-scan.js`（3 范围）、`tools/selftest.js`（36 套断言）；另 `tools/mutation.ps1` 变异电池、`tools/sync-cloud-shared.js` 副本对帐、`gate.ps1` 范围/体量闸、`doctor.ps1` 环境体检 | `docs/engineering/V4_ENGINEERING.md` §8 |
 | 分层铁律 | ①页面层零业务判据（不出现 `wx.cloud.*`/状态字符串字面量/编号或 roomTag 生成/随机数）；②客户端不直连数据库/存储；③云函数不出现 `db.collection`（只经 `db/dao.js`）；共享副本只由 `tools/sync-cloud-shared.js` 生成 | `docs/engineering/V4_ARCHITECTURE.md` §1~§4、根 `AGENTS.md` §2 |
 
 ## 7. 门禁与自证（取数命令）

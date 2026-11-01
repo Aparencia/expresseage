@@ -183,12 +183,15 @@ const CODE_STATUS_TEXT = {
   NEED_CODE: '需补充取件码'
 };
 
+// 预约方式（CONTRACT §5.2 / D47）：ASAP=尽快、LATEST=最晚可接受时间（新单选值域）；SLOT 仅历史订单展示
 const APPOINT_TYPE = {
   ASAP: 'ASAP',
+  LATEST: 'LATEST',
   SLOT: 'SLOT'
 };
 const APPOINT_TYPE_TEXT = {
   ASAP: '尽快',
+  LATEST: '最晚时间',
   SLOT: '预约时段'
 };
 

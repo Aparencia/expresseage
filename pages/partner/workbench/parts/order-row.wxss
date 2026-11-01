@@ -71,6 +71,12 @@
   color: #4A4A4A;
 }
 
+/* D45/M1：未送达跨日行「顺延 N 天」标签（与取件码同行，不挤掉柜号/档位） */
+.delay-tag {
+  background: #FFF4CE;
+  color: #8A6D00;
+}
+
 .station-summary {
   margin: 0 12rpx;
   color: #666666;

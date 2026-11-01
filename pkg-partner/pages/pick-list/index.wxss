@@ -1,0 +1,150 @@
+/* pkg-partner/pages/pick-list/index.wxss · 楼层配送清单局部样式（分组卡片 + 多选 + 底部批量条） */
+.head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8rpx 0 24rpx;
+}
+
+.copy-btn {
+  margin-left: 12rpx;
+}
+
+.intro-card {
+  padding: 24rpx;
+}
+
+.intro-text {
+  line-height: 1.6;
+}
+
+.intro-summary {
+  color: #1F7A5C;
+  margin-top: 8rpx;
+}
+
+.readonly-tip {
+  color: #8A6D00;
+  margin-top: 8rpx;
+}
+
+.test-tip {
+  color: #2B6DE5;
+  margin-top: 8rpx;
+}
+
+.loading-text {
+  padding: 48rpx 0;
+  text-align: center;
+}
+
+.floor-card {
+  padding: 0 24rpx 8rpx;
+  margin-top: 24rpx;
+}
+
+.floor-head {
+  padding: 24rpx 0 16rpx;
+  border-bottom: 1rpx solid #EEEEEE;
+}
+
+.floor-title {
+  font-size: 32rpx;
+}
+
+.order-line {
+  display: flex;
+  align-items: center;
+  padding: 20rpx 0;
+  border-bottom: 1rpx solid #F2F2F2;
+}
+
+.order-line:last-child {
+  border-bottom: none;
+}
+
+.order-line-active {
+  background: #F0F7F4;
+}
+
+.check-dot {
+  width: 36rpx;
+  height: 36rpx;
+  border-radius: 50%;
+  border: 2rpx solid #C9D2DC;
+  margin-right: 16rpx;
+  flex: none;
+}
+
+.check-dot-on {
+  background: #1F7A5C;
+  border-color: #1F7A5C;
+}
+
+.line-main {
+  min-width: 0;
+}
+
+.line-top {
+  align-items: center;
+}
+
+.room-text {
+  font-size: 34rpx;
+  margin-right: 12rpx;
+}
+
+.room-tag {
+  background: #E8F0FF;
+  color: #2B6DE5;
+  margin-right: 12rpx;
+}
+
+.parcel-count {
+  color: #666666;
+}
+
+.line-foot {
+  margin-top: 8rpx;
+}
+
+.deliver-btn {
+  margin-left: 16rpx;
+  flex: none;
+}
+
+.load-more {
+  text-align: center;
+  padding: 24rpx 0 32rpx;
+}
+
+.bottom-safe {
+  height: 160rpx;
+}
+
+.batch-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #FFFFFF;
+  box-shadow: 0 -2rpx 12rpx rgba(0, 0, 0, 0.08);
+  padding: 20rpx 24rpx 32rpx;
+}
+
+.batch-head {
+  margin-bottom: 16rpx;
+}
+
+.batch-actions {
+  display: flex;
+}
+
+.batch-btn {
+  flex: 1;
+}
+
+.batch-tip {
+  color: #2B6DE5;
+  margin-top: 8rpx;
+}

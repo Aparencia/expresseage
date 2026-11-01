@@ -34,6 +34,7 @@ const SUBPACKAGES = {
     'pages/service-settings/index',
     'pages/stats/index',
     'pages/messages/index',
+    'pages/pick-list/index',
   ],
   'pkg-admin': [
     'pages/overview/index',

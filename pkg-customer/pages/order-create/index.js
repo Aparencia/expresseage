@@ -15,6 +15,7 @@ const reorder = require('./parts/reorder');
 const filesFlow = require('./parts/files-flow');
 const step3 = require('./parts/step3');
 const submitFlow = require('./parts/submit');
+const appointUtil = require('../../../shared/appoint');
 const share = require('../../../utils/share/handlers');
 
 const HOME_PAGE = '/pages/customer/home/index';
@@ -50,13 +51,10 @@ Page({
     lowCopy: model.LOW_SUGGESTION_COPY,
     stations: [],
     services: [],
-    slots: [],
     serviceCode: '',
     serviceIndex: 0,
-    appointType: 'ASAP',
-    slotIndex: -1,
-    startAt: '',
-    endAt: '',
+    // 预约（D47）：尽快 / 最晚时间（30 分钟粒度、≤7 天、最小提前 30 分钟）；纯件在 shared/appoint
+    appoint: appointUtil.createState(0),
     note: '',
     // A 批 P1-9：「其他代办」未填备注的行内红字（判据在 parts/precheck 纯件）
     noteError: '',
@@ -86,7 +84,7 @@ Page({
     this.setData({
       readonly: readonly,
       stations: model.stationOptions(snapshot.config),
-      slots: model.appointmentSlots(new Date()),
+      appoint: appointUtil.createState(Date.now()),
       profileReady: !!(snapshot.customer && snapshot.customer.profileComplete),
       bindingReady: !!snapshot.binding
     });
@@ -141,6 +139,11 @@ Page({
   },
 
   // ── Step1：截图（多图 0~10，逐图识别合并；失败也有手填支路）─────────────────
+  // P0-1：组件每批上传完成即回调——新到图立刻进识别会话（上传与识别重叠；判据/编排在 parts/）
+  onUploaded(e) {
+    filesFlow.onUploaded(this, e);
+  },
+
   onPickFile(e) {
     return filesFlow.onPickFile(this, e);
   },
@@ -338,8 +341,16 @@ Page({
     step3.setAppointType(this, e);
   },
 
-  onSlotChange(e) {
-    step3.setSlot(this, e);
+  onLatestDate(e) {
+    step3.setLatestDate(this, e);
+  },
+
+  onLatestTime(e) {
+    step3.setLatestTime(this, e);
+  },
+
+  onLatestPreset(e) {
+    step3.setLatestPreset(this, e);
   },
 
   onNoteInput(e) {

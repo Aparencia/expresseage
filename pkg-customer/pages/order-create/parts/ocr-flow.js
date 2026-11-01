@@ -13,6 +13,8 @@ const ocr = require('../../../../utils/ocr/index');
 const recognize = require('../../../../utils/recognize/index');
 const model = require('./model');
 const aiFallback = require('./ai-fallback');
+const pipeline = require('./pipeline');
+const aggregate = require('./recognize-aggregate');
 const {
   AI_SUGGESTION_HINT,
   AI_FALLBACK_COPY,
@@ -352,94 +354,83 @@ async function identify(file, onState) {
 
 /**
  * 多图识别汇总（0~10 张 → 总包裹 ≤10）。
- * 逐张跑 identify（含逐图 AI 兜底），再按图序合并去重；每件补 imageIndex 指向来源图。
- * 失败图不影响成功图；全部失败时给第一张失败的人话文案。
+ * P0-1：识别并发上限 PIPELINE_CONCURRENCY（=2 单源），结果仍按图序回填（runOrdered 保序）；
+ * 失败单图不阻塞其它图；合并/来源图/失败行口径在 recognize-aggregate 纯件（全量与流式同一份）。
  */
 async function identifyMany(files, onState) {
-  const list = (Array.isArray(files) ? files : []).filter(function valid(file) {
+  const list = validIdentifyFiles(files);
+  if (list.length === 0) return aggregate.emptyResult();
+  const progress = { max: 0 };
+  const run = await pipeline.runOrdered(list, function one(file, index) {
+    return identify(file, function phase(state) {
+      emitOcrState(onState, progress, state || {}, index + 1, list.length);
+    });
+  }, {
+    concurrency: pipeline.PIPELINE_CONCURRENCY,
+    onStart: function start(info) {
+      emitOcrState(onState, progress, { phase: 'ocr' }, info.started, list.length);
+    }
+  });
+  return aggregate.summarize(list, resultsOfOutcomes(list, run.results));
+}
+
+/**
+ * 流式识别会话（P0-1 页面编排侧）：组件每批上传完成即 feed 该批图——该图识别与后续上传重叠，
+ * 不必等全部上传完成；change 收口时 finish 按「页面 files 顺序」汇总。同一 fileId 只识别一次
+ *（累计/重复事件不重复识别、不重复上传票据）；结果按图序回填，进度序号单调。
+ * @param {function} onState 逐图阶段回调（{phase,index,total}，index 单调不倒退）
+ * @returns {{feed:function(files):object, finish:function(files):Promise<object>}}
+ */
+function createIdentifySession(onState) {
+  const progress = { max: 0 };
+  const session = pipeline.createSession({
+    concurrency: pipeline.PIPELINE_CONCURRENCY,
+    keyOf: pipeline.fileKeyOf,
+    onStart: function start(info) {
+      emitOcrState(onState, progress, { phase: 'ocr' }, info.started, info.seen);
+    },
+    work: function work(file, index) {
+      return identify(file, function phase(state) {
+        emitOcrState(onState, progress, state || {}, index + 1, 0);
+      });
+    }
+  });
+  return {
+    feed: function feed(files) { return session.feed(validIdentifyFiles(files)); },
+    finish: function finish(files) {
+      const list = validIdentifyFiles(files);
+      // 幂等补喂：即使 uploaded 事件漏发也不漏图（session.feed 内按 fileId 去重）
+      session.feed(list);
+      return session.finish(list).then(function done(out) {
+        return aggregate.summarize(list, resultsOfOutcomes(list, out.results));
+      });
+    }
+  };
+}
+
+/** 合法识别文件（有本地路径；D40 上限 MAX_IMAGES=10） */
+function validIdentifyFiles(files) {
+  return (Array.isArray(files) ? files : []).filter(function valid(file) {
     return !!(file && file.localPath);
   }).slice(0, MAX_IMAGES);
-  if (list.length === 0) {
-    return {
-      ok: false,
-      files: [],
-      images: [],
-      items: [],
-      failureCode: 'NO_TEXT',
-      failureCopy: ocr.failureCopy('NO_TEXT'),
-      failureId: '',
-      aiTried: false,
-      aiUsed: false,
-      failures: []
-    };
-  }
-  const results = [];
-  for (let i = 0; i < list.length; i += 1) {
-    // D40：逐图进度「第 n/N 张」——每张开始时把序号/总数随 phase 一起通知页面
-    const one = await identify(list[i], function phase(state) {
-      if (typeof onState === 'function') onState(Object.assign({}, state || {}, { index: i + 1, total: list.length }));
-    });
-    results.push(Object.assign({ imageIndex: i }, one));
-  }
-  const itemLists = results.map(function map(result, index) {
-    return (result.items || []).map(function tag(item) {
-      return Object.assign({}, item, { imageIndex: index });
-    });
+}
+
+/** 逐图阶段回调：序号单调钳制（并发下 A 图 AI 阶段事件晚于 B 图开始时，n 不倒退，D40） */
+function emitOcrState(onState, progress, state, index, total) {
+  if (typeof onState !== 'function') return;
+  progress.max = pipeline.monotonicIndex(progress.max, index);
+  const totalValue = Math.max(Math.floor(Number(total) || 0), progress.max);
+  onState(Object.assign({}, state, { index: progress.max, total: totalValue }));
+}
+
+/** 流水线结果 → 单图识别结果（单项异常按失败图降级，不让一张图拖垮整批） */
+function resultsOfOutcomes(list, outcomes) {
+  return (outcomes || []).map(function one(outcome, index) {
+    if (outcome && outcome.ok) return outcome.value;
+    const error = outcome && outcome.error;
+    const detail = String((error && error.message) || '');
+    return failureResultOf(list[index], null, 'IMAGE_UNREADABLE', null, detail);
   });
-  const merged = recognize.mergeParcels(itemLists, { max: MAX_PARCELS });
-  const images = results.map(function image(result) { return result.image; }).filter(function has(image) {
-    return !!(image && image.fileId);
-  });
-  // 每张来源图的快照与票据（images[i] ↔ tickets[i] 同序一一对应，D23 契约）；
-  // 供页面组装 order.create 载荷时按 imageIndex 精确配对（不按过滤后的 images 下标猜）。
-  const perImage = results.map(function each(result, index) {
-    const file = list[index] || {};
-    return {
-      imageIndex: index,
-      ticket: typeof file.uploadTicketId === 'string' ? file.uploadTicketId : '',
-      image: result.image || null,
-      failureId: result.failureId || '',
-      failureCode: result.failureCode || ''
-    };
-  });
-  const failures = failureRowsOf(results);
-  const ocrText = results.map(function text(result) { return result.ocrText || ''; })
-    .filter(function nonEmpty(value) { return !!value; })
-    .join('\n');
-  const aiTried = results.some(function tried(result) { return result.aiTried === true; });
-  const aiUsed = results.some(function used(result) { return result.aiUsed === true; });
-  if (merged.items.length === 0) {
-    const first = results.filter(function bad(result) { return !!result.failureCopy; })[0] || null;
-    return {
-      ok: false,
-      files: list,
-      images: images,
-      items: [],
-      failureCode: (first && first.failureCode) || 'NO_TEXT',
-      failureCopy: (first && first.failureCopy) || ocr.failureCopy('NO_TEXT'),
-      failureId: (first && first.failureId) || '',
-      aiTried: aiTried,
-      aiUsed: false,
-      ocrText: ocrText,
-      failures: failures
-    };
-  }
-  return {
-    ok: true,
-    files: list,
-    images: images,
-    perImage: perImage,
-    items: merged.items,
-    duplicated: merged.duplicated,
-    dropped: merged.dropped,
-    truncated: merged.truncated,
-    ocrText: ocrText,
-    failures: failures,
-    aiTried: aiTried,
-    aiUsed: aiUsed,
-    needsReview: results.some(function review(result) { return result.needsReview === true; })
-      || merged.truncated
-  };
 }
 
 /**
@@ -486,6 +477,7 @@ module.exports = {
   failureCopyFor,
   frameSizeOf,
   hasVision,
+  createIdentifySession,
   identify,
   identifyMany,
   mergeItems,

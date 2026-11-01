@@ -6,6 +6,7 @@
 
 const { COLLECTIONS } = require('../../shared/collections');
 const enums = require('../../shared/enums');
+const appointUtil = require('../../shared/appoint');
 const orderState = require('../../shared/order-state');
 const orderView = require('../../shared/order-view');
 const time = require('../../lib/time');
@@ -180,12 +181,23 @@ function buildExceptionDto(exception) {
   };
 }
 
+// 预约 DTO（D47/CONTRACT §5.2）：ASAP → type/typeText/text；LATEST → 另出 latestAt(ISO)+text「最晚 M月D日 HH:MM」；
+// 历史 SLOT 单仍输出 startAt/endAt（只读展示，不迁移历史数据，也不允许新单再产生 SLOT）。
 function buildAppointDto(appoint) {
   const input = appoint && typeof appoint === 'object' ? appoint : {};
-  const type = input.type === enums.APPOINT_TYPE.SLOT ? enums.APPOINT_TYPE.SLOT : enums.APPOINT_TYPE.ASAP;
+  const rawType = textOf(input.type);
+  let type = enums.APPOINT_TYPE.ASAP;
+  if (rawType === enums.APPOINT_TYPE.SLOT) {
+    type = enums.APPOINT_TYPE.SLOT;
+  } else if (rawType === enums.APPOINT_TYPE.LATEST) {
+    type = enums.APPOINT_TYPE.LATEST;
+  }
+  const latestAt = type === enums.APPOINT_TYPE.LATEST ? appointUtil.latestAtOf(input) : 0;
   return {
     type,
     typeText: enums.APPOINT_TYPE_TEXT[type],
+    text: latestAt ? appointUtil.latestText(latestAt) : enums.APPOINT_TYPE_TEXT[type],
+    latestAt: latestAt ? isoOf(latestAt) : '',
     startAt: isoOf(input.startAt),
     endAt: isoOf(input.endAt)
   };

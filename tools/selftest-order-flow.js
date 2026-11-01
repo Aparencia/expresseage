@@ -14,6 +14,7 @@ const fsutil = require('./lib/fsutil');
 const { createHarness, installCrashGuard } = require('./selftest');
 const ROOT = path.resolve(__dirname, '..');
 const model = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/model.js'));
+const appointUtil = require(path.join(ROOT, 'shared/appoint.js'));
 const ocrFlow = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/ocr-flow.js'));
 const enums = require(path.join(ROOT, 'shared/enums.js'));
 const stations = require(path.join(ROOT, 'shared/stations.js'));
@@ -30,11 +31,13 @@ const precheck = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/
 const pickerState = require(path.join(ROOT, 'components/image-picker/state.js'));
 const uploadApi = require(path.join(ROOT, 'api/upload.js'));
 const { createFakeDb } = require('./fake-db');
+const orderFlowClientCases = require('./lib/order-flow-client-cases');
+const orderFlowPipelineCases = require('./lib/order-flow-pipeline-cases');
 const CLOUD_API = path.join(ROOT, 'cloudfunctions/api');
 const app = require(path.join(CLOUD_API, 'app.js'));
 const { COLLECTIONS } = require(path.join(CLOUD_API, 'shared/collections.js'));
 const serverEnums = require(path.join(CLOUD_API, 'shared/enums.js'));
-const EXPECTED_ASSERTIONS = 210; // 204 + 6（D44：K17~K20 多图并发/聊天图元数据 + O1/O2 上传 size 解析）
+const EXPECTED_ASSERTIONS = 256; // 242 + 14：D47 预约客户端 Q 组（选项/载荷/摘要/指纹/文案/接线） // 210 + 32（P0-1：P1~P30 + P26b 流水线化 31 + P 组样本非空 1）
 
 const ORDER_CREATE_PAGE = 'pkg-customer/pages/order-create/index.js';
 const ORDER_CREATE_WXML = 'pkg-customer/pages/order-create/index.wxml';
@@ -320,12 +323,11 @@ function register(h) {
       'D11 每件独立 parcel（不串件，逐件站点/取件码保留）');
     t.check(batch.images.length === 1 && batch.tickets.length === 1,
       'D12 同图多件共享同一 images[0]/tickets[0]（一图多件不重复上传）');
-    const slotPayload = payloadOf([stationItem({})], {
-      appoint: { type: 'SLOT', startAt: '2026-10-22T08:00:00+08:00', endAt: '2026-10-22T12:00:00+08:00' }
+    const latestPayload = payloadOf([stationItem({})], {
+      appoint: { type: 'LATEST', latestAt: '2026-11-01T18:00:00+08:00' }
     });
-    t.eq(slotPayload.appoint,
-      { type: 'SLOT', startAt: '2026-10-22T08:00:00+08:00', endAt: '2026-10-22T12:00:00+08:00' },
-      'D13 预约是整单一份（订单级字段，不再逐件）');
+    t.eq(latestPayload.appoint, { type: 'LATEST', latestAt: '2026-11-01T18:00:00+08:00' },
+      'D13 预约是整单一份（D47：LATEST 载荷整单透传，不逐件）');
     t.eq(payloadOf([stationItem({})], { note: '放门口' }).note, '放门口',
       'D14 备注是整单一份（订单级字段，不再逐件）');
     const uncheckedThird = [stationItem({}), stationItem({}),
@@ -397,10 +399,13 @@ function register(h) {
       note: '换备注'
     }), () => 0.9);
     t.check(noteChanged.id !== first.id, 'E6 整单备注变更 → 重新生成');
-    const slotChanged = model.ensureSubmission(first, model.submissionFingerprint(items, {
-      appointType: 'SLOT', startAt: '2026-10-22T08:00:00+08:00', endAt: '2026-10-22T12:00:00+08:00'
-    }), () => 0.9);
-    t.check(slotChanged.id !== first.id, 'E7 整单预约变更 → 重新生成');
+    const latestFp = { appointType: 'LATEST', latestAt: '2026-11-01T18:00:00+08:00' };
+    const latestChanged = model.ensureSubmission(first, model.submissionFingerprint(items, latestFp), () => 0.9);
+    t.check(latestChanged.id !== first.id, 'E7 整单预约变更 → 重新生成（D47 最晚时间进指纹）');
+    const shiftedFp = model.submissionFingerprint(items,
+      Object.assign({}, latestFp, { latestAt: '2026-11-01T18:30:00+08:00' }));
+    t.check(shiftedFp !== model.submissionFingerprint(items, latestFp),
+      'E7e 同「最晚时间」改到另一刻 → 指纹变化（latestAt 进指纹，不复用旧幂等键）');
     const imageChanged = model.ensureSubmission(first, model.submissionFingerprint(items, {
       images: [{ fileId: 'cloud://test.env/orders/TKT/image2.jpg' }], tickets: ['TK-ORDER-FLOW-0002']
     }), () => 0.9);
@@ -426,182 +431,13 @@ function register(h) {
     t.notEmpty(items, 'E 组样本非空');
   });
   // ---------------------------------------------------------------- F api/client transport 注入
+  // ---------------------------------------------------------------- F api/client transport 注入
+  // （拆件：用例表外移 tools/lib/order-flow-client-cases.js，控测试文件 ≤1000 行）
   h.section('F. api/client：显式 id 进包络/非法回退/写不重试/读重试/13 码人话/超时抛 CallError', async (t) => {
-    const seen = [];
-    const okResult = (data) => ({ ok: true, data: data === undefined ? {} : data });
-    store.reset();
-    try {
-      client.setTransport((payload) => {
-        seen.push(payload);
-        return Promise.resolve(okResult({ orderNo: '20261022-0001', order: { orderNo: '20261022-0001' } }));
-      });
-      const explicit = 'E'.repeat(24);
-      const created = await orderApi.create({ parcel: { stationId: 'P3', pickupCode: 'A12345' } },
-        { clientRequestId: explicit });
-      t.eq(seen[0] && seen[0].action, 'order.create', 'F1 order.create 仍经 api/client 唯一出口');
-      t.eq(seen[0] && seen[0].clientRequestId, explicit,
-        'F2 显式 clientRequestId 原样进包络（页面重试复用同一键，不再每次现生成）');
-      t.check(created && created.orderNo === '20261022-0001', 'F3 成功响应只返回 result.data');
-      // F4（v1.0 收口）：order.createBatch 已从服务端移除 → 等价幂等改测单入口 order.create
-      // （真实 handler + fake DB）：同一 clientRequestId 重放命中同单（duplicated=true）；
-      // 不同 clientRequestId 且内容不同（备注不同，避开合并窗口）→ 新单。
-      const idemDb = createOrderDb();
-      const idemApi = orderApiOf(idemDb);
-      const idemKey = 'idem' + 'E'.repeat(20);
-      const idemBody = {
-        parcels: [
-          { parcel: { stationId: 'P3', pickupCode: 'A12345' } },
-          { parcel: { stationId: 'P4', pickupCode: 'B23456' } }
-        ],
-        images: [IT_IMAGE],
-        tickets: [IT_TICKET],
-        serviceCode: enums.SERVICE_CODES[0],
-        appoint: { type: 'ASAP' },
-        note: '',
-        manualEntry: false
-      };
-      const idemFirst = await idemApi.call('order.create', idemBody, { clientRequestId: idemKey });
-      t.check(idemFirst.ok === true && !idemFirst.data.duplicated && !!idemFirst.data.orderNo,
-        'F4 单入口 order.create 基线建单成功（一单多包裹；createBatch 已移除，等价幂等改测单入口）');
-      const idemReplay = await idemApi.call('order.create', idemBody, { clientRequestId: idemKey });
-      t.eq([idemReplay.data.duplicated, idemReplay.data.orderNo], [true, idemFirst.data.orderNo],
-        'F4b 同 clientRequestId 重放 → duplicated=true 且 orderNo 相同（服务端幂等，不重复建单）');
-      const idemOther = await idemApi.call('order.create', Object.assign({}, idemBody, {
-        note: '另一张单',
-        images: [IT_IMAGE_BATCH],
-        tickets: [IT_TICKET_BATCH]
-      }), { clientRequestId: 'idem' + 'F'.repeat(20) });
-      t.check(idemOther.ok === true && idemOther.data.orderNo !== idemFirst.data.orderNo,
-        'F4c 不同 clientRequestId（备注不同，避开合并窗口）→ 新订单，不复用旧单');
-
-      client.setTransport((payload) => {
-        seen.push(payload);
-        return Promise.resolve(okResult({}));
-      });
-      await orderApi.create({}, { clientRequestId: 'too-short' });
-      t.check(/^[A-Za-z0-9_-]{24}$/.test(String(seen[seen.length - 1].clientRequestId)),
-        'F5 非法显式 id 静默回退自生成 24 位（不把格式错误抛给页面）');
-      await orderApi.create({}, { clientRequestId: 'B'.repeat(33) });
-      t.check(/^[A-Za-z0-9_-]{24}$/.test(String(seen[seen.length - 1].clientRequestId)),
-        'F6 超过 32 位同样回退（服务端 16~32 位口径两端一致）');
-      t.check(client.isValidClientRequestId('A'.repeat(16)) === true
-        && client.isValidClientRequestId('A'.repeat(15)) === false
-        && client.isValidClientRequestId('A'.repeat(33)) === false
-        && client.isValidClientRequestId(null) === false,
-      'F7 isValidClientRequestId 值域闸有牙（16 合法、15/33/null 非法）');
-
-      let writeAttempts = 0;
-      client.setTransport(() => {
-        writeAttempts += 1;
-        return Promise.reject(new client.CallError('DEPENDENCY_FAILED', errorCopy.CODE_COPY.DEPENDENCY_FAILED));
-      });
-      let writeError = null;
-      try {
-        await orderApi.create({}, { clientRequestId: explicit });
-      } catch (err) {
-        writeError = err;
-      }
-      t.check(writeAttempts === 1 && !!writeError && writeError.code === 'DEPENDENCY_FAILED',
-        'F8 写动作不自动重试（attempts=1；重复建单风险由同一 clientRequestId + 服务端幂等兜）');
-      t.check(writeError instanceof client.CallError && writeError.message === errorCopy.CODE_COPY.DEPENDENCY_FAILED,
-        'F9 超时/网络失败以 CallError + 人话文案抛出（页面只 toast err.message，不暴露英文码）');
-
-      let readAttempts = 0;
-      client.setTransport(() => {
-        readAttempts += 1;
-        if (readAttempts === 1) {
-          return Promise.reject(new client.CallError('DEPENDENCY_FAILED', '首次抖动'));
-        }
-        return Promise.resolve(okResult({ order: { orderNo: '20261022-0002' } }));
-      });
-      const read = await orderApi.get({ orderNo: '20261022-0002' });
-      t.check(readAttempts === 2 && read.order.orderNo === '20261022-0002',
-        'F10 读动作自动重试一次后成功（读可重放）');
-
-      client.setTransport(() => Promise.resolve({ ok: false, code: 'PARTNER_CLOSED' }));
-      let codeError = null;
-      try {
-        await orderApi.create({}, { clientRequestId: explicit });
-      } catch (err) {
-        codeError = err;
-      }
-      t.check(!!codeError && codeError.code === 'PARTNER_CLOSED'
-        && codeError.message === errorCopy.CODE_COPY.PARTNER_CLOSED,
-      'F11 13 码 → 人话（PARTNER_CLOSED 用 shared/error-copy 单源文案）');
-      client.setTransport(() => Promise.resolve({ ok: false, code: 'BRAND_NEW_CODE' }));
-      let unknownError = null;
-      try {
-        await orderApi.create({}, { clientRequestId: explicit });
-      } catch (err) {
-        unknownError = err;
-      }
-      t.eq(unknownError && unknownError.message, errorCopy.UNKNOWN_CODE_COPY,
-        'F12 未登记码走兜底文案（不装懂）');
-
-      client.setTransport(() => {
-        readAttempts += 1;
-        return Promise.reject(new client.CallError('DEPENDENCY_FAILED', errorCopy.CODE_COPY.DEPENDENCY_FAILED));
-      });
-      readAttempts = 0;
-      let timeoutError = null;
-      try {
-        await orderApi.imageUrl({ orderNo: '20261022-0002' });
-      } catch (err) {
-        timeoutError = err;
-      }
-      t.check(readAttempts === 3 && !!timeoutError && timeoutError.code === 'DEPENDENCY_FAILED',
-        'F13 读动作重试耗尽后按原错误抛出（有界重试，不无限重试）');
-      t.check(!!timeoutError && typeof timeoutError.message === 'string' && timeoutError.message.length > 0
-        && !/timeout|TIMEOUT|ECONN|errMsg/.test(timeoutError.message),
-      'F14 超时对外只有人话 CallError（不外抛原始 timeout 错误/英文堆栈）');
-
-      let aiAttempts = 0;
-      client.setTransport(() => {
-        aiAttempts += 1;
-        return Promise.reject(new client.CallError('DEPENDENCY_FAILED', errorCopy.CODE_COPY.DEPENDENCY_FAILED));
-      });
-      let aiError = null;
-      try {
-        await aiApi.parseParcel({ ocrTextMasked: '取件码', role: 'CUSTOMER' });
-      } catch (err) {
-        aiError = err;
-      }
-      t.check(aiAttempts === 1 && !!aiError && aiError.code === 'DEPENDENCY_FAILED',
-        'F15 AI 兜底页也不自动重试（attempts=1，避免重复外呼）');
-
-      // v1.0（D23）order.create 载荷契约：单入口 + 多包裹同请求 + clientRequestId 进包络
-      // （异步节并发执行，全局 transport 只能由本组独占；服务端 fake-DB 联调由 task-21 的 selftest-order.js 覆盖）
-      const createSeen = [];
-      client.setTransport((payload) => {
-        createSeen.push(payload);
-        return Promise.resolve(okResult({ order: { orderNo: '20261022-0003' }, merged: false }));
-      });
-      const v1Payload = payloadOf([stationItem({ pickupCode: 'A12345' }), stationItem({ pickupCode: 'B23456' })]);
-      const createdV1 = await orderApi.create(v1Payload, { clientRequestId: 'ito' + 'E'.repeat(21) });
-      t.check(!!createdV1 && !!createdV1.order && createdV1.order.orderNo === '20261022-0003',
-        'F16 返回值透传 order（页面据此展示订单号/跳详情）');
-      t.eq(createSeen.length, 1, 'F17 一次提交只发一次 order.create（失败重试由页面复用同一键）');
-      const env = createSeen[0] || {};
-      t.eq(env.action, 'order.create', 'F18 action 经 api/modules/order.create（页面零自拼 action 字面量）');
-      t.check(typeof env.clientRequestId === 'string' && env.clientRequestId.length >= 16,
-        'F19 clientRequestId 进调用包络（服务端幂等键，重试不重复建单）');
-      const body = env.data || {};
-      t.eq(Object.keys(body).sort(),
-        ['appoint', 'images', 'manualEntry', 'note', 'parcels', 'serviceCode', 'tickets'].sort(),
-        'F20 请求体顶层键恰为 CONTRACT §5.3 v1.0 白名单');
-      t.eq(body.parcels.length, 2, 'F21 多件在同一请求内提交（多图/多件合成一张订单）');
-      t.check(body.images.length === body.tickets.length && body.manualEntry === false,
-        'F22 images[i] ↔ tickets[i] 等长；有图时 manualEntry=false');
-      const manualPayload = payloadOf([stationItem({})], { images: [], tickets: [] });
-      await orderApi.create(manualPayload, { clientRequestId: 'itman' + 'E'.repeat(20) });
-      const manualBody = (createSeen[createSeen.length - 1] || {}).data || {};
-      t.check((manualBody.images || []).length === 0 && manualBody.manualEntry === true,
-        'F23 无截图手填载荷可上送（images=[] + manualEntry=true，D24）');
-      t.notEmpty(seen, 'F 组样本非空');
-    } finally {
-      client.restoreTransport();
-      store.reset();
-    }
+    await orderFlowClientCases.clientChecks(t, {
+      client, store, orderApi, aiApi, errorCopy, enums, createOrderDb, orderApiOf, payloadOf, stationItem,
+      IT_TICKET, IT_IMAGE, IT_TICKET_BATCH, IT_IMAGE_BATCH
+    });
   });
   // ---------------------------------------------------------------- G 页面层静态
   h.section('G. 页面层静态：零 wx.cloud.*/零状态字面量/零 random/零自拼 action/提交接线', (t) => {
@@ -648,12 +484,12 @@ function register(h) {
     t.check(/onRetrySubmit\(\)\s*\{\s*this\.onSubmit\(\)/.test(page),
       'G14 结果块「重试」复用同一提交流程（不再现生成键）');
     const pageXml = textOf(ORDER_CREATE_WXML);
-    t.check(/onAppointType/.test(pageXml) && /onSlotChange/.test(pageXml)
-      && /onNoteInput/.test(pageXml),
-    'G15 Step3 整单预约/备注控件（v1.0：服务/预约/备注每单一份）');
-    t.check(/item\.appointType/.test(pageXml) === false && /item\.note/.test(pageXml) === false
-      && /data\.appointType/.test(flowSource),
-    'G16 无逐件预约/备注残留（提交读整单 data.appointType/note）');
+    t.check(/onAppointType/.test(pageXml) && /onLatestDate/.test(pageXml) && /onLatestTime/.test(pageXml)
+      && /onLatestPreset/.test(pageXml) && /onNoteInput/.test(pageXml),
+    'G15 Step3 整单预约/备注控件（D47：尽快/最晚时间 + 日期/时间/预设；备注每单一份）');
+    t.check(/item\.appoint/.test(pageXml) === false && /item\.note/.test(pageXml) === false
+      && /data\.appoint/.test(flowSource),
+    'G16 无逐件预约/备注残留（提交读整单 data.appoint/note）');
     t.check(/services\[serviceIndex\]\.desc/.test(pageXml),
       'G17 服务类型渲染名称+说明（D6：说明来自 model.serviceOptions 的 desc）');
     t.check(/wx\.previewImage/.test(page) && /onPreviewImage/.test(pageXml),
@@ -676,8 +512,10 @@ function register(h) {
     t.check(/aiHint/.test(page) && /item\.aiHint/.test(pageXml),
       'G24 逐件降级说明渲染（某件失败只降级该件，§4.3.1 ⑤）');
     // 合并窗口 orderMergeWindowMinutes 是服务端治理参数、不下发客户端：结果区文案不得写死分钟数（UX §4.11）
-    t.check(/\d+\s*分钟/.test(pageXml) === false,
-      'G25 合并结果说明不写死窗口分钟数（治理参数不下发客户端）');
+    const mergedCopyAt = pageXml.indexOf('再次下单会自动并入同一订单');
+    t.check(mergedCopyAt >= 0
+      && /\d+\s*分钟/.test(pageXml.slice(mergedCopyAt - 200, mergedCopyAt + 200)) === false,
+    'G25 合并结果说明不写死窗口分钟数（治理参数不下发客户端；D47 时间粒度文案不在此块）');
     t.check(/wx:if="\{\{resultMerged\}\}"[^>]*>[^<]*自动并入/.test(pageXml),
       'G26 合并结果说明用不含量化时间的表述（「短时间内再次下单会自动并入同一订单」）');
     t.notEmpty(pageFiles, 'G 组样本非空');
@@ -919,7 +757,7 @@ function register(h) {
     'L4 CUSTOM 空/纯空白备注 → 行内红字；有备注放行；非 CUSTOM 不强制（AC-C-15）');
     const step3Src = textOf('pkg-customer/pages/order-create/parts/step3.js');
     t.check(step3Src.indexOf('noteErrorOf(') >= 0 && /if \(noteError\)/.test(step3Src)
-      && step3Src.indexOf('if (noteError)') < step3Src.indexOf("appointType === 'SLOT'"),
+      && step3Src.indexOf('if (noteError)') < step3Src.indexOf('appointUtil.validateOf('),
     'L5 Step3 下一步先判备注（挡在预约/地址之前），判据在 precheck 纯件（页面零判据）');
     const pageXml = textOf(ORDER_CREATE_WXML);
     t.check(/\{\{noteError\}\}/.test(pageXml) && /noteError \? 'btn-disabled'/.test(pageXml),
@@ -986,6 +824,58 @@ function register(h) {
     t.eq([declared.size, declared.source, platform.size, platform.source, probed.size, probed.source, none.size, none.source],
       [2048, 'PICKED', 512, 'PLATFORM', 300, 'READ', 0, 'NONE'], 'O1 size 三级解析：选图元数据→getFileInfo→有界 readFile 真实字节数（元数据缺失不直接拒）');
     t.check(textOf('api/upload.js').indexOf('await resolveTicketSize(') >= 0, 'O2 prepareTicket 接到三级解析（不再按 0 必拒；真实字节数交服务端 500KB 闸）');
+  });
+  // ---------------------------------------------------------------- P 性能 P0-1 下单流水线化
+  // （用例表外移 tools/lib/order-flow-pipeline-cases.js：组件渐进上传事件 + 页面编排侧重叠调度）
+  h.section('P. P0-1 下单流水线化：上传与识别重叠/并发 2/乱序回填/AI 按件并行（纯件 + 接线）', async (t) => {
+    await orderFlowPipelineCases.pipelineChecks(t, {
+      ocrFlow, model, pickerState, filesFlow, textOf
+    });
+  });
+  // ---------------------------------------------------------------- Q 预约「最晚可接受时间」（D47，客户端）
+  h.section('Q. 预约「最晚可接受时间」：选项/预选/载荷/摘要/指纹/文案与接线（D47）', (t) => {
+    const nowMs = Date.parse('2026-11-01T10:00:00+08:00');
+    const base = appointUtil.createState(nowMs, 'ASAP');
+    t.eq([base.type, appointUtil.summaryOf(base), appointUtil.payloadOf(base, nowMs)],
+      ['ASAP', '尽快', { type: 'ASAP' }], 'Q1 默认尽快：摘要「尽快」、载荷不带时间');
+    t.eq([appointUtil.normalizeType('ASAP'), appointUtil.normalizeType('LATEST'), appointUtil.normalizeType('SLOT')],
+      ['ASAP', 'LATEST', 'ASAP'], 'Q2 新单可选预约类型只有 ASAP/LATEST（SLOT/未知值一律降级尽快）');
+    const latest = appointUtil.setType(base, 'LATEST', nowMs);
+    t.eq([latest.type, latest.date, latest.time, latest.latestText],
+      ['LATEST', '2026-11-01', '12:00', '最晚 11月1日 12:00'],
+      'Q3 切最晚时间：自动预选今天最近合法预设（30 分钟整点）');
+    t.eq(appointUtil.payloadOf(latest, nowMs),
+      { type: 'LATEST', latestAt: '2026-11-01T12:00:00+08:00' },
+      'Q4 提交载荷 latestAt 为 UTC+8 ISO 串（服务端再按 now 收紧）');
+    t.check(appointUtil.pickPreset(latest, '22:00', nowMs).time === '22:00'
+      && appointUtil.setTime(latest, '18:30', nowMs).time === '18:30',
+    'Q5 预设 12/18/22 与自定义 30 分钟档都可用（pickPreset/setTime）');
+    t.check(appointUtil.INVALID_LATEST_COPY.indexOf('30 分钟') >= 0
+      && appointUtil.LATEST_NOTE_COPY.indexOf('不改变') >= 0
+      && appointUtil.LATEST_NOTE_COPY.indexOf('不会自动取消') >= 0
+      && appointUtil.SLOT_DOWNGRADE_COPY.indexOf('最晚时间') >= 0,
+    'Q6 文案：30 分钟粒度提示 + 不改变接单时限/不自动取消 + SLOT 降级说明（D47）');
+    const bad = appointUtil.setDate(latest, '2026-10-01', nowMs);
+    t.check(appointUtil.validateOf(bad, nowMs).ok === false && bad.error !== '',
+      'Q7 过去日期 → 下一步拦截并给行内提示（服务端仍唯一权威）');
+    t.eq(appointUtil.fingerprintOf(latest)
+      !== appointUtil.fingerprintOf(appointUtil.pickPreset(latest, '18:00', nowMs)),
+    true, 'Q8 最晚时间变化进提交指纹（换幂等键，避免旧键吞新内容）');
+    const pageXml = textOf(ORDER_CREATE_WXML);
+    t.check(/value="LATEST"/.test(pageXml) && /最晚时间/.test(pageXml)
+      && /onLatestPreset/.test(pageXml) && /30 ?分钟/.test(pageXml),
+    'Q9 Step3 渲染「尽快/最晚时间」单选 + 预设/时间入口 + 30 分钟粒度说明（SLOT 不再出现为可选项）');
+    t.check(pageXml.indexOf('value="SLOT"') < 0 && pageXml.indexOf('预约时段</label>') < 0,
+      'Q10 新单不可选 SLOT（WXML 无 SLOT 单选；历史单详情仍展示）');
+    const submitSrc = textOf('pkg-customer/pages/order-create/parts/submit.js');
+    t.check(/appointUtil\.payloadOf\(/.test(submitSrc) && submitSrc.indexOf("type: 'LATEST'") < 0
+      && submitSrc.indexOf('startAt') < 0 && submitSrc.indexOf('endAt') < 0,
+    'Q11 提交载荷走 shared/appoint 单源（页面不手拼 latestAt/时段字段）');
+    const step3PageSrc = textOf(ORDER_CREATE_PAGE);
+    t.check(/onLatestDate\(/.test(step3PageSrc) && /onLatestTime\(/.test(step3PageSrc)
+      && /onLatestPreset\(/.test(step3PageSrc),
+    'Q12 页面接线 onLatestDate/onLatestTime/onLatestPreset（方法只转发 parts/step3）');
+    t.notEmpty(appointUtil.timeOptions(), 'Q 组样本非空');
   });
 }
 

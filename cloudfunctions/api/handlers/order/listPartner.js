@@ -1,5 +1,6 @@
 // handlers/order/listPartner.js · order.listPartner：兼职工作台 / 历史订单 / 客户订单（批 7 view=customer）
-// 响应形状 = {list,nextCursor,counts}（workbench/history）；view=customer 返回 {list,nextCursor}、不发 counts
+// 响应形状 = {list,nextCursor,counts}（history）；workbench/history 顶层键 + D48 只增 summary（仅 workbench，
+// 基于本次 find 命中行聚合、零额外查询）；view=customer 返回 {list,nextCursor}、不发 counts/summary
 // （DATA_MODEL §7.5 批 7 段④）。四档动线排序由客户端零件层用 shared/order-view 执行，服务端只做状态桶 +
 // 绑定顾客过滤；列表一律经 _dto 输出，绝不下发 raw order 文档（DATA_MODEL §6 DTO 铁律）。
 'use strict';
@@ -11,6 +12,7 @@ const time = require('../../lib/time');
 const { errors } = require('../../lib/errors');
 const common = require('./_common');
 const dto = require('./_dto');
+const summaryPure = require('./_summary');
 
 const WORKBENCH_VIEW = 'workbench';
 const HISTORY_VIEW = 'history';
@@ -165,7 +167,34 @@ async function fetchOrders(ctx, partnerId, filter, scanLimit, extraWhere) {
   return rows;
 }
 
-// 一次取数 → 精确单号补查 → 去重 → keyword/时间窗/游标过滤 → 稳定排序 → 单页切片。
+// 时间窗过滤：from/to 为 0 表示不限；锚点与列表一致（completedAt → cancelledAt → statusUpdatedAt）。
+function inTimeWindow(order, opts) {
+  if (opts.fromMs === 0 && opts.toMs === 0) {
+    return true;
+  }
+  const anchor = time.toMs(order.completedAt) || time.toMs(order.cancelledAt) || time.toMs(order.statusUpdatedAt);
+  if (opts.fromMs && anchor < opts.fromMs) {
+    return false;
+  }
+  if (opts.toMs && anchor > opts.toMs) {
+    return false;
+  }
+  return true;
+}
+
+// 稳定排序：sortField 降序，同刻按 orderNo 降序兜底（翻页不重不漏）。
+function compareRowsBy(sortField) {
+  const sortValueOf = (order) => time.toMs(order[sortField]);
+  return function compare(left, right) {
+    const delta = sortValueOf(right) - sortValueOf(left);
+    if (delta !== 0) {
+      return delta;
+    }
+    return String(right.orderNo || '') < String(left.orderNo || '') ? -1 : 1;
+  };
+}
+
+// 一次取数 → 精确单号补查 → 去重 → keyword/时间窗过滤（= D48 summary 候选集）→ 游标 → 稳定排序 → 单页切片。
 // 两个视图共用（workbench/history 与 customer 只在 where 过滤与过滤状态集上不同）。
 async function pageOf(ctx, partnerId, filter, options) {
   const opts = options || {};
@@ -187,32 +216,15 @@ async function pageOf(ctx, partnerId, filter, options) {
     seenOrderNos[key] = true;
     return true;
   });
-  const sortValueOf = (order) => time.toMs(order[filter.sortField]);
-  const candidates = uniqueRows
+  // summaryRows = 分页/游标之前的全部命中行：D48 要求 summary 与 limit/cursor 无关（复用本次已查 rows）。
+  const summaryRows = uniqueRows
     .filter((order) => matchKeyword(order, opts.keyword))
-    .filter((order) => {
-      if (opts.fromMs === 0 && opts.toMs === 0) {
-        return true;
-      }
-      const anchor = time.toMs(order.completedAt) || time.toMs(order.cancelledAt) || time.toMs(order.statusUpdatedAt);
-      if (opts.fromMs && anchor < opts.fromMs) {
-        return false;
-      }
-      if (opts.toMs && anchor > opts.toMs) {
-        return false;
-      }
-      return true;
-    })
-    .filter((order) => common.isAfterCursor(sortValueOf(order), order.orderNo, opts.paging.cursor))
-    .sort((left, right) => {
-      const delta = sortValueOf(right) - sortValueOf(left);
-      if (delta !== 0) {
-        return delta;
-      }
-      return String(right.orderNo || '') < String(left.orderNo || '') ? -1 : 1;
-    });
+    .filter((order) => inTimeWindow(order, opts));
+  const candidates = summaryRows
+    .filter((order) => common.isAfterCursor(time.toMs(order[filter.sortField]), order.orderNo, opts.paging.cursor))
+    .sort(compareRowsBy(filter.sortField));
   const page = candidates.slice(0, opts.paging.limit);
-  return { page, hasMore: candidates.length > opts.paging.limit, sortField: filter.sortField };
+  return { page, hasMore: candidates.length > opts.paging.limit, sortField: filter.sortField, summaryRows };
 }
 
 function pageQueryOf(input, scanLimit) {
@@ -308,5 +320,11 @@ module.exports = async function orderListPartner(ctx, payload) {
   // P0-2/TD-073：只有 workbench 视图计算 counts（页面总览/红点消费它）；history 视图不白算 6 个 count。
   // 响应形状不变（DATA_MODEL §7.5）：history 仍回 counts 键，值为零值模板（不计入、无查询）。
   const counts = view === WORKBENCH_VIEW ? await buildCounts(ctx, partner._id, common.nowMsOf(ctx)) : orderView.countsTemplate();
-  return { list, nextCursor: nextCursorOf(result), counts };
+  const body = { list, nextCursor: nextCursorOf(result), counts };
+  // D48：仅 workbench 只增 summary（按苑/栋聚合 + 状态计数；history/customer 形状不变、不发 summary）。
+  // 复用本次 find 的命中行（result.summaryRows），零额外查询/零二次扫描。
+  if (view === WORKBENCH_VIEW) {
+    body.summary = summaryPure.buildSummary(result.summaryRows);
+  }
+  return body;
 };

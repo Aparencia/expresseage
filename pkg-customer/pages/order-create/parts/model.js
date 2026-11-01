@@ -9,6 +9,7 @@
 const client = require('../../../../api/client');
 const enums = require('../../../../shared/enums');
 const recognize = require('../../../../utils/recognize/index');
+const pipeline = require('./pipeline');
 
 const STEP_TITLES = ['截图', '核对', '服务', '提交'];
 // 一单上限（CONTRACT §5.2/D23/D40）：包裹 ≤10、截图 ≤10（均取共享常量 shared/order-state）
@@ -22,43 +23,6 @@ const SUBMISSION_ID_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789abcdefghijkmnpqrstu
 const CLIENT_SOURCES = [enums.RECOGNITION_SOURCE.RULE, enums.RECOGNITION_SOURCE.MANUAL];
 const SERVER_SOURCE_PATTERN = /^[A-Z][A-Z0-9_]{1,15}$/;
 const UNRECOGNIZED_SOURCE = 'NONE';
-
-function pad(value) {
-  return value < 10 ? '0' + value : String(value);
-}
-
-function dateAt(base, dayOffset, hour) {
-  return new Date(base.getFullYear(), base.getMonth(), base.getDate() + dayOffset, hour, 0, 0, 0);
-}
-
-function iso(date) {
-  return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate())
-    + 'T' + pad(date.getHours()) + ':' + pad(date.getMinutes()) + ':00+08:00';
-}
-
-/** 六个预约时段：今天/明天 × 上午/下午/晚上（服务端按 serverTime 再校验未来） */
-function appointmentSlots(now) {
-  const base = now || new Date();
-  const defs = [
-    { day: 0, label: '今天', from: 8, to: 12 },
-    { day: 0, label: '今天', from: 12, to: 18 },
-    { day: 0, label: '今天', from: 18, to: 22 },
-    { day: 1, label: '明天', from: 8, to: 12 },
-    { day: 1, label: '明天', from: 12, to: 18 },
-    { day: 1, label: '明天', from: 18, to: 22 }
-  ];
-  return defs.map(function map(def, index) {
-    const start = dateAt(base, def.day, def.from);
-    const end = dateAt(base, def.day, def.to);
-    return {
-      index: index,
-      label: def.label + ' ' + pad(def.from) + ':00-' + pad(def.to) + ':00',
-      startAt: iso(start),
-      endAt: iso(end),
-      expired: end.getTime() <= base.getTime()
-    };
-  });
-}
 
 // 站点选择器数据源（D32）：优先用 config.getPublic.stations 的后台配置名，缺省回退内置正式名
 function stationOptions(config) {
@@ -174,8 +138,7 @@ function submissionFingerprint(items, context) {
     tickets.join('\u0003'),
     String(ctx.serviceCode || ''),
     String(ctx.appointType || 'ASAP'),
-    String(ctx.startAt || ''),
-    String(ctx.endAt || ''),
+    String(ctx.latestAt || ''),
     String(ctx.note || ''),
     String(ctx.deliveryFingerprint || 'SELF'),
     ctx.manualEntry === true ? 'MANUAL' : 'SCREENSHOT'
@@ -258,6 +221,52 @@ const LOW_SUGGESTION_COPY = {
   adopted: '已采纳建议，请再核对'
 };
 
+// P0-1：AI 兜底按件并行——外呼经全局并发闸（上限 = pipeline.PIPELINE_CONCURRENCY 单源，跨图/跨批共享），
+// 结果仍按件序回填（Promise.all 保序）；某件失败只降级该件。
+const AI_LIMITER = pipeline.createLimiter(pipeline.PIPELINE_CONCURRENCY);
+
+/**
+ * 单件 AI 兜底：只对缺站点/缺码的件外呼一次（规则已填好的件不外呼、不浪费配额）；
+ * 同图重试复用确定性幂等键（requestIdOf(i)，同票同内容同键），失败只降级本件。
+ * @returns {Promise<{item:object,called:number,changed:number,failed:number,suggested:number}>}
+ */
+async function fallbackOne(item, index, ctx, aiCall) {
+  if (typeof aiCall !== 'function' || !needsAiFallback(item)) {
+    return { item: item, called: 0, changed: 0, failed: 0, suggested: 0 };
+  }
+  const requestId = typeof ctx.requestIdOf === 'function' ? ctx.requestIdOf(index) : '';
+  const payload = {
+    ocrTextMasked: ctx.ocrTextMasked || '',
+    hintTrackingTail: item.trackingTail || ctx.hintTrackingTail || '',
+    uploadTicketId: ctx.uploadTicketId || '',
+    fileId: ctx.fileId || '',
+    role: ctx.role || 'CUSTOMER'
+  };
+  let suggestion = null;
+  try {
+    suggestion = (await AI_LIMITER.run(function call() {
+      return aiCall(payload, requestId ? { clientRequestId: requestId } : {});
+    })) || {};
+  } catch (err) {
+    suggestion = { error: true };
+  }
+  const state = aiStateOf(suggestion);
+  const merged = recognize.applyAiSuggestion(item, suggestion);
+  const nextItem = merged.parcel;
+  // D29：LOW + AI 来源不写字段，只挂可采纳建议（suggested 计数），failed 只计真失败（TIMEOUT/CLOSED）
+  nextItem.aiSuggestion = merged.suggestion || null;
+  const failureId = typeof suggestion.failureId === 'string' ? suggestion.failureId : '';
+  nextItem.failureId = failureId || item.failureId || '';
+  nextItem.aiState = state;
+  return {
+    item: nextItem,
+    called: 1,
+    changed: merged.changed.length > 0 ? 1 : 0,
+    suggested: merged.suggestion ? 1 : 0,
+    failed: state === 'TIMEOUT' || state === 'CLOSED' ? 1 : 0
+  };
+}
+
 /**
  * 逐件 AI 兜底（DATA_MODEL §4.9「同图多单按单调用」）：只对缺站点/缺码的件各调一次 aiCall
  * （同一 uploadTicketId/fileId、各自独立 failureId），只填该件空字段；某件失败只降级该件。
@@ -270,46 +279,19 @@ const LOW_SUGGESTION_COPY = {
  */
 async function applyAiFallbacks(items, context, aiCall) {
   const ctx = context || {};
-  const out = [];
-  let called = 0;
-  let changed = 0;
-  let failed = 0;
-  let suggested = 0;
-  for (let i = 0; i < (items || []).length; i += 1) {
-    const item = items[i];
-    if (typeof aiCall !== 'function' || !needsAiFallback(item)) {
-      out.push(item);
-      continue;
-    }
-    called += 1;
-    let suggestion = null;
-    // 同一张图重试复用确定性幂等键（避免同图重复入队）；无派生键时退回 client 自生成
-    const requestId = typeof ctx.requestIdOf === 'function' ? ctx.requestIdOf(i) : '';
-    try {
-      suggestion = (await aiCall({
-        ocrTextMasked: ctx.ocrTextMasked || '',
-        hintTrackingTail: item.trackingTail || ctx.hintTrackingTail || '',
-        uploadTicketId: ctx.uploadTicketId || '',
-        fileId: ctx.fileId || '',
-        role: ctx.role || 'CUSTOMER'
-      }, requestId ? { clientRequestId: requestId } : {})) || {};
-    } catch (err) {
-      suggestion = { error: true };
-    }
-    const state = aiStateOf(suggestion);
-    const merged = recognize.applyAiSuggestion(item, suggestion);
-    const nextItem = merged.parcel;
-    if (merged.changed.length > 0) changed += 1;
-    nextItem.aiSuggestion = merged.suggestion || null;
-    if (merged.suggestion) suggested += 1;
-    const failureId = typeof suggestion.failureId === 'string' ? suggestion.failureId : '';
-    nextItem.failureId = failureId || item.failureId || '';
-    nextItem.aiState = state;
-    // LOW 是「待用户采纳」的建议，不算失败；只有超时/关闭才计 failed（降级文案口径）
-    if (state === 'TIMEOUT' || state === 'CLOSED') failed += 1;
-    out.push(nextItem);
-  }
-  return { items: out, called: called, changed: changed, failed: failed, suggested: suggested };
+  const list = (items || []).slice();
+  const results = await Promise.all(list.map(function map(item, index) {
+    return fallbackOne(item, index, ctx, aiCall);
+  }));
+  const out = { items: [], called: 0, changed: 0, failed: 0, suggested: 0 };
+  results.forEach(function each(result) {
+    out.items.push(result.item);
+    out.called += result.called;
+    out.changed += result.changed;
+    out.failed += result.failed;
+    out.suggested += result.suggested;
+  });
+  return out;
 }
 
 /**
@@ -336,15 +318,7 @@ function adoptSuggestion(item) {
   };
 }
 
-// ── 提交载荷（order.create v1.0 单入口）──────────────────────────────────────
-/** 整单预约：ASAP 不填时间；SLOT 必填时段（服务端按 serverTime 再校验） */
-function appointPayloadOf(type, slot) {
-  if (type !== 'SLOT' || !slot) {
-    return { type: 'ASAP' };
-  }
-  return { type: 'SLOT', startAt: slot.startAt || '', endAt: slot.endAt || '' };
-}
-
+// ── 提交载荷（order.create v1.0 单入口）；整单预约为 shared/appoint 纯件（D47）───
 /** 图片快照：来自识别结果（含宽高）；同一顺序返回 tickets（images[i] ↔ tickets[i] 一一对应） */
 function buildImages(perImage, maxCount) {
   const limit = typeof maxCount === 'number' ? maxCount : MAX_IMAGES;
@@ -420,14 +394,12 @@ module.exports = {
   STEP_TITLES,
   MAX_PARCELS,
   MAX_IMAGES,
-  appointmentSlots,
   stationOptions,
   stationName,
   serviceOptions,
   makeItem,
   revalidateItem,
   canSubmit,
-  appointPayloadOf,
   buildImages,
   buildPayload,
   summaryText,

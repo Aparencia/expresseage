@@ -26,7 +26,7 @@
     <view class="card">
       <view class="section-title">上传取件码截图（0~{{maxImages}} 张）</view>
       <view class="muted">可一次多选，也可分几次添加；多张截图会合并成同一张订单。截图仅用于识别取件码与兼职核对；订单完成或取消后 7 天删除。</view>
-      <image-picker id="ticketPicker" purpose="TICKET" max-count="{{maxImages}}" disabled="{{readonly}}" bind:change="onPickFile" bind:error="onPickError" bind:limit="onPickLimit" />
+      <image-picker id="ticketPicker" purpose="TICKET" max-count="{{maxImages}}" disabled="{{readonly}}" bind:change="onPickFile" bind:uploaded="onUploaded" bind:error="onPickError" bind:limit="onPickLimit" />
       <view class="muted upload-state" wx:if="{{ocrState === 'upload'}}">正在上传…</view>
       <view class="muted upload-state" wx:if="{{ocrState === 'ocr'}}">正在识别第 {{ocrIndex}}/{{ocrTotal}} 张截图里的取件码…（通常每张 3~10 秒）</view>
       <view class="muted upload-state" wx:if="{{ocrState === 'ai'}}">正在智能识别第 {{ocrIndex}}/{{ocrTotal}} 张…（每张最多 8 秒）</view>
@@ -169,15 +169,33 @@
     <view class="card">
       <view class="section-title">预约与备注（整单一份）</view>
       <radio-group bindchange="onAppointType">
-        <label class="radio-row"><radio value="ASAP" checked="{{appointType === 'ASAP'}}" />尽快</label>
-        <label class="radio-row"><radio value="SLOT" checked="{{appointType === 'SLOT'}}" />预约时段</label>
+        <label class="radio-row"><radio value="ASAP" checked="{{appoint.type === 'ASAP'}}" />尽快</label>
+        <label class="radio-row"><radio value="LATEST" checked="{{appoint.type === 'LATEST'}}" />最晚时间</label>
       </radio-group>
-      <picker wx:if="{{appointType === 'SLOT'}}" range="{{slots}}" range-key="label" bindchange="onSlotChange">
+      <!-- D47：最晚时间只表达期望——不改变兼职接单时限、到点未送达不会自动取消（30 分钟粒度/≤7 天/最小提前 30 分钟） -->
+      <block wx:if="{{appoint.type === 'LATEST'}}">
+        <view class="small muted appoint-note">{{appoint.note}}</view>
+        <picker mode="date" start="{{appoint.minDate}}" end="{{appoint.maxDate}}" value="{{appoint.date}}" bindchange="onLatestDate">
+          <view class="form-row">
+            <view class="form-label">日期</view>
+            <view class="form-input">{{appoint.dateText || '请选择日期（7 天内）'}}</view>
+          </view>
+        </picker>
         <view class="form-row">
-          <view class="form-label">时段</view>
-          <view class="form-input">{{slots[slotIndex].label || '请选择预约时段'}}</view>
+          <view class="form-label">快捷时间</view>
+          <view class="preset-row">
+            <view wx:for="{{appoint.presets}}" wx:key="*this" class="preset-chip" data-time="{{item}}" bindtap="onLatestPreset">{{item}}</view>
+          </view>
         </view>
-      </picker>
+        <picker range="{{appoint.times}}" range-key="label" value="{{appoint.timeIndex}}" bindchange="onLatestTime">
+          <view class="form-row">
+            <view class="form-label">时间</view>
+            <view class="form-input">{{appoint.timeIndex >= 0 ? appoint.times[appoint.timeIndex].label : '请选择时间'}}</view>
+          </view>
+        </picker>
+        <view class="small muted">时间按 30 分钟一档；最近可选 30 分钟后，最远 7 天内。</view>
+        <view class="small error-text" wx:if="{{appoint.error}}">{{appoint.error}}</view>
+      </block>
       <view class="form-row">
         <view class="form-label">备注</view>
         <input class="form-input" value="{{note}}" placeholder="给兼职的话（≤200 字）" maxlength="200" bindinput="onNoteInput" />
@@ -250,7 +268,7 @@
         <view wx:for="{{items}}" wx:key="key" class="summary-row" wx:if="{{item.checked}}">
           <view class="muted">{{item.stationName}} · {{item.pickupCode || '待查码'}}{{item.trackingTail ? ' · 尾号 ' + item.trackingTail : ''}}</view>
         </view>
-        <view class="muted small">服务：{{services[serviceIndex].name || '未选'}} · 预约：{{appointType === 'SLOT' ? (slots[slotIndex].label || '预约时段') : '尽快'}}</view>
+        <view class="muted small">服务：{{services[serviceIndex].name || '未选'}} · 预约：{{appoint.summary}}</view>
         <!-- D41：确认页补服务层级说明（说明取 config.serviceCatalog 的 desc 单源，不在此硬编码层级文案） -->
         <view class="muted small service-desc" wx:if="{{services[serviceIndex].desc}}">{{services[serviceIndex].desc}}</view>
         <view class="muted small" wx:if="{{note}}">备注：{{note}}</view>
