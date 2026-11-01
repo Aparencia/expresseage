@@ -5,7 +5,7 @@
 > 更新时机：每批开工/收口、用户裁决变化、风险新增或关闭、HEAD 变化需回读。
 > 本文只记**状态、待办与下一步**，不重复设计口径（口径看 CONTRACT，工程规则看 ENGINEERING，接口看 ARCHITECTURE）。
 
-**快照时间：2026-11-01（HEAD `9526e37` 技术债收口批收口；**批 16（2026-11-01 用户反馈裁决 D43~D50）实现完成、待收口提交**：check.js 36 条 / check-docs 12 条；D43~D50 口径登记 + #1 死代码清理/门禁 #35/#36 + #2 送达次日 23:50 日结批 + #3 代客下单补全 + #8 送至楼下展示位/回填 + 性能 P0-1 组件侧~P0-4/P1-10 + #5 日期分类研究）；`check.js` 36/36、`check-docs` 12/12、零金额 0 命中（白名单 108 项）、`selftest` 35 套 0 失败（断言数以 `node tools/selftest.js` 汇总行为准）；云端 `api` 已部署并复验、`DEEPSEEK_API_KEY` 已配置；真机/提审/灰度未做）**
+**快照时间：2026-11-01（HEAD `f9ccefc` **批 16（2026-11-01 用户反馈裁决 D43~D50）已提交**：check.js 36 条 / check-docs 12 条；D43~D50 口径登记 + #1 死代码清理/门禁 #35/#36 + #2 送达次日 23:50 日结批 + #3 代客下单补全 + #8 送至楼下展示位/回填 + 性能 P0-1 组件侧~P0-4/P1-10 + #5 日期分类研究；P0-1 页面编排侧为批 16 补件）；`check.js` 36/36、`check-docs` 12/12、零金额 0 命中（白名单 108 项）、`selftest` 35 套 0 失败（断言数以 `node tools/selftest.js` 汇总行为准）；云端 `api` 已部署并复验、`DEEPSEEK_API_KEY` 已配置；真机/提审/灰度未做）**
 > 临时总体说明（全局汇总，非状态源）：[`docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md`](docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md)（版本与取数快照由 Lead 统一维护；状态仍以本文件为准、口径以 CONTRACT 为准）。
 
 ## 1. 一句话状态
@@ -692,3 +692,32 @@ check.ps1：全部通过（4 步，退出码 0）
 2. 只有 Lead（或 Lead 明确指派者）更新本文件；其他 agent 发现状态变化时回报 Lead。
 3. 与 `CHANGELOG.md` 同日条目保持一致；风险/欠账与 `docs/governance/V4_TECH_DEBT.md` 编号互链。
 4. 数字不写死：进度以任务板与门禁真实输出为准，本文不抄测试条数（收口证据表除外，须与真实输出同源）。
+
+## 11. 批 16 收口证据（2026-11-01，真实输出）
+
+> 收口提交 `f9ccefc`（批 16：D43~D50 口径登记 + #1 死代码清理/门禁 #35/#36 + #2 送达次日 23:50 日结批 + #3 代客下单补全 + #8 送至楼下展示位/回填 + 性能 P0-2/3/4+P1-10 + #5 日期分类研究）；本文件与 `CHANGELOG.md` 的证据回填为其后一条 chore 提交。**P0-1 页面编排侧**随批 16 补件交付（task-6，另行提交）。
+
+```
+# powershell -NoProfile -ExecutionPolicy Bypass -File check.ps1
+PASS  check.js 代码/配置门禁（36 条）
+PASS  check-docs.js 设计文档门禁（--batch 1）
+PASS  zero-money-scan.js 零金额扫描（源码+页面+文档）
+PASS  selftest.js 全部断言 suite（EXPECTED_ASSERTIONS 闸）
+check.ps1：全部通过（4 步，退出码 0）
+
+# node tools/sync-cloud-shared.js
+共享源：17 件（shared/** + 3 个别名单源）
+同步完成：写 0 件、删 0 件、已一致 34 件；hash 对帐 OK（17 件 × 2 套）
+
+# node tools/selftest.js（末行）
+selftest：运行 35 套；失败 0 套；SKIP 0 套（无）；完整性 0 项；非聚合辅助文件 4 件（已声明）
+结果：PASS
+
+# powershell -File gate.ps1 -Anchor 9526e37 -ScopeFiles ... -Estimate 4000
+[PASS] 变更集 135 文件；[PASS] 范围前缀匹配（17 前缀/135 文件）；[PASS] 体量 5604 行 ≤ 4000×1.5
+gate.ps1：红色 0 项；黄色 0 项（退出码 0）
+```
+
+**关键分项读数（全部真实实跑）**：`selftest-pickup-low` 63/63（新增套件，聚合注册）、`selftest-cleanup` 234/234、`selftest-performance` 143/143、`selftest-query-window` 23/23、`selftest-partner-pages` 221/221、`selftest-profile` 192/192、`selftest-order-flow` 210/210、`selftest-recognize` 276/276、`selftest-tools` 24/24、`selftest-share` 194/194、`selftest-cloud` 192/192、`selftest-state` 344/344、`selftest-order-customer` 274/274、`selftest-order-detail-partner` 172/172。
+**首红/变异回红留证**：门禁 #35 注入 `zzDeadExportProbe` → `FAIL #35 未引用导出`、#36 注入 `zzDeadPageProbe` → `FAIL #36 页面死函数`，删除后 `通过 36 项；失败 0 项`；日结批/代客下单/性能断言均在旧代码上先红后绿（详见 CHANGELOG 条目与各任务报告）。
+**待用户/后续**：cleanup 10 分钟触发器需用户在控制台确认（RUNBOOK §3.6，未配置则送达单不会自动完成）；D49 存量回填需用户按 RUNBOOK §4.1 在控制台执行；真机项（QA §H18 23:50 窗口、§Z1~Z9 服务说明/停用标记/回填可见性/聊天选图/多图/站点逐件、性能体感）由用户点检，agent 不代勾；#5 日期分类按研究推荐 M1 于批 17 实施（D45 已更新）。
