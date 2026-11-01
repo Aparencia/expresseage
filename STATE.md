@@ -57,6 +57,7 @@
 | 批 19 | 欠账收尾批（TD-083/TD-084 收口 + TD-076/TD-085 关闭 + 拆件留余量） | **工程侧完成并收口（2026-11-01）** | TD-084 ①~④（逐件兜底/按件 failureId/超 10 件提示/预约请求时校时）、TD-083 剩余 2 处配置化、TD-076 order-detail 500→327（+G20b 判据）、TD-085 `check.ps1` 钉 36/12/36 条（首红：删 #34 判据后 check.js 仍 35/35、check.ps1 exit 1）；拆件 check.js 999→386、dead-code.js 986→86、selftest-order-flow 999→844、order-partner 1000→815、order-workbench 997→885、partner-pages 982→899；关闭 TD-076/083/084/085、登记 TD-086；`check.ps1` 4 步 0、check 36/36、selftest 36 套 0 失败；真机项 QA §AB 待用户；证据 §14 |
 | 批 20 | 用户反馈批（D51~D57 登记；D51~D56 实现） | **工程侧完成并收口（2026-11-01，HEAD `a7c3127`）** | D51 日结 22:00+尾窗送达即完成、D52 工作台「全部」=今日订单流水、D53 汇总=今日已送达、D54 客户页流式/骨架/空资料置底/底部安全区、D55 兼职取件清单双阶段、D56 后台列表称呼（脱敏）、D57 登记待确认；`check.ps1` 4 步 0、`gate.ps1` 0/0（79 文件/3082 行≤3600）；证据见 §15 |
 | 批 22 | 提审材料包（文档 + 真实截图 + 示意图） | **已交付（2026-11-01）** | `docs/delivery/review/`：6 份说明文档 + `images/screenshots/` 25 张真实页面截图（微信开发者工具自动化 + 测试账号，2 倍放大）+ `images/diagrams/` 4 张示意图；审核文案/隐私对照/类目说明/操作步骤齐备，真实值留 `{{…}}` 占位由用户填写；未改代码与云函数；门禁读数与证据见 §17 |
+| 批 23 | 提审材料册合订本（6 份说明文档 + 29 张图片 → PDF/DOCX + 生成脚本） | **已交付（2026-11-02）** | `docs/delivery/review/提审材料册（合订本）.pdf/.docx`（封面/使用说明/目录 + 六部分 + 29 张图页，占位值留划线空白）；`tools/build_booklet.py` 可重出；`.gitattributes` 增 docx/pdf binary；`00` 增 §1.3；`check.ps1` 4 步 0、check 36/36、check-docs 12/12、零金额 0 命中（白名单 108 项）、selftest 36 套 0 失败；证据见 §18 |
 
 ## 3. 批 1 并行交付快照（全部收口）
 
@@ -1025,4 +1026,62 @@ gate.ps1：红色 0 项；黄色 0 项（退出码 0）
 
 - 提交：`bd85f2e`（feat，41 文件 +1686/−2：6 文档 + 25 截图 + 4 示意图 + README/STATE/CHANGELOG/REVIEW_MATERIALS 回写）+ 本证据提交；工作树干净、未 push、未 tag/提审/发布。
 - 截图原始文件与生成脚本留在本机临时目录（含第三方自动化依赖，不入库）；材料只入库最终图片与说明文档。
+
+## 18. 批 23 收口证据（2026-11-02，提审材料册合订本）
+
+### 18.1 交付物
+
+| 文件 | 说明 |
+| :-- | :-- |
+| `docs/delivery/review/提审材料册（合订本）.pdf` | 6 份说明文档 + 29 张图片合成一册（封面/使用说明/目录 + 六部分 + 29 张图页） |
+| `docs/delivery/review/提审材料册（合订本）.docx` | 同上的可编辑版本（可填划线空白后另存 PDF） |
+| `tools/build_booklet.py` | 生成脚本：Markdown 解析 → DOCX 排版 → LibreOffice Kit 转 PDF；只读 00~05 与 `images/` |
+| `.gitattributes` | 增 `*.docx binary`、`*.pdf binary`（原 `* text eol=lf` 会对二进制做行尾归一；入库后 `git show` 与工作区文件逐字节一致） |
+| `docs/delivery/review/00_材料包总览与使用顺序.md` | 增 §1.3 合订本说明与重出命令、§7 重出条目 |
+
+### 18.2 真实输出（以本地命令输出为准）
+
+```text
+$ powershell -File check.ps1
+PASS  check.js 代码/配置门禁（36 条）
+PASS  check-docs.js 设计文档门禁（--batch 1）
+PASS  zero-money-scan.js 零金额扫描（源码+页面+文档）
+PASS  selftest.js 全部断言 suite（EXPECTED_ASSERTIONS 闸）
+check.ps1：全部通过（4 步，退出码 0）
+
+$ node tools/check.js            → 通过 36 项；失败 0 项
+$ node tools/check-docs.js       → check-docs（--batch 1）：通过 12 项；失败 0 项
+$ node tools/zero-money-scan.js  → 零金额扫描：0 命中（白名单 108 项）
+$ node tools/selftest.js         → 运行 36 套；失败 0 套；SKIP 0 套（无）；完整性 0 项；结果：PASS
+
+$ python tools/build_booklet.py
+[OK] DOCX 提审材料册（合订本）.docx（3.6 MB）；内嵌图片 29 张
+[OK] PDF 页数（对象级估算）81，%PDF- 校验通过
+[OK] PDF 提审材料册（合订本）.pdf（4.6 MB）
+```
+
+- 版式抽检（office-render 144dpi 逐页看图）：封面、使用说明、目录、六部分起始页、图片页、末页共 20+ 页；图片页用「1×1 表格 + 行不跨页」保证图与图注同页，正文表格行不跨页、表头跨页重复，渲染清单 `missingFonts: []`。
+- 二进制入库校验：`git show HEAD:"docs/delivery/review/提审材料册（合订本）.pdf" | cmp - <工作区文件>` 逐字节一致；DOCX 同。
+- 未改代码、云函数、集合、索引；未新增运行时依赖。
+
+### 18.3 待用户
+
+- 合订本划线空白（对外名称/联系方式/版本号/审核邀请码/备案号）由用户在 DOCX 中填写后另存 PDF 再上传；真实值不进仓库。
+- 若作补充材料上传，先确认平台附件格式与大小上限（PDF 4.6 MB）；平台只收图片/视频时改用 `images/` 按 `02` §1 上传。
+
+### 18.4 gate 与提交
+
+```text
+$ powershell -File gate.ps1 -Anchor a245b47 -ScopeFiles "docs/,tools/build_booklet.py,CHANGELOG.md,STATE.md,.gitattributes" -Estimate 900
+[PASS] 锚点可解析：a245b47（HEAD=4075679）
+[PASS] 变更集 6 件（锚点..HEAD + 工作区）
+[PASS] 范围前缀匹配（5 个前缀，6 件变更）
+[PASS] 行数检查完成（全文本口径，UTF-8）
+[PASS] 无 lockfile/package.json 变更
+[PASS] 体量 785 行 ≤ 预估 900 × 1.5 = 1350
+[PASS] 提交信息格式合规
+gate.ps1：红色 0 项；黄色 0 项（退出码 0）
+```
+
+- 提交：`4075679`（docs，6 文件 +785/−0：合订本 PDF/DOCX + 生成脚本 + `00` §1.3 + CHANGELOG + `.gitattributes`）+ 本证据提交（STATE 仅追加本节）；同一锚点复跑 gate 仍为红色 0/黄色 0（变更 7 件；体量以实际输出为准）；工作树干净、未 push、未 tag/提审/发布。
 
