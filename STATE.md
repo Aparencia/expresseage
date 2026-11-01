@@ -5,7 +5,7 @@
 > 更新时机：每批开工/收口、用户裁决变化、风险新增或关闭、HEAD 变化需回读。
 > 本文只记**状态、待办与下一步**，不重复设计口径（口径看 CONTRACT，工程规则看 ENGINEERING，接口看 ARCHITECTURE）。
 
-**快照时间：2026-11-01（HEAD `6aa9a00` **批 16（D43~D50）+ 批 17（D45~D48 实现）+ 批 16 补件 P0-1 + 批 18 审查修复批**（批 16 `f9ccefc` + 证据 `126b5e4`；批 17+P0-1 `a38933e` + 证据 `6aa9a00`；批 18 审查修复批（本提交，证据回填见后续 chore）；`gate.ps1` 红 0/黄 0）：check.js 36 条 / check-docs 12 条；D43~D50 口径登记 + #1 死代码清理/门禁 #35/#36 + #2 送达次日 23:50 日结批 + #3 代客下单补全 + #8 送至楼下展示位/回填 + 性能 P0-1~P0-4/P1-10 + #5 日期分类研究；批 17：#5 日期分类 M1 + P0-5、#7 楼层清单页（32 页）、#9 预约 LATEST（D47）、#10 汇总复制（D48）；批 18 审查修复（P0-1 截图序号/P1-4 已完结翻页/P1-5 工作台复制汇总/P1-6 截断/P1-7/8 楼层清单/P1-9 送达配置化/P1-10 取消 AI；门禁 #36 收紧 44 目录/基线 79→74））；`check.js` 36/36、`check-docs` 12/12、零金额 0 命中（白名单 108 项）、`selftest` 36 套 0 失败（断言数以 `node tools/selftest.js` 汇总行为准）；云端 `api` 已部署并复验、`DEEPSEEK_API_KEY` 已配置；真机/提审/灰度未做）**
+**快照时间：2026-11-01（HEAD `019e5b3` **批 16（D43~D50）+ 批 17（D45~D48 实现）+ 批 16 补件 P0-1 + 批 18 审查修复批**（批 16 `f9ccefc` + 证据 `126b5e4`；批 17+P0-1 `a38933e` + 证据 `6aa9a00`；批 18 审查修复批（`019e5b3`，证据见 §13）；`gate.ps1` 红 0/黄 0）：check.js 36 条 / check-docs 12 条；D43~D50 口径登记 + #1 死代码清理/门禁 #35/#36 + #2 送达次日 23:50 日结批 + #3 代客下单补全 + #8 送至楼下展示位/回填 + 性能 P0-1~P0-4/P1-10 + #5 日期分类研究；批 17：#5 日期分类 M1 + P0-5、#7 楼层清单页（32 页）、#9 预约 LATEST（D47）、#10 汇总复制（D48）；批 18 审查修复（P0-1 截图序号/P1-4 已完结翻页/P1-5 工作台复制汇总/P1-6 截断/P1-7/8 楼层清单/P1-9 送达配置化/P1-10 取消 AI；门禁 #36 收紧 44 目录/基线 79→74））；`check.js` 36/36、`check-docs` 12/12、零金额 0 命中（白名单 108 项）、`selftest` 36 套 0 失败（断言数以 `node tools/selftest.js` 汇总行为准）；云端 `api` 已部署并复验、`DEEPSEEK_API_KEY` 已配置；真机/提审/灰度未做）**
 > 临时总体说明（全局汇总，非状态源）：[`docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md`](docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md)（版本与取数快照由 Lead 统一维护；状态仍以本文件为准、口径以 CONTRACT 为准）。
 
 ## 1. 一句话状态
@@ -757,3 +757,38 @@ QA 条目取数：320（附录 E 已同步）
 **关键分项读数（全部真实实跑）**：`selftest-order-workbench` 273/273（#5/P0-5）、`selftest-pick-list` 116/116（#7 新套件）、`selftest-state` 354/354、`selftest-order` 153/153、`selftest-order-flow` 256/256、`selftest-order-customer` 285/285、`selftest-order-detail-partner` 182/182、`selftest-partner-pages` 226/226（#9）；`selftest-query-window` 42/42、`selftest-partner-stats` 239/239（#10）；`selftest-order-flow` 242/242 与变异回红 7 项（P0-1 补件，首红 215/241）；`selftest-performance` 143/143。
 **首红/变异回红留证**：#5 J 组两波首红（day-view 缺失/分区锚仍完成时间/无 structuralPatch）→ 273/273；#7 首红 21/58 → 116/116 + check #9 `.batch-actions` 首红；#9 六套首红（state 347/354 等）→ 全绿；#10 首红 query-window 27/42、partner-stats 212/239 → 全绿；P0-1 首红 215/241 → 242/242 + 变异回红 25/32（7 红）。
 **待用户/后续**：cleanup 10 分钟触发器需用户控制台确认（RUNBOOK §3.6）；D49 存量回填需用户按 RUNBOOK §4.1 执行；真机项（QA §Z1~Z10、§AA1~AA3、F31~F34、D17~D18、§H18 等）由用户点检，agent 不代勾；#5 形态按研究推荐 M1 实施（用户可改判 M2/M4）；主包仅剩 `pages/profile`/工作台等页面行数余量小，后续改动先拆 parts。
+
+## 13. 批 18 收口证据（2026-11-01，真实输出）
+
+> 批 18 范围：review 9526e37..HEAD 逐条修复——P0-1 多图 imageIndex 重映射、P0-2 #36 扫描器收紧、P0-3 `recognizedItemOf` 清理、P1-4 已完结两阶段翻页、P1-5 D48 工作台复制汇总、P1-6 summary truncated、P1-7/8 楼层清单复制全量+失败重试、P1-9 送达文案配置化、P1-10 取消 AI、P2 首页守卫/appoint 日历日/清单卸载竞态；另修 `gate.ps1` 重命名解析（PS `Split(' -> ')` 被按字符拆分导致重命名文件误判越界，改 `-split`）。收口提交 `019e5b3`。
+
+```
+# powershell -NoProfile -ExecutionPolicy Bypass -File check.ps1
+PASS  check.js 代码/配置门禁（36 条）
+PASS  check-docs.js 设计文档门禁（--batch 1）
+PASS  zero-money-scan.js 零金额扫描（源码+页面+文档）
+PASS  selftest.js 全部断言 suite（EXPECTED_ASSERTIONS 闸）
+check.ps1：全部通过（4 步，退出码 0）
+
+# node tools/selftest.js（末行）
+selftest：运行 36 套；失败 0 套；SKIP 0 套（无）；完整性 0 项；非聚合辅助文件 4 件（已声明）
+结果：PASS
+
+# 其它真实读数
+check.js：通过 36 项；失败 0 项
+check-docs（--batch 1）：通过 12 项；失败 0 项
+零金额扫描：0 命中（白名单 108 项）
+同步完成：写 0 件、删 0 件；hash 对帐 OK（18 件 × 2 套）
+
+# powershell -File gate.ps1 -Anchor 6aa9a00 -ScopeFiles ... -Estimate 2000
+[PASS] 锚点可解析：6aa9a00（HEAD=019e5b3）
+[PASS] 变更集 49 件（锚点..HEAD + 工作区）
+[PASS] 范围前缀匹配（12 个前缀，49 件变更）
+[PASS] 行数检查完成（全文本口径，UTF-8）
+[PASS] 体量 1738 行 ≤ 预估 2000 × 1.5 = 3000
+gate.ps1：红色 0 项；黄色 0 项（退出码 0）
+```
+
+**关键分项读数（全部真实实跑）**：`selftest-order-flow` 277/277、`selftest-order-customer` 290/290、`selftest-order-workbench` 308/308、`selftest-partner-stats` 248/248、`selftest-query-window` 50/50、`selftest-pick-list` 135/135、`selftest-order-detail-partner` 190/190、`selftest-tools` 35/35；`node tools/lib/dead-code.js`：44 目录 / 死函数候选 0 / #35 0 / #36 0、deadExports 基线 74（79→74）。
+**首红/变异回红留证**：#35 注入 `zzM23Probe` → 单点红（`通过 35 项；失败 1 项`）；#36 注入 `zzM24Probe` → 单点红；还原后 `通过 36 项；失败 0 项`。P1-4 状态机 4 组变异（hasMore 回退/跳过窗口续页/truncated 恒 false/少报说明删除）均精确回红后复绿；P0-1 3 图中间失败用例先红后绿；P1-7/8 楼层清单 116→135 断言、P1-9 182→190、P1-6 42→50/239→248、P1-4 273→308 均按先红后绿口径更新。
+**待用户/后续**：真机点检（工作台复制汇总剪贴板/「更早」两阶段翻页/楼层清单复制拉全与失败重试/D43 配置文案/首页切 tab）由用户执行，agent 不代勾；TD-083 剩余 2 处、TD-084/TD-085 为明账（§7 第 33 项）；`cleanup` 触发器与云环境部署状态不变。
