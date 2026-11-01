@@ -15,7 +15,7 @@
 | 4 | `docs/engineering/V4_ARCHITECTURE.md` | 代码分层、写作用域 S0~S10、客户端/云函数冻结接口 | 结构接口以它为准 |
 | 5 | `docs/engineering/V4_ENGINEERING.md` | 工程结构/云资源/测试策略/门禁/部署/批次技术拆分 | 工程规则以它为准 |
 | 6 | `docs/ux/V4_UX_CUSTOMER.md` · `V4_UX_PARTNER.md` · `V4_UX_DEVELOPER.md` | 三端逐页交互、状态与验收清单 | 交互细节以 UX 为准，口径以 CONTRACT 为准 |
-| 7 | `docs/delivery/V4_QA_CHECKLIST.md` · `V4_RUNBOOK.md` · `V4_REVIEW_MATERIALS.md` · `V4_V3_PARITY.md` | 人工点检、部署运维、提审材料、v3 对照 | 执行步骤以 RUNBOOK 为准；验收勾选只能由人做 |
+| 7 | `docs/delivery/V4_QA_CHECKLIST.md` · `V4_RUNBOOK.md` · `V4_REVIEW_MATERIALS.md` · `V4_V3_PARITY.md` · `review/` | 人工点检、部署运维、提审材料、v3 对照、批 22 提审材料包（6 文档 + 25 截图 + 4 示意图） | 执行步骤以 RUNBOOK 为准；验收勾选只能由人做 |
 | 8 | 根 `STATE.md` / `CHANGELOG.md` / `docs/governance/V4_TECH_DEBT.md` / `docs/governance/lessons/` | 唯一状态源 / 版本演进 / 欠账台账 / 踩坑卡 | 状态以 STATE 为准；欠账以台账为准 |
 | 9 | `docs/contract/V4_REBUILD_SPEC.md` | **历史规格快照**（v1.0，2026-10-21）：产品/架构/权限/流程/批次/风险/裁决索引 | 与 CONTRACT 冲突处一律以 CONTRACT 为准（文内已加口径更新指针） |
 | 附 | 根 `AGENTS.md` · `README.md` · `docs/privacy/` · `docs/archive/` | 仓库 agent 纪律 / 对外入口 / 隐私文本与发布前清单 / 历史归档 | 纪律以 AGENTS 为准；隐私对外文本以 privacy 定稿候选为准 |
@@ -123,6 +123,7 @@ docs/
 | `docs/delivery/V4_QA_CHECKLIST.md` | 真机/双机/测试账号人工点检清单：A~Y 分区（账号准入、编号、绑定、下单、订单闭环、工作台、后台、只读视角、切换会话、识别兜底、隔离负向、隐私、发布收尾、批 11/12 增补）+ 证据模板 + 每批最小点检范围 + 取数命令 + 附录 E 条目索引。**人执行，agent 不代勾。** |
 | `docs/delivery/V4_RUNBOOK.md` | 云环境（单环境）、首次部署顺序、云函数配置基线、数据库/存储要点、运行时配置、冒烟清单、灰度发布与回滚演练（§10）、故障排查、安全基线、本地 OCR 排查、待实测项、禁区。 |
 | `docs/delivery/V4_REVIEW_MATERIALS.md` | 提审前置 P0 清单、三角色审核体验路径、审核说明模板、常见驳回点应对、证据留存表、与 QA_CHECKLIST 的交叉映射。 |
+| `docs/delivery/review/`（批 22） | **提审材料包**：`00` 总览与使用顺序、`01` 可直接粘贴的提审文案、`02` 25 张真实截图 + 4 张示意图清单与图注、`03` 隐私声明对照表、`04` 类目备案与业务说明、`05` 提审操作与证据归档；图片在 `images/screenshots/`（真实截图，测试账号）与 `images/diagrams/`（示意图）。真实值只占位，由用户填写。 |
 | `docs/delivery/V4_V3_PARITY.md` | v3→v4 页面/能力/教训对照验收表（等价/改进/新增/取舍不迁）、不迁项理由、剩余项汇总、用户勾选栏。**文档级对照 ≠ 真机验收。** |
 
 ### 5.5 治理、隐私与状态

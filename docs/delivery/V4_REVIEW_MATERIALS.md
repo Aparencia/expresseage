@@ -5,6 +5,7 @@
 > 依据（冲突时按此顺序取源）：`docs/contract/V4_CONTRACT.md` §11（隐私与留存硬约束）、`docs/engineering/V4_ENGINEERING.md` §6.1（用户动作 #6/#8/#9）与 §10.4（发布前置）、`docs/delivery/V4_RUNBOOK.md` §2/§3/§8、`docs/privacy/隐私保护指引.md`（定稿候选 v1.3；历史 v1.0 留痕）、`docs/privacy/发布前填写清单.md`、`docs/delivery/V4_QA_CHECKLIST.md` §H（发布前收尾）与 §P/§R/§V/§T、`STATE.md` §4（用户待办）。
 > 真实值纪律：本文件只写格式与占位符（如 `C-XXXX-XXXX`、`P-XXX-XXX`、`DEV-01`、12 位邀请码 `XXXX-XXXX-XXXX`）。**真实 openid、appid、邀请码、编号、联系方式只出现在微信后台、审核备注或证据文件中，不进仓库。**
 > 状态：批 9-B 新建（2026-10-22）。下表"完成/状态"列全部留空，由用户提审时逐项填写并签核。
+> 配套材料包（批 22，2026-11-01）：`docs/delivery/review/00_材料包总览与使用顺序.md`——6 份提审文档 + 25 张真实截图 + 4 张示意图，按本文件 §1~§5 可直接填写与提交；真实值仍只占位。
 
 ## 0. 全文通用口径
 
