@@ -24,10 +24,13 @@ function versionOf(order) {
   return (order && typeof order.version === 'number' && order.version) || 0;
 }
 
-// 工作台活动区查询：状态 chip = 服务端筛选（传 status）；需查明 = client 过滤；搜索词只进请求体
+// 工作台活动区查询：状态 chip = 服务端筛选（传 status）；需查明 = client 过滤；搜索词只进请求体；
+// 「全部」= 今日订单流水（批 20 D53）→ view=day（七状态、今日内有状态更新、按 statusUpdatedAt desc），
+// 其它 chip 仍 view=workbench（活动单 + 站点分组）。
 function queryOf(options) {
   const opts = options || {};
-  const payload = { view: opts.view || 'workbench', limit: opts.limit || PAGE_LIMIT };
+  const view = opts.view || (filterView.isAll(opts.filterKey) ? 'day' : 'workbench');
+  const payload = { view: view, limit: opts.limit || PAGE_LIMIT };
   const status = filterView.statusOf(opts.filterKey);
   if (status) {
     payload.status = status;
@@ -39,6 +42,15 @@ function queryOf(options) {
     payload.cursor = opts.cursor;
   }
   return payload;
+}
+
+// 列表 → 渲染组：全部=今日流水单组平铺（不做站点分组/四档重排）；其它 chip 仍按站点分组 + 四档动线。
+function viewGroupsOf(list, opts) {
+  const options = opts || {};
+  const groups = filterView.isAll(options.filterKey)
+    ? groupView.buildDayGroups(list, options.nowMs)
+    : groupView.buildGroups(list, options.nowMs);
+  return filterView.filterRows(groups, options.filterKey);
 }
 
 function normalizeCounts(raw) {
@@ -120,7 +132,7 @@ function applyRefresh(prevIn, data, options) {
     }
   });
   // 多选中刷新：先把旧选集落到新行上再 diff，避免轮询补丁把行勾选态冲掉
-  const upstream = filterView.filterRows(groupView.buildGroups(merged, opts.nowMs), opts.filterKey);
+  const upstream = viewGroupsOf(merged, { filterKey: opts.filterKey, nowMs: opts.nowMs });
   const groups = opts.selectedMap ? groupView.applySelection(upstream, opts.selectedMap).groups : upstream;
   const diff = prev.groups
     ? groupView.diffRowPatches(prev.groups, groups)
@@ -163,7 +175,7 @@ function applyAppend(prevIn, data, options) {
       merged.push(order);
     }
   });
-  const upstream = filterView.filterRows(groupView.buildGroups(merged, opts.nowMs), opts.filterKey);
+  const upstream = viewGroupsOf(merged, { filterKey: opts.filterKey, nowMs: opts.nowMs });
   const groups = opts.selectedMap ? groupView.applySelection(upstream, opts.selectedMap).groups : upstream;
   return {
     list: merged,

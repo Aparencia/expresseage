@@ -1,5 +1,5 @@
 // config/defaults.js · 全局配置出厂值（唯一默认值来源；admin.bootstrap 种子、admin 范围校验、公开子集）
-// 契约：docs/contract/V4_CONTRACT.md v1.4 §4 config 行（含 autoCompleteAt（D43）/orderMergeWindowMinutes（D23）/stations（D32））；
+// 契约：docs/contract/V4_CONTRACT.md v1.4 §4 config 行（含 autoCompleteAt（D43/D51）/orderMergeWindowMinutes（D23）/stations（D32））；
 //       docs/data/V4_DATA_MODEL.md §2.10。docs/ENGINEERING §3.6（键与默认/范围）。
 // 纪律：值只含布尔/字符串/整数次数与毫秒；无 Key、无第三方服务标识（客户端包内零外呼痕迹）。
 //       `aiFallback.model` 的出厂模型名由云函数 lib/ai 自持（本文件留空串表示"用云侧默认模型"）。
@@ -32,10 +32,11 @@ const DEFAULT_CONFIG = {
   announcement: { enabled: false, title: '', text: '', updatedAt: 0 },
   maintenance: { enabled: false, text: '' },
   orderTimeoutMinutes: 120,
-  // D43（2026-11-01 用户拍板，CONTRACT §13）：送达单日结批时刻（UTC+8，HH:MM 字符串）。
-  // cleanup 每日取「最近一个已过的该时刻」为 cutoff，deliveredAt ≤ cutoff 的 DELIVERED 单转 COMPLETED；
+  // D51（2026-11-01 用户拍板，CONTRACT §13）：送达单日结批时刻（UTC+8，HH:MM 字符串）。
+  // 每单 cutoff =「该单 deliveredAt 所在 UTC+8 自然日的该时刻」，now ≥ cutoff 即转 COMPLETED：
+  // 该时刻前送达 → 当天该时刻批完成；该时刻后送达 → 下一轮 10 分钟批即完成（≤10 分钟）。
   // 10 分钟触发器粒度 ⇒ 实际完成落在该时刻~+10 分钟；不额外保留顾客确认窗口。旧的「小时数」键作废。
-  autoCompleteAt: '23:50',
+  autoCompleteAt: '22:00',
   screenshotRetentionDays: PROMISE_RETENTION_DAYS.screenshot,
   recognitionFailureRetentionDays: PROMISE_RETENTION_DAYS.recognitionFailure,
   // v1.0（D23）：短间隔重复提交自动并入同一订单的时间窗；0=关闭合并；仅服务端行为，不进公开子集
@@ -98,7 +99,7 @@ const UPLOAD_LIMITS = {
 // 每位开发者的测试账号合计上限（每角色上限走 config.testAccountMaxPerRole）
 const TEST_ACCOUNT_TOTAL_MAX = 6;
 
-// 时刻配置（autoCompleteAt，D43）归一：UTC+8 的 HH:MM（00:00~23:59，补零）。
+// 时刻配置（autoCompleteAt，D43/D51）归一：UTC+8 的 HH:MM（00:00~23:59，补零）。
 // 非法/缺失返回 ''，调用方回落 DEFAULT_CONFIG.autoCompleteAt。单源供 admin.updateConfig（服务端格式闸）、
 // 后台配置页（前端校验/回填）与顾客端送达提示（展示归一）共用，避免三处各写一份格式判据（历史 1~72 vs 1~168 漂移）。
 const CLOCK_TEXT_PATTERN = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;

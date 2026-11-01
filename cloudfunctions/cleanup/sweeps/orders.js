@@ -106,10 +106,11 @@ async function completeDelivered(ctx, order, nowDate) {
 
 async function runAutoComplete(ctx) {
   const C = util.collectionsOf(ctx);
-  // D43（CONTRACT §13）：UTC+8 日结批——cutoff=「最近一个已过的 config.autoCompleteAt（默认 23:50）」；
-  // 今日该时刻未到取昨日。deliveredAt ≤ cutoff 的 DELIVERED 单一律完成（含等号 = 日结时刻前送达的当天完成；
-  // 该时刻后送达的顺延次日）；10 分钟触发器粒度 ⇒ 实际完成落 23:50~24:00。不额外保留顾客确认窗口。
-  const cutoff = util.autoCompleteCutoffOf(ctx.now, ctx.config && ctx.config.autoCompleteAt);
+  // D51（CONTRACT §13）：迟到完成按送达日补算——每单 cutoff =「该单 deliveredAt 所在 UTC+8 自然日的
+  // config.autoCompleteAt（默认 22:00）」，now ≥ cutoff 即完成：22:00 前送达 → 当天 22:00 批完成；
+  // 22:00~24:00 送达 → 当天该时刻已过，下一轮 10 分钟批即完成（≤10 分钟）；跨 0 点补扫按送达日补算。
+  const now = util.msOf(ctx.now);
+  const clockText = ctx.config && ctx.config.autoCompleteAt;
   const rows = await util.scanPage(ctx, C.ORDERS, { status: util.enums.ORDER_STATUS.DELIVERED },
     [['deliveredAt', 'asc']]);
   let scanned = 0;
@@ -119,7 +120,7 @@ async function runAutoComplete(ctx) {
     const order = rows[i];
     // 契约锚 = deliveredAt；缺时间戳的脏数据回落 statusUpdatedAt，避免 DELIVERED 单永久滞留
     const deliveredAt = util.msOf(order.deliveredAt) || util.msOf(order.statusUpdatedAt);
-    if (!deliveredAt || deliveredAt > cutoff) {
+    if (!deliveredAt || !util.isAutoCompleteDue(now, deliveredAt, clockText)) {
       continue;
     }
     scanned += 1;

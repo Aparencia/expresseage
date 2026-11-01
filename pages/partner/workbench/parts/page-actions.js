@@ -9,10 +9,12 @@ const store = require('../../../../store/index');
 const storage = require('../../../../utils/storage');
 const maintenance = require('../../../../utils/maintenance');
 const rowActions = require('./row-actions');
+const filterView = require('./filter-view');
 const batchView = require('./batch-view');
 const actionFlow = require('./action-flow');
 const undoView = require('./undo-view');
 const historyView = require('./history-view');
+const dayView = require('./day-view');
 const guideView = require('./guide-view');
 const summaryCopy = require('./summary-copy');
 
@@ -365,9 +367,7 @@ module.exports = {
     });
   },
 
-  // P1-4 两阶段翻页：①窗口内先带 cursor 续页（expandQuery 同 from/to，不切 to 窗口——修「>30 单永久丢单」）；
-  // ②窗口耗尽后转 olderQuery 首屏不带 cursor（to=昨天0点-1 天然不重叠——修「更早历史不可达」）；
-  // ③only older 查询空/无下一页才置 hasMore=false，空结果且此前无更早行时明确提示已到最早。
+  // 批 20（D53）：已完结只放昨日及更早——单窗口游标翻页（服务端 to=今日0点-1；「更早」由同一游标继续）
   onHistoryMore() {
     const current = this.data.completed;
     const paging = this._historyPaging || historyView.pagingState();
@@ -377,7 +377,7 @@ module.exports = {
     const plan = historyView.moreQueryOf(Date.now(), paging);
     this.setData({ 'completed.loading': true });
     orderApi.listPartner(plan.query).then((data) => {
-      const applied = historyView.moreResultOf(paging, data, plan.phase);
+      const applied = historyView.moreResultOf(paging, data);
       this._historyPaging = applied.paging;
       this._historyRows = historyView.mergeOlderRows(this._historyRows, applied.rows);
       this.setData({ completed: Object.assign({}, this.data.completed,
@@ -391,24 +391,71 @@ module.exports = {
     });
   },
 
-  // D48/P1-5 工作台复制汇总（与统计页同口径）：用页面 load 已保存的 summary，点击不再发请求；
-  // 纯件生成文案（只到苑/栋级）；无单不复制假文案；truncated（服务端扫描触顶）时文案与 toast 都如实提示。
+  // D54/P1-5：复制汇总改「今日已送达」口径——优先复用页面 load 保存的 summary（点击零请求）；
+  // 仅当今日 summary 缺失或 counts 版本已变（用户长时间停在其它 chip）才补拉一次 view=day 再复制。
   onCopySummaryTap() {
     if (this._copying) {
       return;
     }
-    const config = store.get('config') || {};
-    const copy = summaryCopy.copyOf(this._summary, { zoneLabels: config.zoneLabels });
-    if (!copy.visible) {
-      this.toastMsg('当前没有进行中的订单');
+    this._copying = true;
+    this.ensureCopySummary().then((summary) => {
+      const config = store.get('config') || {};
+      const copy = summaryCopy.copyOf(summary, { zoneLabels: config.zoneLabels });
+      if (!copy.visible) {
+        this._copying = false;
+        this.toastMsg('今天还没有送达的订单');
+        return;
+      }
+      wx.setClipboardData({
+        data: copy.text,
+        success: () => this.toastMsg(copy.truncated ? '已复制（可能少报，文案已注明）' : '已复制，可发到顾客群'),
+        fail: () => this.toastMsg('复制没成功，请重试'),
+        complete: () => { this._copying = false; }
+      });
+    }).catch(() => {
+      this._copying = false;
+      this.toastMsg('汇总没加载出来，检查网络后重试');
+    });
+  },
+
+  // 今日已送达 summary 新鲜度：当天 + counts 版本未变 → 直接复用（零请求）；否则补拉一次 view=day
+  ensureCopySummary() {
+    const version = historyView.countsFingerprintOf(this.data.counts);
+    const lastVersion = historyView.countsFingerprintOf(this._summaryCounts);
+    const today = dayView.dayDateKeyOf(Date.now());
+    const fresh = !!this._summary && this._summary.scope === 'deliveredToday'
+      && this._summaryDayKey === today && lastVersion === version;
+    if (fresh) {
+      return Promise.resolve(this._summary);
+    }
+    return orderApi.listPartner({ view: 'day', limit: 1 }).then((data) => {
+      this._summary = (data && data.summary) || this._summary;
+      this._summaryCounts = (data && data.counts) || this._summaryCounts;
+      this._summaryDayKey = today;
+      return this._summary;
+    });
+  },
+
+  // 批 20（D53）：今日完成计数点击 → 切「全部」今日流水并 toast 说明（今日完成单只在「全部」）；
+  // 其它计数照旧跳对应状态 chip（applyFilter 内部会重拉列表）。
+  onCountTap(event) {
+    const target = filterView.countTargetOf(event.currentTarget.dataset.count);
+    if (!target) {
       return;
     }
-    this._copying = true;
-    wx.setClipboardData({
-      data: copy.text,
-      success: () => this.toastMsg(copy.truncated ? '已复制（可能少报，文案已注明）' : '已复制，可发到顾客群'),
-      fail: () => this.toastMsg('复制没成功，请重试'),
-      complete: () => { this._copying = false; }
-    });
+    if (target.filter && target.filter !== this.data.filter) {
+      this.applyFilter(target.filter);
+    }
+    if (target.toast) {
+      this.toastMsg(target.toast);
+    }
+  },
+
+  // 统计页「今日完成」带 completedDate=今天 跳入：今日完成单只在「全部」今日流水 → 切「全部」并说明
+  focusTodayFlow() {
+    if (this.data.filter !== filterView.FILTER_ALL) {
+      this.applyFilter(filterView.FILTER_ALL);
+    }
+    this.toastMsg('今日完成的单都在「全部」里');
   },
 };

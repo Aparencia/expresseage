@@ -1,9 +1,36 @@
-/* pkg-partner/pages/pick-list/index.wxss · 楼层配送清单局部样式（分组卡片 + 多选 + 底部批量条） */
+/* pkg-partner/pages/pick-list/index.wxss · 取件清单局部样式（阶段 chip + 站点/楼层分组卡片 + 多选 + 底部批量条） */
 .head-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 8rpx 0 24rpx;
+}
+
+.stage-chips {
+  display: flex;
+  padding: 0 0 16rpx;
+}
+
+.chip {
+  min-height: 64rpx;
+  line-height: 64rpx;
+  padding: 0 28rpx;
+  border-radius: 32rpx;
+  background: #FFFFFF;
+  color: #666666;
+  font-size: 26rpx;
+  margin-right: 16rpx;
+}
+
+.chip-active {
+  background: #2B6DE5;
+  color: #FFFFFF;
+}
+
+.copy-group-btn,
+.copy-row-btn {
+  margin-left: 16rpx;
+  flex: none;
 }
 
 .copy-btn {
@@ -107,6 +134,21 @@
 
 .parcel-count {
   color: #666666;
+}
+
+.piece-line {
+  margin-top: 4rpx;
+  color: #333333;
+}
+
+.piece-station {
+  display: inline-block;
+  margin-right: 8rpx;
+  padding: 0 10rpx;
+  border-radius: 8rpx;
+  background: #FFF4E5;
+  color: #B25E00;
+  font-size: 22rpx;
 }
 
 .line-foot {

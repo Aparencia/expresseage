@@ -1,13 +1,10 @@
 // pages/partner/workbench/parts/history-view.js · 已完结自然日分区纯件（零 wx）
 // 口径：CONTRACT §13 D45（M1）+ UX_PARTNER §4.10——已完结区（COMPLETED/CANCELLED）按订单 `createdAt`
-//       （UTC+8 自然日）分「今天/昨天/更早」；`completedAt`/`cancelledAt` 只做行为与统计展示，不当分区锚。
-//       折叠入口仍为「已完结 · 今天 N 单 >」（完成时间窗口径，服务端零改动）；「更早还有 N 单 >」继续翻页。
-//       P1-4（修复批 T3）：「更早」翻页改两阶段状态机——窗口内先带 cursor 续页，窗口耗尽后转「更早」桶
-//       （首屏不带 cursor，天然不与今天/昨天窗口重叠），服务端零改动；展开后 hasMore 先 true（更早未知），
-//       直到「更早」查询返回空/无下一页才置 false，修复「窗口内 >30 单被 to 窗口滤掉」与「更早不可达」。
+//       （UTC+8 自然日）分「昨天/更早」；`completedAt`/`cancelledAt` 只做行为与统计展示，不当分区锚。
+//       批 20（D53）：已完结区只放「昨日及更早」——今天完成/取消的单只出现在「全部」今日流水；
+//       折叠入口「已完结 · 昨日及更早 N 单 >」，「更早还有更多单 >」按服务端游标继续翻页（单窗口）。
 // 说明：listPartner 的 history 视图不计入 counts（P0-2/TD-073；响应仍回零值模板、页面不消费，
-//       只有 workbench 视图算 6 个 count），故折叠入口的 N 用「今天窗口已加载条数」如实展示
-//       （有下一页时带 +），不虚构精确总数。
+//       只有 workbench/day 视图算 6 个 count）。
 'use strict';
 
 const groupView = require('./group-view');
@@ -27,10 +24,19 @@ function yesterdayStartMs(nowMs) {
   return dayView.yesterdayStartMs(nowMs);
 }
 
-// 折叠入口摘要：今天窗口（from=今天 0 点，to=now）
-function summaryQuery(nowMs) {
+// 已完结窗口上界：今日 0 点 − 1ms（UTC+8）——只含昨日及更早；今天完成单只在「全部」今日流水（D53）
+function historyToMs(nowMs) {
+  return dayStartMs(nowMs) - 1;
+}
+
+// 折叠入口摘要 / 展开首屏：昨日及更早第一页（hasMore 由服务端 nextCursor 如实表达）
+function historyQueryOf(nowMs) {
   const now = typeof nowMs === 'number' ? nowMs : Date.now();
-  return { view: 'history', from: dayStartMs(now), to: now, limit: HISTORY_LIMIT };
+  return { view: 'history', to: historyToMs(now), limit: HISTORY_LIMIT };
+}
+
+function summaryQuery(nowMs) {
+  return historyQueryOf(nowMs);
 }
 
 // P0-2/TD-073：工作台每一次 onShow 都会先拉主列表（counts 六项随响应更新），历史摘要只在
@@ -67,90 +73,50 @@ function summaryCallPlan(state) {
   return { call: false, reason: 'clean', calls: 1 };
 }
 
-// 展开：一次拉「今天+昨天」（from=昨天 0 点，to=now；客户端按终态时间分区）
+// 展开：昨日及更早第一页（单窗口；游标翻页见 moreQueryOf/pageApplied，服务端窗口天然不重叠）
 function expandQuery(nowMs) {
-  const now = typeof nowMs === 'number' ? nowMs : Date.now();
-  return { view: 'history', from: yesterdayStartMs(now), to: now, limit: HISTORY_LIMIT };
+  return historyQueryOf(nowMs);
 }
 
-// 更早：昨天 0 点之前的历史（游标沿用上页响应；首屏不带 cursor，to 窗口天然不与 expand 重叠）
-function olderQuery(nowMs, cursor) {
-  const now = typeof nowMs === 'number' ? nowMs : Date.now();
-  const payload = { view: 'history', to: yesterdayStartMs(now) - 1, limit: HISTORY_LIMIT };
-  if (cursor) {
-    payload.cursor = cursor;
+// 「更早还有更多单 >」→ 下一页 query：同一窗口 + 服务端游标（单窗口游标分页，不再两阶段切换）
+function moreQueryOf(nowMs, state) {
+  const st = state || {};
+  const query = historyQueryOf(nowMs);
+  if (st.cursor) {
+    query.cursor = st.cursor;
   }
-  return payload;
+  return { query: query };
 }
 
-// ── P1-4 已完结两阶段翻页状态机（纯函数；服务端零改动）────────────────────────
-// 现场缺陷：expand 首屏窗口 = [昨天0点, now]，窗口内命中 >30 单时第 31 条起会被 olderQuery 的
-// to=昨天0点-1 滤掉（永久丢单）；窗口内 <30 单时 nextCursor=null → 无「更早」入口（更早历史不可达）。
-// 修法：阶段 window（同一 from/to 窗口带 cursor 续页）→ 窗口耗尽后阶段 older（首屏不带 cursor）。
-const PHASE_WINDOW = 'window';
-const PHASE_OLDER = 'older';
-
-// 初始状态（未展开）：window 阶段第一屏待请求
+// 未展开的初始状态：hasMore 先 true（展开后以服务端 nextCursor 为准）
 function pagingState() {
-  return { phase: PHASE_WINDOW, cursor: '', windowDone: false, hasMore: true, olderLoaded: 0 };
+  return { cursor: '', hasMore: true, olderLoaded: 0 };
 }
 
-// 展开首屏返回后：窗口内还有下一页就继续 window；hasMore 先置 true（更早未知）
+// 展开首屏返回后：hasMore = 服务端还有下一页（单窗口，翻完即到最早）
 function openedPaging(result) {
   const data = result || {};
-  return {
-    phase: PHASE_WINDOW,
-    cursor: data.nextCursor || '',
-    windowDone: !data.nextCursor,
-    hasMore: true,
-    olderLoaded: 0
-  };
+  return { cursor: data.nextCursor || '', hasMore: !!data.nextCursor, olderLoaded: 0 };
 }
 
-// 「更早还有更多单 >」→ 下一页 query 与本次进入的阶段：
-// ① window 未耗尽：expandQuery 同窗口 + cursor 续页（绝不切换 to 窗口）；
-// ② window 耗尽：转 older，首屏不带 cursor（to=昨天0点-1，天然不与窗口重叠）。
-function moreQueryOf(nowMs, state) {
-  const st = state || pagingState();
-  if (st.phase !== PHASE_OLDER && st.cursor) {
-    return { phase: PHASE_WINDOW, query: Object.assign(expandQuery(nowMs), { cursor: st.cursor }) };
-  }
-  const cursor = st.phase === PHASE_OLDER ? st.cursor : '';
-  return { phase: PHASE_OLDER, query: olderQuery(nowMs, cursor) };
-}
-
-// 收到一页后推进状态机。phase = 本次请求所属阶段（moreQueryOf 的 plan.phase；首屏 = window）。
-// window 阶段 hasMore 恒 true（更早未知，直到 older 查询确认）；older 阶段只有服务端 nextCursor 才算还有。
-function pageApplied(state, result, phase) {
+// 收到一页后推进状态（跨页去重由页面 mergeOlderRows 保证）
+function pageApplied(state, result) {
   const st = state || pagingState();
   const data = result || {};
   const list = Array.isArray(data.list) ? data.list : [];
   const nextCursor = data.nextCursor || '';
-  if ((phase || st.phase) !== PHASE_OLDER) {
-    return {
-      phase: PHASE_WINDOW,
-      cursor: nextCursor,
-      windowDone: !nextCursor,
-      hasMore: true,
-      olderLoaded: st.olderLoaded || 0
-    };
-  }
   return {
-    phase: PHASE_OLDER,
     cursor: nextCursor,
-    windowDone: st.windowDone === true,
     hasMore: !!nextCursor,
     olderLoaded: (st.olderLoaded || 0) + list.length
   };
 }
 
-// 翻页结果 → 状态机推进 + 是否需要提示「已到最早的订单」：空结果、无下一页且此前从未加载过更早行。
-function moreResultOf(state, result, phase) {
-  const next = pageApplied(state, result, phase);
+// 翻页结果 → 状态机推进 + 是否需要提示「已到最早的订单」（空页才算到最早；正常末页由 hasMore=false 收口）
+function moreResultOf(state, result) {
+  const next = pageApplied(state, result);
   const list = Array.isArray(result && result.list) ? result.list : [];
-  const notice = next.phase === PHASE_OLDER && list.length === 0 && !next.hasMore
-    && (next.olderLoaded || 0) === 0 ? 'earliest' : '';
-  return { paging: next, rows: list, notice: notice };
+  return { paging: next, rows: list, notice: list.length === 0 ? 'earliest' : '' };
 }
 
 // 任意时刻 → 自然日桶（今天/昨天/更早），单源在 day-view（D45）
@@ -179,7 +145,7 @@ function buildHistoryRows(rows, nowMs) {
   });
 }
 
-// 分区：今天 / 昨天 / 更早（标题带日期，按 createdAt 归档；空分区不渲染）
+// 分区：昨天 / 更早（标题带日期，按 createdAt 归档；空分区不渲染——今日完成单不入已完结区）
 // 分节实现单源在 day-view.sectionsOf（同一批 rows + 同一 nowMs → 计数与 total 一致）
 function sectionsOf(rows, nowMs) {
   return dayView.sectionsOf(buildHistoryRows(rows, nowMs), nowMs);
@@ -194,7 +160,7 @@ function collapsedState(data) {
   };
 }
 
-// 「更早」翻页按钮：hasMore=服务端还有下一页；olderLoaded=已在展开面板加载的更早条数
+// 「更早」翻页按钮：hasMore=服务端还有下一页；olderLoaded=已在展开面板加载的已更早条数
 function moreText(options) {
   const opts = options || {};
   if (opts.loading) {
@@ -211,39 +177,39 @@ function moreText(options) {
 
 function mergeOlderRows(existingRows, pageRows) {
   const seen = {};
-  const out = [];
+  const rowList = [];
   (Array.isArray(existingRows) ? existingRows : []).forEach((row) => {
     if (row && row.orderNo) {
       seen[row.orderNo] = true;
     }
-    out.push(row);
+    rowList.push(row);
   });
   (Array.isArray(pageRows) ? pageRows : []).forEach((row) => {
     if (row && row.orderNo && !seen[row.orderNo]) {
       seen[row.orderNo] = true;
-      out.push(row);
+      rowList.push(row);
     }
   });
-  return out;
+  return rowList;
 }
 
 // 展开面板的完整视图状态：sections + 「更早」按钮文案/游标
 function panelOf(context) {
   const ctx = context || {};
   const now = typeof ctx.nowMs === 'number' ? ctx.nowMs : Date.now();
-  const olderRows = Array.isArray(ctx.olderRows) ? ctx.olderRows : [];
-  const allRows = mergeOlderRows(ctx.rows || [], olderRows);
+  const allRows = mergeOlderRows(ctx.rows || [], ctx.olderRows || []);
   const sections = sectionsOf(allRows, now);
   const earlierCount = sections.filter((section) => section.key === 'earlier')[0];
+  const olderLoaded = earlierCount ? earlierCount.rows.length : 0;
   return {
     sections: sections,
-    olderLoaded: earlierCount ? earlierCount.rows.length : 0,
+    olderLoaded: olderLoaded,
     hasMore: !!ctx.hasMore,
     nextCursor: ctx.nextCursor || null,
     moreText: moreText({
       loading: !!ctx.loading,
       hasMore: !!ctx.hasMore,
-      olderLoaded: earlierCount ? earlierCount.rows.length : 0
+      olderLoaded: olderLoaded
     })
   };
 }
@@ -254,14 +220,14 @@ module.exports = {
   HISTORY_LIMIT,
   dayStartMs,
   yesterdayStartMs,
+  historyToMs,
   summaryQuery,
   countsFingerprintOf,
   summaryCallPlan,
   expandQuery,
-  olderQuery,
+  moreQueryOf,
   pagingState,
   openedPaging,
-  moreQueryOf,
   pageApplied,
   moreResultOf,
   dayKeyOf,

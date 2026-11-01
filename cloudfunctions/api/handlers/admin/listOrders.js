@@ -3,6 +3,8 @@
 //       §5.3「游标分页、禁止 skip/where({}) 全表扫描与客户端过滤」。
 // 分页：游标 {sortValue,id}（statusUpdatedAt desc + orderNo 平局），过滤条件全部进服务端 where；
 // 关键词=订单号/顾客编号/兼职编号前缀，走服务端 gte(prefix) 升序游标（内存只做 startsWith 收敛）。
+// 称呼：行内 customerDisplayName/partnerDisplayName 走 _dto.loadOrderDisplayNames 按本页批量 in 取名
+//       （一页 ≤100 单 → 顾客/兼职各 ≤1 次查询；不逐单 N+1），脱敏由 DTO 统一 maskedName。
 'use strict';
 
 const { COLLECTIONS } = require('../../shared/collections');
@@ -108,8 +110,9 @@ async function handler(ctx, payload) {
       cursor: query.cursor
     }, null);
   }
+  const displayNames = await dto.loadOrderDisplayNames(scope, result.list);
   return {
-    list: result.list.map((row) => dto.orderBrief(row, row.isTest === true)),
+    list: result.list.map((row) => dto.orderBrief(row, row.isTest === true, displayNames[row.orderNo])),
     nextCursor: result.nextCursor,
     includeTest: built.includeTest
   };

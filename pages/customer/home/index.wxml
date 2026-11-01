@@ -26,8 +26,13 @@
         <avatar-view src="{{partnerCard.avatarUrl}}" fileId="{{partnerCard.avatarFileId}}" name="{{partnerCard.name}}" size="88" bindretry="onPartnerAvatarRetry" />
         <view class="col partner-meta flex-1">
           <view class="row partner-name-row">
-            <text class="section-title ellipsis partner-name">我的兼职 · {{partnerCard.name || '资料加载中'}}</text>
-            <view class="tag partner-status {{partnerCard.accepting ? '' : 'tag-disabled'}}">{{partnerCard.acceptingText}}</view>
+            <!-- 批20-C：首屏昵称未到时用灰色骨架条占位（替掉文字加载态），数据到达直接替换 -->
+            <block wx:if="{{partnerCard.name}}">
+              <text class="section-title ellipsis partner-name">我的兼职 · {{partnerCard.name}}</text>
+              <view class="tag partner-status {{partnerCard.accepting ? '' : 'tag-disabled'}}">{{partnerCard.acceptingText}}</view>
+            </block>
+            <view wx:elif="{{loading}}" class="skeleton-line partner-name-skeleton"></view>
+            <text wx:else class="section-title ellipsis partner-name">我的兼职</text>
           </view>
           <id-text kind="PARTNER" no="{{partnerCard.partnerNo}}" />
         </view>

@@ -76,9 +76,12 @@ function nextQuery(state) {
 }
 
 // 首屏/刷新响应：整页替换；与旧行对比得出"顾客新绑定"提示（顾客发起才能新增）
+// 批20-C：同 bindingId 且 avatarFileId 未变 → 沿用旧 avatarUrl（服务端每次重签 URL 不闪头像）；
+// 头像加载失败点重试时传 freshAvatars=true，必须换新签 URL（沿用旧 URL 重试必然再失败）。
 function applyResponse(state, data, options) {
   const opts = options || {};
-  const rows = attachAvatarUrls(view.buildListRows(data && data.list), data && data.list);
+  const built = attachAvatarUrls(view.buildListRows(data && data.list), data && data.list);
+  const rows = opts.freshAvatars === true ? built : view.keepAvatarUrls(state.rows, built);
   // 首次加载没有"旧行"可比，不出"新顾客已绑定"提示（避免把首屏误当新增）
   const newRows = state.hasLoaded ? view.newRowsOf(state.rows, rows) : [];
   return Object.assign({}, state, {
@@ -97,8 +100,9 @@ function applyResponse(state, data, options) {
 function applyMoreResponse(state, data, options) {
   const opts = options || {};
   const incoming = attachAvatarUrls(view.buildListRows(data && data.list), data && data.list);
+  const merged = view.appendRows(state.rows, incoming);
   return Object.assign({}, state, {
-    rows: view.appendRows(state.rows, incoming),
+    rows: view.keepAvatarUrls(state.rows, merged),
     nextCursor: textOf(data && data.nextCursor),
     loading: false,
     loadingMore: false,
@@ -127,12 +131,127 @@ function dismissBanner(state) {
   return Object.assign({}, state, { newRows: [] });
 }
 
+// ── 批20-C：首屏流式渲染（分片 setData）+ 刷新行级 diff ─────────────────────────────
+const STREAM_CHUNK_ROWS = view.STREAM_CHUNK_ROWS;
+
+// 分片计划：首片立即 setData，其余片按帧以 rows[n] 路径追加（每片 ≤10 行，不一次性渲染整页）
+function chunkPlanOf(rows) {
+  const chunks = view.chunkRowsOf(rows, STREAM_CHUNK_ROWS);
+  if (!chunks.length) {
+    return { first: [], rest: [], hasRest: false };
+  }
+  return { first: chunks[0], rest: chunks.slice(1), hasRest: chunks.length > 1 };
+}
+
+// 分片追加补丁：只发新片 rows[n]（不重发已渲染行）
+function appendRowPatches(renderedCount, rows) {
+  const start = typeof renderedCount === 'number' && renderedCount > 0 ? Math.floor(renderedCount) : 0;
+  const list = listOf(rows);
+  const patches = {};
+  list.forEach((row, offset) => {
+    patches['rows[' + (start + offset) + ']'] = row;
+  });
+  return { patches: patches, renderedCount: start + list.length };
+}
+
+// 分片计划 → 逐片追加补丁（页面按帧 setData(appendPatches[i])）
+function appendPlanOf(plan) {
+  const source = plan || {};
+  let rendered = Array.isArray(source.first) ? source.first.length : 0;
+  const appendPatches = (Array.isArray(source.rest) ? source.rest : []).map((rowsChunk) => {
+    const step = appendRowPatches(rendered, rowsChunk);
+    rendered = step.renderedCount;
+    return step.patches;
+  });
+  return { appendPatches: appendPatches, renderedCount: rendered };
+}
+
+function sameRowOf(left, right) {
+  if (!left || !right) {
+    return false;
+  }
+  const keys = Object.keys(left);
+  if (keys.length !== Object.keys(right).length) {
+    return false;
+  }
+  return keys.every((key) => Object.prototype.hasOwnProperty.call(right, key) && left[key] === right[key]);
+}
+
+// 行级 diff：行数+顺序（bindingId）不变 → 只返回变化行的 rows[n] 补丁（可为空对象）；
+// 结构变化（新增/解绑/换关键词）→ 返回 null，由调用方回退整表分片，避免按旧下标打错补丁。
+function rowPatchesOf(previous, next) {
+  const prev = listOf(previous);
+  const nxt = listOf(next);
+  if (prev.length !== nxt.length) {
+    return null;
+  }
+  for (let index = 0; index < prev.length; index += 1) {
+    if (!prev[index] || !nxt[index] || prev[index].bindingId !== nxt[index].bindingId) {
+      return null;
+    }
+  }
+  const patches = {};
+  for (let index = 0; index < nxt.length; index += 1) {
+    if (!sameRowOf(prev[index], nxt[index])) {
+      patches['rows[' + index + ']'] = nxt[index];
+    }
+  }
+  return patches;
+}
+
+// 触底追加：旧列表是新列表的严格前缀 → 只追加新行（不清空已渲染列表、不重发旧行）
+function prefixAppendPatches(previous, next) {
+  const prev = listOf(previous);
+  const nxt = listOf(next);
+  if (!prev.length || nxt.length <= prev.length) {
+    return null;
+  }
+  for (let index = 0; index < prev.length; index += 1) {
+    if (!prev[index] || !nxt[index] || prev[index].bindingId !== nxt[index].bindingId) {
+      return null;
+    }
+  }
+  const chunks = view.chunkRowsOf(nxt.slice(prev.length), STREAM_CHUNK_ROWS);
+  if (!chunks.length) {
+    return null;
+  }
+  let rendered = prev.length;
+  return chunks.map((rowsChunk) => {
+    const step = appendRowPatches(rendered, rowsChunk);
+    rendered = step.renderedCount;
+    return step.patches;
+  });
+}
+
+// 加载结果 → 页面 setData 计划：结构不变只发变化行；触底追加只发新行；否则首片 + 分帧追加（同工作台 P0-5）
+function viewPlanOf(state, options) {
+  const opts = options || {};
+  const snapshot = buildSnapshot(state, opts);
+  const patches = rowPatchesOf(opts.prevRows, state.rows);
+  if (patches) {
+    const patch = Object.assign({}, snapshot);
+    delete patch.rows;
+    return { mode: 'diff', setData: Object.assign(patch, patches), chunk: null, appendPatches: [] };
+  }
+  const appended = prefixAppendPatches(opts.prevRows, state.rows);
+  if (appended) {
+    const appendPatch = Object.assign({}, snapshot);
+    delete appendPatch.rows;
+    return { mode: 'append', setData: appendPatch, chunk: { first: listOf(opts.prevRows), rest: [] }, appendPatches: appended };
+  }
+  const chunk = chunkPlanOf(state.rows);
+  const append = appendPlanOf(chunk);
+  snapshot.rows = chunk.first;
+  return { mode: 'replace', setData: snapshot, chunk: chunk, appendPatches: append.appendPatches };
+}
+
 // 页面快照 → setData：状态机字段 + 只读/会话下的入口显隐（§6.3：READONLY 隐藏代客下单入口、会话内隐藏分享）
 function buildSnapshot(state, options) {
   const opts = options || {};
   const listState = view.listStateOf({
     rows: state.rows,
     loading: state.loading,
+    loadingMore: state.loadingMore,
     error: state.error,
     keyword: state.keyword,
     lastSuccessAt: state.lastSuccessAt,
@@ -154,6 +273,7 @@ function buildSnapshot(state, options) {
 
 module.exports = {
   PAGE_LIMIT,
+  STREAM_CHUNK_ROWS,
   createState,
   applyKeyword,
   refreshQuery,
@@ -164,5 +284,10 @@ module.exports = {
   applyError,
   beginLoad,
   dismissBanner,
-  buildSnapshot
+  buildSnapshot,
+  chunkPlanOf,
+  appendPlanOf,
+  appendRowPatches,
+  rowPatchesOf,
+  viewPlanOf
 };

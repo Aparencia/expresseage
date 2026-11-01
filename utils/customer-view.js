@@ -9,6 +9,9 @@ const roomTag = require('./room-tag');
 const PHONE_TAIL_LENGTH = 4;
 const KEYWORD_MAX = 30;
 const PAGE_LIMIT = 20;
+// 批20-C：首屏流式——数据到达后首片（≤10 行）立即 setData，其余片按帧以 rows[n] 路径追加。
+const STREAM_CHUNK_ROWS = 10;
+const SKELETON_ROWS = [1, 2, 3, 4, 5, 6];
 const MINUTE_MS = 60 * 1000;
 
 function textOf(value) {
@@ -109,9 +112,11 @@ function buildKeyText(customer) {
 }
 
 // listBindings 行 → 页面行视图（不显示 openid、不拼完整手机号、不本地排序）
+// 批20-C：dormKey 空的顾客（资料未完善，服务端已置底）不再拼假宿舍锚，行上标「资料未完善」。
 function buildListRow(item) {
   const customer = item || {};
-  const anchorText = formatDorm(customer.dormKey, customer.roomTag);
+  const dormKey = textOf(customer.dormKey);
+  const anchorText = dormKey ? formatDorm(dormKey, customer.roomTag) : '';
   const keyText = buildKeyText(customer);
   const parts = [];
   if (anchorText) {
@@ -130,13 +135,14 @@ function buildListRow(item) {
     displayName: textOf(customer.displayName),
     displayNameText: textOf(customer.displayName) || '未填称呼',
     phoneTailText: tailText(customer.phoneTail),
-    dormKey: textOf(customer.dormKey),
+    dormKey: dormKey,
     roomTagText: roomTagText(customer.roomTag),
     buildingText: textOf(customer.buildingText),
     anchorText: anchorText,
     keyText: keyText,
     anchorKeyText: parts.join(' · '),
     partnerNote: textOf(customer.partnerNote),
+    incompleteText: dormKey ? '' : '资料未完善',
     activeOrderCount: activeCount,
     activeOrderCountText: activeCount > 0 ? '进行中 ' + activeCount + ' 单' : '',
     boundAtText: shortDateText(customer.boundAt)
@@ -174,6 +180,35 @@ function newRowsOf(previous, next) {
     }
   });
   return listOf(next).filter((row) => row && row.bindingId && !seen[row.bindingId]);
+}
+
+// 批20-C：刷新时头像 URL 沿用——同 bindingId 且 avatarFileId 未变 → 保留旧 avatarUrl。
+// 服务端每次 listBindings 都重签 5 分钟临时 URL，URL 字符串必变；直接换 src 会让头像闪一下重新下载。
+function keepAvatarUrls(previous, next) {
+  const byId = {};
+  listOf(previous).forEach((row) => {
+    if (row && row.bindingId) {
+      byId[row.bindingId] = row;
+    }
+  });
+  return listOf(next).map((row) => {
+    const old = byId[row.bindingId];
+    if (old && old.avatarUrl && old.avatarFileId === row.avatarFileId) {
+      return Object.assign({}, row, { avatarUrl: old.avatarUrl });
+    }
+    return row;
+  });
+}
+
+// 批20-C：行分片（首屏流式渲染）——每片 ≤size 行；空列表返回空数组（不画假行）
+function chunkRowsOf(rows, size) {
+  const list = listOf(rows);
+  const step = typeof size === 'number' && size > 0 ? Math.floor(size) : STREAM_CHUNK_ROWS;
+  const chunks = [];
+  for (let index = 0; index < list.length; index += step) {
+    chunks.push(list.slice(index, index + step));
+  }
+  return chunks;
 }
 
 // 顾客新绑定后顶部提示（顾客发起；兼职端无任何绑定入口）
@@ -220,13 +255,15 @@ function listStateOf(input) {
     showSkeleton: mode === 'skeleton',
     showError: mode === 'error',
     showEmpty: mode === 'empty',
-    skeletonRows: [1, 2, 3],
+    skeletonRows: SKELETON_ROWS,
     emptyText: emptyTextOf(state.keyword),
     emptyActionText: textOf(state.keyword) ? '清空搜索' : '分享绑定卡片',
     errorText: mode === 'error' ? (textOf(state.error) || '客户没加载出来，检查网络后重试') : '',
     staleText: mode === 'list' && state.error ? staleTextOf(state.lastSuccessAt) : '',
     lastSuccessText: state.lastSuccessAt ? '更新于 ' + timeHM(state.lastSuccessAt) : '',
-    footerText: loading && hasRows ? '正在加载…' : (nextCursor ? '上滑加载更多' : (showRowsTail(state) ? '没有更多了' : '')),
+    // 批20-C：刷新在途显示「更新中…」（旧列表保留，不闪骨架）；触底追加仍走「正在加载…」
+    footerText: loading && hasRows ? (state.loadingMore === true ? '正在加载…' : '更新中…')
+      : (nextCursor ? '上滑加载更多' : (showRowsTail(state) ? '没有更多了' : '')),
     hasMore: nextCursor !== ''
   };
 }
@@ -239,10 +276,13 @@ module.exports = {
   PHONE_TAIL_LENGTH,
   KEYWORD_MAX,
   PAGE_LIMIT,
+  STREAM_CHUNK_ROWS,
   buildBannerText,
   buildListRow,
   buildListRows,
   appendRows,
+  chunkRowsOf,
+  keepAvatarUrls,
   dedupeRows,
   emptyTextOf,
   formatDorm,

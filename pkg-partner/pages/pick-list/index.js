@@ -1,7 +1,8 @@
-// pkg-partner/pages/pick-list/index.js · 独立「楼层配送清单」页（D46，第 32 页）
-// 口径：CONTRACT §13-D46、UX_PARTNER §3.11；数据源 order.listPartner 工作台视图 + 已取件状态
-//       （现成动作、无服务端改动）；按苑→栋→楼层分组、分页/分片 ≤20 行；不做定时轮询，onShow/下拉才刷新；
-//       批量送达复用工作台 batch-view/row-actions 纯件（不新增 action）；页面只做取参/接线/setData/事件转发。
+// pkg-partner/pages/pick-list/index.js · 独立「取件清单」页（D46，第 32 页；批 20 扩为双阶段）
+// 口径：CONTRACT §13-D46、UX_PARTNER §3.11；数据源 order.listPartner 工作台视图（现成动作、无服务端改动）：
+//       阶段一「待取件」= 已接单状态 → 按取件站点 P1~P8 分组（parts/pick-view，只读清单 + 单行/整组/全部复制）；
+//       阶段二「待送达」= 已取件状态 → 按苑→栋→楼层分组（parts/view-model，批量送达复用工作台纯件）。
+//       两阶段分页/分片 ≤20 行；不做定时轮询，onShow/下拉/切阶段才刷新；页面只做接线/setData/事件转发。
 'use strict';
 
 const orderApi = require('../../../api/modules/order');
@@ -13,15 +14,21 @@ const batchView = require('../../../pages/partner/workbench/parts/batch-view');
 const rowActions = require('../../../pages/partner/workbench/parts/row-actions');
 const share = require('../../../utils/share/handlers');
 const view = require('./parts/view-model');
+const pickView = require('./parts/pick-view');
 
 const DETAIL_PAGE = '/pkg-partner/pages/order-detail/index?orderNo=';
 const ACCOUNT_SWITCH_PAGE = '/pkg-admin/pages/account-switch/index';
 const READONLY_COPY = '开发者只读视角不能操作';
 const EMPTY_TEXT = '当前没有待送达的已取件单。取件单会自动出现在这里，下拉或切回本页刷新。';
 
-Page({
+Page(Object.assign({
   data: {
     stage: 'loading',
+    tab: pickView.TAB_PICK,
+    tabPick: pickView.TAB_PICK,
+    tabDeliver: pickView.TAB_DELIVER,
+    pickTabText: pickView.tabTextsOf(null).pick,
+    deliverTabText: pickView.tabTextsOf(null).deliver,
     errorText: '',
     loading: false,
     loadingMore: false,
@@ -29,6 +36,9 @@ Page({
     chunks: [],
     nextCursor: null,
     summary: { total: 0, buildingCount: 0, text: '' },
+    pickChunks: [],
+    pickNextCursor: null,
+    pickSummary: { total: 0, pieceTotal: 0, stationCount: 0, text: '', loadedText: '' },
     readonly: false,
     testWrite: false,
     selecting: false,
@@ -42,6 +52,8 @@ Page({
 
   onLoad() {
     this._orders = [];
+    this._pickOrders = [];
+    this._pickGroups = [];
     this._selected = {};
     this._lastBatch = null;
     // P2：卸载守卫 + 请求序号（refresh 与上拉分页共用；旧响应不追加、不 setData）
@@ -74,7 +86,8 @@ Page({
   },
 
   onReachBottom() {
-    if (this.data.copyLoading || this.data.loadingMore || !this.data.nextCursor) {
+    const cursor = this.data.tab === pickView.TAB_PICK ? this.data.pickNextCursor : this.data.nextCursor;
+    if (this.data.copyLoading || this.data.loadingMore || !cursor) {
       return;
     }
     this.load({ more: true });
@@ -110,12 +123,15 @@ Page({
     this._selected = {};
     this._lastBatch = null;
     this._orders = [];
+    this._pickOrders = [];
+    this._pickGroups = [];
     // 刷新路径清掉上次批量的失败态与复制中的临时态（P1-8/P2）
     this.setData({ batchResult: null, copyLoading: false });
     return this.load({ reset: true });
   },
 
   // P2：每次请求领一个序号；任何 setData/toast 落点先比对（旧分页响应不追加到新列表）
+  // 双阶段共用一条加载管线：payload/落状态按当前 tab 分派（待取件 → pick-view；待送达 → view-model）
   load(options) {
     if (this._unloaded) {
       return Promise.resolve(false);
@@ -124,13 +140,20 @@ Page({
     const more = opts.more === true;
     const token = this._loadToken + 1;
     this._loadToken = token;
+    const pick = this.data.tab === pickView.TAB_PICK;
     if (more) {
       this.setData({ loadingMore: true });
     } else {
-      this.setData({ stage: 'loading', errorText: '', loading: true });
+      this.setData({
+        stage: 'loading',
+        errorText: '',
+        loading: true,
+        emptyText: pick ? pickView.EMPTY_TEXT : EMPTY_TEXT
+      });
     }
-    return orderApi.listPartner(view.queryOf({ cursor: more ? this.data.nextCursor : null }))
-      .then((data) => this.applyResult(data, more, token))
+    const cursor = more ? (pick ? this.data.pickNextCursor : this.data.nextCursor) : null;
+    return orderApi.listPartner(pick ? pickView.queryOf({ cursor: cursor }) : view.queryOf({ cursor: cursor }))
+      .then((data) => (pick ? this.applyPickResult(data, more, token) : this.applyResult(data, more, token)))
       .catch((err) => this.loadError(err, more, token));
   },
 
@@ -143,6 +166,7 @@ Page({
     this._orders = more ? this._orders.concat(list) : list;
     const groups = view.buildGroups(view.rowsOf(this._orders));
     const selection = view.applySelection(groups, this._selected);
+    const tabTexts = pickView.tabTextsOf(data);
     this.setData({
       stage: selection.groups.length ? 'ready' : 'empty',
       errorText: '',
@@ -153,7 +177,9 @@ Page({
       chunks: view.splitChunks(selection.groups, view.CHUNK_ROWS),
       summary: view.summaryLineOf(view.summaryOf(selection.groups), nextCursor),
       selectedCount: selection.selectedCount,
-      selectionText: selection.selectionText
+      selectionText: selection.selectionText,
+      pickTabText: tabTexts.pick,
+      deliverTabText: tabTexts.deliver
     });
     return true;
   },
@@ -467,4 +493,4 @@ Page({
   writeHint(text) {
     return modeGuard.isTestWrite() ? text + '（将写入测试数据）' : text;
   }
-});
+}, require('./parts/stage-flows')));

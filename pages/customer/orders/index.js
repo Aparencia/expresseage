@@ -27,6 +27,8 @@ Page({
     hasMore: true,
     loading: false,
     loadingVisible: false,
+    // 批20-C：首屏（慢网 >300ms）灰色骨架占位，替掉原「加载中…」文字；有旧列表时刷新不闪骨架
+    skeletonRows: [1, 2, 3],
     error: '',
     hasPending: false
   },

@@ -1,8 +1,10 @@
-// handlers/order/listPartner.js · order.listPartner：兼职工作台 / 历史订单 / 客户订单（批 7 view=customer）
+// handlers/order/listPartner.js · order.listPartner：兼职工作台 / 今日订单流水（批 20 view=day）/ 历史订单 / 客户订单（批 7 view=customer）
 // 响应形状 = {list,nextCursor,counts}（history）；workbench/history 顶层键 + D48 只增 summary（仅 workbench，
 // 基于本次 find 命中行聚合、零额外查询；P1-6 扫描触顶时 summary.truncated=true）；view=customer 返回
 // {list,nextCursor}、不发 counts/summary（DATA_MODEL §7.5 批 7 段④）。四档动线排序由客户端零件层用
 // shared/order-view 执行，服务端只做状态桶 + 绑定顾客过滤；列表一律经 _dto 输出，绝不下发 raw order 文档。
+// 批 20（D53）：view=day = UTC+8 今日（statusUpdatedAt ≥ 今日 0 点）内有状态更新的全部七状态订单，
+// 按 statusUpdatedAt desc 分页；返回 counts 与新的「今日已送达」summary（D54 口径，形状带 scope 标记）。
 'use strict';
 
 const { COLLECTIONS } = require('../../shared/collections');
@@ -15,11 +17,14 @@ const dto = require('./_dto');
 const summaryPure = require('./_summary');
 
 const WORKBENCH_VIEW = 'workbench';
+const DAY_VIEW = 'day';
 const HISTORY_VIEW = 'history';
 const CUSTOMER_VIEW = 'customer';
 const YESTERDAY_MS = time.DAY_MS;
 const KEYWORD_MAX_CHARS = 40;
 const BINDING_ID_MAX = 64;
+// 今日流水行内不显示写操作（D54/批 20）：待确认（delivered 桶）与已完结（history 桶）只读
+const DAY_READONLY_BUCKETS = ['delivered', 'history'];
 
 function parseTimeBound(value) {
   if (value === undefined || value === null || value === '') {
@@ -29,13 +34,14 @@ function parseTimeBound(value) {
   return ms;
 }
 
-// view 显式三值：缺省=workbench（页面首屏不传），非法值拒绝而不是静默降级（否则筛选口径被悄悄改掉）。
+// view 显式四值：缺省=workbench（页面首屏不传）、day=今日订单流水（批 20）；非法值拒绝而不是静默降级
+// （否则筛选口径被悄悄改掉）。
 function resolveView(input) {
   const raw = typeof input.view === 'string' ? input.view.trim().toLowerCase() : '';
   if (raw === '') {
     return WORKBENCH_VIEW;
   }
-  if (raw === WORKBENCH_VIEW || raw === HISTORY_VIEW || raw === CUSTOMER_VIEW) {
+  if (raw === WORKBENCH_VIEW || raw === DAY_VIEW || raw === HISTORY_VIEW || raw === CUSTOMER_VIEW) {
     return raw;
   }
   throw errors.validation('view', '视图参数不正确，请刷新页面后重试');
@@ -110,6 +116,10 @@ function resolveFilter(payload, view) {
   if (view === HISTORY_VIEW) {
     const statuses = raw ? [raw] : [enums.ORDER_STATUS.COMPLETED, enums.ORDER_STATUS.CANCELLED];
     return { statuses, sortField: 'statusUpdatedAt' };
+  }
+  // 今日订单流水（D53）：七状态全收（含已送达/已完成/已取消），窗口由 handler 的 statusUpdatedAt 下界收口
+  if (view === DAY_VIEW) {
+    return { statuses: raw ? [raw] : enums.ORDER_STATUS_LIST.slice(), sortField: 'statusUpdatedAt' };
   }
   if (raw) {
     return { statuses: [raw], sortField: 'statusUpdatedAt' };
@@ -237,6 +247,9 @@ async function pageOf(ctx, partnerId, filter, options) {
     hasMore: candidates.length > opts.paging.limit,
     sortField: filter.sortField,
     summaryRows,
+    // 批 20/D54：keyword/时间窗过滤前的去重扫描行（view=day 的「今日已送达」summary 用它聚合，
+    // 不被当前搜索词收窄）；旧 summary 仍用 summaryRows，口径不变。
+    scanRows: uniqueRows,
     scanTruncated: fetched.truncated === true
   };
 }
@@ -256,6 +269,27 @@ function nextCursorOf(result) {
   return result.hasMore && last ? common.makeCursor(last, result.sortField) : null;
 }
 
+// UTC+8 今日 0 点（毫秒；与 buildCounts 的 todayCompleted 同公式、同一时区口径）
+function todayStartOf(nowMs) {
+  return nowMs - ((nowMs + time.TZ_OFFSET_MS) % YESTERDAY_MS);
+}
+
+// view=day 窗口下界：statusUpdatedAt ≥ 今日 0 点（今日 00:00~now 内有状态更新的订单；上界由 now 本身天然收口）
+function dayWindowWhereOf(ctx, nowMs) {
+  return { statusUpdatedAt: ctx.dao.command('gte', new Date(todayStartOf(nowMs))) };
+}
+
+// 今日流水行内只读（D54/批 20）：delivered（待确认）/history（已完成/已取消）不显示写操作，只留详情。
+// 服务端先剥 actions[]，客户端 parts 再兜底清 toolbar（双保险，不依赖单端判据）。
+function stripWriteActionsOf(list) {
+  return (Array.isArray(list) ? list : []).map(function rowOf(item) {
+    if (DAY_READONLY_BUCKETS.indexOf(item && item.bucket) < 0) {
+      return item;
+    }
+    return Object.assign({}, item, { actions: [] });
+  });
+}
+
 async function buildCounts(ctx, partnerId, nowMs) {
   const isTest = common.isTestSession(ctx);
   const counts = orderView.countsTemplate();
@@ -271,7 +305,7 @@ async function buildCounts(ctx, partnerId, nowMs) {
       where: { partnerId, status: mapping[i][1], isTest }
     });
   }
-  const todayStart = nowMs - ((nowMs + time.TZ_OFFSET_MS) % YESTERDAY_MS);
+  const todayStart = todayStartOf(nowMs);
   // 今日完成（TD-043）：单 count 表达「completedAt ≥ 今日起点」，不再 find(limit:100) 后内存过滤；
   // 口径与旧实现一致（单日完成数没有上界），仍按 isTest 隔离。
   counts.todayCompleted = await ctx.dao.count(COLLECTIONS.ORDERS, {
@@ -327,18 +361,35 @@ module.exports = async function orderListPartner(ctx, payload) {
   }
   const filter = resolveFilter(input, view);
   const paging = common.parsePaging(input);
+  const nowMs = common.nowMsOf(ctx);
   const query = pageQueryOf(input, scanLimitOf(paging));
+  // 批 20/D53：view=day = UTC+8 今日内有状态更新的全部七状态订单（窗口锚 statusUpdatedAt，与服务端排序同字段）
+  if (view === DAY_VIEW) {
+    query.extraWhere = dayWindowWhereOf(ctx, nowMs);
+  }
   const result = await pageOf(ctx, partner._id, filter, query);
-  // 工作台行级快捷操作（批 6-B 前置）：只给 workbench 行内联 actions[]，history 与 listCustomer 不动。
-  const list = await dto.buildOrderDtos(ctx, result.page, 'PARTNER', { withActions: view === WORKBENCH_VIEW });
+  const inlineActions = view === WORKBENCH_VIEW || view === DAY_VIEW;
+  let list = await dto.buildOrderDtos(ctx, result.page, 'PARTNER', { withActions: inlineActions });
+  // D54/批 20：今日流水的待确认/已完结行只读（不显示写操作）；workbench/history/customer 不动
+  if (view === DAY_VIEW) {
+    list = stripWriteActionsOf(list);
+  }
   // P0-2/TD-073：只有 workbench 视图计算 counts（页面总览/红点消费它）；history 视图不白算 6 个 count。
-  // 响应形状不变（DATA_MODEL §7.5）：history 仍回 counts 键，值为零值模板（不计入、无查询）。
-  const counts = view === WORKBENCH_VIEW ? await buildCounts(ctx, partner._id, common.nowMsOf(ctx)) : orderView.countsTemplate();
+  // 批 20：view=day 同样消费 counts（页面总览/红点），故一并计算；history 仍为零值模板（不计入、无查询）。
+  const counts = inlineActions ? await buildCounts(ctx, partner._id, nowMs) : orderView.countsTemplate();
   const body = { list, nextCursor: nextCursorOf(result), counts };
   // D48：仅 workbench 只增 summary（按苑/栋聚合 + 状态计数；history/customer 形状不变、不发 summary）。
   // 复用本次 find 的命中行（result.summaryRows），零额外查询/零二次扫描；P1-6 扫描触顶时带 truncated=true。
   if (view === WORKBENCH_VIEW) {
     body.summary = summaryPure.buildSummary(result.summaryRows, { truncated: result.scanTruncated });
+  }
+  // D54（批 20）：view=day 的 summary 换「今日已送达」口径（deliveredAt 今日 + DELIVERED/COMPLETED、排除取消单；
+  // 只到苑/栋）。用扫描行（keyword/时间窗过滤前）聚合，不被当前搜索词收窄；零额外查询。
+  if (view === DAY_VIEW) {
+    body.summary = summaryPure.buildDeliveredToday(result.scanRows, {
+      nowMs,
+      truncated: result.scanTruncated
+    });
   }
   return body;
 };

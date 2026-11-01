@@ -26,7 +26,7 @@ const statusView = require(path.join(ROOT, 'pkg-customer/parts/status-view.js'))
 const createModel = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/model.js'));
 const appointUtil = require(path.join(ROOT, 'shared/appoint.js'));
 
-const EXPECTED_ASSERTIONS = 354; // 344 + 10：D47 预约 LATEST 枚举/文案/选项/边界/载荷/摘要/指纹/拦截 // D43：送达自动完成提示改日结批（+2：配置时刻跟随/非法回落）；同步 `node tools/selftest-state.js` 读数
+const EXPECTED_ASSERTIONS = 355; // 354 + 1：D51 送达自动完成提示新口径（该时刻前当天完成/该时刻后下一轮，无旧顺延文案）；同步 `node tools/selftest-state.js` 读数 // 344 + 10：D47 预约 LATEST 枚举/文案/选项/边界/载荷/摘要/指纹/拦截
 
 const STATUS = state.STATUS;
 const ALL_ROLES = ['CUSTOMER', 'PARTNER', 'SYSTEM', 'ADMIN'];
@@ -544,7 +544,7 @@ function sectionLaunchRoute(h) {
 
 // ---------------------------------------------------------------- 页面零件
 function buildWaitingConfig() {
-  return { orderTimeoutMinutes: 120, autoCompleteAt: '23:50' };
+  return { orderTimeoutMinutes: 120, autoCompleteAt: '21:40' };
 }
 
 function sectionStatusViewPart(h) {
@@ -583,12 +583,16 @@ function sectionStatusViewPart(h) {
     const waiting = statusView.waitingHint(submitted, config, format);
     t.check(waiting.indexOf('等待接单') === 0 && waiting.indexOf('截止 2026-01-05 11:07') !== -1,
       '§7 待接单截止时间按配置计算');
-    t.check(statusView.waitingHint({ status: STATUS.DELIVERED }, config, format).indexOf('每天 23:50 自动完成') !== -1,
-      '§7 送达后按日结批时刻提示自动完成（D43，读 config.autoCompleteAt）');
+    t.check(statusView.waitingHint({ status: STATUS.DELIVERED }, config, format).indexOf('每天 21:40 自动完成') !== -1,
+      '§7 送达后按配置时刻提示自动完成（D51，显式注入 21:40 非出厂默认）');
+    t.check(statusView.waitingHint({ status: STATUS.DELIVERED }, config, format).indexOf('该时刻前送达的当天完成') !== -1
+      && statusView.waitingHint({ status: STATUS.DELIVERED }, config, format).indexOf('下一轮自动完成') !== -1
+      && statusView.waitingHint({ status: STATUS.DELIVERED }, config, format).indexOf('顺延') === -1,
+    '§7 送达自动完成提示为 D51 新口径（该时刻前当天完成/该时刻后下一轮，无旧顺延文案）');
     t.check(statusView.waitingHint({ status: STATUS.DELIVERED }, { autoCompleteAt: '07:05' }, format).indexOf('07:05') !== -1,
-      '§7 自动完成提示跟随配置时刻（非写死 23:50）');
-    t.check(statusView.waitingHint({ status: STATUS.DELIVERED }, { autoCompleteAt: 'bad' }, format).indexOf('23:50') !== -1,
-      '§7 配置时刻非法 → 提示回落出厂默认 23:50');
+      '§7 自动完成提示跟随配置时刻（非写死默认）');
+    t.check(statusView.waitingHint({ status: STATUS.DELIVERED }, { autoCompleteAt: 'bad' }, format).indexOf('22:00') !== -1,
+      '§7 配置时刻非法 → 提示回落出厂默认 22:00');
     t.eq(statusView.waitingHint({ status: STATUS.ACCEPTED }, config, format), '', '§7 其他状态无等待提示');
     t.eq(statusView.waitingHint(submitted, null, format), '', '§7 缺配置时不展示截止时间');
   });

@@ -1,6 +1,5 @@
 // handlers/partner/_customer.js · 兼职客户域公共件（批 7：listBindings/getCustomer/stats/unbind/saveNote 共用）
-// 口径：DATA_MODEL §7.4 表格 + 「批 7 兼职客户与运营（只增不改语义）」、§4.5（dormKey 自然序）、
-//       §5.2（客户列表排序/进行中单）、§5.3（游标分页/扫描上限）、§2.3/§2.4；UX_PARTNER §3.5/§3.6/§3.8。
+// 口径：DATA_MODEL §7.4 +「批 7 兼职客户与运营（只增不改语义）」、§4.5（dormKey 自然序）、§5.2/§5.3；UX_PARTNER §3.5~§3.8。
 // 纪律：所有订单查询都带 partnerId 归属 + 测试数据隔离谓词；本文件不感知「视角分支」，身份由中间件解析。
 'use strict';
 
@@ -139,19 +138,21 @@ async function countActiveOrders(ctx, partnerId, customerId) {
   return total;
 }
 
-// 一次按状态分页全量扫描进行中单再按顾客分组（避免逐顾客 N+1）：TD-050 关闭 300 条窗口截断。
-// 查询预算 = 5 状态 × ceil(该状态进行中单数 / MAX_ORDER_SCAN)；终态单不参与，实际单数天然很小。
-async function activeCountByCustomer(ctx, partnerId) {
-  const base = activeOrderBase(ctx, partnerId);
+// 批20-C：只统计「本页」顾客的进行中单——按状态 × customerId in 本页 ids，通常 5 次 find（每状态 1 次）。
+// 旧 activeCountByCustomer 每次请求按状态分页扫全部进行中单（首屏慢主因）；收窄到本页 ≤limit（≤50）个顾客后，
+// 单状态命中 >MAX_ORDER_SCAN 仍按 _id 续扫，保证 activeOrderCount 精确（TD-050；selftest-query-window Q3b）。
+async function activeCountsOfPage(ctx, partnerId, customerIds) {
+  const ids = (Array.isArray(customerIds) ? customerIds : []).map(textOf).filter((id) => id !== '');
   const counts = {};
+  if (!ids.length) {
+    return counts;
+  }
+  const base = Object.assign({}, activeOrderBase(ctx, partnerId), { customerId: ctx.dao.command('in', ids) });
   for (let i = 0; i < enums.ORDER_ACTIVE_STATUSES.length; i += 1) {
-    let skip = 0;
-    for (;;) {
+    for (let skip = 0; ; skip += MAX_ORDER_SCAN) {
       const rows = await ctx.dao.find(COLLECTIONS.ORDERS, {
         where: Object.assign({}, base, { status: enums.ORDER_ACTIVE_STATUSES[i] }),
-        orderBy: [['_id', 'asc']],
-        skip,
-        limit: MAX_ORDER_SCAN
+        orderBy: [['_id', 'asc']], skip: skip, limit: MAX_ORDER_SCAN
       });
       rows.forEach((row) => {
         const key = textOf(row.customerId);
@@ -162,7 +163,6 @@ async function activeCountByCustomer(ctx, partnerId) {
       if (rows.length < MAX_ORDER_SCAN) {
         break;
       }
-      skip += MAX_ORDER_SCAN;
     }
   }
   return counts;
@@ -173,9 +173,8 @@ function customerRowOf(binding, customer, activeOrderCount) {
   return bindCommon.partnerBindingRow(binding, customer, activeOrderCount);
 }
 
-// D42（task-20）：兼职看绑定顾客头像 = 服务端 5 分钟临时 URL（私有存储不可直读 cloud://）。
-// 一次批量签发本页所有行；无头像零外呼；未签发（平台失败/无能力）不写 avatarUrl，
-// 行内 avatarFileId 保留作回退键，客户端再退默认头像——读失败不得让列表整体失败。
+// D42：兼职看绑定顾客头像 = 服务端 5 分钟临时 URL（私有存储不可直读 cloud://）。一次批量签发本页行；
+// 未签发（平台失败/无能力）不写 avatarUrl，avatarFileId 保留回退键——读失败不得让列表整体失败。
 async function signRowsAvatarUrls(ctx, rows) {
   const list = Array.isArray(rows) ? rows : [];
   const urls = await avatarUrl.signAvatarUrls(ctx, list.map((row) => (row && row.avatarFileId) || ''));
@@ -197,13 +196,7 @@ function matchKeyword(row, keyword) {
   }
   const word = keyword.toLowerCase();
   const compact = word.replace(KEYWORD_SEPARATOR, '');
-  const fields = [
-    row.displayName,
-    row.dormKey,
-    row.roomTag,
-    row.buildingText,
-    row.phoneTail
-  ];
+  const fields = [row.displayName, row.dormKey, row.roomTag, row.buildingText, row.phoneTail];
   for (let i = 0; i < fields.length; i += 1) {
     if (textOf(fields[i]).toLowerCase().indexOf(word) >= 0) {
       return true;
@@ -222,12 +215,13 @@ function parseBindingCursor(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw errors.validation('cursor', '分页游标不正确，请刷新页面后重试');
   }
-  const dormKey = textOf(value.dormKey);
+  const raw = value.dormKey; const dormKey = typeof raw === 'string' ? raw.trim() : '';
   const allocSeq = Number(value.allocSeq);
-  if (!dormKey || !Number.isFinite(allocSeq) || allocSeq < 0) {
+  // 批20-C：允许空 dormKey 游标（「资料未完善」桶，空置底后尾页可达）；非空锚仍须字符串，脏游标照旧拒绝。
+  if ((raw !== undefined && raw !== null && typeof raw !== 'string') || !Number.isFinite(allocSeq) || allocSeq < 0) {
     throw errors.validation('cursor', '分页游标不正确，请刷新页面后重试');
   }
-  return { dormKey, allocSeq };
+  return { dormKey: dormKey, allocSeq: allocSeq };
 }
 
 function allocSeqOf(binding) {
@@ -239,28 +233,45 @@ function entryKey(entry) {
   return { dormKey: entry.row.dormKey || '', allocSeq: entry.allocSeq };
 }
 
-// 排序：dormKey 自然序（苑固定序 D→X→N→B→C、楼栋序、宿舍号数字序）→ 同宿舍 allocSeq（=roomTag 大写字母序）。
+// 批20-C：空 dormKey（资料未完善）恒置底；桶 = [非空 0, 空 1]，桶内 zones.compareDormKey，再按 allocSeq。
 function compareBindingEntries(left, right) {
-  const delta = zones.compareDormKey(entryKey(left).dormKey, entryKey(right).dormKey);
-  if (delta !== 0) {
-    return delta;
+  const a = entryKey(left); const b = entryKey(right);
+  const bucketA = a.dormKey ? 0 : 1; const bucketB = b.dormKey ? 0 : 1;
+  if (bucketA !== bucketB) {
+    return bucketA - bucketB;
+  }
+  if (bucketA === 0) {
+    const delta = zones.compareDormKey(a.dormKey, b.dormKey);
+    if (delta !== 0) {
+      return delta;
+    }
   }
   return left.allocSeq - right.allocSeq;
 }
 
+// 游标判定与 compareBindingEntries 同一全序（空桶后置）：空桶游标后只返回更晚空行，非空行视为已翻过
+// → 空置底后分页不重不漏（旧实现空行不产游标，尾部页会丢）。
 function isAfterBindingCursor(entry, cursor) {
   if (!cursor) {
     return true;
   }
-  return zones.compareDormKey(entryKey(entry).dormKey, cursor.dormKey) > 0
-    || (zones.compareDormKey(entryKey(entry).dormKey, cursor.dormKey) === 0 && entry.allocSeq > cursor.allocSeq);
+  const key = entryKey(entry);
+  const bucketA = key.dormKey ? 0 : 1; const bucketB = cursor.dormKey ? 0 : 1;
+  if (bucketA !== bucketB) {
+    return bucketA > bucketB;
+  }
+  if (bucketA === 0) {
+    const delta = zones.compareDormKey(key.dormKey, cursor.dormKey);
+    if (delta !== 0) {
+      return delta > 0;
+    }
+  }
+  return key.allocSeq > cursor.allocSeq;
 }
 
+// 行游标：空 dormKey 行同样产游标（{dormKey:'', allocSeq}），否则空置底后下一页不可达。
 function bindingCursorOf(entry) {
   const key = entryKey(entry);
-  if (!key.dormKey) {
-    return null;
-  }
   return { dormKey: key.dormKey, allocSeq: key.allocSeq };
 }
 
@@ -457,7 +468,7 @@ module.exports = {
   parseTimeBound,
   requireOwnedBinding,
   countActiveOrders,
-  activeCountByCustomer,
+  activeCountsOfPage,
   customerRowOf,
   signRowsAvatarUrls,
   matchKeyword,

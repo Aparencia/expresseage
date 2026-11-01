@@ -19,6 +19,20 @@
     <button class="btn btn-ghost btn-small" bindtap="onRetry">重新加载</button>
   </view>
 
+  <!-- 批20-C：首屏（慢网 >300ms）灰色骨架占位（替掉文字加载态）；
+       只在 list 为空时出现——onShow 刷新保留旧列表，不闪骨架、不跳顶部 -->
+  <block wx:if="{{loadingVisible && list.length === 0}}">
+    <view wx:for="{{skeletonRows}}" wx:key="*this" class="card skeleton-item">
+      <view class="row">
+        <view class="skeleton-avatar"></view>
+        <view class="flex-1 skeleton-main">
+          <view class="skeleton-line"></view>
+          <view class="skeleton-line short"></view>
+        </view>
+      </view>
+    </view>
+  </block>
+
   <view wx:if="{{list.length > 0}}">
     <view wx:for="{{list}}" wx:key="orderNo" class="list-item">
       <view data-order-no="{{item.orderNo}}" bindtap="onOrderTap">
@@ -40,6 +54,5 @@
     bind:action="onEmptyAction"
   />
 
-  <view class="empty-text" wx:if="{{loadingVisible}}">加载中…</view>
   <view class="empty-text" wx:if="{{!loading && list.length > 0 && !hasMore}}">没有更多了</view>
 </view>

@@ -38,11 +38,12 @@ const codeInput = require(path.join(ROOT, 'pkg-partner/pages/activate/parts/code
 // 注意：F 段（异步 fake transport）必须注册在最后——harness 的异步断言在 await 之后才计入，
 // 若后面再注册同步段，console 的节标题会被后注册的段名覆盖。
 // 226 + 17：T5-A 收口（TD-083 结果块配置化 3 条 + TD-084 逐件兜底/幂等粒度/超限/请求时校时 14 条）
-const EXPECTED_ASSERTIONS = 243;
+// 243 + P 组批20-C 首屏流式/占位/排序置底/底部安全区（36 条，拆到 tools/lib/partner-pages-cases.js）
+const cases = require(path.join(__dirname, 'lib', 'partner-pages-cases.js'));
+const EXPECTED_ASSERTIONS = 243 + cases.PERF_EXPECTED_ASSERTIONS;
 
 // TD-083/T5-A 拆件：夹具/静态扫描样本拆到 tools/lib/partner-pages-cases.js（控测试文件 ≤950 行，门禁 #18；
 // tools/lib 不参与 tools/selftest.js 注册完整性闸，先例 tools/lib/workbench-cases.js）。
-const cases = require(path.join(__dirname, 'lib', 'partner-pages-cases.js'));
 const {
   CONFIG, PARTNER, NOW, DAY, ROW_1, ROW_2, STATUS_LITERALS, bindingRow, orderRow,
   customerOrders, profileData, withStation, parcelOf, ticketFile,
@@ -82,8 +83,8 @@ function register(h) {
     t.eq(listModel.nextQuery(listModel.applyMoreResponse(first, { list: [], nextCursor: 'cur-9' })), { keyword: '', limit: 20, cursor: 'cur-9' },
       'A16 触底查询透传服务端 nextCursor（游标分页，不本地切片）');
     const skeleton = customerView.listStateOf({ rows: [], loading: true, error: '', keyword: '', nextCursor: '' });
-    t.check(skeleton.mode === 'skeleton' && skeleton.showSkeleton === true && skeleton.skeletonRows.length === 3,
-      'A17 首屏骨架态（loading 且无行）');
+    t.check(skeleton.mode === 'skeleton' && skeleton.showSkeleton === true && skeleton.skeletonRows.length === 6,
+      'A17 首屏骨架态：6 张灰色占位卡（loading 且无行；批20-C 由 3 张加到 6 张）');
     const errorOnly = customerView.listStateOf({ rows: [], loading: false, error: '没连上服务器', keyword: '', nextCursor: '' });
     t.check(errorOnly.mode === 'error' && errorOnly.errorText === '没连上服务器',
       'A18 无旧数据的错误态：错误卡 + 重试（不假装成功）');
@@ -291,8 +292,8 @@ function register(h) {
     'D33b guest 提示块自动完成时刻随公开配置 config.autoCompleteAt（TD-083：22:30 不再写死 23:50）');
     const guestDefault = resultModel.buildResult({ orderNo: '20261022-0034' },
       { customerMode: 'GUEST', config: { autoCompleteAt: '25:99' } });
-    t.check(guestDefault.hintLines[3].indexOf('每天 23:50 自动完成') >= 0,
-      'D33c 配置缺失/非法（25:99）回退出厂默认 23:50（config/defaults 唯一默认）');
+    t.check(guestDefault.hintLines[3].indexOf('每天 22:00 自动完成') >= 0,
+      'D33c 配置缺失/非法（25:99）回退出厂默认 22:00（D51；config/defaults 唯一默认）');
     const oneOrderResult = resultModel.buildResult({ orderNo: '20261022-0031', parcels: [{}, {}, {}] }, { customerMode: 'BOUND' });
     t.check(oneOrderResult.rows.length === 1 && oneOrderResult.title === '订单已提交'
       && oneOrderResult.rows[0].label === '点开查看进度',
@@ -787,6 +788,9 @@ function register(h) {
     'O13 识别编排接线：逐件兜底 + 幂等键按件下标派生 + 不再把整图 failureId 复制给每件');
     t.notEmpty(merged.items, 'O 组样本非空（防止空集全绿）');
   });
+  // ------------------------------------------------------------------ P 批20-C 首屏流式/占位/排序置底
+  h.section('P. 批20-C：客户页首屏 6 张灰占位/分片 setData/刷新行级 diff 沿用头像/空 dormKey 置底/底部安全区',
+    (t) => cases.perfChecks(t));
   // ------------------------------------------------------------------ F READONLY/TEST_WRITE + transport
   h.section('F. READONLY/TEST_WRITE 与 fake transport：包络/零请求/票据/分享（§6.3、§6.4）', async (t) => {
     const captured = [];

@@ -44,6 +44,18 @@
   flex-shrink: 0;
 }
 
+/* 批20-C：首屏昵称位的灰色骨架条（替掉文字「资料加载中」；数据到达即替换为真实昵称） */
+.skeleton-line {
+  height: 32rpx;
+  border-radius: 8rpx;
+  background: #EEF0F3;
+}
+
+.partner-name-skeleton {
+  width: 55%;
+  margin-bottom: 0;
+}
+
 .partner-lines {
   margin-top: 8rpx;
 }

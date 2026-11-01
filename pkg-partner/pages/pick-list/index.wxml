@@ -1,21 +1,33 @@
-<!-- pkg-partner/pages/pick-list/index.wxml · 独立「楼层配送清单」页（D46）
-     视图数据全部来自 parts/view-model（苑→栋→楼层分组/分片/复制文案/汇总）；行内动作只渲染服务端 actions[] 结果。
+<!-- pkg-partner/pages/pick-list/index.wxml · 独立「取件清单」页（D46；批 20 双阶段：待取件 / 待送达）
+     阶段一「待取件」：按取件站点 P1~P8 分组、只读清单（行点击进详情），单行/整组/全部复制（parts/pick-view 纯件）。
+     阶段二「待送达」：按苑→栋→楼层分组，行内「已送达」/批量送达只渲染服务端 actions[] 结果（行为不变）。
      口径：UX_PARTNER §3.11、§6（READONLY 隐藏写控件 / TEST_WRITE 可写但只写测试数据）；不自动轮询，切页/下拉才刷新。 -->
 <view class="page-body">
   <switch-bar />
 
   <view class="head-row">
-    <view class="title">楼层配送清单</view>
+    <view class="title">取件清单</view>
     <view class="row">
-      <view class="mini-btn btn btn-ghost copy-btn" bindtap="onCopyTap">复制清单</view>
-      <view wx:if="{{!readonly && stage === 'ready'}}" class="mini-btn btn btn-ghost" bindtap="onToggleSelecting">{{selecting ? '退出多选' : '多选'}}</view>
+      <view wx:if="{{tab === tabPick}}" class="mini-btn btn btn-ghost copy-btn" bindtap="onCopyAllPick">复制全部</view>
+      <block wx:else>
+        <view class="mini-btn btn btn-ghost copy-btn" bindtap="onCopyTap">复制清单</view>
+        <view wx:if="{{!readonly && stage === 'ready'}}" class="mini-btn btn btn-ghost" bindtap="onToggleSelecting">{{selecting ? '退出多选' : '多选'}}</view>
+      </block>
     </view>
   </view>
 
+  <view class="stage-chips">
+    <view class="chip {{tab === tabPick ? 'chip-active' : ''}}" data-tab="{{tabPick}}" bindtap="onSwitchTab">{{pickTabText}}</view>
+    <view class="chip {{tab === tabDeliver ? 'chip-active' : ''}}" data-tab="{{tabDeliver}}" bindtap="onSwitchTab">{{deliverTabText}}</view>
+  </view>
+
   <view class="card intro-card">
-    <view class="small intro-text">按苑 → 栋 → 楼层分组，只列已取件待送达的单。不自动刷新：下拉或切回本页时更新。</view>
-    <view wx:if="{{summary.total}}" class="small intro-text intro-summary">{{summary.text}}</view>
-    <view wx:if="{{summary.loadedText}}" class="small intro-text intro-loaded">{{summary.loadedText}}</view>
+    <view wx:if="{{tab === tabPick}}" class="small intro-text">按取件站点（P1~P8）分组，只列已接单、还没取件的单；复制含取件码与宿舍锚。不自动刷新：下拉或切回本页时更新。</view>
+    <view wx:else class="small intro-text">按苑 → 栋 → 楼层分组，只列已取件待送达的单。不自动刷新：下拉或切回本页时更新。</view>
+    <view wx:if="{{tab === tabPick && pickSummary.total}}" class="small intro-text intro-summary">{{pickSummary.text}}</view>
+    <view wx:if="{{tab === tabPick && pickSummary.loadedText}}" class="small intro-text intro-loaded">{{pickSummary.loadedText}}</view>
+    <view wx:if="{{tab !== tabPick && summary.total}}" class="small intro-text intro-summary">{{summary.text}}</view>
+    <view wx:if="{{tab !== tabPick && summary.loadedText}}" class="small intro-text intro-loaded">{{summary.loadedText}}</view>
     <view wx:if="{{readonly}}" class="small intro-text readonly-tip">只读视角下不能改订单状态</view>
     <view wx:elif="{{testWrite}}" class="small intro-text test-tip">测试账号会话：写操作只写入测试数据</view>
   </view>
@@ -30,45 +42,81 @@
     <empty-state text="{{emptyText}}" />
   </view>
 
-  <block wx:for="{{chunks}}" wx:key="key" wx:for-item="chunk">
-    <view class="card floor-card">
-      <view class="row between floor-head">
-        <view class="strong floor-title">{{chunk.title}}</view>
-        <view class="small">{{chunk.count}} 单</view>
-      </view>
-      <view
-        wx:for="{{chunk.rows}}"
-        wx:key="orderNo"
-        wx:for-item="row"
-        class="order-line {{row.selected ? 'order-line-active' : ''}}"
-        data-order-no="{{row.orderNo}}"
-        bindtap="onRowTap"
-      >
-        <view wx:if="{{selecting}}" class="check-dot {{row.selected ? 'check-dot-on' : ''}}"></view>
-        <view class="flex-1 line-main">
-          <view class="row line-top">
-            <view class="strong room-text">{{row.roomText || '宿舍号待同步'}}</view>
-            <view wx:if="{{row.roomTagText}}" class="tag room-tag">{{row.roomTagText}}</view>
-            <view wx:if="{{row.parcelCountText}}" class="small parcel-count">{{row.parcelCountText}}</view>
-          </view>
-          <view class="muted ellipsis">{{row.nameText || '收件人待同步'}}</view>
-          <view class="row between small line-foot">
-            <text>{{row.serviceName}}</text>
-            <text>{{row.timeText}}</text>
+  <block wx:if="{{tab === tabPick}}">
+    <block wx:for="{{pickChunks}}" wx:key="key" wx:for-item="chunk">
+      <view class="card floor-card">
+        <view class="row between floor-head">
+          <view class="strong floor-title">{{chunk.title}}</view>
+          <view class="row">
+            <view class="small">{{chunk.count}} 单</view>
+            <view class="mini-btn btn btn-ghost copy-group-btn" data-order-no="{{chunk.rows[0].orderNo}}" bindtap="onCopyGroupPick">复制本组</view>
           </view>
         </view>
         <view
-          wx:if="{{!selecting && !readonly && row.canDeliver}}"
-          class="mini-btn btn btn-primary deliver-btn"
+          wx:for="{{chunk.rows}}"
+          wx:key="key"
+          wx:for-item="row"
+          class="order-line"
           data-order-no="{{row.orderNo}}"
-          catchtap="onRowDeliver"
-        >已送达</view>
+          bindtap="onRowTap"
+        >
+          <view class="flex-1 line-main">
+            <view class="row line-top">
+              <view class="strong room-text">{{row.anchorText || '宿舍待同步'}}</view>
+              <view wx:if="{{row.parcelCount > 1}}" class="small parcel-count">{{row.parcelCountText}}</view>
+              <view wx:if="{{row.needCode}}" class="tag room-tag">需查明</view>
+            </view>
+            <view wx:for="{{row.pieces}}" wx:key="key" wx:for-item="piece" class="small piece-line">
+              <text wx:if="{{piece.cross}}" class="piece-station">{{piece.stationId || piece.stationName}}</text>{{piece.text}}
+            </view>
+          </view>
+          <view class="mini-btn btn btn-ghost copy-row-btn" data-order-no="{{row.orderNo}}" catchtap="onCopyRowPick">复制</view>
+        </view>
       </view>
-    </view>
+    </block>
+  </block>
+
+  <block wx:else>
+    <block wx:for="{{chunks}}" wx:key="key" wx:for-item="chunk">
+      <view class="card floor-card">
+        <view class="row between floor-head">
+          <view class="strong floor-title">{{chunk.title}}</view>
+          <view class="small">{{chunk.count}} 单</view>
+        </view>
+        <view
+          wx:for="{{chunk.rows}}"
+          wx:key="orderNo"
+          wx:for-item="row"
+          class="order-line {{row.selected ? 'order-line-active' : ''}}"
+          data-order-no="{{row.orderNo}}"
+          bindtap="onRowTap"
+        >
+          <view wx:if="{{selecting}}" class="check-dot {{row.selected ? 'check-dot-on' : ''}}"></view>
+          <view class="flex-1 line-main">
+            <view class="row line-top">
+              <view class="strong room-text">{{row.roomText || '宿舍号待同步'}}</view>
+              <view wx:if="{{row.roomTagText}}" class="tag room-tag">{{row.roomTagText}}</view>
+              <view wx:if="{{row.parcelCountText}}" class="small parcel-count">{{row.parcelCountText}}</view>
+            </view>
+            <view class="muted ellipsis">{{row.nameText || '收件人待同步'}}</view>
+            <view class="row between small line-foot">
+              <text>{{row.serviceName}}</text>
+              <text>{{row.timeText}}</text>
+            </view>
+          </view>
+          <view
+            wx:if="{{!selecting && !readonly && row.canDeliver}}"
+            class="mini-btn btn btn-primary deliver-btn"
+            data-order-no="{{row.orderNo}}"
+            catchtap="onRowDeliver"
+          >已送达</view>
+        </view>
+      </view>
+    </block>
   </block>
 
   <view wx:if="{{loadingMore}}" class="small load-more">加载中…</view>
-  <view wx:elif="{{nextCursor}}" class="small load-more">上拉加载下一批</view>
+  <view wx:elif="{{tab === tabPick ? pickNextCursor : nextCursor}}" class="small load-more">上拉加载下一批</view>
 
   <view class="bottom-safe"></view>
 

@@ -4,9 +4,12 @@
 //       §5.3（游标分页、单次扫描上限）；UX_PARTNER §3.5（搜索锚+编号，客户端不再二次排序）。
 // 只列自己 ACTIVE 绑定；avatarFileId/displayName 只在 ACTIVE 绑定期间返回；activeOrderCount 按顾客现算。
 // D42（task-20）：本页行头像随 DTO 下发 5 分钟临时 URL（src 优先），一次批量签发；avatarFileId 保留回退。
+// 批20-C：① 空 dormKey（顾客资料未完善）恒置底，游标同步（空桶后置后分页不重不漏）；
+//   ② activeOrderCount 只对「本页」≤limit 个顾客统计（_customer.activeCountsOfPage，最多 5 次查询），
+//   不再每次请求按状态分页扫全部进行中单。
 // TD-050：绑定不再固定 find(limit:100)，改为按 _id 升序分批取全量（每批 ≤100 = §5.2 扫描上限），
-//   顾客资料同步按 100/批批量补（不逐顾客 N+1）；activeOrderCount 由 _customer.activeCountByCustomer
-//   分页全量扫描。查询预算 = ceil(绑定/100)+1 + ceil(顾客/100) + 5×ceil(进行中/300) + 头像批量 1。
+//   顾客资料同步按 100/批批量补（不逐顾客 N+1）。
+//   查询预算 = ceil(绑定/100)+1 + ceil(顾客/100) + 5（本页进行中单） + 头像批量 1。
 'use strict';
 
 const { COLLECTIONS } = require('../../shared/collections');
@@ -49,7 +52,7 @@ async function loadProfiles(ctx, ids) {
   return profiles;
 }
 
-// 取全部 ACTIVE 绑定并批量补顾客资料；进行中单一次按状态分组（避免逐顾客 N+1）。
+// 取全部 ACTIVE 绑定并批量补顾客资料（进行中单计数推迟到分页后，只算本页顾客：批20-C）。
 async function loadEntries(ctx, partner) {
   const bindings = await loadBindings(ctx, partner);
   const idSet = new Set();
@@ -59,15 +62,21 @@ async function loadEntries(ctx, partner) {
     }
   });
   const profiles = await loadProfiles(ctx, Array.from(idSet));
-  const activeCounts = await customer.activeCountByCustomer(ctx, partner._id);
   return bindings.map((binding) => ({
-    row: customer.customerRowOf(
-      binding,
-      profiles[binding.customerId] || null,
-      activeCounts[binding.customerId] || 0
-    ),
+    customerId: customer.textOf(binding.customerId),
+    // 分页前先按 0 建行（排序/关键词只用档案字段），本页确定后再回填真实计数
+    row: customer.customerRowOf(binding, profiles[binding.customerId] || null, 0),
     allocSeq: customer.allocSeqOf(binding)
   }));
+}
+
+// 批20-C：只统计本页顾客的进行中单（≤5 次查询），回填到行 DTO。计数是展示型字段，不参与判权/判状态。
+async function attachActiveCounts(ctx, partner, page) {
+  const ids = page.map((entry) => entry.customerId).filter((id) => id !== '');
+  const counts = await customer.activeCountsOfPage(ctx, partner._id, ids);
+  page.forEach((entry) => {
+    entry.row.activeOrderCount = counts[entry.customerId] || 0;
+  });
 }
 
 async function handler(ctx, payload) {
@@ -82,6 +91,7 @@ async function handler(ctx, payload) {
     .filter((entry) => customer.isAfterBindingCursor(entry, cursor))
     .sort(customer.compareBindingEntries);
   const page = candidates.slice(0, limit);
+  await attachActiveCounts(ctx, partner, page);
   // 只对本页行签发（≤50 个 fileID 一次批量）；keyword 过滤不依赖头像，避免无谓外呼。
   await customer.signRowsAvatarUrls(ctx, page.map((entry) => entry.row));
   const last = page[page.length - 1];

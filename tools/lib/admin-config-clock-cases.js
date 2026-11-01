@@ -1,22 +1,22 @@
 'use strict';
 /**
- * tools/lib/admin-config-clock-cases.js — selftest-admin-pages 的 D43 配置页用例：
+ * tools/lib/admin-config-clock-cases.js — selftest-admin-pages 的 D43/D51 配置页用例：
  * 自动完成时间 autoCompleteAt（UTC+8 的 HH:MM）缺省回填、格式闸、变更清单、页面输入形态、旧小时数键清零。
  * 非独立套件：由 selftest-admin-pages require 后调用（拆出以控测试文件 ≤1000 行，门禁 #18）。
  */
-const defaultClock = '23:50';
+const defaultClock = '22:00';
 // 旧「小时数」配置键已作废；逐字拼装避免本文件命中旧键字面量残留扫描（判据仍逐字等于旧键）
 const LEGACY_HOURS_KEY = ['autoComplete', 'Hours'].join('');
 
 function autoCompleteClockChecks(t, deps) {
   const configVm = deps.configVm;
   t.eq([configVm.emptyForm().autoCompleteAt, configVm.buildForm({}).autoCompleteAt],
-    [defaultClock, defaultClock], '自动完成时间缺省回填=出厂默认 23:50（不再回填旧小时数）');
-  t.eq(configVm.buildForm(deps.sampleConfig()).autoCompleteAt, defaultClock,
-    '自动完成时间按配置回填 HH:MM（sampleConfig）');
+    [defaultClock, defaultClock], '自动完成时间缺省回填=出厂默认 22:00（不再回填旧小时数）');
+  t.eq(configVm.buildForm(deps.sampleConfig()).autoCompleteAt, '23:50',
+    '自动完成时间按配置回填 HH:MM（sampleConfig 显式注入 23:50，非出厂值也原样回填）');
   t.eq(configVm.FIELD_LABELS.autoCompleteAt, '自动完成时间', '变更清单字段名=「自动完成时间」');
   const payload = configVm.buildPayload(configVm.emptyForm());
-  t.eq(configVm.validatePayload(payload), '', '自动完成时间合法基线（出厂 23:50）先绿');
+  t.eq(configVm.validatePayload(payload), '', '自动完成时间合法基线（出厂 22:00）先绿');
   t.check(configVm.validatePayload(Object.assign({}, payload, { autoCompleteAt: '24:00' })).indexOf('HH:MM') >= 0,
     'autoCompleteAt=24:00（小时越界）→ 提示 HH:MM 格式');
   t.check(configVm.validatePayload(Object.assign({}, payload, { autoCompleteAt: '7:5' })).indexOf('HH:MM') >= 0,

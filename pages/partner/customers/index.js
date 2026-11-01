@@ -1,5 +1,8 @@
 // pages/partner/customers/index.js · 客户列表（只列已被顾客绑定的顾客；兼职端无任何添加/绑定/导入入口）
 // 口径：docs/ux/V4_UX_PARTNER.md §3.5；docs/data/V4_DATA_MODEL.md §7.4 listBindings（搜索/分页/排序全在服务端）
+// 批20-C（首屏流式）：骨架 6 张灰占位 → 结果首片 ≤10 行立即 setData、其余按帧追加；
+//   onShow 刷新保留旧列表 + 行级 diff（只改变动行），同 bindingId+avatarFileId 沿用旧头像 URL；
+//   请求在途底部「更新中…」小字。装配与补丁计算全在 parts/list-model.js（页面只接线）。
 const partnerApi = require('../../../api/modules/partner');
 const store = require('../../../store/index');
 const modeGuard = require('../../../api/mode-guard');
@@ -7,6 +10,8 @@ const listModel = require('./parts/list-model');
 const shareCard = require('../../profile/parts/share-card');
 
 const SEARCH_DEBOUNCE_MS = 350;
+// 分片追加间隔：让首片先上屏（与工作台 P0-5 同套路）
+const CHUNK_DELAY_MS = 16;
 
 Page({
   data: {
@@ -24,7 +29,7 @@ Page({
     showSkeleton: true,
     showError: false,
     showEmpty: false,
-    skeletonRows: [1, 2, 3],
+    skeletonRows: [1, 2, 3, 4, 5, 6],
     emptyText: '',
     emptyActionText: '',
     errorText: '',
@@ -37,6 +42,7 @@ Page({
   onLoad() {
     this.state = listModel.createState();
     this.searchTimer = null;
+    this._chunkToken = 0;
     this.setData({ partnerNo: this.partnerNoOf(), session: !!store.getViewContext() });
     this.render();
   },
@@ -88,16 +94,43 @@ Page({
     }
   },
 
-  render() {
-    this.setData(listModel.buildSnapshot(this.state, {
+  render(prevRows) {
+    const plan = listModel.viewPlanOf(this.state, {
       partnerNo: this.data.partnerNo,
       readonly: this.data.readonly,
-      session: this.data.session
-    }));
+      session: this.data.session,
+      prevRows: prevRows
+    });
+    this.setData(plan.setData);
+    // 每个结果都作废旧分片追加：旧片不得落到新结构上
+    const token = (this._chunkToken || 0) + 1;
+    this._chunkToken = token;
+    if (plan.chunk) {
+      this.appendChunks(plan.appendPatches, token);
+    }
+  },
+
+  // 首屏流式：首片已 setData，其余片按帧只发新片 rows[n]（不重发已渲染行）
+  appendChunks(patches, token) {
+    if (!patches || !patches.length) {
+      return;
+    }
+    const step = (rest) => {
+      if (this._chunkToken !== token || !rest.length) {
+        return;
+      }
+      this.setData(rest[0]);
+      if (rest.length > 1) {
+        setTimeout(() => step(rest.slice(1)), CHUNK_DELAY_MS);
+      }
+    };
+    setTimeout(() => step(patches), CHUNK_DELAY_MS);
   },
 
   // reset=true：首屏/下拉/搜索（整页替换）；false：触底追加（游标分页）
-  load(reset) {
+  // options.freshAvatars：头像加载失败点重试用——不沿用旧头像 URL，换服务端新签的 5 分钟 URL。
+  load(reset, options) {
+    const opts = options || {};
     const append = reset !== true;
     const query = append ? listModel.nextQuery(this.state) : listModel.refreshQuery(this.state);
     if (append && !query) {
@@ -107,17 +140,19 @@ Page({
       return Promise.resolve();
     }
     this.state = listModel.beginLoad(this.state, append);
-    this.render();
+    this.render(this.data.rows);
     return partnerApi.listBindings(query)
       .then((data) => {
+        const prevRows = this.data.rows;
+        const resultOpts = { nowMs: Date.now(), freshAvatars: opts.freshAvatars === true };
         this.state = append
-          ? listModel.applyMoreResponse(this.state, data || {}, { nowMs: Date.now() })
-          : listModel.applyResponse(this.state, data || {}, { nowMs: Date.now() });
-        this.render();
+          ? listModel.applyMoreResponse(this.state, data || {}, resultOpts)
+          : listModel.applyResponse(this.state, data || {}, resultOpts);
+        this.render(prevRows);
       })
       .catch((err) => {
         this.state = listModel.applyError(this.state, err && err.message);
-        this.render();
+        this.render(this.data.rows);
       });
   },
 
@@ -136,7 +171,7 @@ Page({
   search() {
     this.searchTimer = null;
     this.state = listModel.applyKeyword(this.state, this.data.keyword);
-    this.render();
+    this.render(this.data.rows);
     this.load(true);
   },
 
@@ -144,7 +179,7 @@ Page({
     this.clearSearchTimer();
     this.setData({ keyword: '' });
     this.state = listModel.applyKeyword(this.state, '');
-    this.render();
+    this.render(this.data.rows);
     this.load(true);
   },
 
@@ -152,9 +187,10 @@ Page({
     this.load(true);
   },
 
-  // D42：头像临时 URL 过期/加载失败时点默认头像位重试——整页重拉一次（服务端重签 5 分钟 URL）
+  // D42：头像临时 URL 过期/加载失败时点默认头像位重试——整页重拉一次（服务端重签 5 分钟 URL；
+  // 批20-C：必须 freshAvatars，否则行级"沿用旧 URL"会把坏 URL 又用回去）
   onAvatarRetry() {
-    this.load(true);
+    this.load(true, { freshAvatars: true });
   },
 
   onDismissBanner() {

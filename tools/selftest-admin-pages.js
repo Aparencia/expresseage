@@ -29,6 +29,7 @@ const sharedStations = require(path.join(ROOT, 'shared/stations.js'));
 const copy = require(path.join(ROOT, 'pkg-admin/common/copy.js'));
 const C = require(path.join(ROOT, 'pkg-admin/common/constants.js'));
 const adminClockCases = require(path.join(__dirname, 'lib', 'admin-config-clock-cases.js'));
+const adminOrdersCases = require(path.join(__dirname, 'lib', 'admin-orders-cases.js'));
 
 const overviewVm = require(path.join(ROOT, 'pkg-admin/pages/overview/parts/view-model.js'));
 const inviteVm = require(path.join(ROOT, 'pkg-admin/pages/invite-codes/parts/view-model.js'));
@@ -42,7 +43,7 @@ const accountSwitchVm = require(path.join(ROOT, 'pkg-admin/pages/account-switch/
 const reviewVm = require(path.join(ROOT, 'pkg-admin/pages/recognition-review/parts/view-model.js'));
 const messagesVm = require(path.join(ROOT, 'pkg-admin/pages/messages/parts/view-model.js'));
 
-const EXPECTED_ASSERTIONS = 154 + 22 + 3 + 11; // +11：D43 自动完成时间 HH:MM 用例表（tools/lib/admin-config-clock-cases.js）；余同批 16 前：v1.1/D32 站点卡 16 + 反馈④ 6 + D41 目录 3
+const EXPECTED_ASSERTIONS = 154 + 22 + 3 + 11 + adminOrdersCases.CLIENT_ASSERTIONS; // +11：D43 自动完成时间 HH:MM 用例表（tools/lib/admin-config-clock-cases.js）；+6：订单行/消息行「称呼（编号）」（tools/lib/admin-orders-cases.js）；余同批 16 前：v1.1/D32 站点卡 16 + 反馈④ 6 + D41 目录 3
 
 const ADMIN_PAGES = ['overview', 'invite-codes', 'customers', 'customer-detail', 'partners', 'orders',
   'order-detail', 'config', 'account-switch', 'messages', 'recognition-review'];
@@ -358,6 +359,7 @@ function register(h) {
     ], '搜索空/异常空/筛选空三种空态文案必须区分');
     t.eq(ordersVm.buildTabs('EXCEPTION', { EXCEPTION: 2 })
       .filter(function hasCount(x) { return x.countText !== ''; })[0].countText, ' 2', '状态 tab 计数取服务端 counts');
+    adminOrdersCases.ordersClientChecks(t);
   });
 
   // ------------------------------------------------------------------ G. 订单详情（异常介入取消）
@@ -751,6 +753,7 @@ function register(h) {
       && totals.hasAny === true, '标题计数用服务端总数（不被分页截断）');
     t.eq(messagesVm.buildTotals({}, { exceptions: [1, 2], failures: [] }).exceptionTotal, 2,
       '服务端缺计数时回退当前页条数');
+    adminOrdersCases.messagesClientChecks(t);
   });
 
   // ------------------------------------------------------------------ L. api 适配层（fake transport）

@@ -50,7 +50,7 @@ const precheck = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/
 const orderScopeReq = fsutil.tryRequire(path.join(ROOT, 'utils/order-scope.js'));
 const orderScope = orderScopeReq.value || {};
 
-const EXPECTED_ASSERTIONS = 290; // 285 + 5：N 组首页 refresh 在途切 tab/卸载守卫（P2） // 274 + 11：D47 预约详情展示/到点标红/历史 SLOT // 实际断言总数（273 + 1：D43 送达等待提示改日结批时刻）
+const EXPECTED_ASSERTIONS = 300; // 290 + 10：O 组批20-C 顾客高频页首屏灰色占位/刷新保留旧内容
 const caseLib = require('./lib/order-customer-cases');
 const {
   STATUS, STATUS_LITERALS, PAGES, ISO, NOW, DOC_MS, textOf, actionsFor, dto, event, orderDoc,
@@ -928,6 +928,44 @@ function register(h) {
       && /onUnload\(\)\s*\{\s*this\._hidden = true;/.test(home),
     'N4 onHide/onUnload 置 _hidden（守卫有真实状态来源，不是常量恒假）');
     t.notEmpty(home, 'N 组样本非空');
+  });
+
+  // ---------------------------------------------------------------- O 批20-C 顾客高频页首屏灰色占位
+  h.section('O. 批20-C 顾客高频页首屏灰色占位：订单页/首页去掉文字 loading，刷新保留旧内容（只这两页）', (t) => {
+    const ordersWxml = textOf(PAGES.ordersWxml);
+    const orders = textOf(PAGES.orders);
+    const ordersWxss = textOf('pages/customer/orders/index.wxss');
+    const homeWxml = textOf(PAGES.homeWxml);
+    const homeWxss = textOf('pages/customer/home/index.wxss');
+    const home = textOf(PAGES.home);
+    const hasSkeleton = (wxml) => /skeleton/.test(wxml);
+    const hasTextLoading = (wxml) => wxml.indexOf('加载中') >= 0;
+    const oldOrders = '<view class="empty-text" wx:if="{{loadingVisible}}">加载中…</view>';
+    t.check(hasTextLoading(oldOrders) === true && hasSkeleton(oldOrders) === false,
+      'O1 正控：旧订单页文字 loading 被判否（判据有牙）');
+    t.check(hasSkeleton(ordersWxml) === true && hasTextLoading(ordersWxml) === false,
+      'O2 订单页首屏 = 灰色骨架占位，零「加载中…」文字');
+    t.check(/wx:for="\{\{skeletonRows\}\}"/.test(ordersWxml)
+      && /skeletonRows:\s*\[1,\s*2,\s*3\]/.test(orders)
+      && /\.skeleton-[a-z]+\s*\{[^}]*background/.test(ordersWxss),
+    'O3 骨架 3 张占位卡由页面数据驱动 + 灰色块样式（灰底，不是白屏/文字）');
+    t.check(/loadingVisible && list\.length === 0/.test(ordersWxml),
+      'O4 骨架只在首屏（list 为空）出现：刷新保留旧列表、不闪骨架');
+    const loadBody = orders.slice(orders.indexOf('loadPage(reset) {'), orders.indexOf('scheduleLoadingVisible() {'));
+    t.check(loadBody.length > 0 && loadBody.indexOf('list: []') < 0
+      && loadBody.indexOf('list = reset ? rows : this.data.list.concat(rows)') >= 0,
+    'O5 请求在途不清空旧列表，结果到达才整表替换（onShow 刷新保留旧内容）');
+    t.check(homeWxml.indexOf('partner-name-skeleton') >= 0 && homeWxml.indexOf('资料加载中') < 0,
+      'O6 首页兼职卡昵称位文字 loading → 灰色骨架条');
+    t.check(/\.skeleton-line\s*\{[^}]*background:\s*#EEF0F3/.test(homeWxss)
+      && /\.partner-name-skeleton\s*\{/.test(homeWxss),
+    'O7 首页骨架条灰底样式（同客户页灰 #EEF0F3）');
+    t.check(/wx:elif="\{\{loading\}\}"/.test(homeWxml),
+      'O8 骨架只在数据未到时出现（有昵称直接渲染，loading=false 不占位）');
+    const refreshBody = home.slice(home.indexOf('async refresh() {'), home.indexOf('// D42：兼职卡头像 URL 过期'));
+    t.check(refreshBody.length > 0 && refreshBody.indexOf('order: null') < 0 && refreshBody.indexOf('vm:') < 0,
+      'O9 首页 refresh 不清空旧内容（在途仍显示上次兼职卡/订单，结果到达才覆盖）');
+    t.notEmpty([ordersWxml, homeWxml, ordersWxss, homeWxss], 'O 组样本非空');
   });
 }
 

@@ -257,6 +257,37 @@ function toGroups(data, nowMs) {
   return [];
 }
 
+// 今日订单流水（D53/批 20）：「全部」= 今日内有状态更新的七状态订单，服务端已按 statusUpdatedAt desc 排好，
+// 客户端不再按四档重排、也不做站点分组——平铺进单个 day 组（group.day=true → 页面不渲染站点头）。
+// 行字段/工具条复用 toRow：活动行照常显示写操作；待确认（delivered 桶）/已完结（history 桶）行只读（D54）。
+const DAY_READONLY_BUCKETS = ['delivered', 'history'];
+
+function dayRowOf(order, nowMs) {
+  const row = toRow(order, nowMs);
+  if (DAY_READONLY_BUCKETS.indexOf(row.bucket) < 0) {
+    return row;
+  }
+  return Object.assign({}, row, {
+    toolbar: { primary: [], secondary: [], detail: true, hidden: false }
+  });
+}
+
+function buildDayGroups(list, nowMs) {
+  const orders = Array.isArray(list) ? list : [];
+  if (!orders.length) {
+    return [];
+  }
+  const rows = orders.map((order) => dayRowOf(order, nowMs));
+  return [{
+    key: '__TODAY__',
+    stationId: '',
+    stationName: '',
+    day: true,
+    count: rows.length,
+    rows: rows
+  }];
+}
+
 function fillBucket(rows) {
   return rows.map((row) => {
     if (row.bucket) {
@@ -411,6 +442,7 @@ function splitByRows(groups, size) {
         key: (group.stationId || '__NONE__') + '#' + chunks.length + '#' + index,
         stationId: group.stationId,
         stationName: group.stationName,
+        day: group.day === true,
         count: take.length,
         rows: take
       });
@@ -433,6 +465,7 @@ module.exports = {
   toRow,
   toRows,
   toGroups,
+  buildDayGroups,
   sortForRoute,
   buildGroups: buildGroupsFromList,
   filterRows,

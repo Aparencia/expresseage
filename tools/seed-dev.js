@@ -108,7 +108,7 @@ function buildPlan() {
     kind: 'document',
     target: 'config/global',
     action: 'upsert',
-    note: 'serviceCatalog(5 类型，不含费用语义)/zoneLabels/orderTimeoutMinutes/autoCompleteAt(UTC+8 日结批默认 23:50，D43)/screenshotRetentionDays/'
+    note: 'serviceCatalog(5 类型，不含费用语义)/zoneLabels/orderTimeoutMinutes/autoCompleteAt(UTC+8 每天自动完成时刻，默认 22:00，D51)/screenshotRetentionDays/'
       + 'recognitionFailureRetentionDays/aiFallback{enabled:false}/viewTicketTtlMinutes/avatarMaxBytes/'
       + 'testAccountMaxPerRole/testDataRetentionDays/privacyVersion',
   });

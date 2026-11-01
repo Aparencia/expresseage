@@ -30,6 +30,7 @@
   </view>
 
   <block wx:if="{{mode === 'skeleton'}}">
+    <!-- 批20-C：首屏 6 张灰色占位卡（与真实行同构同高：头像圆 + 两行灰条） -->
     <view wx:for="{{skeletonRows}}" wx:key="*this" class="card skeleton-card row">
       <view class="skeleton-avatar"></view>
       <view class="flex-1 skeleton-main">
@@ -61,7 +62,10 @@
           <view class="strong ellipsis">{{item.displayNameText}}</view>
           <view wx:if="{{item.activeOrderCountText}}" class="tag">{{item.activeOrderCountText}}</view>
         </view>
-        <view class="muted ellipsis">{{item.anchorKeyText}}</view>
+        <view class="row anchor-row">
+          <view class="muted ellipsis flex-1">{{item.anchorKeyText}}</view>
+          <view wx:if="{{item.incompleteText}}" class="tag incomplete-text">{{item.incompleteText}}</view>
+        </view>
         <view class="row between meta-row">
           <view class="small">{{item.phoneTailText}}<text wx:if="{{item.boundAtText}}"> · 绑定 {{item.boundAtText}}</text></view>
           <view

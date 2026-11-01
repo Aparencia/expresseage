@@ -155,7 +155,7 @@
 | v3 教训（业务） | v4 解决 | 证据 |
 | :-- | :-- | :-- |
 | 已取件只是时间戳（`pickedAt`），状态仍是待办 | 独立 `PICKED` 状态 + `order_events`；`order.unmarkPicked` 明确回退 | `selftest-state`、`selftest-order-lifecycle` |
-| 无送达闭环（done/archived 零 UI 调用） | `DELIVERED` + 顾客确认 / **每日日结批（`autoCompleteAt`，默认 23:50，UTC+8）自动 `COMPLETED`**（D43） | `selftest-order-lifecycle`、`selftest-cleanup` |
+| 无送达闭环（done/archived 零 UI 调用） | `DELIVERED` + 顾客确认 / **每日日结批（`autoCompleteAt`，默认 22:00，UTC+8）自动 `COMPLETED`**（D43） | `selftest-order-lifecycle`、`selftest-cleanup` |
 | 无撤销（误勾只能逐件找） | 5 秒撤销条 + `order.undo`（只覆盖取件/送达）；批量逐单校验、部分失败如实说 | `selftest-order-workbench`、`selftest-order-partner` |
 | 无搜索（件多靠翻） | 服务端搜索（订单号/码/宿舍/称呼/尾号）+ 状态/站点/客户筛选 | `selftest-order-partner`、`selftest-partner-customers` |
 | 无凭证（口头/记忆对账） | 事件流水 + 顾客确认 + `deliveryNote`；截图 7 天删除，只作识别材料 | `selftest-order-lifecycle`、`selftest-order-detail-partner` |

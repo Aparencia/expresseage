@@ -29,6 +29,8 @@
 
 .skeleton-card {
   align-items: center;
+  /* 与真实行同高（头像 64 + 三行文字 + 卡片上下 padding 48），数据到达不跳版 */
+  min-height: 176rpx;
 }
 
 .skeleton-avatar {
@@ -66,6 +68,19 @@
   margin-top: 4rpx;
 }
 
+.anchor-row {
+  margin-top: 4rpx;
+  align-items: center;
+}
+
+/* 资料未完善（dormKey 为空，服务端已置底）：行上明示，不显示假宿舍锚 */
+.incomplete-text {
+  margin-left: 12rpx;
+  flex-shrink: 0;
+  background: #FFF4CE;
+  color: #8A6D00;
+}
+
 .meta-row {
   margin-top: 8rpx;
 }
@@ -84,7 +99,10 @@
 }
 
 .bottom-actions {
+  /* 批20-C 底部安全区：tabBar 100rpx + 120rpx 底垫（含 iPhone 底部安全区），
+     15 名顾客滚到底时「分享绑定卡片」完整可见、不被 tabBar 遮住 */
   padding: 8rpx 0 24rpx;
+  padding-bottom: calc(120rpx + env(safe-area-inset-bottom));
 }
 
 .share-btn {

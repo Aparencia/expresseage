@@ -5,6 +5,16 @@
 const F = require('../../../common/format');
 const C = require('../../../common/constants');
 
+// 行内「用户」展示：称呼（编号）；缺一侧只显示另一侧，都没有则空串（WXML 整行省略）
+function personTextOf(displayName, no) {
+  const name = displayName || '';
+  const number = no || '';
+  if (name && number) {
+    return name + '（' + number + '）';
+  }
+  return name || number;
+}
+
 function decorateOrder(item) {
   const row = item || {};
   const exception = row.exception || {};
@@ -12,7 +22,10 @@ function decorateOrder(item) {
     orderNo: row.orderNo || '—',
     exceptionText: exception.codeText || exception.text || (exception.code ? '已上报异常' : '异常工单'),
     reportedAtText: exception.reportedAt ? F.formatTime(exception.reportedAt) : '',
+    customerNo: row.customerNo || '',
+    customerText: personTextOf(row.customerDisplayName, row.customerNo),
     partnerNo: row.partnerNo || '',
+    partnerText: personTextOf(row.partnerDisplayName, row.partnerNo),
     isTest: row.isTest === true
   };
 }

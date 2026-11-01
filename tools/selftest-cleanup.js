@@ -23,8 +23,8 @@ const enums = require(path.join(CLEANUP, 'shared/enums.js')); const auditActions
 // harness 完整性闸：先占位，首跑按真实断言数回填（少算/多算都判红）。
 const cleanupV1 = require(path.join(__dirname, 'lib', 'cleanup-v1-cases.js'));
 const autoCompleteCases = require(path.join(__dirname, 'lib', 'cleanup-auto-complete-cases.js'));
-const EXPECTED_ASSERTIONS = 187 + cleanupV1.EXPECTED_ASSERTIONS + (autoCompleteCases.EXPECTED_ASSERTIONS - 10);
-// ↑ 187 为基线（含旧逐单 24h 的 10 条 §C 断言）；§C 整节外移到 cleanup-auto-complete-cases.js（D43 日结批 30 条）。
+const EXPECTED_ASSERTIONS = 177 + cleanupV1.EXPECTED_ASSERTIONS + autoCompleteCases.EXPECTED_ASSERTIONS;
+// ↑ 177 为 §A/§B/§D~§M 基线；§C 整节在 cleanup-auto-complete-cases.js（D51：22:00 日结批 + 追平窗口）。
 const NOW = Date.parse('2026-10-22T12:00:00+08:00');
 const MINUTE = 60 * 1000, HOUR = 60 * MINUTE, DAY = 24 * HOUR;
 const COLLECTION_NAMES = Object.keys(COLLECTIONS).map((key) => COLLECTIONS[key]);
@@ -315,7 +315,7 @@ async function orderTimeoutSection(t) {
   const result2 = await SWEEPS_RUN.orderTimeout(makeCtx(db2, { config: { orderTimeoutMinutes: 60 } }));
   t.eq(result2.acted, 1, '§B config.orderTimeoutMinutes=60 生效（70min 单到期）');
 }
-// ---------------------------------------------------------------- §C autoComplete（D43 UTC+8 日结批，用例表外移控行数）
+// ---------------------------------------------------------------- §C autoComplete（D51 UTC+8 日结批 22:00，用例表外移控行数）
 async function autoCompleteSection(t) {
   await autoCompleteCases.autoCompleteChecks(t, AUTO_COMPLETE_DEPS);
 }

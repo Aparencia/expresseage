@@ -2,8 +2,9 @@
 // 口径：UX_PARTNER §4.6（范围=当前筛选下可见活动单；客户端循环逐单调用 + 同一 batchActionId；
 //       逐单结果、禁止把部分成功显示为全部成功；部分失败保留失败项选择态可重试）、§4.15（部分失败逐句文案）。
 // 纪律：可执行动作只按服务端行内 actions[] 求交集（不判断七状态）；接单按契约不带 batchActionId。
-// TD-083/D43：送达确认文案的「系统每天 X 自动完成」时刻由调用方注入公开配置 config.autoCompleteAt；
-//            缺配置/非法才回退出厂默认（默认值唯一单源 = config/defaults.DEFAULT_CONFIG，本零件零时刻字面量）。
+// TD-083/D43/D51：送达确认文案的「系统每天 X 自动完成」时刻由调用方注入公开配置 config.autoCompleteAt；
+//            缺配置/非法才回退出厂默认（默认值唯一单源 = config/defaults.DEFAULT_CONFIG，本零件零时刻字面量）；
+//            D51 起语义改为「该时刻前送达的当天完成、该时刻后送达的下一轮批完成」（不再写「顺延次日」）。
 'use strict';
 
 const rowActions = require('./row-actions');
@@ -28,7 +29,7 @@ const BATCH_ACTIONS = [
     label: '送达',
     batch: true,
     undoable: true,
-    confirmText: '将 N 单（共 M 件）标记为已送达，顾客可确认；系统每天 {autoCompleteAt} 自动完成送达单（当天已过 {autoCompleteAt} 的顺延次日；guest 单无需确认）。'
+    confirmText: '将 N 单（共 M 件）标记为已送达，顾客可确认；系统每天 {autoCompleteAt} 自动完成送达单（该时刻前送达的当天完成；该时刻后送达的下一轮自动完成；guest 单无需确认）。'
   },
   {
     key: 'undoPick',

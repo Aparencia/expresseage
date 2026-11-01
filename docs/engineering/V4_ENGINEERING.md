@@ -182,7 +182,7 @@ expressage_college_v4/
 | `serviceCatalog` | 服务类型目录 `[{code,name,desc}]`（**只有类型名与说明**） | CONTRACT §6 五类 | admin.updateConfig |
 | `announcement` / `maintenance` | 公告 / 维护模式开关+文案 | `''` / `{enabled:false,text:''}` | admin.updateConfig |
 | `orderTimeoutMinutes` | 未接单超时 | 120 | admin.updateConfig |
-| `autoCompleteAt`（D43） | 送达单日结批时刻（UTC+8 的 `HH:MM`，默认 `23:50`；cutoff=最近一个已过该时刻，10 分钟触发器 ⇒ 实际完成落该时刻~+10 分钟） | `23:50` | admin.updateConfig（HH:MM 格式闸） |
+| `autoCompleteAt`（D43） | 送达单日结批时刻（UTC+8 的 `HH:MM`，默认 `22:00`；cutoff=该单送达日所在自然日的该时刻，10 分钟触发器 ⇒ 实际完成落该时刻~+10 分钟） | `22:00` | admin.updateConfig（HH:MM 格式闸） |
 | `screenshotRetentionDays` | 截图留存 | 7 | admin.updateConfig |
 | `viewTicketTtlMinutes` | **切换会话票据时长（v0.7；v0.9 两模式共用）** | 30，范围 5~60 | admin.updateConfig |
 | `recognitionFailureRetentionDays`（v0.8） | **识别失败原图/记录保留** | 30，范围 7~30 | admin.updateConfig |
@@ -359,7 +359,7 @@ expressage_college_v4/
 | 任务（内部 action） | 到期条件（幂等） | 动作 | 上限 |
 | :-- | :-- | :-- | :-- |
 | `cleanup.orderTimeout` | `SUBMITTED` 且超 `orderTimeoutMinutes` 未接单 | CANCELLED + `TIMEOUT_CANCELLED`（SYSTEM） | 每轮 100 条 |
-| `cleanup.autoComplete` | `DELIVERED` 且 `deliveredAt ≤ 最近已过 autoCompleteAt`（UTC+8 日结批，默认 23:50；**含 guest 单**） | COMPLETED + `AUTO_COMPLETED`（SYSTEM） | 100 |
+| `cleanup.autoComplete` | `DELIVERED` 且 `deliveredAt ≤ 该单送达日当天 autoCompleteAt`（UTC+8 日结批，默认 22:00；**含 guest 单**） | COMPLETED + `AUTO_COMPLETED`（SYSTEM） | 100 |
 | `cleanup.files` | 终态超 `screenshotRetentionDays`（默认 7） | 按 `images[].fileId` 引用计数归零删云文件（`orders/{ticket}/image.jpg`）并写 `orders.images[].cleanedAt`、清订单图片引用；**无主 `avatars/` 自动清 MVP 不可行（TD-051，见本节末）** | 100 |
 | `cleanup.tickets` | `upload_tickets` 过期（宽限 24h，含已使用） | 删票据（无主文件扫描 MVP 不可行，TD-051） | 100 |
 | `cleanup.viewSessions`（v0.7） | 票据 `expiresAt` 已过或 `endedAt` 超 7 天 | 过期未结束 → 补写 `endedAt` + 记一条 `ACCOUNT_SWITCH_EXPIRED`（每票至多一条）；结束超 7 天 → 物理删会话 | 100 |
@@ -1078,3 +1078,12 @@ powershell -File tools/mutation.ps1 -Case M19
 12. 原图只在复核页临时可见且每次审计；复核只回填识别字段，AI 只做预填、不覆盖手填。
 13. 绑定只能顾客发起；真实账号只读、测试账号可写，测试数据永不混入统计与真实页面。
 14. 头像/昵称仅绑定双方可见、默认头像兜底；后台/卡片/通知不展示，注销与替换即删文件。
+
+## 15. 批 20 工程变更（2026-11-01，D51~D56）
+
+- **cleanup.autoComplete（D51）**：判据改为「逐单 cutoff = 该单 `deliveredAt` 所在 UTC+8 自然日的 `config.autoCompleteAt`（默认 `22:00`），`now ≥ cutoff` 即完成」；删除「最近一个已过 cutoff + 顺延次日」实现与注释；22:00–24:00 送达的下一轮 10 分钟批内完成；跨 0 点按送达日补扫；事件/幂等/guest 同路径不变；config 默认值与 sync 副本（`cloudfunctions/*/shared/defaults.js`）同批。`selftest-cleanup`、`selftest-cloud`、`selftest-state`、`selftest-order-detail-partner`、`selftest-admin-pages`、`selftest-performance` 断言同批更新；断言总数以 `node tools/selftest.js` 汇总输出为准（不写死）。
+- **order.listPartner view=day（D52/D53）**：新增今日流水视图与 `summary{scope:'deliveredToday'}`；`workbench` 视图零改动（旧 D48 summary 形状保留）；服务端测试拆件 `tools/lib/order-day-cases.js`（由 `selftest-cloud` 注册），客户端断言在 `selftest-order-workbench`（拆件 `tools/lib/order-workbench-cases.js`）；`tools/selftest-cloud.js` 已贴 1000 行上限，后续新增断言先拆件。
+- **partner.listBindings（D54）**：空 `dormKey` 桶置底（游标同全序）、`activeOrderCount` 只统计本页 ≤limit 顾客；服务端断言并入 `selftest-cloud`，纯件断言并入 `selftest-partner-pages`（拆件 cases lib）；`partner/_customer.js` 已 497/500，后续先拆件。
+- **pick-list 双阶段（D55）**：纯件拆为 `parts/pick-view.js`（待取件）、`parts/stage-flows.js`（阶段页面方法）；`index.js` 496/500 贴边；无服务端/ app.json/页数变化；`selftest-pick-list` 断言以实跑为准。
+- **admin.listOrders 行称呼（D56）**：`admin/_dto.buildOrderBrief` 增脱敏双方称呼 + 每页 2 次批量取名；用例拆件 `tools/lib/admin-orders-cases.js`（server 由 `selftest-cloud`、client 由 `selftest-admin-pages` 注册）；`selftest-cloud.js` 恰 1000 行。
+- **工具链**：`tools/check-docs.js` 的 D 裁决上限 `D_MAX` 50→57（新增 D51~D57 定义即须同步，否则引用判红）；`check.ps1` 钉数不变（check.js 36 条 / check-docs 12 条 / selftest 36 套）。

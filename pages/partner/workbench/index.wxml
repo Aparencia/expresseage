@@ -7,8 +7,8 @@
   <view class="head-row">
     <view class="title">工作台</view>
     <view class="row">
-      <!-- D46：独立「楼层配送清单」页入口（清单数据/动作在新页，工作台数据流不变） -->
-      <view class="mini-btn btn btn-ghost" bindtap="onPickListTap">楼层清单</view>
+      <!-- D46/批 20：独立「取件清单」页入口（双阶段：待取件按站点 / 待送达原样；工作台数据流不变） -->
+      <view class="mini-btn btn btn-ghost" bindtap="onPickListTap">取件清单</view>
       <view class="mini-btn btn btn-ghost" bindtap="onRefreshTap">刷新</view>
       <view wx:if="{{!readonly && (selecting || hasRows)}}" class="mini-btn btn btn-primary" bindtap="onToggleSelecting">{{selecting ? '退出多选' : '多选'}}</view>
     </view>
@@ -46,7 +46,7 @@
       <text wx:elif="{{testWrite}}">写操作只写测试数据</text>
       <text wx:else>30 秒自动刷新</text>
     </view>
-    <!-- D48/P1-5：复制汇总（顾客群口径）——用 load 已返回的服务端 summary，只到苑/栋，点击不额外发请求 -->
+    <!-- D48/D54：复制汇总（顾客群口径，今日已送达）——用 load 已返回的服务端 summary，只到苑/栋，点击不额外发请求 -->
     <view class="row between copy-row">
       <text class="small">汇总只到苑/栋，可发到顾客群</text>
       <view class="mini-btn btn btn-ghost" bindtap="onCopySummaryTap">复制汇总</view>
@@ -108,7 +108,12 @@
 
   <block wx:for="{{groups}}" wx:key="key" wx:for-item="group" wx:for-index="groupIndex">
     <view class="card station-card">
-      <view class="row between station-head">
+      <!-- 批 20（D53）：「全部」= 今日订单流水，单组平铺、不按站点分组；其它 chip 仍显示站点卡头 -->
+      <view wx:if="{{group.day}}" class="row between station-head">
+        <view class="strong">今日订单流水（{{group.count}}）</view>
+        <view class="small">按状态更新时间倒序</view>
+      </view>
+      <view wx:else class="row between station-head">
         <view class="strong">{{group.stationName}}（{{group.count}}）</view>
         <view wx:if="{{selecting}}" class="mini-btn btn btn-ghost" data-station-id="{{group.stationId}}" bindtap="onSelectStation">全选本站</view>
       </view>

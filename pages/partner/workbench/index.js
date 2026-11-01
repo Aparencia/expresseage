@@ -62,6 +62,8 @@ const base = {
     this._historyRows = [];
     this._historyPaging = null;
     this._summary = null;
+    this._summaryCounts = null;
+    this._summaryDayKey = '';
     this._ack = null;
     this._chunkToken = 0;
     this._lastBatch = null;
@@ -93,14 +95,16 @@ const base = {
     if (tabBar) tabBar.setData({ selected: 0 });
   },
 
-  // 统计页「今日完成」跳转：带 completedDate=今天 时自动展开已完结区（复用既有 onCompletedToggle）
+  // 统计页「今日完成」跳转：带 completedDate=今天 时落到「全部」今日流水（批 20：今日完成单只在全部）；
+  // 其它日期仍复用既有 onCompletedToggle 展开已完结区。
   applyCompletedFocus() {
     const date = this._completedFocusDate;
     if (!date) {
       return;
     }
     this._completedFocusDate = '';
-    if (date !== dayView.dayDateKeyOf(Date.now()) || this.data.completed.expanded) {
+    if (date === dayView.dayDateKeyOf(Date.now())) {
+      this.focusTodayFlow();
       return;
     }
     this.onCompletedToggle();
@@ -144,8 +148,12 @@ const base = {
         nowMs: Date.now()
       });
       this._list = plan.list;
-      // 分页 more 的响应同样带 summary：同步刷新，复制汇总始终对齐最近一次服务端数据
-      this._summary = data.summary || this._summary;
+      // D54：分页追加同样只在今日流水（view=day）刷新「今日已送达」summary；其它 chip 不覆盖旧值
+      if (this.data.filter === filterView.FILTER_ALL && data && data.summary) {
+        this._summary = data.summary;
+        this._summaryCounts = plan.counts;
+        this._summaryDayKey = dayView.dayDateKeyOf(Date.now());
+      }
       const patch = {
         groups: plan.groups,
         counts: plan.counts,
@@ -275,8 +283,12 @@ const base = {
     });
     this._list = plan.list;
     this._page1Keys = plan.page1Keys;
-    // D48/P1-5：保存 load 返回的 data.summary（复制汇总用；点击不再额外发请求）
-    this._summary = (data && data.summary) || null;
+    // D54：今日流水（view=day）的 summary 才是「今日已送达」口径；其它 chip 的旧 D48 summary 不覆盖它
+    if (this.data.filter === filterView.FILTER_ALL && data && data.summary) {
+      this._summary = data.summary;
+      this._summaryCounts = plan.counts;
+      this._summaryDayKey = dayView.dayDateKeyOf(Date.now());
+    }
     const result = loadView.resultPatch(plan, {
       filterKey: this.data.filter,
       poll: opts.poll,
@@ -377,20 +389,6 @@ const base = {
       hasRows: false
     });
     this.load({ silent: true });
-  },
-
-  onCountTap(event) {
-    const target = filterView.countTargetOf(event.currentTarget.dataset.count);
-    if (!target) {
-      return;
-    }
-    if (target.history) {
-      if (!this.data.completed.expanded) {
-        this.onCompletedToggle();
-      }
-      return;
-    }
-    this.applyFilter(target.filter);
   },
 
   onKeywordInput(event) {

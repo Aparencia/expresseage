@@ -1,7 +1,7 @@
 'use strict';
 /**
- * tools/lib/cloud-config-clock-cases.js — selftest-cloud 的 D43 配置合同用例：
- * autoCompleteAt 出厂默认/白名单/公开子集/HH:MM 格式闸/旧小时数键作废/审计留痕。
+ * tools/lib/cloud-config-clock-cases.js — selftest-cloud 的 D43/D51 配置合同用例：
+ * autoCompleteAt 出厂默认（D51：'22:00'）/白名单/公开子集/HH:MM 格式闸/旧小时数键作废/审计留痕。
  * 非独立套件：由 selftest-cloud require 后调用（拆出以控测试文件 ≤1000 行，门禁 #18）。
  */
 const path = require('path');
@@ -13,14 +13,14 @@ async function clockChecks(t, deps) {
   const app = require(path.join(API, 'app.js'));
   const configLib = require(path.join(API, 'db/config.js'));
   const defaultsLib = require(path.join(API, 'shared/defaults.js'));
-  t.eq(defaultsLib.DEFAULT_CONFIG.autoCompleteAt, '23:50', '出厂默认 autoCompleteAt=23:50（UTC+8 日结批时刻）');
+  t.eq(defaultsLib.DEFAULT_CONFIG.autoCompleteAt, '22:00', '出厂默认 autoCompleteAt=22:00（UTC+8 日结批时刻，D51）');
   t.eq(Object.prototype.hasOwnProperty.call(defaultsLib.DEFAULT_CONFIG, deps.legacyHoursKey), false,
     '出厂默认不再含旧小时数键（不作半死兼容键）');
   t.eq(configLib.PUBLIC_CONFIG_KEYS.indexOf('autoCompleteAt') >= 0, true,
     'config.getPublic 公开子集含 autoCompleteAt（端侧文案要按配置时刻展示）');
   t.eq(configLib.PUBLIC_CONFIG_KEYS.indexOf(deps.legacyHoursKey), -1, '公开子集不再含旧小时数键');
   const pub = configLib.publicConfig(configLib.cloneDefault());
-  t.eq(pub.autoCompleteAt, '23:50', '公开子集 autoCompleteAt=出厂默认 23:50');
+  t.eq(pub.autoCompleteAt, '22:00', '公开子集 autoCompleteAt=出厂默认 22:00');
   t.eq(['orderMergeWindowMinutes', 'aiFallback', deps.legacyHoursKey].filter((key) => pub[key] !== undefined), [],
     '公开子集不含治理/内部键（合并窗口/aiFallback/旧小时数键）');
   const db = deps.createTestDb();

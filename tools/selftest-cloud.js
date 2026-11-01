@@ -12,7 +12,6 @@
 const path = require('path');
 const { createHarness, installCrashGuard } = require('./selftest');
 const { cloudStub, createTestDb, createUpdateProbeDb } = require('./selftest-cloud-fixtures'); const cloudConfigCases = require('./lib/cloud-config-clock-cases');
-
 const ROOT = path.resolve(__dirname, '..');
 const API = path.join(ROOT, 'cloudfunctions/api');
 const CLEANUP = path.join(ROOT, 'cloudfunctions/cleanup');
@@ -27,15 +26,14 @@ const auth = require(path.join(API, 'middleware/auth.js'));
 const switchSession = require(path.join(API, 'middleware/switch-session.js'));
 const validateMw = require(path.join(API, 'middleware/validate.js'));
 const ratelimit = require(path.join(API, 'middleware/ratelimit.js'));
-const idempotency = require(path.join(API, 'middleware/idempotency.js')); const aiCommon = require(path.join(API, 'handlers/ai/_common.js'));
+const idempotency = require(path.join(API, 'middleware/idempotency.js')); const aiCommon = require(path.join(API, 'handlers/ai/_common.js')); const adminOrdersCases = require('./lib/admin-orders-cases.js'); const orderDayCases = require('./lib/order-day-cases.js');
 
 const NOW = Date.parse('2026-10-21T12:00:00+08:00');
 const DAY_MS = 24 * 60 * 60 * 1000;
 const ADMIN_OPENID = 'openid-admin-dev01';
 const ADMIN_ENV = { ADMIN_OPENIDS: JSON.stringify({ [ADMIN_OPENID]: 'DEV-01' }) };
 
-const EXPECTED_ASSERTIONS = 192; // 180 + 12：D43 config 合同（autoCompleteAt 默认/白名单/公开子集/格式闸/旧键作废/审计）
-
+const EXPECTED_ASSERTIONS = 192 + adminOrdersCases.SERVER_ASSERTIONS + orderDayCases.SERVER_ASSERTIONS; // 192=180+12 D43；另加 admin 订单行称呼与 day 视图用例（tools/lib/*-cases.js）
 const API_PENDING_ASSERTS = 22;
 const CLEANUP_PENDING_ASSERTS = 14;
 
@@ -969,6 +967,8 @@ function register(h) {
     }
     t.eq(limCodes, ['OK', 'OK', 'OK', 'OK', 'OK', 'RATE_LIMITED'], '§7.3 头像上传 5 次/日/人：第 6 次 RATE_LIMITED');
   });
+  asyncSection('§7.3 admin.listOrders 行称呼（批量取名/脱敏/guest/查询预算）', adminOrdersCases.serverChecks);
+  asyncSection('§7.3 order.listPartner view=day 今日流水与今日已送达 summary（D53/D54）', orderDayCases.serverChecks);
 
   // ---------------------------------------------------------------- §7.3 router 注册表（需 11 域齐）
   h.section('§7.3 router 注册表与 shared/actions 双向一致', (t) => {

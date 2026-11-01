@@ -49,3 +49,30 @@
   padding: 0 24rpx;
   margin-top: 16rpx;
 }
+
+/* 批20-C：首屏灰色骨架占位（与订单行同构：头像圆 + 两行灰条），替掉文字「加载中…」 */
+.skeleton-item {
+  padding: 24rpx;
+}
+
+.skeleton-avatar {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 50%;
+  background: #EEF0F3;
+}
+
+.skeleton-main {
+  margin-left: 20rpx;
+}
+
+.skeleton-line {
+  height: 28rpx;
+  border-radius: 8rpx;
+  background: #EEF0F3;
+  margin-bottom: 12rpx;
+}
+
+.skeleton-line.short {
+  width: 40%;
+}

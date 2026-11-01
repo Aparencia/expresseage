@@ -69,20 +69,22 @@ Page({
     });
   },
 
-  // D48 复制汇总（顾客群口径）：点击时按需取一次工作台 summary（非 onShow 预拉），纯件生成文案。
-  // 无进行中订单不复制假文案；剪贴板失败如实提示并可重试；truncated 时文案与 toast 都如实说明可能少报。
+  // D48/D54 复制汇总（顾客群口径）：点击时按需取一次今日流水 summary（view=day，非 onShow 预拉），纯件生成文案。
+  // 批 20 起口径 = 今日已送达（deliveredAt 落在今日、DELIVERED/COMPLETED、排除取消单；隐私口径同工作台纯件，
+  // 不含房间号/取件码/尾号/昵称）。无今日送达不复制假文案；剪贴板失败如实提示并可重试；
+  // truncated 时文案与 toast 都如实说明可能少报。
   onCopySummaryTap() {
     if (this._copying) {
       return;
     }
     this._copying = true;
     wx.showLoading({ title: '正在生成汇总', mask: true });
-    orderApi.listPartner({ view: 'workbench', limit: 1 }).then((dto) => {
+    orderApi.listPartner({ view: 'day', limit: 1 }).then((dto) => {
       wx.hideLoading();
       const config = store.get('config') || {};
       const copy = summaryCopy.copyOf(dto && dto.summary, { zoneLabels: config.zoneLabels });
       if (!copy.visible) {
-        wx.showToast({ title: '当前没有进行中的订单', icon: 'none' });
+        wx.showToast({ title: '今天还没有送达的订单', icon: 'none' });
         return;
       }
       wx.setClipboardData({

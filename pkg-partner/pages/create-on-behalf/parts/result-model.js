@@ -1,6 +1,6 @@
 // pkg-partner/pages/create-on-behalf/parts/result-model.js · 提交结果块纯件（零 wx、零请求）
 // 口径：docs/ux/V4_UX_PARTNER.md §3.4（成功后当前页结果块逐个列 orderNo 可点；guest 提示块必显；一图多码 N 单）
-//      D43：guest 单自动完成时刻按调用方注入的公开配置 config.autoCompleteAt 生成文案（TD-083），
+//      D43/D51：guest 单自动完成时刻按调用方注入的公开配置 config.autoCompleteAt 生成文案（TD-083），
 //      缺配置/非法才回退出厂默认；默认值唯一单源 config/defaults.DEFAULT_CONFIG（本文件不写第二处时刻字面量）。
 'use strict';
 
@@ -26,17 +26,17 @@ function listOf(value) {
   return Array.isArray(value) ? value : [];
 }
 
-// D43（CONTRACT §13）：UTC+8 日结批时刻 config.autoCompleteAt（HH:MM）；
+// D43/D51（CONTRACT §13）：UTC+8 的完成时刻 config.autoCompleteAt（HH:MM，D51 默认 22:00）；
 // 缺配置/非法一律回退出厂默认（唯一默认常量在 config/defaults，本零件不再写时刻字面量）。
 function autoCompleteAtOf(config) {
   const source = config && typeof config === 'object' ? config : {};
   return defaults.normalizeClockText(source.autoCompleteAt) || defaults.DEFAULT_CONFIG.autoCompleteAt;
 }
 
-// guest 第 4 行：自动完成口径随配置走（送达当天已过该时刻的顺延次日，无需顾客确认）
+// guest 第 4 行：自动完成口径随配置走（该时刻前送达当天完成、该时刻后送达下一轮自动完成，无需顾客确认）
 function guestAutoCompleteLineOf(config) {
   const at = autoCompleteAtOf(config);
-  return '送达后由系统每天 ' + at + ' 自动完成（当天已过 ' + at + ' 的顺延次日），无需顾客确认。';
+  return '送达后由系统每天 ' + at + ' 自动完成（该时刻前送达的当天完成；该时刻后送达的下一轮自动完成），无需顾客确认。';
 }
 
 function guestHintLinesOf(config) {

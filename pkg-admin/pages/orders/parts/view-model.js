@@ -33,6 +33,16 @@ function manualEntryTextOf(row) {
   return row && row.manualEntry === true ? '无截图' : '';
 }
 
+// 行内「用户」展示：称呼（编号）；缺一侧只显示另一侧，都没有则空串（WXML 整行省略）
+function personTextOf(displayName, no) {
+  const name = displayName || '';
+  const number = no || '';
+  if (name && number) {
+    return name + '（' + number + '）';
+  }
+  return name || number;
+}
+
 function decorateRow(item) {
   const row = item || {};
   const exception = row.exception || {};
@@ -44,7 +54,10 @@ function decorateRow(item) {
     statusUpdatedAtText: F.formatTime(row.statusUpdatedAt),
     isTest: row.isTest === true,
     exceptionText: exceptionTextOf(exception),
+    customerNo: row.customerNo || '',
+    customerText: personTextOf(row.customerDisplayName, row.customerNo),
     partnerNo: row.partnerNo || '',
+    partnerText: personTextOf(row.partnerDisplayName, row.partnerNo),
     reportedAtText: exception.reportedAt ? F.formatTime(exception.reportedAt) : '',
     parcelCountText: parcelCountTextOf(row.parcelCount),
     manualEntryText: manualEntryTextOf(row)

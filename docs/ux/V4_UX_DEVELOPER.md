@@ -586,7 +586,7 @@ USED / REVOKED / EXPIRED = 终态；不存在「重新生效」，需要时重�
 | 苑名 | `zoneLabels` | D/X/N/B/C 五个；默认东苑/西苑/南苑/北苑/翠苑（D8 已裁决，可改） | 下一请求 |
 | 站点名称（v1.1/D32） | `stations[{id,name}]` | 固定 8 个 id（P1~P8）；名称非空、1~20 字、唯一；默认取 `shared/stations.js`；保存整表校验（缺/多/重复 id 拒绝） | 下一请求（识别/选择器/AI prompt 用新名） |
 | 公告 | `announcement{enabled,title,text}` | 标题 ≤30、正文 ≤500（设计上限，DATA_MODEL 定稿） | 端侧 `onShow`/60 秒内 |
-| 超时 / 自动完成（D43） | `orderTimeoutMinutes`/`autoCompleteAt` | 接单超时默认 120 分钟（整数 10~1440）；自动完成时间为 **UTC+8 的 `HH:MM`（默认 `23:50`，日结批 cutoff）**；旧的「小时数」键作废；非法时刻（`24:00`/`7:5`/空串）保存时被拦并提示格式 | 新判定（下一轮 cleanup） |
+| 超时 / 自动完成（D43） | `orderTimeoutMinutes`/`autoCompleteAt` | 接单超时默认 120 分钟（整数 10~1440）；自动完成时间为 **UTC+8 的 `HH:MM`（默认 `22:00`，日结批 cutoff）**；旧的「小时数」键作废；非法时刻（`24:00`/`7:5`/空串）保存时被拦并提示格式 | 新判定（下一轮 cleanup） |
 | 截图留存 | `screenshotRetentionDays` | 默认 7；**上限 7**（不高于隐私承诺 §11.1/D9） | cleanup 下一轮 |
 | 切换会话时长 | `viewTicketTtlMinutes` | 默认 30；5~60（真实/测试共用，§1.2/§1.3） | 新开会话 |
 | 头像大小上限 | `avatarMaxBytes` | 默认 200KB；**≤200KB**（客户/兼职头像上传；后台不展示头像） | 新上传 |
@@ -816,3 +816,9 @@ USED / REVOKED / EXPIRED = 终态；不存在「重新生效」，需要时重�
 ---
 
 > 文档完毕。页面路径、动作名、错误码、限额逐字引用 CONTRACT v0.9（含 §1.2/§1.3 账号切换、§4.3 识别兜底、§13 D14~D21）；后台共 **11 页 = 10 个功能页 + 后台消息**（`account-switch` 已替代 `view-as`）；审计名统一 `ACCOUNT_SWITCH_*`（`VIEW_AS_*` 作废）；roomTag 一律大写（`D4-522A`）；v0.6 旧字段（如 `activation_codes` 与交易类字段）与 v0.8 旧口径（旧页名、单开发者假设、依赖多微信号验收、头像未纳入采集等）一律不采用；未决项 D14/D15/D16/D17/D18/D19/D20/D21 见本文 §10。
+
+## 12. 批 20 实现补充（D56，2026-11-01）
+
+- **后台列表补用户称呼（D56）**：`admin.listOrders` 行增 `customerDisplayName`/`partnerDisplayName`（`maskedName`：首字+***，不下发完整昵称/openid/_id/customerId/partnerId）；代客单（无 customerId）顾客称呼回退订单 `guest.displayName` 快照；无归属/已删留空不编造；取名按本页 `customerId`/`partnerId` 各 ≤1 次批量 `in`（每批 ≤100，不逐单 N+1），分页第二页同样带称呼。
+- **UI**：开发者后台 → 订单总览：每行「顾客：称呼（编号）」「兼职：称呼（编号）」（缺侧省略，不再裸拼编号）；后台消息（异常工单）行同样展示双方称呼；称呼口径与客户详情/订单详情/识别失败复核一致。
+- **配置页**：`autoCompleteAt` 默认 `22:00`（HH:MM 格式闸），提示改为「自动完成时间请填 HH:MM（00:00~23:59，如 22:00）」；`aiFallback` 仍只读展示（开启步骤见 RUNBOOK §16）。

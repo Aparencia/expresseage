@@ -42,7 +42,9 @@
       </view>
     </view>
     <view class="muted">{{item.serviceName}} · {{item.dormText}} · {{item.statusUpdatedAtText}}</view>
-    <view class="danger-text" wx:if="{{item.exceptionText}}">异常 {{item.exceptionText}}{{item.reportedAtText ? ' · 上报 ' + item.reportedAtText : ''}}{{item.partnerNo ? ' · ' + item.partnerNo : ''}}</view>
+    <view class="muted" wx:if="{{item.customerText}}">顾客：{{item.customerText}}</view>
+    <view class="muted" wx:if="{{item.partnerText}}">兼职：{{item.partnerText}}</view>
+    <view class="danger-text" wx:if="{{item.exceptionText}}">异常 {{item.exceptionText}}{{item.reportedAtText ? ' · 上报 ' + item.reportedAtText : ''}}</view>
   </view>
   </block>
 </view>

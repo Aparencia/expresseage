@@ -1,11 +1,13 @@
 // handlers/admin/_dto.js · 后台 DTO（一律脱敏：无 avatarFileId、昵称脱敏、码打码、尾号后 2 位、无 openid）
 // 口径：DATA_MODEL §7.7 默认脱敏函数 / §2 各集合读屏蔽 / UX_DEVELOPER 各页字段。后台不提供"显示完整"变体。
+// 列表行「用户称呼」：订单行 customerDisplayName/partnerDisplayName 由本文件批量取名后统一 maskedName。
 'use strict';
 
 const mask = require('../../db/dto/mask');
 const enums = require('../../shared/enums');
 const sharedStations = require('../../shared/stations');
 const { AUDIT_ACTIONS } = require('../../shared/audit-actions');
+const { COLLECTIONS } = require('../../shared/collections');
 // v1.0 订单聚合字段只读归一（新 parcels[]/images[]，历史 parcel{}/image{} 单元素回退）唯一解析口径在
 // order/_store.js（Lead 裁决：直接用后端解析接口，后台不另写一份归一）。
 const store = require('../order/_store');
@@ -182,11 +184,70 @@ function partnerBrief(partner, options) {
   };
 }
 
+// ── 订单列表行「称呼」批量取名（DATA_MODEL §5.2 admin 订单列表）────────────────
+// 后台列表要能分辨用户：行内除 customerNo/partnerNo 外给脱敏称呼。取名按本页集合批量 in
+// （一页 ≤100 单 → 顾客/兼职各 ≤1 次查询），绝不逐单 dao.get；无归属（代客单无 customerId）、
+// 已删除/匿名化的用户取不到 → 留空。代客单（guest）顾客称呼回退下单快照 guest.displayName。
+const NAME_IN_BATCH = 100;
+
+function uniqueIdsOf(rows, field) {
+  const ids = [];
+  rows.forEach((row) => {
+    const value = row && row[field];
+    if (typeof value === 'string' && value !== '' && ids.indexOf(value) < 0) {
+      ids.push(value);
+    }
+  });
+  return ids;
+}
+
+async function loadDocsByIds(scope, collection, ids) {
+  const docs = [];
+  for (let i = 0; i < ids.length; i += NAME_IN_BATCH) {
+    const part = await scope.dao.find(collection, {
+      where: { _id: scope.dao.command('in', ids.slice(i, i + NAME_IN_BATCH)) }
+    });
+    part.forEach((doc) => docs.push(doc));
+  }
+  return docs;
+}
+
+// 返回 orderNo → { customerDisplayName, partnerDisplayName }；此处给脱敏前的原值，脱敏统一在 orderBrief。
+async function loadOrderDisplayNames(scope, orders) {
+  const rows = Array.isArray(orders) ? orders : [];
+  const customerIds = uniqueIdsOf(rows, 'customerId');
+  const partnerIds = uniqueIdsOf(rows, 'partnerId');
+  const loaded = await Promise.all([
+    loadDocsByIds(scope, COLLECTIONS.CUSTOMERS, customerIds),
+    loadDocsByIds(scope, COLLECTIONS.PARTNERS, partnerIds)
+  ]);
+  const customerById = {};
+  loaded[0].forEach((doc) => { customerById[doc._id] = doc; });
+  const partnerById = {};
+  loaded[1].forEach((doc) => { partnerById[doc._id] = doc; });
+  const names = {};
+  rows.forEach((row) => {
+    const orderNo = row && row.orderNo;
+    if (!orderNo) {
+      return;
+    }
+    const customer = customerById[row.customerId] || null;
+    const partner = partnerById[row.partnerId] || null;
+    const guest = row.guest && typeof row.guest === 'object' ? row.guest : null;
+    names[orderNo] = {
+      customerDisplayName: customer ? customer.displayName : (guest ? guest.displayName : ''),
+      partnerDisplayName: partner ? partner.displayName : ''
+    };
+  });
+  return names;
+}
+
 // ── 订单 ─────────────────────────────────────────────────────────────────────
 // 列表行（脱敏）：v1.0 只出聚合件数（件数/需查明件数/无截图标记/苑+栋地址），**不出逐件码/柜号/尾号**
 // （列表是最高频出口，逐件 L3 类字段只在详情按件打码后下发，DATA_MODEL §2.5/§7.6）。
-function orderBrief(order, isTest) {
+function orderBrief(order, isTest, names) {
   const doc = order || {};
+  const display = names || {};
   const parcels = store.orderParcelsOf(doc);
   const exception = doc.exception && typeof doc.exception === 'object'
     ? {
@@ -207,7 +268,9 @@ function orderBrief(order, isTest) {
     },
     dorm: mask.maskDorm(doc.dorm),
     customerNo: doc.customerNo || '',
+    customerDisplayName: maskedName(display.customerDisplayName),
     partnerNo: doc.partnerNo || '',
+    partnerDisplayName: maskedName(display.partnerDisplayName),
     isTest: isTest === true || doc.isTest === true,
     // v1.0（D23/D24/D25）：单量按订单计（一行=1 单），件数独立呈现；无截图手填单独标记
     parcelCount: parcels.length,
@@ -224,9 +287,10 @@ function orderDetail(order, extra) {
   const doc = order || {};
   const opts = extra || {};
   const parcels = store.orderParcelsOf(doc).map(parcelBrief);
-  const out = orderBrief(doc, doc.isTest === true);
-  out.customerDisplayName = maskedName(opts.customerDisplayName);
-  out.partnerDisplayName = maskedName(opts.partnerDisplayName);
+  const out = orderBrief(doc, doc.isTest === true, {
+    customerDisplayName: opts.customerDisplayName,
+    partnerDisplayName: opts.partnerDisplayName
+  });
   out.guestDisplayName = maskedName(opts.guestDisplayName);
   out.isTest = doc.isTest === true;
   out.impersonatedBy = doc.isTest ? doc.impersonatedBy || '' : '';
@@ -384,6 +448,7 @@ module.exports = {
   maskLockerNo,
   maskTrackingTail,
   maskedName,
+  loadOrderDisplayNames,
   parcelCountOf,
   customerBrief,
   customerDetail,

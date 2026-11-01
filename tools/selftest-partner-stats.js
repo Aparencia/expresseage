@@ -647,8 +647,8 @@ function register(h) {
     t.check(handlerStart !== -1, 'H23 D48 统计页有「复制汇总」点击入口 onCopySummaryTap');
     t.eq(occurrences(pageText, 'orderApi.listPartner('), 1,
       'H24 D48 页面只在复制汇总时调一次 order.listPartner（不预拉、不翻页）');
-    t.check(handlerBody.indexOf("view: 'workbench'") !== -1 && handlerBody.indexOf('limit: 1') !== -1,
-      'H25 D48 调用入参：view=workbench、limit=1（只为拿服务端 summary，不渲染 list）');
+    t.check(handlerBody.indexOf("view: 'day'") !== -1 && handlerBody.indexOf('limit: 1') !== -1,
+      'H25 D54 调用入参：view=day、limit=1（只为拿服务端今日已送达 summary，不渲染 list）');
     t.check(handlerBody.indexOf('summaryCopy.copyOf(') !== -1,
       'H26 D48 文案由纯件生成（页面不拼字符串）');
     t.check(pageText.indexOf('栋') === -1 && pageText.indexOf('东苑') === -1 && pageText.indexOf('byDorm') === -1,

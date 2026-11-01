@@ -11,6 +11,7 @@ const FILTER_NEED_CODE = 'needCode';
 const FILTER_HISTORY = 'completed';
 
 // 与 UX §4.5 逐项对齐：状态 chip 单选；已完结不是 listPartner 活动区筛选，而是历史分区入口。
+// 批 20（D53）：「全部」不再是活动单站点分组，而是「今日订单流水」（view=day，按状态更新时间倒序平铺）。
 const FILTERS = [
   { key: FILTER_ALL, label: '全部' },
   { key: 'submitted', label: '待接单', status: enums.ORDER_STATUS.SUBMITTED },
@@ -22,14 +23,14 @@ const FILTERS = [
   { key: FILTER_HISTORY, label: '已完结', history: true }
 ];
 
-// counts 六项 → 点击后跳的筛选（待确认→delivered；今日完成→展开已完结分区）
+// counts 六项 → 点击后跳的筛选（待确认→delivered；今日完成→切「全部」今日流水并 toast 说明）
 const COUNT_TARGETS = {
   submitted: { filter: 'submitted' },
   accepted: { filter: 'accepted' },
   picked: { filter: 'picked' },
   delivered: { filter: 'delivered' },
   exception: { filter: 'exception' },
-  todayCompleted: { history: true }
+  todayCompleted: { filter: FILTER_ALL, toast: '今日完成的单都在「全部」里' }
 };
 
 const NEED_CODE_FILTER_HINT = '筛选中：需查明 —— 点上面那颗换一个。';
@@ -54,6 +55,11 @@ function isHistory(key) {
 
 function isNeedCode(key) {
   return key === FILTER_NEED_CODE;
+}
+
+// 「全部」= 今日订单流水（D53）：服务端 view=day，七状态平铺、按状态更新时间倒序
+function isAll(key) {
+  return key === FILTER_ALL || !key;
 }
 
 function isActive(key) {
@@ -96,10 +102,15 @@ function emptyOf(options) {
   };
 }
 
-// 已完结入口折叠文案（UX §4.10）：今天 N 单；服务端无历史总数时用 N+ 如实表达"还有更多"
+// 已完结入口折叠文案（UX §4.10）：批 20 起只含「昨日及更早」（今日完成单只在「全部」）；
+// N = 本窗已加载条数，有下一页带 + 如实表达"还有更多"（服务端无历史总数）。
 function foldedText(count, hasMore) {
   const n = Math.max(0, Number(count) || 0);
-  return '已完结 · 今天 ' + n + (hasMore ? '+' : '') + ' 单 >';
+  const head = '已完结 · 昨日及更早';
+  if (n <= 0) {
+    return head + ' >';
+  }
+  return head + ' ' + n + (hasMore ? '+' : '') + ' 单 >';
 }
 
 // counts 点击目标：{ filter } 或 { history:true }
@@ -151,6 +162,7 @@ module.exports = {
   statusOf,
   isHistory,
   isNeedCode,
+  isAll,
   isActive,
   labelOf,
   describe,
