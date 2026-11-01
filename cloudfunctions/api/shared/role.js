@@ -48,11 +48,6 @@ function isPartnerActive(partner) {
   return partner.status === enums.PARTNER_STATUS.ACTIVE && !partner.deletedAt;
 }
 
-// 顾客可下单/绑定的前提：资料完整（苑/栋/宿舍号 + 昵称）
-function isCustomerProfileComplete(customer) {
-  return !!(customer && customer.profileCompleted === true);
-}
-
 // 绑定方向铁律（CONTRACT §4.2）：只有顾客能发起绑定；兼职端零入口，服务端一样拒绝
 function canInitiateBind(role) {
   return isCustomerRole(role);
@@ -71,7 +66,6 @@ module.exports = {
   roleLabel,
   pickActiveRole,
   isPartnerActive,
-  isCustomerProfileComplete,
   canInitiateBind,
   isBusinessRole
 };

@@ -80,13 +80,6 @@ function announcementCard(title, text, at, now) {
   };
 }
 
-function buildAnnouncement(row, now) {
-  if (!row) {
-    return null;
-  }
-  return announcementCard(row.title, row.text, atOf(row), now);
-}
-
 // config.announcement 回落（服务端聚合项不在本页时用；enabled=false 一律不展示）。
 function announcementOfConfig(value, now) {
   if (!value || typeof value !== 'object' || value.enabled === false) {
@@ -114,10 +107,6 @@ function pinAnnouncement(rawList, configAnnouncement, now) {
     announcement: pinned || announcementOfConfig(configAnnouncement, now),
     items: items
   };
-}
-
-function countUnread(list) {
-  return (Array.isArray(list) ? list : []).filter(function unread(item) { return item && item.unread; }).length;
 }
 
 function markAllRead(list) {

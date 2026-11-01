@@ -1,12 +1,15 @@
 // pkg-partner/pages/create-on-behalf/parts/form-model.js · 代客下单两路径纯件（零 wx、零请求）
-// 口径：docs/ux/V4_UX_PARTNER.md §3.4（已绑定/新顾客两条路；字段校验；一图多码 createBatch；幂等 clientRequestId）
+// 口径：docs/ux/V4_UX_PARTNER.md §3.4（已绑定/新顾客两条路；字段校验；逐件站点；幂等 clientRequestId）
+//      docs/contract/V4_CONTRACT.md §5.2 + D44（每件独立 stationId/stationName，默认继承首件、可逐件改、逐件必填；
+//      去掉「暂不指定」默认值——服务端 _parcels-input.js 本就逐件必填，旧默认值=必然提交失败）
 //      docs/data/V4_DATA_MODEL.md §7.5 批 7（order.create 兼职路径 bindingId 或 guest 二选一，都不写 bindings）
-// 边界：本文件只做选项装配/校验/请求体/幂等键生命周期/失败人话；不调 wx、不发请求、不写本地存储。
+// 边界：本文件只做选项装配/逐件校验/识别预填/幂等键生命周期/失败人话；不调 wx、不发请求、不写本地存储。
 'use strict';
 
 const stations = require('../../../../shared/stations');
 const zones = require('../../../../shared/zones');
 const enums = require('../../../../shared/enums');
+const orderState = require('../../../../shared/order-state');
 const errorCopy = require('../../../../shared/error-copy');
 
 const NOTE_MAX = 200;
@@ -15,10 +18,18 @@ const LOCKER_NO_MAX = 10;
 const TRACKING_TAIL_LENGTH = 5;
 const PHONE_TAIL_LENGTH = 4;
 const DISPLAY_NAME_MAX = 20;
-const BATCH_MAX = 10; // v1.0：一个订单 1~10 件包裹（CONTRACT D23；后端常量随 task-21 收口）
+// D23/D40/D44：一单 1~10 件包裹、0~10 张截图（常量单源 shared/order-state）
+const BATCH_MAX = orderState.MAX_PARCELS_PER_ORDER || 10;
+const IMAGE_MAX = orderState.MAX_IMAGES_PER_ORDER || 10;
 const CUSTOMER_MODES = ['BOUND', 'GUEST'];
 const MODE_LABEL = { BOUND: '已绑定（对方发起）', GUEST: '新顾客（代客单）' };
 const PARTNER_CLOSED_TEXT = '接单已关闭，暂时不能下单；已有订单不受影响。';
+// 本地校验失败 → 回到正确步骤（D44：旧实现一律跳回第 1 步，站点/取件问题却回顾客步）
+const STEP_CUSTOMER = 1;
+const STEP_PARCELS = 2;
+const STEP_SERVICE = 3;
+const STATION_MISSING_TEXT = '请选择驿站站点';
+const IMAGE_LIMIT_TEXT = '一单最多 ' + IMAGE_MAX + ' 张截图，请分多次提交';
 
 function textOf(value) { return typeof value === 'string' ? value.trim() : ''; }
 function listOf(value) { return Array.isArray(value) ? value : []; }
@@ -26,9 +37,26 @@ function numberOr(value, fallback) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
 }
+function cloneParcel(item) { return Object.assign({}, item || {}); }
 
 function emptyGuest() { return { displayName: '', phoneTail: '', zone: '', buildingNo: '', room: '', dormKey: '' }; }
-function emptyParcel() { return { pickupCode: '', lockerNo: '', trackingTail: '' }; }
+
+// 每件包裹独立站点（D44）：stationTouched=false 表示用户尚未单独改过 → 首件站点变化时继承。
+// key 供 wx:key 用稳定键（不允许用 index：删除中间件时 index 会漂移，视图会错位）。
+function emptyParcel(seq) {
+  const order = numberOr(seq, 1);
+  return {
+    key: 'parcel-' + order,
+    pickupCode: '',
+    lockerNo: '',
+    trackingTail: '',
+    stationId: '',
+    stationName: '',
+    stationIndex: 0,
+    stationTouched: false,
+    imageIndex: -1
+  };
+}
 
 function emptyState() {
   return {
@@ -41,44 +69,60 @@ function emptyState() {
     services: [],
     serviceIndex: 0,
     stationOptions: stationOptionsOf(),
-    stationIndex: 0,
-    items: [emptyParcel()],
+    items: [emptyParcel(1)],
+    parcelSeq: 1,
+    files: [],
     appointOptions: buildAppointOptions(0),
     appointIndex: 0,
     note: '',
-    imageFileId: '',
-    imageTicketId: '',
     recognitionFailureId: '',
     reviewText: ''
   };
 }
 
-// 站点 picker 值域：P1~P8 直接取 shared/stations（不自建）；空值 = 暂不指定（NEED_CODE 机制）
+// 站点 picker 值域：P1~P8 直接取 shared/stations（不自建）；D44 去掉「暂不指定」——每件必须选站点
 function stationOptionsOf() {
-  return [{ id: '', name: '暂不指定（需查明）' }].concat(stations.listStations());
+  return stations.listStations().map(function map(item) { return { id: item.id, name: item.name }; });
 }
 
-// 服务类型：只列本兼职已启用的类型；目录名称只来自公开配置或 shared/enums（名称即"做什么"）
+function stationIndexOf(options, stationId) {
+  const list = listOf(options);
+  const target = textOf(stationId).toUpperCase();
+  for (let index = 0; index < list.length; index += 1) {
+    if (textOf(list[index].id) === target) return index;
+  }
+  return 0;
+}
+
+// 服务类型：只列本兼职已启用的类型；目录名称/说明只来自公开配置或 shared/enums（名称即"做什么"，零费用语义）
+function catalogDescOf(catalog, code) {
+  const hit = listOf(catalog).filter(function same(item) { return textOf(item && item.code) === code; })[0];
+  if (hit && textOf(hit.desc)) return textOf(hit.desc);
+  const builtin = enums.SERVICES.filter(function same(item) { return item.code === code; })[0];
+  return builtin ? textOf(builtin.desc) : '';
+}
+
 function serviceOptionsOf(config, partner) {
   const source = config || {};
   const partnerConfig = (partner && partner.serviceConfig) || {};
   const enabledCodes = listOf(partnerConfig.services)
-    .filter((item) => item && item.enabled === true)
-    .map((item) => textOf(item.code))
-    .filter((code) => code !== '' && enums.SERVICE_CODES.indexOf(code) >= 0);
+    .filter(function enabled(item) { return item && item.enabled === true; })
+    .map(function code(item) { return textOf(item.code); })
+    .filter(function valid(code) { return code !== '' && enums.SERVICE_CODES.indexOf(code) >= 0; });
   if (!enabledCodes.length) {
     return [];
   }
   const catalog = listOf(source.serviceCatalog).length
     ? listOf(source.serviceCatalog)
-    : enums.SERVICES.map((item) => ({ code: item.code, name: item.name }));
-  const result = [];
-  enabledCodes.forEach((code) => {
-    const hit = catalog.filter((item) => textOf(item.code) === code)[0];
-    result.push(hit ? { code: code, name: textOf(hit.name) || enums.SERVICE_NAME[code] || code }
-      : { code: code, name: enums.SERVICE_NAME[code] || code });
+    : enums.SERVICES.map(function map(item) { return { code: item.code, name: item.name, desc: item.desc }; });
+  return enabledCodes.map(function build(code) {
+    const hit = catalog.filter(function same(item) { return textOf(item.code) === code; })[0];
+    return {
+      code: code,
+      name: (hit && textOf(hit.name)) || enums.SERVICE_NAME[code] || code,
+      desc: catalogDescOf(catalog, code)
+    };
   });
-  return result;
 }
 
 // 苑值域：本人服务范围 ≥1 个苑时只列范围内；缺省列五苑（与下单页同口径）
@@ -86,28 +130,26 @@ function zoneOptionsOf(config, partner) {
   const source = config || {};
   const labels = (source && source.zoneLabels) || zones.ZONE_LABELS;
   const partnerConfig = (partner && partner.serviceConfig) || {};
-  const scoped = listOf(partnerConfig.zones).filter((zone) => zones.isZone(zone));
+  const scoped = listOf(partnerConfig.zones).filter(function zone(key) { return zones.isZone(key); });
   const keys = scoped.length ? scoped : zones.ZONES.slice();
-  return keys.map((key) => ({ key: key, label: labels[key] || zones.ZONE_LABELS[key] || key }));
+  return keys.map(function map(key) { return { key: key, label: labels[key] || zones.ZONE_LABELS[key] || key }; });
 }
 
 // 绑定档案 → 选项（代客单只带 bindingId；顾客身份/编号/宿舍由服务端按绑定反查，端侧不透传）
 function buildBindingOptions(bindingList) {
   return listOf(bindingList)
-    .map((item) => {
+    .map(function map(item) {
       const row = item || {};
       const bindingId = textOf(row.bindingId);
-      if (!bindingId) {
-        return null;
-      }
+      if (!bindingId) return null;
       return {
         bindingId: bindingId,
         label: textOf(row.displayName) || '未填称呼',
         sub: [textOf(row.dormKey) + textOf(row.roomTag).toUpperCase(), textOf(row.phoneTail)]
-          .filter((part) => !!part).join(' · ')
+          .filter(function part(value) { return !!value; }).join(' · ')
       };
     })
-    .filter((item) => item !== null);
+    .filter(function keep(item) { return item !== null; });
 }
 
 // 预约：尽快 + 今天未结束的时段（时段起止由端侧按服务端校时展开，服务端只收 type/startAt/endAt）
@@ -120,10 +162,10 @@ function buildAppointOptions(nowMs) {
     { label: '今天 下午 12:00-18:00', startHour: 12, endHour: 18 },
     { label: '今天 晚上 18:00-22:00', startHour: 18, endHour: 22 }
   ];
-  slots.forEach((slot) => {
+  slots.forEach(function each(slot) {
     const start = new Date(base.getFullYear(), base.getMonth(), base.getDate(), slot.startHour, 0, 0, 0).getTime();
     const end = new Date(base.getFullYear(), base.getMonth(), base.getDate(), slot.endHour, 0, 0, 0).getTime();
-    if (end > now) { options.push({ key: enums.APPOINT_TYPE.SLOT, label: slot.label, startAt: start, endAt: end }); }
+    if (end > now) options.push({ key: enums.APPOINT_TYPE.SLOT, label: slot.label, startAt: start, endAt: end });
   });
   return options;
 }
@@ -151,26 +193,81 @@ function guestDormKey(guest) {
   return zones.dormKey(source.zone, Number(source.buildingNo), source.room);
 }
 
-// 当前绑定选项（越界回 null，不猜）
+// 当前绑定/服务/预约选项（越界回 null，不猜）
 function currentBinding(state) {
-  const options = listOf(state.bindingOptions);
-  const index = numberOr(state.bindingIndex, 0);
-  return options[index] || null;
+  return listOf(state.bindingOptions)[numberOr(state.bindingIndex, 0)] || null;
 }
 
 function currentService(state) {
   return listOf(state.services)[numberOr(state.serviceIndex, 0)] || null;
 }
 
-function currentStation(state) {
-  return listOf(state.stationOptions)[numberOr(state.stationIndex, 0)] || null;
-}
-
 function currentAppoint(state) {
   return listOf(state.appointOptions)[numberOr(state.appointIndex, 0)] || { key: enums.APPOINT_TYPE.ASAP, label: '尽快' };
 }
 
-// 每个 item 的取件信息校验（逐条；一图多码时每条独立）
+function stationNameOfItem(item) {
+  const value = item || {};
+  const name = textOf(value.stationName);
+  if (name) return name;
+  return stations.isStationId(textOf(value.stationId)) ? stations.stationNameOf(textOf(value.stationId)) : '';
+}
+
+// D44：逐件站点写入 + 首件继承。首件改站点时，未单独改过的后续件跟随；单独改过的件不被覆盖。
+// stationIndex = 该站点在 picker 值域里的下标（视图据此回显；不是件下标）。
+function applyItemStation(state, itemIndex, optionIndex) {
+  const source = state || emptyState();
+  const options = listOf(source.stationOptions);
+  const pickedIndex = numberOr(optionIndex, -1);
+  const option = options[pickedIndex];
+  const index = numberOr(itemIndex, -1);
+  const items = listOf(source.items).map(cloneParcel);
+  if (!option || index < 0 || index >= items.length || !stations.isStationId(textOf(option.id))) {
+    return { items: items };
+  }
+  const chosen = { stationId: option.id, stationName: textOf(option.name), stationIndex: pickedIndex };
+  const next = Object.assign({}, items[index], chosen, { stationTouched: true });
+  items[index] = next;
+  if (index === 0) {
+    for (let i = 1; i < items.length; i += 1) {
+      if (items[i].stationTouched !== true) {
+        items[i] = Object.assign({}, items[i], { stationId: next.stationId, stationName: next.stationName, stationIndex: pickedIndex });
+      }
+    }
+  }
+  return { items: items };
+}
+
+// D44：再填一件 = 追加空件并默认继承首件站点（未改过 → 之后首件换站仍跟随）
+function appendParcel(state) {
+  const source = state || emptyState();
+  const items = listOf(source.items).map(cloneParcel);
+  const seq = numberOr(source.parcelSeq, items.length) || items.length;
+  if (items.length >= BATCH_MAX) {
+    return { items: items, parcelSeq: seq };
+  }
+  const nextSeq = seq + 1;
+  const fresh = emptyParcel(nextSeq);
+  const first = items[0];
+  if (first && stations.isStationId(textOf(first.stationId))) {
+    fresh.stationId = textOf(first.stationId);
+    fresh.stationName = stationNameOfItem(first);
+    fresh.stationIndex = numberOr(first.stationIndex, stationIndexOf(listOf(source.stationOptions), fresh.stationId));
+  }
+  items.push(fresh);
+  return { items: items, parcelSeq: nextSeq };
+}
+
+function removeParcel(state, index) {
+  const items = listOf((state || {}).items).map(cloneParcel);
+  const target = numberOr(index, -1);
+  if (target > 0 && target < items.length && items.length > 1) {
+    items.splice(target, 1);
+  }
+  return { items: items };
+}
+
+// 每个 item 的取件信息校验（逐条；一图多码时每条独立；站点必填见 validateStation）
 function validateParcel(item, index) {
   const parcel = item || {};
   const rank = index > 0 ? '第 ' + (index + 1) + ' 件：' : '';
@@ -192,13 +289,17 @@ function validateParcel(item, index) {
   return '';
 }
 
+// D44：逐件站点必填（服务端 _parcels-input.js 同口径：每件 stationId 必填，不放宽）
+function validateStation(item, index) {
+  const parcel = item || {};
+  const rank = index > 0 ? '第 ' + (index + 1) + ' 件：' : '';
+  return stations.isStationId(textOf(parcel.stationId)) ? '' : rank + STATION_MISSING_TEXT;
+}
+
 // 顾客路径校验：BOUND 只需选中档案（身份由服务端反查）；GUEST 必须齐 dormKey 四要素
 function validateCustomer(state) {
   if (state.customerMode === 'BOUND') {
-    if (!currentBinding(state)) {
-      return '请选择一位已绑定的顾客';
-    }
-    return '';
+    return currentBinding(state) ? '' : '请选择一位已绑定的顾客';
   }
   const guest = state.guest || emptyGuest();
   const name = textOf(guest.displayName);
@@ -227,44 +328,62 @@ function validateCustomer(state) {
   return '';
 }
 
-// 提交前整体校验（服务类型启用/站点值域/逐件取件信息/备注/截图票据成对）
-function validate(state) {
+// 截图与票据必须成对（0~IMAGE_MAX 张；旧实现固定 1 张）
+function imagePairErrorOf(state) {
+  const files = listOf((state || {}).files);
+  if (files.length > IMAGE_MAX) {
+    return IMAGE_LIMIT_TEXT;
+  }
+  for (let index = 0; index < files.length; index += 1) {
+    const file = files[index] || {};
+    if ((textOf(file.fileId) === '') !== (textOf(file.uploadTicketId) === '')) {
+      return '截图票据缺失，请重新选择截图';
+    }
+  }
+  return '';
+}
+
+// 校验明细：message + 失败步骤（D44：本地校验失败回到正确步骤，不再一律跳第 1 步）
+function validateDetailed(state) {
   const source = state || emptyState();
   if (!listOf(source.services).length) {
-    return '还没有启用任何服务类型，先去「服务类型与范围」启用后再代客下单';
+    return { message: '还没有启用任何服务类型，先去「服务类型与范围」启用后再代客下单', step: STEP_SERVICE };
   }
   const customerText = validateCustomer(source);
   if (customerText) {
-    return customerText;
-  }
-  const station = currentStation(source);
-  const stationId = textOf(station && station.id);
-  if (stationId !== '' && !stations.isStationId(stationId)) {
-    return '驿站站点不在可选范围内，请重新选择';
+    return { message: customerText, step: STEP_CUSTOMER };
   }
   const items = listOf(source.items);
   if (!items.length) {
-    return '至少填一件取件信息';
+    return { message: '至少填一件取件信息', step: STEP_PARCELS };
   }
   if (items.length > BATCH_MAX) {
-    return '一图多码最多 ' + BATCH_MAX + ' 件，请分次提交';
+    return { message: '一图多码最多 ' + BATCH_MAX + ' 件，请分次提交', step: STEP_PARCELS };
   }
   for (let index = 0; index < items.length; index += 1) {
+    const stationText = validateStation(items[index], index);
+    if (stationText) {
+      return { message: stationText, step: STEP_PARCELS };
+    }
     const parcelText = validateParcel(items[index], index);
     if (parcelText) {
-      return parcelText;
+      return { message: parcelText, step: STEP_PARCELS };
     }
   }
   const note = textOf(source.note);
   if (note.length > NOTE_MAX) {
-    return '备注最多 ' + NOTE_MAX + ' 字';
+    return { message: '备注最多 ' + NOTE_MAX + ' 字', step: STEP_SERVICE };
   }
-  const ticket = textOf(source.imageTicketId);
-  const fileId = textOf(source.imageFileId);
-  if ((ticket === '') !== (fileId === '')) {
-    return '截图票据缺失，请重新选择截图';
+  const pairText = imagePairErrorOf(source);
+  if (pairText) {
+    return { message: pairText, step: STEP_PARCELS };
   }
-  return '';
+  return { message: '', step: 0 };
+}
+
+// 提交前整体校验（服务类型启用/逐件站点/逐件取件信息/备注/截图票据成对）
+function validate(state) {
+  return validateDetailed(state).message;
 }
 
 // 幂等键生命周期：同内容复用上次键（失败重试不重复建单）；内容变了重新生成（helpers 由页面注入 api/client 单源）
@@ -283,45 +402,16 @@ function ensureRequestKey(previous, signature, helpers) {
   return { clientRequestId: makeId(), signature: signature };
 }
 
-// 识别响应 → 表单预填（只填空白字段，不覆盖用户已填；站点只在命中 P1~P8 时选中）
-function applyRecognition(state, dto) {
-  const source = state || emptyState();
-  const data = dto || {};
-  const items = listOf(source.items).map((item) => Object.assign({}, item || emptyParcel()));
-  if (!items.length) {
-    items.push(emptyParcel());
-  }
-  const first = items[0];
-  if (data.recognized) {
-    if (data.pickupCode) {
-      first.pickupCode = textOf(first.pickupCode) || textOf(data.pickupCode);
-    }
-    if (data.lockerNo) {
-      first.lockerNo = textOf(first.lockerNo) || textOf(data.lockerNo);
-    }
-    if (data.trackingTail) {
-      first.trackingTail = textOf(first.trackingTail) || textOf(data.trackingTail);
-    }
-  }
-  const stationOptions = listOf(source.stationOptions);
-  let stationIndex = numberOr(source.stationIndex, 0);
-  const stationId = textOf(data.stationId).toUpperCase();
-  if (stationId) {
-    for (let index = 0; index < stationOptions.length; index += 1) {
-      if (stationOptions[index].id === stationId) {
-        stationIndex = index;
-        break;
-      }
-    }
-  }
-  return {
-    items: items,
-    stationIndex: stationIndex,
-    recognitionFailureId: textOf(data.failureId),
-    reviewText: data.recognized
-      ? '已按截图预填，请核对（以手填为准）'
-      : '这次没认出取件码/站点，已反馈开发者复核；可手填，或稍后看复核结果'
-  };
+// 站点摘要（核对页逐件展示；第 n 件 + 站点名，未选站点如实说）
+function stationLinesOf(state) {
+  return listOf((state || {}).items).map(function map(item, index) {
+    const row = item || {};
+    return {
+      key: textOf(row.key) || 'parcel-' + (index + 1),
+      index: index + 1,
+      text: stationNameOfItem(row) || '未选站点'
+    };
+  });
 }
 
 // 失败分类人话（§3.4：PARTNER_CLOSED/FORBIDDEN/RATE_LIMITED/VALIDATION_FAILED/INTERNAL_ERROR）
@@ -341,27 +431,37 @@ module.exports = {
   BATCH_MAX,
   CUSTOMER_MODES,
   DISPLAY_NAME_MAX,
+  IMAGE_MAX,
   LOCKER_NO_MAX,
   MODE_LABEL,
   NOTE_MAX,
   PICKUP_CODE_MAX,
+  STEP_CUSTOMER,
+  STEP_PARCELS,
+  STEP_SERVICE,
   TRACKING_TAIL_LENGTH,
+  appendParcel,
+  applyItemStation,
   buildAppointOptions,
   buildBindingOptions,
   createInitialState,
   currentAppoint,
   currentBinding,
   currentService,
-  currentStation,
   emptyParcel,
   ensureRequestKey,
   failureText,
   guestDormKey,
+  removeParcel,
   serviceOptionsOf,
+  stationIndexOf,
+  stationLinesOf,
+  stationNameOfItem,
   stationOptionsOf,
   validate,
   validateCustomer,
+  validateDetailed,
   validateParcel,
-  zoneOptionsOf,
-  applyRecognition
+  validateStation,
+  zoneOptionsOf
 };

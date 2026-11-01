@@ -94,13 +94,24 @@ function deliveryOf(order) {
   };
 }
 
+// D41（2026-10-28 用户拍板）：原 PICKUP_DOOR（送寝上门）已停用、不可新启用；历史订单只保留快照名。
+// 服务端 DTO 对目录外服务码回 service.deprecated=true，这里按 shared/enums 名称单源渲染「送寝上门（已停用）」；
+// 现行 5 类仍显示订单快照名（不偷换成目录名）。
+function serviceNameOfOrder(order) {
+  const item = order || {};
+  const service = item.service && typeof item.service === 'object' ? item.service : {};
+  if (service.deprecated === true) {
+    return textOf(enums.serviceNameOf(service.code)) || textOf(service.name);
+  }
+  return textOf(service.name);
+}
+
 // 详情页派生字段：wxml 只用这些稳定键，不直读服务端嵌套结构
 function buildDetail(order) {
   const item = order || {};
   const appoint = item.appoint || {};
   const counterpart = item.counterpart || {};
   const exception = item.exception || {};
-  const service = item.service || {};
   const parcels = parcelListOf(item).map((parcel, index) => parcelViewOf(parcel, index));
   const first = parcels[0] || parcelViewOf({}, 0);
   const images = listOf(item.images);
@@ -117,7 +128,7 @@ function buildDetail(order) {
     hasImage: images.length > 0 || image.hasImage === true,
     imageCleaned: image.cleaned === true,
     imageCount: images.length || (image.fileId || image.hasImage ? 1 : 0),
-    serviceName: textOf(service.name),
+    serviceName: serviceNameOfOrder(item),
     parcels: parcels,
     parcelCountText: parcels.length + ' 件',
     stationSummaryText: parcels.map((row) => row.stationText).filter((row, i, all) => all.indexOf(row) === i).join(' / '),
@@ -151,5 +162,6 @@ module.exports = {
   clockTextOf,
   deliveryOf,
   parcelListOf,
-  parcelViewOf
+  parcelViewOf,
+  serviceNameOfOrder
 };

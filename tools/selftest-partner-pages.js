@@ -1,22 +1,9 @@
 'use strict';
 /**
- * tools/selftest-partner-pages.js — 批 7-C「端侧客户档案闭环」断言套件（task-73；A~G）。
- *
- * A. 客户列表模型：服务端 keyword 透传 / 游标分页合并去重 / 空态与引导区分 / 错误保留旧数据+上次成功时间 /
- *    首屏不出"新顾客已绑定"提示、刷新才出 / READONLY·会话入口显隐。
- * B. 顾客详情模型：getCustomer 装配 / 编号与宿舍行 / 自然日分组(今天/昨天/更早)与小计 / 更早游标 /
- *    解绑资格(进行中置灰+原因) / READONLY 置灰 / 空历史单。
- * C. 解绑流程：原因必填≤100 → 固定枚举 PARTNER_INITIATED → 二次确认文案 → 成功/失败文案。
- * D. 代客下单两条路径：bindingId vs guest 互斥 / 逐件 batch(≤5) / 站点·码·尾号·柜号·备注·dormKey·服务启用 /
- *    幂等键生命周期 / 识别预填只填空白 / 结果块 N 单 / 失败分类人话。
- * E. 字段校验矩阵（逐字段反例，样本非空）。
- * F. READONLY/TEST_WRITE + fake transport：api 层包络、READONLY 写动作零请求、TEST_WRITE 注入 viewTicket、
- *    分享卡片只带兼职编号（不 mock 全局 wx）。
- * G. 静态纪律：页面零 wx.cloud/状态字面量/random/本地存储、pkg-partner 零绑定入口文案、
- *    零金额词、行数闸、四件套齐全、语法可编译。
- * H. 激活页邀请码输入回显：逐字符不清空 / 大写去分隔符全角归一 / 4 位分组 / 12 位截断 / 提交闸。
- *
- * 纪律：纯件 + api 层 fake transport（禁 mock 全局 wx、不连网络）；先合法基线再反例；
+ * tools/selftest-partner-pages.js — 代客下单/客户档案端侧断言套件（A~N；D44 同批）。
+ * A 客户列表 / B 顾客详情 / C 解绑流程 / D 代客下单两路径 / E 字段校验矩阵 / F READONLY+transport /
+ * G 静态纪律 / H 激活页邀请码 / I 代客缺陷回归 / J 服务类型目录 / K D42 头像 / N D44 站点按件+多图+识别预填。
+ * 纪律：纯件 + api 层 fake transport（禁 mock 全局 wx、不连网络）；先合法基线再反例；样本非空；
  *      EXPECTED_ASSERTIONS 与实际断言数精确相等（少算/多算都判红）。
  * 取数：node tools/selftest-partner-pages.js | Select-Object -Last 2
  */
@@ -33,6 +20,7 @@ const orderApi = require(path.join(ROOT, 'api/modules/order.js'));
 const aiApi = require(path.join(ROOT, 'api/modules/ai.js'));
 const errorCopy = require(path.join(ROOT, 'shared/error-copy.js'));
 const enums = require(path.join(ROOT, 'shared/enums.js'));
+const orderState = require(path.join(ROOT, 'shared/order-state.js'));
 const stations = require(path.join(ROOT, 'shared/stations.js'));
 const zones = require(path.join(ROOT, 'shared/zones.js'));
 const customerView = require(path.join(ROOT, 'utils/customer-view.js'));
@@ -43,13 +31,18 @@ const formModel = require(path.join(ROOT, 'pkg-partner/pages/create-on-behalf/pa
 const resultModel = require(path.join(ROOT, 'pkg-partner/pages/create-on-behalf/parts/result-model.js'));
 const payloadModel = require(path.join(ROOT, 'pkg-partner/pages/create-on-behalf/parts/payload-model.js'));
 const presetModel = require(path.join(ROOT, 'pkg-partner/pages/create-on-behalf/parts/preset-model.js'));
+const recognizeModel = require(path.join(ROOT, 'pkg-partner/pages/create-on-behalf/parts/recognize-model.js'));
+const viewModel = require(path.join(ROOT, 'pkg-partner/pages/create-on-behalf/parts/view-model.js'));
+const pickerState = require(path.join(ROOT, 'components/image-picker/state.js'));
+const uploadApi = require(path.join(ROOT, 'api/upload.js'));
 const serviceSettingsModel = require(path.join(ROOT, 'pkg-partner/pages/service-settings/parts/service-model.js'));
 const shareCard = require(path.join(ROOT, 'pages/profile/parts/share-card.js'));
 const codeInput = require(path.join(ROOT, 'pkg-partner/pages/activate/parts/code-input-model.js'));
 
 // 注意：F 段（异步 fake transport）必须注册在最后——harness 的异步断言在 await 之后才计入，
 // 若后面再注册同步段，console 的节标题会被后注册的段名覆盖。
-const EXPECTED_ASSERTIONS = 210; // 206 + 4（TD-069 max-count 属性静态判据）；实际断言总数（少算/多算都判红）
+// 211 + D44 新增 N 组 10 条 = 221（K10 被 D 的死组件删除 reconcile 掉后净数；少算/多算都判红）
+const EXPECTED_ASSERTIONS = 221;
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
@@ -94,7 +87,6 @@ function bindingRow(id, overrides) {
     activeOrderCount: 2
   }, overrides || {});
 }
-
 const ROW_1 = bindingRow('b1', { roomTag: 'a' });
 const ROW_2 = bindingRow('b2', {
   customerNo: 'C9X1N2B3', dormKey: 'X2-301', roomTag: 'B', displayName: '',
@@ -120,7 +112,6 @@ function orderRow(orderNo, status, statusText, at, overrides) {
   });
   return row;
 }
-
 // 该顾客订单（order.listPartner view=customer 的 list；历史单单一来源）
 function customerOrders() {
   return [
@@ -130,7 +121,6 @@ function customerOrders() {
     orderRow('20261015-0004', enums.ORDER_STATUS.SUBMITTED, '待接单', NOW - 7 * DAY)
   ];
 }
-
 // partner.getCustomer 只取档案+解绑资格（orders 字段本页不消费）
 function profileData(overrides) {
   return Object.assign({
@@ -140,37 +130,57 @@ function profileData(overrides) {
     partnerNo: 'P8F3K2M'
   }, overrides || {});
 }
-
+// D44：每件包裹自带站点；withStation 把件补成「合法基线件」（默认 P4，可覆盖）
+function withStation(item, stationId) {
+  const id = stationId || 'P4';
+  const options = formModel.stationOptionsOf();
+  return Object.assign({}, item, {
+    stationId: id,
+    stationName: stations.stationNameOf(id),
+    stationIndex: formModel.stationIndexOf(options, id),
+    stationTouched: true
+  });
+}
+function parcelOf(fields) {
+  const value = Object.assign({ pickupCode: '', lockerNo: '', trackingTail: '' }, fields || {});
+  return withStation(value, value.stationId || 'P4');
+}
+function ticketFile(index) {
+  const seq = String(index || 1);
+  return {
+    localPath: 'wxfile://tmp/ticket-' + seq + '.jpg',
+    fileId: 'cloud://test.env/orders/TKT' + seq + '/image.jpg',
+    uploadTicketId: 'TICKET' + seq.padStart(26, '0'),
+    size: 320 * 1024,
+    name: 'ticket-' + seq + '.jpg',
+    type: 'image'
+  };
+}
 function boundState() {
   const state = formModel.createInitialState({
     config: CONFIG, partner: PARTNER, bindingList: [ROW_1, ROW_2], nowMs: NOW
   });
-  state.items = [{ pickupCode: '27-2-7016', lockerNo: '3 号柜', trackingTail: '66785' }];
-  state.stationIndex = 4;
+  state.items = [parcelOf({ pickupCode: '27-2-7016', lockerNo: '3 号柜', trackingTail: '66785' })];
+  state.files = [ticketFile(1)];
   return state;
 }
-
 function guestState() {
   const state = formModel.createInitialState({ config: CONFIG, partner: PARTNER, bindingList: [], nowMs: NOW });
   state.customerMode = 'GUEST';
   state.guest = { displayName: '小张', phoneTail: '6678', zone: 'D', buildingNo: '4', room: '522', dormKey: '' };
-  state.items = [{ pickupCode: '27-2-7016', lockerNo: '3 号柜', trackingTail: '66785' }];
-  state.stationIndex = 4;
+  state.items = [parcelOf({ pickupCode: '27-2-7016', lockerNo: '3 号柜', trackingTail: '66785' })];
+  state.files = [ticketFile(1)];
   return state;
 }
-
 function mutate(state, patch) {
   return Object.assign({}, state, patch);
 }
-
 function textOfRel(rel) {
   return fsutil.readText(path.join(ROOT, rel)) || '';
 }
-
 function stubTransport(fn) {
   client.setTransport(fn);
 }
-
 const MY_FILES = [
   'pages/partner/customers/index.js',
   'pages/partner/customers/index.wxml',
@@ -182,7 +192,13 @@ const MY_FILES = [
   'pkg-partner/pages/create-on-behalf/index.js',
   'pkg-partner/pages/create-on-behalf/index.wxml',
   'pkg-partner/pages/create-on-behalf/parts/form-model.js',
+  'pkg-partner/pages/create-on-behalf/parts/payload-model.js',
+  'pkg-partner/pages/create-on-behalf/parts/recognize-model.js',
+  'pkg-partner/pages/create-on-behalf/parts/recognize-flow.js',
+  'pkg-partner/pages/create-on-behalf/parts/view-model.js',
   'pkg-partner/pages/create-on-behalf/parts/result-model.js',
+  'components/image-picker/state.js',
+  'components/image-picker/index.js',
   'utils/customer-view.js'
 ];
 
@@ -206,13 +222,11 @@ function register(h) {
       [[], '', true, '', false], 'A1 初始状态：无本地缓存行、loading、无游标（首屏走服务端）');
     t.eq(listModel.refreshQuery(state), { keyword: '', limit: 20 }, 'A2 首屏查询只带 {keyword,limit=20}（无 cursor；§7.4）');
     t.eq(listModel.nextQuery(state), null, 'A3 无游标时触底不请求下一页（不空转）');
-
     const keywordState = listModel.applyKeyword(state, '  小王 ');
     t.eq([keywordState.keyword, keywordState.rows, keywordState.loading, keywordState.nextCursor],
       ['小王', [], true, ''], 'A4 关键词变化：清空旧行与游标，交服务端搜索（客户端不本地过滤）');
     t.eq(customerView.normalizeKeyword('A'.repeat(40)).length, 30, 'A5 关键词归一化上限 30 字（防超长请求）');
     t.eq(listModel.applyKeyword(keywordState, '小王'), keywordState, 'A6 关键词未变不重置列表（避免输入抖动清空）');
-
     const first = listModel.applyResponse(listModel.createState(), { list: [ROW_2, ROW_1], nextCursor: 'cur-1' }, { nowMs: NOW });
     t.eq([first.rows.length, first.nextCursor, first.loading, first.hasLoaded], [2, 'cur-1', false, true],
       'A7 首屏响应装配：2 行 + nextCursor（服务端已排序，客户端不重排）');
@@ -222,7 +236,6 @@ function register(h) {
     t.eq([first.rows[1].roomTagText, first.rows[1].tailText || first.rows[1].phoneTailText, first.rows[1].boundAtText],
       ['A', '尾号6678', '10-18'], 'A10 roomTag 大写；尾号四位；绑定日期 MM-DD（§3.5 行信息）');
     t.eq(customerView.dedupeRows([ROW_1, ROW_1]).length, 1, 'A11 同一 bindingId 去重（分页边界重复不重复渲染）');
-
     t.eq(first.newRows.length, 0, 'A12 首屏不把已有顾客误报为「新绑定」（hasLoaded 闸）');
     const refresh = listModel.applyResponse(first, { list: [ROW_1, ROW_2, bindingRow('b3')], nextCursor: '' }, { nowMs: NOW + 1000 });
     t.eq(refresh.newRows.map((row) => row.bindingId), ['b3'], 'A13 onShow 重拉检测到顾客新绑定（顾客发起）');
@@ -232,7 +245,6 @@ function register(h) {
       4, 'A15 触底追加：跨页去重后 4 行（b1 重复不重复显示）');
     t.eq(listModel.nextQuery(listModel.applyMoreResponse(first, { list: [], nextCursor: 'cur-9' })), { keyword: '', limit: 20, cursor: 'cur-9' },
       'A16 触底查询透传服务端 nextCursor（游标分页，不本地切片）');
-
     const skeleton = customerView.listStateOf({ rows: [], loading: true, error: '', keyword: '', nextCursor: '' });
     t.check(skeleton.mode === 'skeleton' && skeleton.showSkeleton === true && skeleton.skeletonRows.length === 3,
       'A17 首屏骨架态（loading 且无行）');
@@ -250,7 +262,6 @@ function register(h) {
     const emptySearch = customerView.listStateOf({ rows: [], loading: false, error: '', keyword: '赵六', nextCursor: '' });
     t.check(emptySearch.emptyText === '这个搜索下没有顾客' && emptySearch.emptyActionText === '清空搜索',
       'A21 搜索空态与引导空态区分（不是"还没有顾客"）');
-
     const snapshot = listModel.buildSnapshot(first, { partnerNo: 'P8F3K2M', readonly: true, session: true });
     t.check(snapshot.showCreateEntry === false && snapshot.showShare === false && snapshot.readonly === true,
       'A22 READONLY 隐藏代客下单入口；切换会话隐藏分享（§6.3/§6.4）');
@@ -259,7 +270,6 @@ function register(h) {
       'A24 无更多页时才显示已加载总数');
     t.notEmpty(first.rows, 'A 组样本非空（防止空集全绿）');
   });
-
   // ------------------------------------------------------------------ B 顾客详情
   h.section('B. 顾客详情：档案+解绑资格/自然日分组/更早游标（§3.6；订单单一来源 listPartner view=customer）', (t) => {
     const orders = customerOrders();
@@ -276,7 +286,6 @@ function register(h) {
       'B5 dormKey 非法时逐级回落为空（不猜宿舍）');
     t.eq(snapshot.view.partnerNote, '常放门口鞋柜', 'B6 兼职私有备注取 DTO（顾客不可见）');
     t.eq(snapshot.partnerNo, 'P8F3K2M', 'B7 partnerNo（本人编号小字）随 getCustomer 档案响应返回');
-
     t.eq(snapshot.sections.map((section) => section.label), ['今天', '昨天', '更早'],
       'B8 历史单按自然日分组：今天/昨天/更早（§3.6）');
     t.eq(snapshot.sections.map((section) => section.rows.length), [2, 1, 1], 'B9 各组行数：今天 2、昨天 1、更早 1');
@@ -287,7 +296,6 @@ function register(h) {
       'B12 行时间取 DTO 时间戳格式化（ISO 字符串同样解析）');
     t.eq([snapshot.sections[2].rows[0].orderNo, snapshot.sections[2].rows[0].statusText, snapshot.sections[2].rows[0].serviceName],
       ['20261015-0004', '待接单', '标准代取'], 'B13 行字段：orderNo/状态中文/服务名（service.name 单一来源）');
-
     const shuffled = detailView.buildSnapshot(profileData({ unbindEligibility: { canUnbind: true, activeOrderCount: 0 } }), {
       orders: [orders[3], orders[2], orders[0], orders[1]], nextCursor: 'n', nowMs: NOW
     });
@@ -305,7 +313,6 @@ function register(h) {
     t.check(snapshot.showMore === true && snapshot.nextCursor === 'cursor-2', 'B19 有 nextCursor 才显示「查看更早」');
     t.check(detailView.buildSnapshot(data, { orders: orders, nextCursor: 'cursor-2', nowMs: NOW, loadingMore: true }).moreText === '正在加载…',
       'B20 加载中按钮文案「正在加载…」');
-
     t.check(snapshot.unbind.disabled === true && snapshot.unbind.lockText === '还有 2 单未完成，完成后才能解绑',
       'B21 进行中订单时解绑置灰 + 原因（§3.6）');
     const eligible = detailView.buildSnapshot(profileData({ unbindEligibility: { canUnbind: true, activeOrderCount: 0 } }), {
@@ -322,7 +329,6 @@ function register(h) {
       'B24 无历史订单空态（不画假行）');
     t.notEmpty(snapshot.sections, 'B 组样本非空（防止空集全绿）');
   });
-
   // ------------------------------------------------------------------ C 解绑流程
   h.section('C. 解绑流程：原因必填≤100 + 固定枚举 + 二次确认文案（§3.6、§7.4）', (t) => {
     t.eq(unbindFlow.validateNote('').message, '原因必填，写一句就好', 'C1 原因为空被挡（必填）');
@@ -348,7 +354,6 @@ function register(h) {
     t.eq(unbindFlow.reasonText(), enums.RELEASE_REASON_TEXT.PARTNER_INITIATED,
       'C12 原因枚举单源 shared/enums（页面不复制一套文案）');
   });
-
   // ------------------------------------------------------------------ D 代客下单两路径
   h.section('D. 代客下单：bindingId vs guest 互斥/逐件 batch/幂等键/识别预填/结果块（§3.4、§7.5）', (t) => {
     t.eq(formModel.serviceOptionsOf(CONFIG, PARTNER).map((item) => item.code), ['PICKUP_STD', 'PICKUP_LOW'],
@@ -364,7 +369,6 @@ function register(h) {
       'D6 有绑定档案时默认「已绑定」路径（两条路都存在）');
     t.eq(formModel.createInitialState({ config: CONFIG, partner: PARTNER, bindingList: [], nowMs: NOW }).customerMode, 'GUEST',
       'D7 无绑定档案时默认「新顾客」路径（代客单不产生绑定）');
-
     const bound = boundState();
     t.eq(formModel.validate(bound), '', 'D8 已绑定路径合法基线可提交（先合法基线）');
     const boundPayload = payloadModel.buildPayload(bound);
@@ -376,7 +380,6 @@ function register(h) {
       stationId: 'P4', stationName: stations.stationNameOf('P4')
     }], 'D11 parcels[]：单件也是数组（v1.0 单入口，不再 parcel{}）');
     t.eq(boundPayload.data.appoint, { type: 'ASAP' }, 'D12 预约 ASAP 只带 type（不带时段起止）');
-
     const guest = guestState();
     t.eq(formModel.validate(guest), '', 'D13 新顾客路径合法基线可提交（先合法基线）');
     const guestPayload = payloadModel.buildPayload(guest);
@@ -387,32 +390,31 @@ function register(h) {
     }, 'D15 guest 快照：dormKey 端侧拼装、楼栋归一为数字（送达要用）');
     t.eq(Object.keys(guestPayload.data).filter((key) => key === 'bindingId' || key === 'guest').length, 1,
       'D16 两份 payload 都只有顾客身份键之一（bindingId XOR guest）');
-
+    const batchFile = ticketFile(1);
     const batchState = mutate(bound, {
       items: [
-        { pickupCode: '27-2-7016', lockerNo: '3 号柜', trackingTail: '66785' },
-        { pickupCode: '27-2-7017', lockerNo: '', trackingTail: '' }
+        parcelOf({ pickupCode: '27-2-7016', lockerNo: '3 号柜', trackingTail: '66785' }),
+        parcelOf({ pickupCode: '27-2-7017' })
       ],
-      imageFileId: 'cloud://test.env/ticket.jpg', imageTicketId: 'ticket-it'
+      files: [batchFile]
     });
     const batch = payloadModel.buildPayload(batchState);
     t.check(batch.ok && batch.batch === false && batch.data.parcels.length === 2 && !('items' in batch.data),
       'D17 一图多码（2 件）→ 同一 order.create 的 parcels[]（createBatch 移除）');
     t.eq([batch.data.images, batch.data.tickets, batch.data.bindingId],
-      [[{ fileId: 'cloud://test.env/ticket.jpg' }], ['ticket-it'], 'b1'],
+      [[{ fileId: batchFile.fileId }], [batchFile.uploadTicketId], 'b1'],
       'D18 顶层 images[]/tickets[] 与 bindingId 同单提交（一单多包裹）');
     t.eq(batch.data.parcels[1].pickupCode, '27-2-7017', 'D19 逐件 parcel 独立（不合并成一条）');
     const guestBatch = payloadModel.buildPayload(mutate(guestState(), {
-      items: [{ pickupCode: '1-1-1', lockerNo: '', trackingTail: '' }, { pickupCode: '2-2-2', lockerNo: '', trackingTail: '' }]
+      items: [parcelOf({ pickupCode: '1-1-1' }), parcelOf({ pickupCode: '2-2-2' })]
     }));
     t.check(guestBatch.data.parcels.length === 2 && guestBatch.data.guest.dormKey === 'D4-522',
       'D20 新顾客多件：guest 顶层快照 + parcels 逐件（不再 items[i].guest）');
     t.check(!('bindingId' in guestBatch.data), 'D21 新顾客路径不带 bindingId（互斥）');
     t.eq(formModel.BATCH_MAX, 10, 'D22 单次一图多码上限 = 10（CONTRACT D23：一单 1~10 件）');
     t.eq(formModel.validate(mutate(bound, {
-      items: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((index) => ({ pickupCode: '码' + index, lockerNo: '', trackingTail: '' }))
+      items: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((index) => parcelOf({ pickupCode: '码' + index }))
     })), '一图多码最多 10 件，请分次提交', 'D23 超过 10 件被挡（不拆单不静默丢件）');
-
     const goodSignature = payloadModel.contentSignature(bound);
     const reused = formModel.ensureRequestKey({ clientRequestId: 'REQ_ABCDEFGHIJKLMNOP', signature: goodSignature },
       goodSignature, { makeId: () => 'NEW_ID_1234567890', isValid: () => true });
@@ -425,18 +427,19 @@ function register(h) {
     t.eq(invalidOld.clientRequestId, 'NEW_ID_1234567890', 'D26 旧键非法也重新生成（不把非法键发给服务端）');
     t.check(payloadModel.contentSignature(bound) === payloadModel.contentSignature(mutate(bound, {})),
       'D27 同内容签名稳定（不因对象引用变化换键）');
-
-    const recognition = formModel.applyRecognition(mutate(bound, {
-      items: [{ pickupCode: '手填码', lockerNo: '', trackingTail: '' }]
-    }), { recognized: true, pickupCode: 'AI码', lockerNo: '5 号柜', trackingTail: '12345', stationId: 'P6' });
-    t.eq(recognition.items[0], { pickupCode: '手填码', lockerNo: '5 号柜', trackingTail: '12345' },
-      'D28 识别预填只填空白字段（手填优先，不覆盖用户输入）');
-    t.eq(recognition.stationIndex, 6, 'D29 识别到的站点命中 P1~P8 才选中 picker');
-    t.eq(recognition.reviewText.indexOf('已按截图预填'), 0, 'D30 预填提示「已按截图预填，请核对（以手填为准）」');
-    const failedRecognition = formModel.applyRecognition(bound, { recognized: false, failureId: 'F-100' });
-    t.check(failedRecognition.reviewText.indexOf('已反馈开发者复核') > 0 && failedRecognition.recognitionFailureId === 'F-100',
-      'D31 识别失败静默降级：提示已反馈复核 + failureId 关联（不阻塞手填）');
-
+    const seedItem = Object.assign(formModel.emptyParcel(1), { pickupCode: '手填码' });
+    const recognition = recognizeModel.mergeRecognizedItems(mutate(bound, { items: [seedItem] }),
+      [{ pickupCode: 'AI码', lockerNo: '5 号柜', trackingTail: '12345', stationId: 'P6', imageIndex: 0 }]);
+    t.eq([recognition.items[0].pickupCode, recognition.items[0].lockerNo, recognition.items[0].trackingTail],
+      ['手填码', '', ''], 'D28 手填件不被识别结果覆盖（手填优先，只填空白件）');
+    t.eq([recognition.items[1].pickupCode, recognition.items[1].lockerNo, recognition.items[1].stationId,
+      recognition.items[1].stationIndex, recognition.items[1].imageIndex],
+    ['AI码', '5 号柜', 'P6', 5, 0], 'D29 识别到的站点命中 P1~P8 才写入；imageIndex 指向来源图');
+    t.eq(recognizeModel.recognitionTextOf({ filled: recognition.filled }).indexOf('已按截图预填'), 0,
+      'D30 预填提示「已按截图预填，请核对（以手填为准）」');
+    const failedText = recognizeModel.recognitionTextOf({ filled: 0, failed: 1, failureId: 'F-100' });
+    t.check(failedText.indexOf('已反馈开发者复核') > 0,
+      'D31 识别失败静默降级：提示已反馈复核（不阻塞手填）');
     const singleResult = resultModel.buildResult({ orderNo: '20261022-0031' }, { customerMode: 'BOUND' });
     t.check(singleResult.visible && singleResult.rows.length === 1 && singleResult.rows[0].orderNo === '20261022-0031'
       && singleResult.title === '订单已提交', 'D32 结果块：单件列出 orderNo/可点（§3.4 成功先出结果块）');
@@ -452,11 +455,9 @@ function register(h) {
     const duplicateResult = resultModel.buildResult({ duplicated: true, orderNo: '20261022-0031' }, { customerMode: 'GUEST' });
     t.check(duplicateResult.visible && duplicateResult.duplicateText.indexOf('不会重复建单') >= 0,
       'D35 重复提交（幂等命中）给出说明，不报错也不重复建单');
-
     const appoints = formModel.buildAppointOptions(NOW);
     t.check(appoints.length === 4 && appoints[0].key === 'ASAP' && appoints[1].key === 'SLOT'
       && appoints[1].startAt < appoints[1].endAt, 'D36 预约选项：尽快 + 今天三时段（起止成对）');
-
     t.eq(formModel.failureText({ code: 'PARTNER_CLOSED' }), '接单已关闭，暂时不能下单；已有订单不受影响。',
       'D37 PARTNER_CLOSED 人话（§3.4/§10）');
     t.eq(formModel.failureText({ code: 'VALIDATION_FAILED', message: '运单尾号必须是 5 位数字' }), '运单尾号必须是 5 位数字',
@@ -465,36 +466,35 @@ function register(h) {
       [errorCopy.CODE_COPY.RATE_LIMITED, errorCopy.CODE_COPY.INTERNAL_ERROR],
       'D39 其余 13 码统一取 shared/error-copy（错误码不暴露给用户）');
     t.eq(formModel.failureText({ code: 'TEAPOT' }), errorCopy.UNKNOWN_CODE_COPY, 'D40 未登记码回退 UNKNOWN_CODE_COPY');
-
-    const manualPayload = payloadModel.buildPayload(guestState());
+    const manualPayload = payloadModel.buildPayload(mutate(guestState(), { files: [] }));
     t.check(manualPayload.data.manualEntry === true && !('images' in manualPayload.data)
       && !('tickets' in manualPayload.data), 'D41 无截图手填（D24）：manualEntry=true 且 images/tickets 缺省');
-    const imagePayload = payloadModel.buildPayload(mutate(guestState(), {
-      imageFileId: 'cloud://test.env/ticket.jpg', imageTicketId: 'ticket-it'
-    }));
+    const imagePayload = payloadModel.buildPayload(guestState());
     t.check(imagePayload.data.manualEntry === false && imagePayload.data.images.length === 1
-      && imagePayload.data.tickets[0] === 'ticket-it', 'D42 有截图：manualEntry=false + images[]/tickets[] 成对');
+      && imagePayload.data.tickets[0] === ticketFile(1).uploadTicketId,
+    'D42 有截图：manualEntry=false + images[]/tickets[] 成对（多图 0~10，D44）');
     t.eq(manualPayload.data.delivery, {
       zone: 'D', buildingNo: 4, room: '522', dormKey: 'D4-522', buildingText: 'D4',
       recipientName: '小张', phoneTail: '6678'
     }, 'D43 代客单 delivery（D25）：本单地址=guest 快照（含收件人），不写回顾客资料');
     t.check(!('delivery' in boundPayload.data), 'D44 已绑定路径不传 delivery（服务端按下单人宿舍默认）');
-    const failPayload = payloadModel.buildPayload(mutate(bound, { recognitionFailureId: 'F-9' }));
+    const failPayload = payloadModel.buildPayload(mutate(bound, {
+      items: [Object.assign(parcelOf({ pickupCode: '27-2-7016' }), { failureId: 'F-9' })]
+    }));
     t.eq(failPayload.data.parcels[0].failureId, 'F-9', 'D45 识别失败件关联 failureId（逐件回填，首件）');
     const createPage = textOfRel('pkg-partner/pages/create-on-behalf/index.js');
     t.check(createPage.indexOf('payloadModel.buildPayload') >= 0 && createPage.indexOf('orderApi.createBatch') === -1,
       'D46 页面接线到 v1.0 单入口（order.create），不再 createBatch');
     t.notEmpty(boundPayload.data.parcels[0].pickupCode, 'D 组样本非空（防止空集全绿）');
   });
-
   // ------------------------------------------------------------------ E 字段校验矩阵
   h.section('E. 字段校验矩阵：站点/码/尾号/柜号/备注/dormKey/服务启用（§3.4 字段校验）', (t) => {
     t.eq(stations.listStations().map((item) => item.id), ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8'],
       'E1 站点值域恰为 P1~P8（复用 shared/stations，不自建）');
     const stationOptions = formModel.stationOptionsOf();
-    t.check(stationOptions.length === 9 && stationOptions[0].id === ''
-      && stationOptions.slice(1).every((item) => stations.isStationId(item.id)),
-    'E2 站点 picker：空 = 暂不指定（NEED_CODE 机制）+ P1~P8 全部可选');
+    t.check(stationOptions.length === stations.STATION_COUNT
+      && stationOptions.every((item) => stations.isStationId(item.id)),
+    'E2 站点 picker 恰为 P1~P8 全部可选（D44 去「暂不指定」：每件必须选站点）');
     t.eq(formModel.validate(mutate(boundState(), { services: [] })),
       '还没有启用任何服务类型，先去「服务类型与范围」启用后再代客下单', 'E3 未启用服务被挡（不给默认可提交）');
     t.eq(formModel.validate(mutate(boundState(), { bindingIndex: 99 })), '请选择一位已绑定的顾客',
@@ -509,28 +509,71 @@ function register(h) {
       '楼栋号是 1~10 的数字', 'E8 楼栋号值域 1~10');
     t.eq(formModel.validate(mutate(guestState(), { guest: { displayName: '小张', phoneTail: '', zone: 'D', buildingNo: '4', room: '99' } })),
       '宿舍号至少 3 位数字', 'E9 宿舍号下限（非法 dormKey 不落库）');
-    t.eq(formModel.validate(mutate(boundState(), { items: [{ pickupCode: '', lockerNo: '', trackingTail: '' }] })),
+    t.eq(formModel.validate(mutate(boundState(), { items: [parcelOf({})] })),
       '至少填取件码或运单尾号，两者都空无法建单', 'E10 码与尾号都空不可提交（§3.4）');
-    t.eq(formModel.validate(mutate(boundState(), { items: [{ pickupCode: 'A'.repeat(41), lockerNo: '', trackingTail: '' }] })),
+    t.eq(formModel.validate(mutate(boundState(), { items: [parcelOf({ pickupCode: 'A'.repeat(41) })] })),
       '取件码最多 40 字', 'E11 取件码 ≤40（与 order-edit 上限同源）');
-    t.eq(formModel.validate(mutate(boundState(), { items: [{ pickupCode: '码', lockerNo: 'X'.repeat(11), trackingTail: '' }] })),
+    t.eq(formModel.validate(mutate(boundState(), { items: [parcelOf({ pickupCode: '码', lockerNo: 'X'.repeat(11) })] })),
       '柜号最多 10 字', 'E12 柜号 ≤10');
-    t.eq(formModel.validate(mutate(boundState(), { items: [{ pickupCode: '码', lockerNo: '', trackingTail: '1234' }] })),
+    t.eq(formModel.validate(mutate(boundState(), { items: [parcelOf({ pickupCode: '码', trackingTail: '1234' })] })),
       '运单尾号必须是 5 位数字', 'E13 运单尾号恰 5 位数字');
     t.eq(formModel.validate(mutate(boundState(), { note: '备'.repeat(201) })), '备注最多 200 字',
       'E14 备注 ≤200 字（不静默截断）');
-    t.eq(formModel.validate(mutate(boundState(), { imageFileId: 'cloud://x.jpg', imageTicketId: '' })),
+    t.eq(formModel.validate(mutate(boundState(), { files: [{ fileId: 'cloud://x.jpg' }] })),
       '截图票据缺失，请重新选择截图', 'E15 截图 fileId 与 ticket 必须成对（不拿半套参数提交）');
-    const badStation = mutate(boundState(), { stationIndex: 1 });
-    badStation.stationOptions = badStation.stationOptions.slice();
-    badStation.stationOptions[1] = { id: 'P9', name: '非法站点' };
-    t.eq(formModel.validate(badStation), '驿站站点不在可选范围内，请重新选择', 'E16 非 P1~P8 站点被挡（不放宽站点值域）');
+    const badStation = mutate(boundState(), {
+      items: [Object.assign(parcelOf({ pickupCode: '码' }), { stationId: 'P9' })]
+    });
+    t.eq(formModel.validate(badStation), '请选择驿站站点', 'E16 非 P1~P8 站点被挡（D44 逐件站点值域不放宽）');
     t.eq(formModel.validateParcel({ pickupCode: '', lockerNo: '', trackingTail: '12345' }, 1),
       '', 'E17 逐件校验：只有尾号也合法（NEED_CODE 机制）');
     t.eq(formModel.validateParcel({ pickupCode: '码', lockerNo: '', trackingTail: '1234' }, 1),
       '第 2 件：运单尾号必须是 5 位数字', 'E18 批量逐件错误带件号（用户知道改哪一条）');
   });
-
+  // ------------------------------------------------------------------ N D44 站点按件/多图/识别预填
+  h.section('N. D44 代客下单：站点按件继承/逐件必填/多图 0~10/识别预填按件拆/校验回正确步骤', (t) => {
+    const createWxml = textOfRel('pkg-partner/pages/create-on-behalf/index.wxml');
+    const createPage = textOfRel('pkg-partner/pages/create-on-behalf/index.js');
+    const formSrc = textOfRel('pkg-partner/pages/create-on-behalf/parts/form-model.js');
+    const blankStation = Object.assign(parcelOf({ pickupCode: '27-2-7017' }), { stationId: '', stationName: '', stationIndex: 0, stationTouched: false });
+    const twoItems = mutate(boundState(), { items: [parcelOf({ pickupCode: '27-2-7016' }), blankStation] });
+    t.eq(formModel.validateDetailed(twoItems), { message: '第 2 件：请选择驿站站点', step: formModel.STEP_PARCELS },
+      'N1 第二件未选站点被拦（D44 逐件必填；失败步骤=取件信息，旧实现一律跳第 1 步）');
+    const options = formModel.stationOptionsOf();
+    const chosenTwo = Object.assign({}, twoItems, formModel.applyItemStation(twoItems, 1, formModel.stationIndexOf(options, 'P6')));
+    t.eq(formModel.validateDetailed(chosenTwo), { message: '', step: 0 }, 'N2 两件各选站点后可提交（站点按件，不再整单同站）');
+    t.eq(payloadModel.buildPayload(chosenTwo).data.parcels.map((row) => [row.stationId, row.stationName]),
+      [['P4', stations.stationNameOf('P4')], ['P6', stations.stationNameOf('P6')]],
+      'N3 payload 逐件输出各自 stationId/stationName（旧实现把页面级 currentStation 复制给每件）');
+    t.eq(chosenTwo.items.map((item) => item.stationIndex),
+      [formModel.stationIndexOf(options, 'P4'), formModel.stationIndexOf(options, 'P6')],
+      'N3b 每件 picker 回显各自站点下标（stationIndex 取站点值域下标，不是件下标）');
+    const inheritState = mutate(boundState(), { items: [
+      parcelOf({ pickupCode: '1' }),
+      Object.assign(parcelOf({ pickupCode: '2' }), { stationTouched: false }),
+      parcelOf({ pickupCode: '3', stationId: 'P6' })
+    ] });
+    t.eq(formModel.applyItemStation(inheritState, 0, formModel.stationIndexOf(options, 'P5')).items.map((item) => item.stationId),
+      ['P5', 'P5', 'P6'], 'N4 首件站点变化：未单独改过的后续件继承，单独改过的件不被覆盖');
+    const appended = formModel.appendParcel(mutate(boundState(), { items: [parcelOf({ pickupCode: '1', stationId: 'P8' })] }));
+    t.eq([appended.items.length, appended.items[1].stationId, appended.items[1].key !== appended.items[0].key],
+      [2, 'P8', true], 'N5 再填一件默认继承首件站点 + 稳定 key（可逐件改）');
+    t.check(/wx:for="\{\{items\}\}" wx:key="key"/.test(createWxml) && createWxml.indexOf('wx:key="index"') < 0,
+      'N6 逐件列表 wx:key 用稳定 key（不用 index：删除中间件视图会错位）');
+    t.check((createWxml.match(/onItemStationChange/g) || []).length === 1 && /data-index="\{\{index\}\}"/.test(createWxml)
+      && createPage.indexOf('onItemStationChange') >= 0 && createPage.indexOf('dataset.index') >= 0
+      && createWxml.indexOf('disabled="\{\{readonly\}\}"') >= 0,
+    'N7 每件站点 picker：data-index 逐件写 + readonly 置灰 + 事件接线（页面零判据）');
+    t.check([fsutil.stripComments(createPage), fsutil.stripComments(formSrc), createWxml].join(' ').indexOf('暂不指定') < 0,
+      'N8 去「暂不指定」默认值（服务端逐件必填，旧默认值=必然提交失败）');
+    t.eq([formModel.validateDetailed(mutate(guestState(), { guest: {} })).step,
+      formModel.validateDetailed(twoItems).step,
+      formModel.validateDetailed(mutate(boundState(), { note: '备'.repeat(201) })).step,
+      formModel.validateDetailed(mutate(boundState(), { services: [] })).step],
+    [formModel.STEP_CUSTOMER, formModel.STEP_PARCELS, formModel.STEP_SERVICE, formModel.STEP_SERVICE],
+    'N9 本地校验失败回正确步骤（顾客=1 / 件与站点=2 / 服务与备注=3）');
+    t.notEmpty(payloadModel.buildPayload(boundState()).data.parcels, 'N 组样本非空（防止空集全绿）');
+  });
   // ------------------------------------------------------------------ G 静态纪律
   h.section('G. 静态纪律：页面零判据/零绑定入口/零金额/行数/四件套（§2 铁律、门禁 #18/#21/#22/#28）', (t) => {
     const statusLiterals = ['SUBMITTED', 'ACCEPTED', 'PICKED', 'DELIVERED', 'COMPLETED', 'CANCELLED', 'EXCEPTION'];
@@ -544,7 +587,6 @@ function register(h) {
       });
     });
     t.eq(layerBad, [], 'G1 页面脚本零 wx.cloud/random/七状态字面量（#21 页面层零判据）');
-
     const actionHits = [];
     PAGE_SCRIPTS.concat(MY_FILES.filter((rel) => rel.endsWith('.js') && rel.indexOf('/parts/') >= 0)).forEach((rel) => {
       const code = fsutil.stripComments(textOfRel(rel));
@@ -555,7 +597,6 @@ function register(h) {
       }
     });
     t.eq(actionHits, [], 'G2 页面/纯件层不直接拼 action 字符串（动作入口统一 api/modules）');
-
     const forbidden = ['绑定顾客', '添加顾客', '导入顾客'];
     const pkgBad = [];
     MY_FILES.filter((rel) => rel.indexOf('pkg-partner/') === 0).forEach((rel) => {
@@ -568,12 +609,10 @@ function register(h) {
       });
     });
     t.eq(pkgBad, [], 'G3 pkg-partner 零绑定入口文案/零 bind.* 直调（铁律 §7、门禁 #28）');
-
     const storageHits = MY_FILES.filter((rel) => rel.endsWith('.js'))
       .map((rel) => ({ rel: rel, hits: (fsutil.stripComments(textOfRel(rel)).match(/wx\.[A-Za-z]*Storage[A-Za-z]*/g) || []) }))
       .filter((item) => item.hits.length > 0);
     t.eq(storageHits, [], 'G4 本地存储零直写（唯一写口 utils/storage.js，门禁 #15）');
-
     const detailSource = textOfRel('pkg-partner/pages/customer-detail/index.js');
     const detailModel = textOfRel('pkg-partner/pages/customer-detail/parts/detail-view.js');
     t.check(detailSource.indexOf('getCustomer') >= 0 && detailSource.indexOf('orderApi.listPartner') >= 0
@@ -587,7 +626,6 @@ function register(h) {
     t.check(createModel.indexOf('data.bindingId = binding.bindingId') >= 0 && createModel.indexOf('data.guest = guest') >= 0
       && createModel.indexOf('parcels: parcels') >= 0,
     'G7 代客单 v1.0 请求体单源：bindingId / guest 互斥 + parcels[] 落在一处（parts/payload-model）');
-
     const wxmls = PAGE_FILES.map((rel) => textOfRel(rel + '.wxml'));
     t.check(wxmls.every((wxml) => wxml.indexOf('switch-bar') >= 0),
       'G8 三个页面都引用 switch-bar（切换会话条；#23）');
@@ -597,19 +635,16 @@ function register(h) {
       'G10 顾客详情 WXML：解绑置灰原因 + 自然日分组 + 编号组件');
     t.check(wxmls[2].indexOf('result.rows') >= 0 && wxmls[2].indexOf('result.hintLines') >= 0
       && wxmls[2].indexOf('items') >= 0, 'G11 代客下单 WXML：结果块 N 单 + guest 提示块 + 逐件表单');
-
     const moneyHits = [];
     MY_FILES.forEach((rel) => {
       zeroMoney.scanText(textOfRel(rel)).forEach((hit) => moneyHits.push(rel + ':' + hit.token));
     });
     t.eq(moneyHits, [], 'G12 零金额词表零命中（门禁 #22；服务只表达做什么）');
-
     const openidHits = MY_FILES.filter((rel) => {
       const code = rel.endsWith('.js') ? fsutil.stripComments(textOfRel(rel)) : textOfRel(rel);
       return /customerOpenid|openid\s*[:=]/.test(code);
     });
     t.eq(openidHits, [], 'G13 端侧零 openid 透传/展示（页面参数一律 bindingId，§7.4 批 7）');
-
     const tooLong = [];
     PAGE_SCRIPTS.concat(MY_FILES.filter((rel) => rel.endsWith('.js'))).forEach((rel) => {
       const lines = fsutil.countLines(path.join(ROOT, rel));
@@ -618,7 +653,6 @@ function register(h) {
     t.eq(tooLong, [], 'G14 页面/纯件脚本均 ≤500 行（#18）');
     t.check(fsutil.countLines(path.join(ROOT, 'tools/selftest-partner-pages.js')) <= 1000,
       'G15 本测试文件 ≤1000 行（#18 测试档）');
-
     const missing = [];
     PAGE_FILES.forEach((base) => {
       ['js', 'wxml', 'wxss', 'json'].forEach((ext) => {
@@ -626,7 +660,6 @@ function register(h) {
       });
     });
     t.eq(missing, [], 'G16 三个页面四件套齐全（#03）');
-
     const syntaxBad = [];
     PAGE_SCRIPTS.concat(MY_FILES.filter((rel) => rel.endsWith('.js'))).forEach((rel) => {
       const checked = fsutil.syntaxCheck(textOfRel(rel), rel);
@@ -634,7 +667,6 @@ function register(h) {
     });
     t.eq(syntaxBad, [], 'G17 页面/纯件脚本均可编译（#02 node 语法）');
   });
-
   // ------------------------------------------------------------------ H 激活页邀请码输入回显
   h.section('H. 激活页邀请码输入：逐字符回显不清空/归一/分组/提交闸（UX_PARTNER §3.1/§3.2）', (t) => {
     t.eq(codeInput.stateOfInput('A'), { codeRaw: 'A', codeDisplay: 'A' },
@@ -678,7 +710,6 @@ function register(h) {
     const createWxml = textOfRel('pkg-partner/pages/create-on-behalf/index.wxml');
     t.check(createPage.indexOf('serverTimeSkew') >= 0 && createPage.indexOf('appointNotice') >= 0,
       'I6 页面按 store.serverTimeSkew 校时并渲染预约提示（不用设备钟过滤）');
-
     const presetFound = presetModel.applyPresetBinding(
       formModel.createInitialState({ config: CONFIG, partner: PARTNER, bindingList: [ROW_1, ROW_2], nowMs: NOW }), 'b2');
     t.eq([presetFound.customerMode, presetFound.bindingIndex, presetFound.presetMiss], ['BOUND', 1, false],
@@ -693,12 +724,13 @@ function register(h) {
       'I10 无 ?bindingId= 时不改默认路径（普通入口不受影响）');
     t.check(createPage.indexOf("'./parts/preset-model'") >= 0 && createPage.indexOf('presetModel.applyPresetBinding') >= 0
       && createWxml.indexOf('presetMiss') >= 0, 'I11 页面接线到预置纯件并在 WXML 给「请选择顾客」态');
-
-    t.check(createPage.indexOf('aiApi.parseParcel') >= 0 && createPage.indexOf('uploadTicketId') >= 0
-      && createPage.indexOf("ocrTextMasked: ''") >= 0,
-      'I12 识别兜底按 D23/C2：NO_TEXT 不外呼但服务端入复核队列（端侧无 OCR 文本，仅传 uploadTicketId）');
-    t.check(createWxml.indexOf('反馈开发者复核') >= 0 && createWxml.indexOf('手填优先') >= 0
-      && createWxml.indexOf('识别失败兜底') === -1, 'I13 入口文案改为「反馈开发者复核」+ 手填优先（不再叫识别兜底）');
+    const recognizeFlowSrc = textOfRel('pkg-partner/pages/create-on-behalf/parts/recognize-flow.js');
+    t.check(recognizeFlowSrc.indexOf('aiApi.parseParcel') >= 0 && recognizeFlowSrc.indexOf('uploadTicketId') >= 0
+      && recognizeFlowSrc.indexOf("role: 'PARTNER'") >= 0,
+    'I12 识别兜底按 D23/C2：NO_TEXT 不外呼但服务端入复核队列（识别零件逐图带 uploadTicketId/fileId）');
+    t.check(createPage.indexOf('recognizeFlow.identifyFiles') >= 0 && createWxml.indexOf('反馈开发者复核') >= 0
+      && createWxml.indexOf('手填优先') >= 0 && createWxml.indexOf('识别失败兜底') === -1,
+    'I13 选图自动识别接线 + 入口文案「反馈开发者复核」+ 手填优先（不再叫识别失败兜底）');
   });
   // ------------------------------------------------------------------ J 服务类型目录（D41）
   h.section('J. 服务类型目录 D41：新 5 类/停用 PICKUP_DOOR 灰显不可选/保存载荷只含目录内 code', (t) => {
@@ -739,6 +771,8 @@ function register(h) {
     t.check(servicePageJs.indexOf("'./parts/service-model'") >= 0
       && servicePageWxml.indexOf('service-row-disabled') >= 0 && servicePageWxml.indexOf('hasLegacy') >= 0,
     'J10 服务设置页接线行模型：停用类型灰显且不可勾选（页面不另写判据）');
+    t.check(servicePageJs.indexOf('store.patch({ partner: partner })') >= 0,
+      'J11 保存后回写 store 用 patch（set 是 (key,value)，误用会写 [object Object] 键且 partner 不更新）');
   });
   // ------------------------------------------------------------------ K D42/task-20 兼职看绑定顾客头像
   h.section('K. D42/task-20 兼职看绑定顾客头像：src 优先/retry 接线/fileId 回退/file-id 零命中/激活页预览', (t) => {
@@ -753,7 +787,6 @@ function register(h) {
       { list: [Object.assign({}, ROW_1, { avatarUrl: 'https://tmp.example/c.jpg' })], nextCursor: null }, { nowMs: NOW });
     t.eq(avatarState.rows[0].avatarUrl, 'https://tmp.example/c.jpg',
       'K2 applyResponse 后行保留服务端 avatarUrl（首屏/下拉/触底同一装配）');
-
     const customersWxml = textOfRel('pages/partner/customers/index.wxml');
     t.check(customersWxml.indexOf('src="{{item.avatarUrl}}"') >= 0
       && customersWxml.indexOf('fileId="{{item.avatarFileId}}"') >= 0
@@ -761,7 +794,6 @@ function register(h) {
     'K3 客户列表 WXML：头像 src 优先 + fileId 回退 + 失败可点重签（retry）');
     t.check(textOfRel('pages/partner/customers/index.js').indexOf('onAvatarRetry()') >= 0,
       'K4 客户列表页：retry 事件接线到重拉（服务端重签 5 分钟 URL）');
-
     t.eq(detailView.identityOf(Object.assign({}, ROW_1, { avatarUrl: 'https://tmp.example/c.jpg' })).avatarUrl,
       'https://tmp.example/c.jpg',
       'K5 顾客详情视图：身份行 avatarUrl 取服务端临时 URL（avatarFileId 保留回退）');
@@ -773,14 +805,12 @@ function register(h) {
       && avatarRefreshJs.indexOf('partnerApi.getCustomer') >= 0 && avatarRefreshJs.indexOf("'view.avatarUrl'") >= 0
       && avatarRefreshJs.indexOf('orderApi') === -1,
     'K6 顾客详情：onShow/retry 只重签身份行头像（parts/avatar-refresh 单点，不重拉订单页）');
-
     const partnerOrderWxml = textOfRel('pkg-partner/pages/order-detail/index.wxml');
     const partnerOrderJs = textOfRel('pkg-partner/pages/order-detail/index.js');
     t.check(partnerOrderWxml.indexOf('src="{{order.counterpart.avatarUrl}}"') >= 0
       && partnerOrderWxml.indexOf('bindretry="onCounterpartAvatarRetry"') >= 0
       && partnerOrderJs.indexOf('onCounterpartAvatarRetry()') >= 0,
     'K7 兼职订单详情 counterpart（兼职→顾客）头像 src 优先 + retry 重拉 DTO');
-
     const activateWxml = textOfRel('pkg-partner/pages/activate/index.wxml');
     const activateJs = textOfRel('pkg-partner/pages/activate/index.js');
     t.check(activateWxml.indexOf('src="{{avatarPreview}}"') >= 0
@@ -790,21 +820,14 @@ function register(h) {
     t.check(activateJs.indexOf('userApi.avatarUrl()') >= 0 && activateJs.indexOf('refreshActivatedAvatar') >= 0
       && activateJs.indexOf("'activated.avatarUrl'") >= 0,
     'K9 激活成功页本人头像：经 user.avatarUrl 换 5 分钟临时 URL（失败保持默认头像位，不阻断激活结果）');
-
-    t.check(textOfRel('components/customer-row/index.js').indexOf('src: { type: String') >= 0
-      && textOfRel('components/customer-row/index.wxml').indexOf('src="{{src}}"') >= 0,
-    'K10 customer-row 组件：新增 src? prop（src 优先 + customer.avatarFileId 回退）');
-
     const wxmlFiles = fsutil.walk(ROOT, { exts: new Set(['.wxml']) });
     const hyphenHits = wxmlFiles.filter((full) => fsutil.readText(full).indexOf('file-id=') >= 0).map((full) => fsutil.rel(full));
     t.eq(hyphenHits, [], 'K11 全仓 WXML 零 file-id= 驼峰写法（D42 fileId 单一写法；实际扫描 ' + wxmlFiles.length + ' 个文件）');
-
     const partnerWxmls = [
       'pages/partner/customers/index.wxml',
       'pkg-partner/pages/customer-detail/index.wxml',
       'pkg-partner/pages/order-detail/index.wxml',
-      'pkg-partner/pages/activate/index.wxml',
-      'components/customer-row/index.wxml'
+      'pkg-partner/pages/activate/index.wxml'
     ];
     const noSrc = [];
     partnerWxmls.forEach((rel) => {
@@ -824,12 +847,12 @@ function register(h) {
       .map((full) => fsutil.rel(full));
     t.eq(camelWxmlHits, [], 'K14 全仓 WXML <image-picker> 零驼峰 maxCount= 属性（TD-069；实际扫描 '
       + wxmlFiles.length + ' 个文件）');
-    t.check(textOfRel('pkg-partner/pages/create-on-behalf/index.wxml').indexOf('max-count="{{1}}"') >= 0,
-      'K15 代客下单页改用 kebab-case max-count="{{1}}"（与项目其它用法一致）');
+    t.check(textOfRel('pkg-partner/pages/create-on-behalf/index.wxml').indexOf('max-count="{{imageMax}}"') >= 0
+      && /imageMax: formModel.IMAGE_MAX/.test(textOfRel('pkg-partner/pages/create-on-behalf/index.js')),
+    'K15 代客下单页 kebab-case max-count="{{imageMax}}"（D44 多图 0~10；数值单源 formModel.IMAGE_MAX）');
     t.check(textOfRel('components/image-picker/index.js').indexOf('maxCount: { type: Number, value: 1 }') >= 0,
       'K16 组件仍声明 maxCount 属性且默认值=1（kebab-case 自动映射，显式传 1 行为不变）');
   });
-
   // ------------------------------------------------------------------ F READONLY/TEST_WRITE + transport
   h.section('F. READONLY/TEST_WRITE 与 fake transport：包络/零请求/票据/分享（§6.3、§6.4）', async (t) => {
     const captured = [];
@@ -860,7 +883,7 @@ function register(h) {
       t.eq([captured[3].action, captured[3].data.bindingId, captured[3].clientRequestId],
         ['order.create', 'b1', 'REQ_ABCDEFGHIJKLMNOP'], 'F6 已绑定代客单经 api 层透传 bindingId + 显式幂等键');
       const batchPayload = payloadModel.buildPayload(mutate(boundState(), {
-        items: [{ pickupCode: '27-2-7016', lockerNo: '', trackingTail: '' }, { pickupCode: '27-2-7017', lockerNo: '', trackingTail: '' }]
+        items: [parcelOf({ pickupCode: '27-2-7016' }), parcelOf({ pickupCode: '27-2-7017' })]
       }));
       await orderApi.create(batchPayload.data, { clientRequestId: 'REQ_ABCDEFGHIJKLMNOP' });
       t.eq([captured[4].action, captured[4].data.parcels.length], ['order.create', 2],
@@ -916,7 +939,6 @@ function register(h) {
       client.restoreTransport();
       store.reset();
     }
-
     t.eq(shareCard.buildShareMessage({
       isCustomer: false, viewSession: true, partnerCard: { partnerNo: 'P8F3K2M' }
     }).path, '/pages/launch/index', 'F15 切换会话隐藏分享（回通用入口页分享，不外发他人页面）');

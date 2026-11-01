@@ -159,8 +159,9 @@ Page({
       lastUpdatedText: flow.lastUpdatedText(session)
     };
     if (session.view) Object.assign(payload, session.view);
-    // v1.0 订单模型：parcels[]/images[]/delivery/manualEntry 由本地纯件转视图（不改共享 parts）
-    if (payload.order) Object.assign(payload, parcelView.pageExtras(payload.order));
+    // v1.0 订单模型：parcels[]/images[]/delivery/manualEntry 由本地纯件转视图（不改共享 parts）；
+    // D41/D49：服务类型说明取公开配置 serviceCatalog 的 desc 单源，历史停用类型按 DTO 标记渲染「（已停用）」
+    if (payload.order) Object.assign(payload, parcelView.pageExtras(payload.order, this.data.config));
     this.setData(payload);
   },
 

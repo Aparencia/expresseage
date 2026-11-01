@@ -25,7 +25,7 @@ const BATCH_ACTIONS = [
     label: '送达',
     batch: true,
     undoable: true,
-    confirmText: '将 N 单（共 M 件）标记为已送达，顾客可确认；24h 未确认自动完成（guest 单无需确认，系统自动完成）。'
+    confirmText: '将 N 单（共 M 件）标记为已送达，顾客可确认；系统每天 23:50 自动完成送达单（当天已过 23:50 的顺延次日；guest 单无需确认）。'
   },
   {
     key: 'undoPick',

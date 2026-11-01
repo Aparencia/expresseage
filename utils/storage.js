@@ -212,25 +212,6 @@ function clearGuideSeen(key, platform) {
   }, platform);
 }
 
-function getDraftPointer(platform) {
-  return load(platform).draftPointer;
-}
-
-function setDraftPointer(pointer, platform) {
-  if (!isValidDraftPointer(pointer)) {
-    return false;
-  }
-  return update(function (state) {
-    state.draftPointer = pointer;
-  }, platform);
-}
-
-function clearDraftPointer(platform) {
-  return update(function (state) {
-    state.draftPointer = null;
-  }, platform);
-}
-
 // 取件清单本机勾选（D26）：只用于"我已取到"的视觉标记，不回写服务端、不影响订单状态。
 function getPickupChecks(platform) {
   return load(platform).pickupChecks;
@@ -274,7 +255,6 @@ module.exports = {
   normalize,
   isValidRole,
   isValidGuideKey,
-  isValidDraftPointer,
   isValidPickupCheckKey,
   load,
   getLastRole,
@@ -282,9 +262,6 @@ module.exports = {
   isGuideSeen,
   markGuideSeen,
   clearGuideSeen,
-  getDraftPointer,
-  setDraftPointer,
-  clearDraftPointer,
   getPickupChecks,
   setPickupCheck,
   clearPickupChecks,

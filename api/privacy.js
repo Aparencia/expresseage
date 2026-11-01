@@ -6,64 +6,8 @@ const configModule = require('./modules/config');
 const store = require('../store/index');
 const privacyPolicy = require('../utils/privacy-policy');
 
-// 只保留真正需要的授权 scope：相册选图走 wx.chooseMedia（自带隐私流程），
-// 不请求 scope.writePhotosAlbum（那是「保存到相册」，TD-060/P1-8）；本层零权限扩张。
-const CAMERA_SCOPE = 'scope.camera';
-
-function getSetting() {
-  return new Promise((resolve) => {
-    wx.getSetting({
-      success(res) {
-        resolve((res && res.authSetting) || {});
-      },
-      fail() {
-        resolve({});
-      }
-    });
-  });
-}
-
-function authorize(scope) {
-  return new Promise((resolve) => {
-    wx.authorize({
-      scope,
-      success() {
-        resolve(true);
-      },
-      fail() {
-        resolve(false);
-      }
-    });
-  });
-}
-
-async function ensureScope(scope) {
-  const setting = await getSetting();
-  if (setting[scope]) {
-    return true;
-  }
-  if (setting[scope] === false) {
-    return false;
-  }
-  return authorize(scope);
-}
-
-function ensureCameraAuth() {
-  return ensureScope(CAMERA_SCOPE);
-}
-
-function openSetting() {
-  return new Promise((resolve) => {
-    wx.openSetting({
-      success(res) {
-        resolve((res && res.authSetting) || {});
-      },
-      fail() {
-        resolve({});
-      }
-    });
-  });
-}
+// 只保留官方隐私指引打开能力（TD-061）：原 scope 授权/设置跳转三件套（ensureCameraAuth/openSetting/
+// checkPrivacySetting）与 help 页零消费后，整簇在批 16 死代码专项删除；本层零权限扩张、零授权预请求。
 
 function openPrivacyContract() {
   return new Promise((resolve) => {
@@ -77,23 +21,6 @@ function openPrivacyContract() {
       },
       fail() {
         resolve(false);
-      }
-    });
-  });
-}
-
-function checkPrivacySetting() {
-  return new Promise((resolve) => {
-    if (typeof wx.getPrivacySetting !== 'function') {
-      resolve({ needAuthorization: false, privacyContractName: '' });
-      return;
-    }
-    wx.getPrivacySetting({
-      success(res) {
-        resolve(res || { needAuthorization: false, privacyContractName: '' });
-      },
-      fail() {
-        resolve({ needAuthorization: false, privacyContractName: '' });
       }
     });
   });
@@ -137,12 +64,7 @@ function docQuery(kind) {
 }
 
 module.exports = {
-  CAMERA_SCOPE,
-  ensureCameraAuth,
-  ensureScope,
-  openSetting,
   openPrivacyContract,
-  checkPrivacySetting,
   getPrivacyVersion,
   parseConsent,
   consentStatus,

@@ -1,30 +1,11 @@
 'use strict';
 /**
- * tools/selftest-order-flow.js — 批 4-C 顾客下单四步端侧断言套件（ENGINEERING §7.2 接入范式）。
- *
- * 覆盖（任务 task-62 A~G；UX §4.3/§4.4/§4.8/§12.2 AC-C-10~20/51~54、ARCHITECTURE §3.1/§3.2/§4.3）：
- *   A. 站点选择器只来自 P1~P8（别名归一后仍是正式站，无自建站名；判不准留空）
- *   B. 服务类型只有名称+说明（只展示兼职已启用项；零金额键值；说明随类型下发）
- *   C. canSubmit 五态与上界（空选/超 5 件/缺站点/无码无尾号/形态闸/恰好 5 件可提交）
- *   D. buildPayload：单件/拆单/每件独立预约备注/共享 image/单件顶层与拆单件级 failureId/
- *      recognitionSource/confidence（值域与服务端一致）
- *   E. submission id 生命周期：格式、重试复用、件级内容变更重生成、成功清空
- *   F. api/client transport 注入：显式 clientRequestId 进包络、非法回退自生成、写动作不重试、
- *      读动作重试、13 码→人话、超时以 CallError（人话）向上，不外抛原始错误
- *   G. 页面层静态：零 wx.cloud.*、零七状态字面量、零 random、零自拼 order.create 字面量；
- *      Step4 接线（ensureSubmission/clearSubmission/clientRequestId）、逐件预约备注控件、
- *      服务说明/截图预览/识别原文/AI 兜底三态文案与「取消」入口
- *   H. 逐件 AI 兜底纯件：按单调用/同一票据/独立 failureId/规则优先不外呼/只填空/
- *      某件失败只降级该件/降级 DTO 只预填/recognitionSource 优先级 MANUAL > AI 来源 > RULE/
- *      D29 低置信（LOW+DEEPSEEK）不写入、只挂建议快照、采纳后 DEEPSEEK+LOW 进载荷、手填不被覆盖
- *   I. 服务端契约联调（fake DB，真实 handler）：严格白名单接受/拒绝、recognition.source 落库、
- *      拆单逐单 source 不串、ORDER_CREATED 事件与零写入
- *   K/L/M（批 10 A 批）：P1-8 相册授权修正、P1-4 换图替换/重试/失败卡两条出路（D24）、
- *      P1-6 范围预检、P1-9「其他代办」强制备注 + N（第 2 批反馈 ⑧⑨）：取件码前置标签/同构、
- *      Step1「下一步：核对」回迁（只跳步）+ 手填有内容时二次确认（静态接线 + 有牙正控）
- *
- * 纪律：不 mock 全局 wx（api/client 用 setTransport 注入替身）；fake 数据、不连真云；
- *       先合法基线再反例；样本非空；EXPECTED_ASSERTIONS 与实际断言数精确相等（少算/多算都判红）。
+ * tools/selftest-order-flow.js — 顾客下单链路端侧断言套件（A~O；ENGINEERING §7.2）。
+ * A 站点 / B 服务类型 / C canSubmit / D buildPayload / E submission id / F api/client transport /
+ * G 页面静态 / H 逐件 AI 兜底 / J ocr-flow 纯件 / K image-picker（P1-8/P1-4/D44 多图并发）/
+ * L 范围预检+CUSTOM 备注 / M 重新识别失败卡出路 / N 取件码标签+Step1 回迁 / O D44 上传链路 size 解析。
+ * 纪律：不 mock 全局 wx（api/client 用 setTransport 注入替身）；fake 数据、不连真云；先合法基线再反例；
+ *       样本非空；EXPECTED_ASSERTIONS 与实际断言数精确相等（少算/多算都判红）。
  * 取数：node tools/selftest-order-flow.js | Select-Object -Last 2
  */
 const fs = require('fs');
@@ -47,12 +28,13 @@ const avatar = require(path.join(ROOT, 'utils/avatar.js'));
 const filesFlow = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/files-flow.js'));
 const precheck = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/precheck.js'));
 const pickerState = require(path.join(ROOT, 'components/image-picker/state.js'));
+const uploadApi = require(path.join(ROOT, 'api/upload.js'));
 const { createFakeDb } = require('./fake-db');
 const CLOUD_API = path.join(ROOT, 'cloudfunctions/api');
 const app = require(path.join(CLOUD_API, 'app.js'));
 const { COLLECTIONS } = require(path.join(CLOUD_API, 'shared/collections.js'));
 const serverEnums = require(path.join(CLOUD_API, 'shared/enums.js'));
-const EXPECTED_ASSERTIONS = 204; // 实际断言总数（少算/多算都判红）
+const EXPECTED_ASSERTIONS = 210; // 204 + 6（D44：K17~K20 多图并发/聊天图元数据 + O1/O2 上传 size 解析）
 
 const ORDER_CREATE_PAGE = 'pkg-customer/pages/order-create/index.js';
 const ORDER_CREATE_WXML = 'pkg-customer/pages/order-create/index.wxml';
@@ -912,6 +894,14 @@ function register(h) {
       && pickerState.deniedCopyOf('camera').indexOf('不传截图手动填写') >= 0
       && pickerState.deniedCopyOf('album').indexOf('拍照') >= 0,
     'K9 拍照/相册被拒 → 明确替代路径（相册/聊天/拍照 + 不传截图手填，UX §9.2）');
+    const plan = pickerState.uploadPlanOf(5);
+    t.eq([pickerState.UPLOAD_CONCURRENCY, plan.concurrency, plan.batches], [2, 2, [[0, 1], [2, 3], [4]]], 'K17 D44 多图上传并发 2（分批计划纯件；P0-1 组件侧）');
+    const chatMeta = pickerState.pickedFileOf({ path: 'wxfile://tmp/c.jpg', size: 4096, name: 'c.jpg', type: 'image' });
+    t.eq([chatMeta.size, chatMeta.name, chatMeta.type, pickerState.fileSnapshotOf(chatMeta, { size: 2048 }).size], [4096, 'c.jpg', 'image', 2048], 'K18 聊天图 {path,size,name,type} 透传（事件快照带元数据；size 取上传后真实值）');
+    const pickerSrc2 = textOf('components/image-picker/index.js');
+    t.check(pickerSrc2.indexOf('pickedFilesOf') >= 0 && pickerSrc2.indexOf('uploadPlanOf') >= 0 && pickerSrc2.indexOf('Promise.all') >= 0 && pickerSrc2.indexOf('size: meta.size') >= 0 && pickerSrc2.indexOf('fileSnapshotOf(meta, uploaded)') >= 0 && pickerSrc2.indexOf("triggerEvent('change', { files })") >= 0, 'K19 组件接线：聊天图元数据透传 + 分批并发上传 + change 事件 files 快照带 size/name/type');
+    const uploadSrc = textOf('api/upload.js');
+    t.check(uploadSrc.indexOf('cancelTicket') < 0 && uploadSrc.indexOf('resolveTicketSize') >= 0 && uploadSrc.indexOf('boundedReadBytes') >= 0, 'K20 api/upload：删死导出 cancelTicket + size 三级解析');
     t.notEmpty(Object.keys(pickerState.DENIED_COPY), 'K 组样本非空');
   });
   // ---------------------------------------------------------------- L A 批 P1-6 范围预检 + P1-9 CUSTOM 备注
@@ -976,7 +966,6 @@ function register(h) {
     const step1 = xml.slice(xml.indexOf('step === 1'), xml.indexOf('step === 2'));
     const labelBeforeCode = (s) => { const l = s.indexOf('<view class="form-label">取件码</view>'); const c = s.indexOf('<code-editor'); return l >= 0 && c >= 0 && l < c; };
     const manualConfirm = (s) => /wx\.showModal\(/.test(String(s)) && String(s).indexOf('会清空已选截图和已识别') >= 0;
-    // 有牙正控：旧实现样本必须被判否（否则新判据是空集全绿）；旧样本仅内存字符串，不落盘
     t.check(labelBeforeCode('<code-editor value="{{item.pickupCode}}" placeholder="取件码（可留空，填运单后 5 位）" bind:change="onCodeChange" />') === false, 'N1 正控：旧 WXML 取件码裸输入被判「无前置标签」（判据有牙）');
     t.check(manualConfirm('onManualOnlyTap() { if (this.data.readonly) return; this.setData({ files: [] }); }') === false, 'N2 正控：旧 onManualOnlyTap 无二次确认被判否（判据有牙）');
     t.check(labelBeforeCode(xml) === true, 'N3 取件码前置标签「取件码」在 code-editor 之前（与站点/柜号/尾号同构）');
@@ -986,6 +975,17 @@ function register(h) {
     t.check(step1.indexOf('wx:if="{{items.length}}"') >= 0 && step1.indexOf('bindtap="goStep1Next"') >= 0, 'N7 Step1 有已填件时出现「下一步：核对」按钮（wx:if items.length + goStep1Next 接线）');
     t.check(/goStep1Next\(\)\s*\{\s*this\.setData\(\{\s*step:\s*2\s*\}\);\s*\}/.test(src), 'N8 goStep1Next 方法体只 setData({step:2})（不触碰 files/items，返回不丢已填件）');
     t.check(manualConfirm(src) === true, 'N9 「不传截图，手动填写」有内容时二次确认（wx.showModal + 说明清空已选截图与已识别件）');
+  });
+  h.section('O. D44 上传链路：聊天图 size 缺失不按 0 必拒（三级真实字节数解析）', async (t) => {
+    const managerOf = (bytes) => ({ getFileSystemManager: () => ({ getFileInfo: (opts) => { if (opts && opts.fail) opts.fail(); }, readFile: (opts) => { if (opts && opts.success) opts.success({ data: new ArrayBuffer(bytes) }); } }) });
+    const hitInfo = { getFileSystemManager: () => ({ getFileInfo: (opts) => { if (opts && opts.success) opts.success({ size: 512 }); } }) };
+    const declared = await uploadApi.resolveTicketSize(managerOf(100), 'wxfile://tmp/a.jpg', 2048);
+    const platform = await uploadApi.resolveTicketSize(hitInfo, 'wxfile://tmp/b.jpg', 0);
+    const probed = await uploadApi.resolveTicketSize(managerOf(300), 'wxfile://tmp/c.jpg', 0);
+    const none = await uploadApi.resolveTicketSize({}, 'wxfile://tmp/d.jpg', 0);
+    t.eq([declared.size, declared.source, platform.size, platform.source, probed.size, probed.source, none.size, none.source],
+      [2048, 'PICKED', 512, 'PLATFORM', 300, 'READ', 0, 'NONE'], 'O1 size 三级解析：选图元数据→getFileInfo→有界 readFile 真实字节数（元数据缺失不直接拒）');
+    t.check(textOf('api/upload.js').indexOf('await resolveTicketSize(') >= 0, 'O2 prepareTicket 接到三级解析（不再按 0 必拒；真实字节数交服务端 500KB 闸）');
   });
 }
 

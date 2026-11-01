@@ -1,8 +1,10 @@
 // handlers/admin/updateConfig.js · admin.updateConfig（白名单键 + 范围校验；aiFallback 不在白名单）
 // 白名单唯一口径 = DATA_MODEL §7.6（行 750）与 CONTRACT §1.1 第 4 条：
-//   · 可写：orderTimeoutMinutes/autoCompleteHours/screenshotRetentionDays/recognitionFailureRetentionDays/
+//   · 可写：orderTimeoutMinutes/autoCompleteAt/screenshotRetentionDays/recognitionFailureRetentionDays/
 //     viewTicketTtlMinutes/avatarMaxBytes/testAccountMaxPerRole/testDataRetentionDays/privacyVersion +
 //     zoneLabels/serviceCatalog/announcement/maintenance；
+//   · D43（2026-11-01 用户拍板）：autoCompleteAt 为 UTC+8 的 HH:MM 时刻文本键（默认 23:50，日结批 cutoff）；
+//     旧的「小时数」键作废、不在白名单（不留半死兼容键）；格式归一单源 = shared/defaults.normalizeClockText；
 //   · v1.0（D23）：orderMergeWindowMinutes 合并窗口 0~60（整数，默认 10，0=关闭；DATA_MODEL §2.10），
 //     仅服务端判定、不进 config.getPublic 公开子集；
 //   · v1.1（D32）：stations 站点正式名整表提交（固定 8 个 id、名称 1~20 字且唯一；进公开子集）；
@@ -14,6 +16,7 @@
 const { COLLECTIONS, CONFIG_DOC_ID } = require('../../shared/collections');
 const { AUDIT_ACTIONS } = require('../../shared/audit-actions');
 const sharedStations = require('../../shared/stations');
+const sharedDefaults = require('../../shared/defaults');
 const {
   enums,
   errors,
@@ -29,7 +32,6 @@ const dto = require('./_dto');
 
 const NUMBER_RULES = {
   orderTimeoutMinutes: { min: 5, max: 1440 },
-  autoCompleteHours: { min: 1, max: 72 },
   screenshotRetentionDays: { min: 1, max: 7 },
   recognitionFailureRetentionDays: { min: 7, max: 30 },
   viewTicketTtlMinutes: { min: 5, max: 60 },
@@ -40,8 +42,10 @@ const NUMBER_RULES = {
   orderMergeWindowMinutes: { min: 0, max: 60 }
 };
 const TEXT_KEYS = ['privacyVersion'];
+// D43：时刻文本键（HH:MM，UTC+8 日结批）；旧的「小时数」键作废，不进白名单
+const CLOCK_KEYS = ['autoCompleteAt'];
 const OBJECT_KEYS = ['zoneLabels', 'serviceCatalog', 'announcement', 'maintenance', 'stations'];
-const WHITELIST = Object.keys(NUMBER_RULES).concat(TEXT_KEYS, OBJECT_KEYS);
+const WHITELIST = Object.keys(NUMBER_RULES).concat(TEXT_KEYS, CLOCK_KEYS, OBJECT_KEYS);
 
 function normalizeText(key, value) {
   if (typeof value !== 'string') {
@@ -61,6 +65,16 @@ function normalizeNumber(key, value) {
     throw errors.validation(key, '配置值超出允许范围');
   }
   return num;
+}
+
+// D43：时刻键 autoCompleteAt 的格式闸（HH:MM，UTC+8；归一单源 = shared/defaults.normalizeClockText）。
+// 失败提示给可执行下一步，不外露正则/英文错误码。
+function normalizeClock(key, value) {
+  const clock = sharedDefaults.normalizeClockText(value);
+  if (!clock) {
+    throw errors.validation(key, '自动完成时间请填 HH:MM（00:00~23:59，如 23:50）');
+  }
+  return clock;
 }
 
 function normalizeZoneLabels(value) {
@@ -199,6 +213,8 @@ function normalizePatch(input) {
     const value = input[key];
     if (NUMBER_RULES[key]) {
       patch[key] = normalizeNumber(key, value);
+    } else if (CLOCK_KEYS.indexOf(key) >= 0) {
+      patch[key] = normalizeClock(key, value);
     } else if (TEXT_KEYS.indexOf(key) >= 0) {
       patch[key] = normalizeText(key, value);
     } else if (key === 'zoneLabels') {

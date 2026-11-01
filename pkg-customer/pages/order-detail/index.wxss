@@ -108,6 +108,12 @@
   min-height: 72rpx;
 }
 
+/* D41/D49：服务类型说明行（标准代取上楼 / 送至楼下不上楼，取目录 desc 单源） */
+.service-desc {
+  padding: 0 0 12rpx;
+  line-height: 1.5;
+}
+
 .right {
   text-align: right;
 }

@@ -28,6 +28,7 @@ const sharedStations = require(path.join(ROOT, 'shared/stations.js'));
 
 const copy = require(path.join(ROOT, 'pkg-admin/common/copy.js'));
 const C = require(path.join(ROOT, 'pkg-admin/common/constants.js'));
+const adminClockCases = require(path.join(__dirname, 'lib', 'admin-config-clock-cases.js'));
 
 const overviewVm = require(path.join(ROOT, 'pkg-admin/pages/overview/parts/view-model.js'));
 const inviteVm = require(path.join(ROOT, 'pkg-admin/pages/invite-codes/parts/view-model.js'));
@@ -41,7 +42,7 @@ const accountSwitchVm = require(path.join(ROOT, 'pkg-admin/pages/account-switch/
 const reviewVm = require(path.join(ROOT, 'pkg-admin/pages/recognition-review/parts/view-model.js'));
 const messagesVm = require(path.join(ROOT, 'pkg-admin/pages/messages/parts/view-model.js'));
 
-const EXPECTED_ASSERTIONS = 154 + 22 + 3; // +16：v1.1/D32 站点名称编辑卡；+6：反馈④ applyExpanded 回归 3+2+页面方法完整性 1；+3：D41 服务目录 5 类迁移
+const EXPECTED_ASSERTIONS = 154 + 22 + 3 + 11; // +11：D43 自动完成时间 HH:MM 用例表（tools/lib/admin-config-clock-cases.js）；余同批 16 前：v1.1/D32 站点卡 16 + 反馈④ 6 + D41 目录 3
 
 const ADMIN_PAGES = ['overview', 'invite-codes', 'customers', 'customer-detail', 'partners', 'orders',
   'order-detail', 'config', 'account-switch', 'messages', 'recognition-review'];
@@ -98,7 +99,7 @@ function sampleConfig() {
     announcement: { enabled: true, title: '开学通知', text: '请关注取件时间' },
     maintenance: { enabled: false, text: '维护说明' },
     orderTimeoutMinutes: 120,
-    autoCompleteHours: 24,
+    autoCompleteAt: '23:50',
     screenshotRetentionDays: 7,
     recognitionFailureRetentionDays: 30,
     viewTicketTtlMinutes: 45,
@@ -495,7 +496,7 @@ function register(h) {
       services: [{ code: 'PICKUP_STD', name: ' 标准代取 ', desc: ' 到站 ', enabled: true }],
       announcement: { enabled: true, title: ' 开学通知 ', text: '正文' },
       maintenance: { enabled: false, text: '' },
-      orderTimeoutMinutes: '120', autoCompleteHours: '24', screenshotRetentionDays: '7',
+      orderTimeoutMinutes: '120', autoCompleteAt: '23:50', screenshotRetentionDays: '7',
       recognitionFailureRetentionDays: '21', ttlMinutes: '30', avatarMaxKb: '200'
     });
     t.check(payload.zoneLabels.D === 'D 区' && payload.serviceCatalog[0].name === '标准代取'
@@ -505,6 +506,7 @@ function register(h) {
       '服务类型上行只有 code/name/desc（无 enabled：CONTRACT §6/DATA_MODEL §2.10 口径）');
     const configPageJs = textOf('pkg-admin/pages/config/index.js');
     const configWxml = textOf('pkg-admin/pages/config/index.wxml');
+    adminClockCases.autoCompleteClockChecks(t, { configVm: configVm, sampleConfig: sampleConfig, textOf: textOf });
     const serviceSection = configWxml.split('服务类型模板')[1].split('苑名')[0] || '';
     t.check(serviceSection.indexOf('<switch') < 0 && serviceSection.indexOf('onServiceToggle') < 0
       && serviceSection.indexOf('启用') < 0,
@@ -514,7 +516,6 @@ function register(h) {
     t.eq([
       configVm.validatePayload(payload),
       configVm.validatePayload(Object.assign({}, payload, { orderTimeoutMinutes: 9 })).indexOf('10~1440') >= 0,
-      configVm.validatePayload(Object.assign({}, payload, { autoCompleteHours: 169 })).indexOf('1~168') >= 0,
       configVm.validatePayload(Object.assign({}, payload, { screenshotRetentionDays: 8 })).indexOf('7 天') >= 0,
       configVm.validatePayload(Object.assign({}, payload, { recognitionFailureRetentionDays: 6 })).indexOf('7~30') >= 0,
       configVm.validatePayload(Object.assign({}, payload, { recognitionFailureRetentionDays: 31 })).indexOf('7~30') >= 0,
@@ -527,8 +528,8 @@ function register(h) {
       configVm.validatePayload(Object.assign({}, payload, {
         zoneLabels: { D: 'D 区', X: '', N: 'N 区', B: 'B 区', C: 'C 区' }
       })).indexOf('不能为空') >= 0
-    ], ['', true, true, true, true, true, true, true, true, true, true],
-    '配置值域：超时/自动完成/留存上限/识别失败留存 7~30/切换会话 5~60/头像 ≤200KB/公告≤30/苑名非空');
+    ], ['', true, true, true, true, true, true, true, true, true],
+    '配置值域：超时/留存上限/识别失败留存 7~30/切换会话 5~60/头像 ≤200KB/公告≤30/苑名非空（自动完成时间 HH:MM 见 D43 用例表）');
     t.eq(configVm.collectChanges(payload, payload).length, 0, '无变化时变更清单为空（不触发二次确认）');
     const changes = configVm.collectChanges(payload, Object.assign({}, payload, {
       recognitionFailureRetentionDays: 30, maintenance: { enabled: true, text: '' }
@@ -564,7 +565,7 @@ function register(h) {
     const builtPayload = configVm.buildPayload({
       zones: [], stations: [{ id: 'P1', name: ' 西苑顺丰快递东门 ' }], services: [],
       announcement: { enabled: false, title: '', text: '' }, maintenance: { enabled: false, text: '' },
-      orderTimeoutMinutes: '120', autoCompleteHours: '24', screenshotRetentionDays: '7',
+      orderTimeoutMinutes: '120', autoCompleteAt: '23:50', screenshotRetentionDays: '7',
       recognitionFailureRetentionDays: '30', ttlMinutes: '30', avatarMaxKb: '200'
     });
     t.eq([builtPayload.stations[0].name, builtPayload.stations[0].defaultName],
@@ -959,7 +960,7 @@ function register(h) {
       zones: [{ key: 'D', value: 'D 区' }, { key: 'X', value: 'X 区' }, { key: 'N', value: 'N 区' },
         { key: 'B', value: 'B 区' }, { key: 'C', value: 'C 区' }],
       services: [], announcement: { enabled: false, title: '', text: '' },
-      maintenance: { enabled: false, text: '' }, orderTimeoutMinutes: '120', autoCompleteHours: '24',
+      maintenance: { enabled: false, text: '' }, orderTimeoutMinutes: '120', autoCompleteAt: '23:50',
       screenshotRetentionDays: '7', recognitionFailureRetentionDays: '30', ttlMinutes: '30', avatarMaxKb: '100'
     })));
     t.eq(avatarBoundary, '', '头像大小上限 100KB 边界合法（服务端 min=102400）');

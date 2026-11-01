@@ -1,6 +1,7 @@
 // pkg-admin/pages/config/parts/view-model.js · 全局配置视图模型（纯件，零 wx）
-// 口径：V4_UX_DEVELOPER §3.8/§7.4——可编辑白名单字段（识别失败留存 7~30、站点名称 1~20 字唯一）、
-//       只读项、变更清单与二次确认。站点名称单源 = shared/stations（默认名与 id 不复制第二份）。
+// 口径：V4_UX_DEVELOPER §3.8/§7.4——可编辑白名单字段（识别失败留存 7~30、站点名称 1~20 字唯一、
+//       D43 自动完成时间为 UTC+8 的 HH:MM 文本键）、只读项、变更清单与二次确认。
+//       站点名称单源 = shared/stations；时刻格式单源 = config/defaults.normalizeClockText（与服务端同一判据）。
 // D41（2026-10-28 用户拍板）：服务目录固定 5 类，顺序/默认名称单源 = shared/enums；
 //       旧目录（含已停用 PICKUP_DOOR 或缺新码 PICKUP_LOW）整表回退新默认，后台保存一次即完成迁移。
 'use strict';
@@ -9,6 +10,7 @@ const C = require('../../../common/constants');
 const F = require('../../../common/format');
 const stationsLib = require('../../../../shared/stations');
 const enums = require('../../../../shared/enums');
+const defaults = require('../../../../config/defaults');
 
 const FIELD_LABELS = {
   zoneLabels: '苑名',
@@ -17,7 +19,7 @@ const FIELD_LABELS = {
   announcement: '公告',
   maintenance: '维护模式',
   orderTimeoutMinutes: '接单超时',
-  autoCompleteHours: '自动完成时长',
+  autoCompleteAt: '自动完成时间',
   screenshotRetentionDays: '截图留存天数',
   recognitionFailureRetentionDays: '识别失败留存天数',
   ttlMinutes: '切换会话时长',
@@ -82,7 +84,7 @@ function emptyForm() {
     announcement: { enabled: false, title: '', text: '' },
     maintenance: { enabled: false, text: '' },
     orderTimeoutMinutes: '120',
-    autoCompleteHours: '24',
+    autoCompleteAt: defaults.DEFAULT_CONFIG.autoCompleteAt,
     screenshotRetentionDays: '7',
     recognitionFailureRetentionDays: '30',
     ttlMinutes: '30',
@@ -116,7 +118,9 @@ function buildForm(config) {
     text: maintenance.text || ''
   };
   form.orderTimeoutMinutes = String(F.numOrZero(source.orderTimeoutMinutes) || 120);
-  form.autoCompleteHours = String(F.numOrZero(source.autoCompleteHours) || 24);
+  // D43：默认/缺失/非法都回填出厂时刻（UTC+8 的 HH:MM），后台不会把旧小时数当时间显示
+  form.autoCompleteAt = defaults.normalizeClockText(source.autoCompleteAt)
+    || defaults.DEFAULT_CONFIG.autoCompleteAt;
   form.screenshotRetentionDays = String(F.numOrZero(source.screenshotRetentionDays) || 7);
   form.recognitionFailureRetentionDays = String(
     F.numOrZero(source.recognitionFailureRetentionDays) || RECOGNITION_MAX
@@ -166,7 +170,7 @@ function buildPayload(form) {
       text: String(source.maintenance.text || '').trim()
     },
     orderTimeoutMinutes: toInt(source.orderTimeoutMinutes),
-    autoCompleteHours: toInt(source.autoCompleteHours),
+    autoCompleteAt: String(source.autoCompleteAt || '').trim(),
     screenshotRetentionDays: toInt(source.screenshotRetentionDays),
     recognitionFailureRetentionDays: toInt(source.recognitionFailureRetentionDays),
     ttlMinutes: toInt(source.ttlMinutes),
@@ -200,8 +204,9 @@ function validatePayload(payload) {
   if (!(data.orderTimeoutMinutes >= range.orderTimeoutMin && data.orderTimeoutMinutes <= range.orderTimeoutMax)) {
     return '接单超时请填 ' + range.orderTimeoutMin + '~' + range.orderTimeoutMax + ' 分钟。';
   }
-  if (!(data.autoCompleteHours >= range.autoCompleteMin && data.autoCompleteHours <= range.autoCompleteMax)) {
-    return '自动完成时长请填 ' + range.autoCompleteMin + '~' + range.autoCompleteMax + ' 小时。';
+  // D43：自动完成时间 = UTC+8 的 HH:MM（与服务端 shared/defaults.normalizeClockText 同一判据，不再有 1~72/1~168 两套范围）
+  if (!defaults.normalizeClockText(data.autoCompleteAt)) {
+    return '自动完成时间请填 HH:MM（00:00~23:59，如 23:50）。';
   }
   if (!(data.screenshotRetentionDays > 0 && data.screenshotRetentionDays <= range.screenshotMax)) {
     return '截图留存天数不能超过 ' + range.screenshotMax + ' 天。';

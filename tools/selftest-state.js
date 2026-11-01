@@ -25,7 +25,7 @@ const defaults = require(path.join(ROOT, 'config/defaults.js'));
 const statusView = require(path.join(ROOT, 'pkg-customer/parts/status-view.js'));
 const createModel = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/model.js'));
 
-const EXPECTED_ASSERTIONS = 342; // D41：+2（服务层级说明 + 停用 PICKUP_DOOR 负例）；改为实际断言数时同步核对 `node tools/selftest-state.js` 读数
+const EXPECTED_ASSERTIONS = 344; // D43：送达自动完成提示改日结批（+2：配置时刻跟随/非法回落）；同步 `node tools/selftest-state.js` 读数
 
 const STATUS = state.STATUS;
 const ALL_ROLES = ['CUSTOMER', 'PARTNER', 'SYSTEM', 'ADMIN'];
@@ -540,7 +540,7 @@ function sectionLaunchRoute(h) {
 
 // ---------------------------------------------------------------- 页面零件
 function buildWaitingConfig() {
-  return { orderTimeoutMinutes: 120, autoCompleteHours: 24 };
+  return { orderTimeoutMinutes: 120, autoCompleteAt: '23:50' };
 }
 
 function sectionStatusViewPart(h) {
@@ -579,8 +579,12 @@ function sectionStatusViewPart(h) {
     const waiting = statusView.waitingHint(submitted, config, format);
     t.check(waiting.indexOf('等待接单') === 0 && waiting.indexOf('截止 2026-01-05 11:07') !== -1,
       '§7 待接单截止时间按配置计算');
-    t.check(statusView.waitingHint({ status: STATUS.DELIVERED }, config, format).indexOf('24 小时') !== -1,
-      '§7 送达后自动完成提示');
+    t.check(statusView.waitingHint({ status: STATUS.DELIVERED }, config, format).indexOf('每天 23:50 自动完成') !== -1,
+      '§7 送达后按日结批时刻提示自动完成（D43，读 config.autoCompleteAt）');
+    t.check(statusView.waitingHint({ status: STATUS.DELIVERED }, { autoCompleteAt: '07:05' }, format).indexOf('07:05') !== -1,
+      '§7 自动完成提示跟随配置时刻（非写死 23:50）');
+    t.check(statusView.waitingHint({ status: STATUS.DELIVERED }, { autoCompleteAt: 'bad' }, format).indexOf('23:50') !== -1,
+      '§7 配置时刻非法 → 提示回落出厂默认 23:50');
     t.eq(statusView.waitingHint({ status: STATUS.ACCEPTED }, config, format), '', '§7 其他状态无等待提示');
     t.eq(statusView.waitingHint(submitted, null, format), '', '§7 缺配置时不展示截止时间');
   });

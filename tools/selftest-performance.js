@@ -11,7 +11,10 @@
  *   F. P0-6 setData 收口（orders ticker 行级 patch/无变化零 setData、workbench 角标判等、校时 1s 阈值）；
  *   G. P0-9 db/config 同请求只读 1 次（fake DB 读计数）；
  *   H. P0-11 定时器/加载态（workbench searchTimer、switch-bar 可见性启停、home/orders ≥300ms 加载态）；
- *   I. P0-7/8 app.json 实际值（preloadRule 两页 + network∈{all,wifi}、networkTimeout request/uploadFile）。
+ *   I. P0-7/8 app.json 实际值（preloadRule 两页 + network∈{all,wifi}、networkTimeout request/uploadFile）；
+ *   L. P0-2 TD-073 工作台 onShow 历史摘要去重（进工作台调用计划 2→1 纯件断言）；
+ *   M. P0-4 首页一次 refresh setData 收口（4→2 批次计划）+ 隐藏页订阅挂起；
+ *   N. P0-4 我的页隐藏/判等渲染计划（隐藏不 build 不 setData、无变化零 setData）。
  *
  * 纪律：纯件 + fake DB/transport 注入；不 mock 全局 wx、不连网络/真库；先合法基线再反例；
  *       EXPECTED_ASSERTIONS 与实际断言数精确相等（少算/多算都判红）；异步分节用 serial 队列保序。
@@ -28,10 +31,12 @@ const configApi = require(path.join(ROOT, 'api/modules/config.js'));
 const ordersView = require(path.join(ROOT, 'pages/customer/parts/orders-view.js'));
 const tickerPatch = require(path.join(ROOT, 'pages/customer/orders/parts/ticker-patch.js'));
 const loadView = require(path.join(ROOT, 'pages/partner/workbench/parts/load-view.js'));
+const orderDetailFlow = require(path.join(ROOT, 'pkg-customer/parts/order-detail-flow.js'));
+const partnerMessagePoll = require(path.join(ROOT, 'pkg-partner/pages/order-detail/parts/message-poll.js'));
 const cloudActions = require(path.join(ROOT, 'cloudfunctions/api/shared/actions.js'));
 const { createApi } = require(path.join(ROOT, 'cloudfunctions/api/app.js'));
 
-const EXPECTED_ASSERTIONS = 106; // 实际断言总数（运行后校准；少算/多算都判红）
+const EXPECTED_ASSERTIONS = 143; // 实际断言总数（110 + 33：P0-2 去重 12 + P0-4 首页/隐藏页 21）；少算/多算都判红
 const NOW = Date.parse('2026-10-22T12:00:00+08:00');
 const ROLES = { CUSTOMER: 'CUSTOMER', PARTNER: 'PARTNER' };
 const USER_STATUS = { ACTIVE: 'ACTIVE' };
@@ -46,6 +51,16 @@ function codeOf(rel) {
 
 function countOf(source, needle) {
   return source.split(needle).length - 1;
+}
+
+// 新增纯件首红证据用：模块不存在时返回 null，由断言判红（而不是整包 require 崩溃）。
+// 实现落地后同路径正常加载；少/多断言仍由 EXPECTED_ASSERTIONS 完整性闸兜住。
+function optionalRequire(rel) {
+  try {
+    return require(path.join(ROOT, rel));
+  } catch (err) {
+    return null;
+  }
 }
 
 /** 延迟/计数包装：只包装读（get/count），写保持原样；用于并发窗口与 config 读计数断言。 */
@@ -385,8 +400,9 @@ function register(h) {
 
     t.check(home.indexOf("store.get('customer')") >= 0 && home.indexOf("store.get('badges')") >= 0,
       'J1 首页 pickVm 逐键读 store.get（不再每次 notify 整份 store.snapshot clone）');
-    t.check(home.indexOf('_vmRefs') >= 0 && home.indexOf('last.binding !== vm.binding') >= 0,
-      'J2 首页 sync 按引用判等：无关 store 通知不重复 setData/applyDerived');
+    t.check(home.indexOf('_vmRefs') >= 0 && home.indexOf('renderPlan.syncPlanOf(') >= 0
+      && textOf('pages/customer/home/parts/render-plan.js').indexOf('last.binding !== refs.binding') >= 0,
+    'J2 首页按引用判等单源在 parts/render-plan：无关 store 通知不重复 setData/派生（隐藏页另有挂起）');
     t.check(home.indexOf('partnerCard: homeView.partnerCardOf') >= 0,
       'J3 兼职卡模型在 applyDerived 一次 setData 下发（不再逐字段多轮渲染）');
 
@@ -410,6 +426,164 @@ function register(h) {
     });
     t.eq(synced.length, 4, 'J8 4 个 tab 页 onShow 均显式同步 tabBar 选中格（per-page 单一来源，页面隐藏时零空转）');
     t.notEmpty([home, ordersPage, tabBar], 'J9 J 组样本非空');
+  });
+
+  // ---------------------------------------------------------------- K. P0-3 终态停止轮询（2026-11-01 反馈研究）
+  asyncSection('K. P0-3 终态停止轮询：顾客详情 0 排程 + 兼职详情终态守卫', async (t) => {
+    const terminal = orderDetailFlow.startPoll({ order: { status: 'COMPLETED' } });
+    t.eq(orderDetailFlow.pollDelay(terminal), 0,
+      'K1 顾客详情：终态（已完成）订单 startPoll 后 0 排程（不再 10s 轮询）');
+    const active = orderDetailFlow.startPoll({ order: { status: 'DELIVERED' } });
+    t.eq(orderDetailFlow.pollDelay(active), 10000,
+      'K2 顾客详情：非终态（已送达）仍 10s 轮询（基线未被误伤）');
+    t.eq([partnerMessagePoll.isTerminal({ status: 'COMPLETED' }), partnerMessagePoll.isTerminal({ status: 'DELIVERED' })],
+      [true, false], 'K3 兼职详情：终态判定纯件（完成 true / 进行中 false）');
+    const detailPage = textOf('pkg-partner/pages/order-detail/index.js');
+    const custFlow = textOf('pkg-customer/parts/order-detail-flow.js');
+    t.check(detailPage.indexOf('messagePoll.isTerminal') >= 0 && detailPage.indexOf('stopMessagePoll();') >= 0
+      && custFlow.indexOf('isTerminalOrder') >= 0,
+    'K4 两端接线：兼职页终态停轮询、顾客 flow 终态判据（研究 P0-3）');
+  });
+
+  // ---------------------------------------------------------------- L. P0-2 TD-073 历史摘要去重
+  asyncSection('L. P0-2 TD-073：工作台 onShow 历史摘要去重（进工作台调用计划 2→1）', async (t) => {
+    const historyView = optionalRequire('pages/partner/workbench/parts/history-view.js');
+    const indexSrc = codeOf('pages/partner/workbench/index.js');
+    const actionsSrc = codeOf('pages/partner/workbench/parts/page-actions.js');
+    const planFn = historyView && typeof historyView.summaryCallPlan === 'function' ? historyView.summaryCallPlan : null;
+    t.check(!!planFn, 'L1 历史摘要调用计划纯件存在（onShow 去重判据前置）');
+    const base = { hasSummary: true, pending: false, dirty: false, filter: 'all', lastFilter: 'all', countsVersion: 'v1', lastCountsVersion: 'v1' };
+    const withState = (patch) => (planFn ? planFn(Object.assign({}, base, patch)) : null);
+    const cold = planFn ? planFn(Object.assign({}, base, { hasSummary: false, lastFilter: '' })) : null;
+    t.eq(cold ? [cold.call, cold.calls, cold.reason] : null, [true, 2, 'cold'],
+      'L2 合法基线：首次进工作台计划 2 次调用（主列表 1 + 摘要 1，非空集）');
+    const clean = withState({});
+    t.eq(clean ? [clean.call, clean.calls, clean.reason] : null, [false, 1, 'clean'],
+      'L3 同筛选/同 counts 版本/无脏数据 → 摘要 0 次（进工作台 callFunction 数 2→1）');
+    const pending = withState({ pending: true });
+    t.eq(pending ? [pending.call, pending.calls] : null, [false, 1], 'L4 摘要请求在途 → 不再重复发（在途合并）');
+    const dirty = withState({ dirty: true });
+    t.eq(dirty ? [dirty.call, dirty.calls] : null, [true, 2], 'L5 显式刷新置脏（下拉/刷新/重试）→ 重拉 1 次');
+    const countsMoved = withState({ countsVersion: 'v2' });
+    t.eq(countsMoved ? [countsMoved.call, countsMoved.calls] : null, [true, 2], 'L6 今日 counts 版本变化 → 重拉摘要（不展示旧数）');
+    const filterMoved = withState({ filter: 'submitted' });
+    t.eq(filterMoved ? [filterMoved.call, filterMoved.calls] : null, [true, 2], 'L7 筛选变化 → 重拉摘要');
+    const fp = historyView && typeof historyView.countsFingerprintOf === 'function' ? historyView.countsFingerprintOf : null;
+    t.eq(fp ? fp({ submitted: 1, accepted: 2, picked: 3, delivered: 4, exception: 5, todayCompleted: 6 }) : '',
+      '1,2,3,4,5,6', 'L8 counts 版本指纹 = 六项逐值（不是时间戳/对象引用）');
+    t.eq(fp ? fp(null) : 'x', '0,0,0,0,0,0', 'L9 空 counts 退回零指纹（首帧/失败路径安全）');
+    t.check(indexSrc.indexOf('historyView.summaryQuery') < 0, 'L10 工作台页面不再自行发历史摘要请求（判据下沉 parts）');
+    t.check(actionsSrc.indexOf('summaryCallPlan(') >= 0, 'L11 摘要请求唯一入口先过纯件调用计划（判等后才 request）');
+    t.check(indexSrc.indexOf('historyView') < 0, 'L12 页面零 history 视图判据（纯件/零件单源）');
+  });
+
+  // ---------------------------------------------------------------- M. P0-4 首页 setData 收口
+  asyncSection('M. P0-4 首页一次 refresh 的 setData 收口（4→2 计划）', async (t) => {
+    const renderPlan = optionalRequire('pages/customer/home/parts/render-plan.js');
+    const homeSrc = codeOf('pages/customer/home/index.js');
+    const planFn = renderPlan && typeof renderPlan.refreshPlanOf === 'function' ? renderPlan.refreshPlanOf : null;
+    t.check(!!planFn, 'M1 首页 refresh 渲染计划纯件存在（批次计划可纯件断言）');
+    const order = { orderNo: '20261022-0001', status: 'SUBMITTED', statusUpdatedAt: '2026-10-22T03:58:00.000Z' };
+    const input = {
+      current: {
+        customer: { profileComplete: true, zone: 'D', buildingNo: 4, room: '522' },
+        config: { privacyVersion: 'v4.0', zoneLabels: { D: '东苑' }, serviceCatalog: [] },
+        viewContext: null,
+        badges: { workbenchPending: 0, messages: 1, ordersOngoing: 2 }
+      },
+      config: null,
+      binding: { bindingId: 'b-1', partnerNo: 'P-1' },
+      partnerPublic: { partnerNo: 'P-1', displayName: '小王', acceptingOrders: true, services: [] },
+      order: order,
+      counts: { ongoing: 1 },
+      nowMs: NOW,
+      maintenanceClosed: ''
+    };
+    const plan = planFn ? planFn(input) : null;
+    t.eq(plan ? plan.batches : -1, 2, 'M2 一次 refresh 计划恰好 2 批 setData（refresh 结果 + store 通知各 1 批；旧实现约 4 批）');
+    t.eq(plan ? Object.keys(plan.setData).sort() : [], [
+      'announcement', 'canOrder', 'loading', 'maintenance', 'order', 'orderDisabledReason', 'orderRow',
+      'partnerCard', 'partnerPublic', 'readonly', 'scopeText', 'servicesText', 'waitedText'
+    ], 'M3 第 1 批 = refresh 结果 + 全部派生字段同批下发（不再单独 applyDerived 再 setData）');
+    t.check(plan ? plan.setData.loading === false && plan.setData.partnerPublic.partnerNo === 'P-1' && plan.setData.order === order
+      && plan.setData.partnerCard.partnerNo === 'P-1' && plan.setData.canOrder === true : false,
+    'M4 第 1 批数据展示等价：loading/partnerPublic/order/partnerCard/canOrder 与旧实现同值');
+    t.check(plan ? plan.setData.vm === undefined : false, 'M5 第 1 批不夹带 vm（vm 由第 2 批 store 通知合并下发，渲染批次边界清晰）');
+    t.eq(plan ? Object.keys(plan.store || {}).sort() : [], ['badges', 'binding'],
+      'M6 第 2 批由单次 store.patch 触发：config 未变时只写 binding/badges（一次通知）');
+    t.check(plan ? plan.store.binding.partnerPublic === input.partnerPublic : false, 'M7 store.binding 仍附 partnerPublic（P0-3 语义保持）');
+    t.check(homeSrc.indexOf('renderPlan.refreshPlanOf(') >= 0 && homeSrc.indexOf('this.setData(plan.setData)') >= 0,
+      'M8 页面 refresh 真消费计划：一次 setData 下发第 1 批');
+    t.check(homeSrc.indexOf('applyDerived') < 0, 'M9 页面不再有独立 applyDerived 方法（派生并入批次，回归即红）');
+    t.check(homeSrc.indexOf('_hidden') >= 0 && homeSrc.indexOf('this._hidden = false') >= 0 && homeSrc.indexOf('this._hidden = true') >= 0,
+      'M10 首页订阅回调按页面可见性挂起/恢复（隐藏不做全量 setData，onShow 再补）');
+    // 数据/展示等价：派生口径与旧 applyDerived 逐场景对帐（维护 > 绑定 > 只读 > 接单开关）
+    const derivedFn = renderPlan && typeof renderPlan.derivedOf === 'function' ? renderPlan.derivedOf : null;
+    const maintenance = derivedFn ? derivedFn({
+      vm: { customer: { profileComplete: true }, binding: { bindingId: 'b-1' }, config: { maintenance: { enabled: true, text: '今晚维护' } } },
+      partnerPublic: null,
+      maintenanceClosed: ''
+    }) : null;
+    t.eq(maintenance ? [maintenance.patch.maintenance.visible, maintenance.patch.maintenance.title, maintenance.patch.canOrder,
+      maintenance.patch.orderDisabledReason] : null,
+    [true, '系统维护中', false, '系统维护中'],
+    'M11 维护口径等价：遮罩可见 + 下单被拦（维护文案优先，与旧 applyDerived 同值）');
+    const readonly = derivedFn ? derivedFn({
+      vm: { customer: { profileComplete: true }, binding: { bindingId: 'b-1' }, viewContext: { viewMode: 'READONLY' }, config: {} },
+      partnerPublic: null,
+      maintenanceClosed: ''
+    }) : null;
+    t.eq(readonly ? [readonly.patch.readonly, readonly.patch.canOrder, readonly.patch.orderDisabledReason] : null,
+      [true, false, '开发者只读视角不能操作'], 'M12 只读会话等价：置灰 + 下单被拦（只读原因优先于接单开关）');
+    const unbound = derivedFn ? derivedFn({
+      vm: { customer: { profileComplete: true }, binding: null, viewContext: null, config: {} },
+      partnerPublic: null,
+      maintenanceClosed: ''
+    }) : null;
+    t.eq(unbound ? [unbound.patch.canOrder, unbound.patch.orderDisabledReason] : null,
+      [false, '先绑定兼职'], 'M13 未绑定等价：主 CTA 置灰并给原因（文案与旧实现一致）');
+  });
+
+  // ---------------------------------------------------------------- N. P0-4 隐藏页订阅判等
+  asyncSection('N. P0-4 隐藏页订阅判等：profile 无变化/隐藏时不 setData', async (t) => {
+    const renderPlan = optionalRequire('pages/profile/parts/render-plan.js');
+    const profileSrc = codeOf('pages/profile/index.js');
+    const planFn = renderPlan && typeof renderPlan.refreshPlanOf === 'function' ? renderPlan.refreshPlanOf : null;
+    t.check(!!planFn, 'N1 我的页渲染计划纯件存在（订阅回调判等前置）');
+    let builds = 0;
+    const build = () => {
+      builds += 1;
+      return {
+        vm: { role: 'CUSTOMER', isCustomer: true, roles: ['CUSTOMER'], messagesBadge: 1, profile: { displayName: '小王' } },
+        readonly: false,
+        canEdit: true,
+        version: '开发版'
+      };
+    };
+    const hidden = planFn ? planFn({ hidden: true, lastKey: '', editMode: false, build: build }) : null;
+    t.eq(hidden ? [hidden.apply, hidden.reason, builds] : null, [false, 'hidden', 0],
+      'N2 页面隐藏 → 不 build 不 setData（挂起，onShow 再补；旧实现每次通知都全量 setData）');
+    const first = planFn ? planFn({ hidden: false, lastKey: '', editMode: false, build: build }) : null;
+    t.eq(first ? [first.apply, first.reason, first.patch.loading] : null, [true, 'cold', false],
+      'N3 首次可见 → 1 批 setData（loading=false 并入同一批）');
+    const same = planFn ? planFn({ hidden: false, lastKey: first ? first.key : '', editMode: false, build: build }) : null;
+    t.eq(same ? [same.apply, same.reason] : null, [false, 'same'], 'N4 可见但视图模型无变化 → 0 次 setData（判等生效）');
+    let changedBuilds = 0;
+    const changed = planFn ? planFn({
+      hidden: false, lastKey: first ? first.key : '', editMode: false,
+      build: () => {
+        changedBuilds += 1;
+        return { vm: { role: 'PARTNER', isCustomer: false, roles: ['CUSTOMER', 'PARTNER'], messagesBadge: 2 }, readonly: false, canEdit: true, version: '开发版' };
+      }
+    }) : null;
+    t.eq(changed ? [changed.apply, changed.reason, changedBuilds] : null, [true, 'changed', 1],
+      'N5 视图模型变化（多角色切换）→ setData 1 次（多店/多角色逻辑保持）');
+    t.eq(changed ? [changed.patch.showSwitchRole, changed.patch.isCustomer, changed.patch.loading] : null, [true, false, false],
+      'N6 派生字段随同批下发（showSwitchRole 多角色可见、isCustomer 角色切换生效）');
+    t.check(profileSrc.indexOf('renderPlan.refreshPlanOf(') >= 0 && profileSrc.indexOf('this.setData(plan.patch)') >= 0,
+      'N7 页面订阅回调真消费计划（判等/隐藏挂起在纯件层）');
+    t.check(profileSrc.indexOf('_hidden') >= 0 && profileSrc.indexOf('onHide()') >= 0,
+      'N8 我的页新增可见性守卫（onHide 挂起，onShow 恢复并补刷）');
   });
 }
 

@@ -5,6 +5,8 @@
 
 const state = require('../../shared/order-state');
 const enums = require('../../shared/enums');
+// D43：自动完成时刻归一单源（config/defaults，与服务端 admin.updateConfig/cleanup cutoff 同一判据）
+const defaults = require('../../config/defaults');
 
 const STATUS = state.STATUS;
 const STATUS_TEXT = state.STATUS_TEXT;
@@ -354,8 +356,10 @@ function waitingHint(order, config, format) {
     return '等待接单，超时将自动取消（截止 ' + format.formatDateTime(deadline) + '）';
   }
   if (isStatus(order.status, STATUS.DELIVERED)) {
-    const hours = Number(config.autoCompleteHours) || 0;
-    return hours > 0 ? '送达 ' + hours + ' 小时后未操作将自动完成' : '待你确认收到';
+    // D43：日结批——每天 config.autoCompleteAt（默认 23:50）完成当天已送达单；当天该时刻后送达的顺延次日。
+    // 提示只读配置、不在客户端推算完成时刻（完成以服务端 AUTO_COMPLETED 事件为准）。
+    const at = defaults.normalizeClockText(config.autoCompleteAt) || defaults.DEFAULT_CONFIG.autoCompleteAt;
+    return '系统每天 ' + at + ' 自动完成（送达当天已过 ' + at + ' 的顺延次日，无需你操作）';
   }
   return '';
 }

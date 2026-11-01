@@ -21,8 +21,14 @@ const vision = require(path.join(ROOT, 'utils/ocr/vision.js'));
 const ocr = require(path.join(ROOT, 'utils/ocr/index.js'));
 const sharedStations = require(path.join(ROOT, 'shared/stations.js'));
 const sharedValidate = require(path.join(ROOT, 'shared/validate.js'));
+const orderState = require(path.join(ROOT, 'shared/order-state.js'));
+const formModel = require(path.join(ROOT, 'pkg-partner/pages/create-on-behalf/parts/form-model.js'));
+const payloadModel = require(path.join(ROOT, 'pkg-partner/pages/create-on-behalf/parts/payload-model.js'));
+const recognizeModel = require(path.join(ROOT, 'pkg-partner/pages/create-on-behalf/parts/recognize-model.js'));
+const viewModel = require(path.join(ROOT, 'pkg-partner/pages/create-on-behalf/parts/view-model.js'));
+const pickerState = require(path.join(ROOT, 'components/image-picker/state.js'));
 
-const EXPECTED_ASSERTIONS = 263; // 250 + 13：⑦ 噪声语料（时间/日期/订单号/手机号/运单号不产件 + 尾号取末 5 位）
+const EXPECTED_ASSERTIONS = 276; // 250 + 13：⑦ 噪声语料；+13：D44 代客下单多图/识别预填/上传并发
 
 // v3 真机语料（sha256 指纹钉：改动语料必须同步改这里的期望与解析断言）
 const CORPUS_ONE = [
@@ -677,6 +683,8 @@ function sectionCodeNoise(h) {
   });
 }
 
+function fsRead(rel) { return require('fs').readFileSync(path.join(ROOT, rel), 'utf8'); }
+
 function register(h) {
   sectionText(h);
   sectionMask(h);
@@ -694,6 +702,66 @@ function register(h) {
   sectionMergeParcels(h);
   sectionD35(h);
   sectionCodeNoise(h);
+  sectionD44(h);
+}
+
+// ── D44：代客下单多图/识别预填/上传链路（AI 低置信不写入沿用 §4.3.1 D29）────────────
+function sectionD44(h) {
+  const CONFIG = { serviceCatalog: [{ code: 'PICKUP_STD', name: '标准代取', desc: '驿站取件送到寝室门口（上楼）' }] };
+  const PARTNER = { serviceConfig: { services: [{ code: 'PICKUP_STD', enabled: true }] } };
+  const NOW = new Date(2026, 9, 22, 10, 0, 0).getTime();
+  const ticket = (n) => ({ localPath: 'wxfile://tmp/t' + n + '.jpg', fileId: 'cloud://test.env/orders/T' + n + '/image.jpg',
+    uploadTicketId: 'TICKET' + String(n).padStart(26, '0'), size: 320 * 1024, name: 't' + n + '.jpg', type: 'image' });
+  const itemOf = (code, stationId) => Object.assign(formModel.emptyParcel(1), { pickupCode: code, stationId: stationId || 'P4' });
+  h.section('D44 代客下单多图/识别预填/上传并发（站点按件与页内校验见 selftest-partner-pages）', (t) => {
+    const base = formModel.createInitialState({ config: CONFIG, partner: PARTNER,
+    bindingList: [{ bindingId: 'b1', displayName: '小王', dormKey: 'D4-522', roomTag: 'A' }], nowMs: NOW });
+    base.items = [itemOf('码1')];
+    t.check(formModel.IMAGE_MAX === 10 && formModel.IMAGE_MAX === orderState.MAX_IMAGES_PER_ORDER,
+      'D44-1 代客单截图上限 0~10 张（对齐 D40 / MAX_IMAGES_PER_ORDER 单源；旧实现固定 1 张）');
+    const tenFiles = { files: Array.from({ length: 10 }, (_, i) => ticket(i + 1)) };
+    t.check(formModel.validate(Object.assign({}, base, tenFiles)) === ''
+      && payloadModel.buildPayload(Object.assign({}, base, tenFiles)).data.images.length === 10,
+    'D44-2 10 张截图合法提交（images[] 全量，一单一入口）');
+    t.eq(formModel.validate(Object.assign({}, base, { files: Array.from({ length: 11 }, (_, i) => ticket(i + 1)) })),
+      '一单最多 10 张截图，请分多次提交', 'D44-3 第 11 张被挡（超限有明确文案）');
+    const merged = recognizeModel.mergeRecognizedItems(Object.assign({}, base, { items: [formModel.emptyParcel(1)] }),
+      [{ pickupCode: '码A', stationId: 'P4', imageIndex: 0 }, { pickupCode: '码B', stationId: 'P5', imageIndex: 0 }]);
+    t.eq(merged.items.map((item) => [item.pickupCode, item.stationId, item.imageIndex]),
+      [['码A', 'P4', 0], ['码B', 'P5', 0]], 'D44-4 一图多码按件拆（同图 2 码 → 2 个包裹，imageIndex 同指来源图）');
+    const keepsManual = recognizeModel.mergeRecognizedItems(
+      Object.assign({}, base, { items: [itemOf('手填码'), formModel.emptyParcel(2)] }), [{ pickupCode: 'AI码' }]);
+    t.eq(keepsManual.items.map((item) => item.pickupCode), ['手填码', 'AI码'],
+      'D44-5 识别预填手填优先：不覆盖已填件，只填空白件');
+    t.check(recognizeModel.progressTextOf({ index: 2, total: 3, phase: 'ocr' }).indexOf('第 2/3 张') >= 0
+      && recognizeModel.isCancelled(1, 2) === true && recognizeModel.isCancelled(2, 2) === false
+      && recognizeModel.CANCEL_TEXT.indexOf('手填') >= 0,
+    'D44-6 识别进度「第 n/N 张」+ 可取消（token 前进即停）+ 取消后手填引导');
+    const ticketId = ticket(1).uploadTicketId;
+    t.check(recognizeModel.failureRequestIdOf(ticketId, 0, 'OCR') === recognizeModel.failureRequestIdOf(ticketId, 0, 'OCR')
+      && recognizeModel.failureRequestIdOf(ticketId, 1, 'OCR') !== recognizeModel.failureRequestIdOf(ticketId, 0, 'OCR')
+      && recognizeModel.failureRequestIdOf('short', 0, 'OCR') === '',
+    'D44-7 识别失败入队幂等键确定且逐件分键（同图同内容重试不重复入队）');
+    const serviceDesc = formModel.serviceOptionsOf(CONFIG, PARTNER)[0].desc;
+    t.check(serviceDesc.indexOf('寝室门口') >= 0 && viewModel.build(base, {}).serviceDesc === serviceDesc,
+      'D44-8 服务类型 picker 补一行 desc 说明（D41 解释展示位；名称只表达做什么）');
+    t.check(pickerState.UPLOAD_CONCURRENCY === 2 && pickerState.uploadPlanOf(5).batches.length === 3
+      && pickerState.uploadPlanOf(5).batches.every((batch) => batch.length <= 2),
+    'D44-9 上传并发 2（P0-1 组件侧；纯件计划可断言，不依赖真机时序）');
+    const chat = pickerState.pickedFileOf({ path: 'wxfile://tmp/a.jpg', size: 2048, name: 'a.jpg', type: 'image' });
+    const snap = pickerState.fileSnapshotOf(chat, { fileId: 'cloud://x', uploadTicketId: ticketId, size: 1024 });
+    t.eq([chat.size, chat.name, chat.type, snap.size, snap.name, snap.type], [2048, 'a.jpg', 'image', 1024, 'a.jpg', 'image'],
+      'D44-10 聊天图 {path,size,name,type} 透传（事件 files 快照带 size/name/type；size 取上传后真实值）');
+    const pickerSrc = fsRead('components/image-picker/index.js');
+    const uploadSrc = fsRead('api/upload.js');
+    t.check(pickerSrc.indexOf('pickedFilesOf') >= 0 && pickerSrc.indexOf('uploadPlanOf') >= 0
+      && pickerSrc.indexOf('Promise.all') >= 0 && pickerSrc.indexOf('size: meta.size') >= 0,
+    'D44-11 组件接线：聊天图元数据透传 + 分批并发上传 + prepare 带真实 size');
+    t.check(uploadSrc.indexOf('cancelTicket') < 0 && uploadSrc.indexOf('resolveTicketSize') >= 0
+      && uploadSrc.indexOf('boundedReadBytes') >= 0,
+    'D44-12 api/upload：删死导出 cancelTicket + size 三级解析（聊天图不再 size=0 被服务端误拒）');
+    t.notEmpty(merged.items, 'D44 样本非空（防止空集全绿）');
+  });
 }
 
 module.exports = { EXPECTED_ASSERTIONS, register };

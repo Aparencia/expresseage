@@ -1,11 +1,11 @@
 # STATE.md · v4 项目当前状态（唯一状态源）
 
-> 口径版本：与 `docs/contract/V4_CONTRACT.md` v1.3（D1~D42）同步。
+> 口径版本：与 `docs/contract/V4_CONTRACT.md` v1.4（D1~D50）同步。
 > 维护人：lead（其他 agent 只回报状态变化，不直接改本文件；每批收口时由 Lead 统一更新）。
 > 更新时机：每批开工/收口、用户裁决变化、风险新增或关闭、HEAD 变化需回读。
 > 本文只记**状态、待办与下一步**，不重复设计口径（口径看 CONTRACT，工程规则看 ENGINEERING，接口看 ARCHITECTURE）。
 
-**快照时间：2026-10-31（HEAD `c2098ea` **技术债收口批（B/C/D）**：check.js 34 条 / check-docs 12 条；关闭 TD-040/043/050/053/054/055/056/057/061/064/068/069/070（TD-044 关键词窗口保留开放）；上一收口 HEAD `c0a9200` 门禁判据补强）；`check.js` 34/34、`check-docs` 12/12、零金额 0 命中（白名单 109 项）、`selftest` 34 套 0 失败（断言数以 `node tools/selftest.js` 汇总行为准）；云端 `api` 已部署并复验、`DEEPSEEK_API_KEY` 已配置；真机/提审/灰度未做）**
+**快照时间：2026-11-01（HEAD `9526e37` 技术债收口批收口；**批 16（2026-11-01 用户反馈裁决 D43~D50）实现完成、待收口提交**：check.js 36 条 / check-docs 12 条；D43~D50 口径登记 + #1 死代码清理/门禁 #35/#36 + #2 送达次日 23:50 日结批 + #3 代客下单补全 + #8 送至楼下展示位/回填 + 性能 P0-1 组件侧~P0-4/P1-10 + #5 日期分类研究）；`check.js` 36/36、`check-docs` 12/12、零金额 0 命中（白名单 108 项）、`selftest` 35 套 0 失败（断言数以 `node tools/selftest.js` 汇总行为准）；云端 `api` 已部署并复验、`DEEPSEEK_API_KEY` 已配置；真机/提审/灰度未做）**
 > 临时总体说明（全局汇总，非状态源）：[`docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md`](docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md)（版本与取数快照由 Lead 统一维护；状态仍以本文件为准、口径以 CONTRACT 为准）。
 
 ## 1. 一句话状态
@@ -154,7 +154,7 @@
 | C 批顾客端 | 多图 0~5 张→一单 1~10 件（逐件核对/取消勾选/合并「已并入」）、无截图手填、Step3 本单配送地址（SELF/OTHER+收件人≤20）、取件清单新页+首页入口（本机勾选）、截图区适配 `images[]{index,status}`（去 fileId，多图逐张 `imageUrl`）、多图预览逐张（TD-066）、AI 兜底 NO_TEXT 入队、截图压缩+OCR 降采样 | 完成（`order-customer 202`/`order-flow 158`） |
 | C 批兼职端 | 工作台多包裹行（件数/站点聚合/需查明聚合/无截图 chip、首件站点分组、整单最差件四档）、逐件补码面板（件切换）、整单动作与件边界、批量仅改站点（逐单逐件、同 `batchActionId`、按件汇总）、详情多包裹/配送地址/逐件改码、代客下单 v1.0 单入口 | 完成（`order-workbench 222`/`partner-pages 184`/`detail-partner 170`） |
 | C 批后台页面 | `pkg-admin` 订单列表件数/无截图 chip；详情逐件打码行/无截图 chip/配送地址仅苑+楼栋/历史单回退 | 完成（`admin-pages 154`） |
-| 性能 P0-1~P0-11 | 启动只 await bootstrap、config 预热、router 按域懒加载（首请求 132 文件/564KB→37 文件/153KB）、setData 收口与行级补丁、分包预下载+超时、定时器清理、OCR 降采样、截图压缩、轮询退避 | 完成（`selftest-performance 97`） |
+| 性能 P0-1~P0-11 | 启动只 await bootstrap、config 预热、router 按域懒加载（首请求 132 文件/564KB→37 文件/153KB）、setData 收口与行级补丁、分包预下载+超时、定时器清理、OCR 降采样、截图压缩、轮询退避 | 完成（`selftest-performance 106`，2026-11-01 复跑；取数以 `node tools/selftest-performance.js` 输出为准） |
 | 审查修复（M 系列） | M-01 双角色（roles+动作角色表，`cloud-dual 36`）、M-02 识别失败 FIXED 原图清理、M-10/M-11 后台列表游标与前缀搜索、M-12 审计隔离、M-13~M-20/M-47、M-43/44/45/46/57 工具链；`createBatch` 移除（TD-062 关闭） | 完成（`cloud 174`/`bind-cloud 108`/`partner-orders 89`） |
 | 文档回写 | CONTRACT §13 D23~D29（D27 待裁决）、DATA_MODEL v1.0、三份 UX、ENGINEERING/ARCHITECTURE/RUNBOOK/README/INTERIM/SPEC、QA 271 条、TECH_DEBT TD-063~066、`docs/archive/research/` 三份 + `LOCATION_2026-10-22_v2.md` | 完成（`check-docs 10/10`） |
 

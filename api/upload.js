@@ -5,6 +5,9 @@
 // TICKET 只传 size、不传 contentType，兼容聊天来源 gif）。
 // v1.0（P0-10）：截图 >500KB 先走 TICKET 压缩阶梯（utils/avatar.js planTicketCompression/compressTicket：
 // 长边≤1440 + 质量 3 档，≤3 次仍超限才拒绝），压缩后按真实字节数走同一套服务端闸。
+// D44（2026-11-01）：聊天图真 bug——wx.chooseMessageFile 返回的 size/name/type 曾被组件丢弃，本层读不到
+// size 时按 0 申请票据、服务端以「图片大小超出限制」误拒。现按「选图元数据 → getFileInfo → 有界 readFile
+// 真实字节数」三级解析，元数据缺失不再直接按 0 拒；读到了真实字节数才交给服务端闸（超限仍拒、提示不弱化）。
 // 平台能力（getImageInfo/compressImage/getFileSystemManager/离屏画布）由本层注入纯件，纯件不直接吃全局 wx；
 // uploadFile 仍只在本文件出现（门禁 #14）。
 const client = require('./client');
@@ -86,6 +89,59 @@ function getImageInfo(platform, filePath) {
   });
 }
 
+// 有界读取真实字节数（D44 第三级兜底）：只读到 500KB+1 就够判大小，不整文件读入内存。
+// 选中聊天图时 getFileInfo 可能读不到路径，但 readFile 常能读到——读到的就是真实字节数。
+function boundedReadBytes(platform, filePath) {
+  return new Promise((resolve) => {
+    const manager = fileManagerOf(platform);
+    if (!manager || typeof manager.readFile !== 'function') {
+      resolve(0);
+      return;
+    }
+    try {
+      manager.readFile({
+        filePath,
+        position: 0,
+        length: MAX_TICKET_BYTES + 1,
+        success(res) {
+          const data = res && res.data;
+          resolve(data && typeof data.byteLength === 'number' ? Math.floor(data.byteLength) : 0);
+        },
+        fail() {
+          resolve(0);
+        }
+      });
+    } catch (err) {
+      resolve(0);
+    }
+  });
+}
+
+function positiveBytesOf(value) {
+  const size = Number(value);
+  return Number.isFinite(size) && size > 0 ? Math.floor(size) : 0;
+}
+
+/**
+ * 截图真实字节数解析（D44，纯逻辑可直测）：
+ * ① 选图接口返回的 size（聊天图/相册图都自带，真实字节数，旧实现丢弃）；
+ * ② 平台 getFileInfo 读盘；③ 有界 readFile 读到真实字节数。
+ * 三级都拿不到才回 size=0（由 prepareTicket 说真话拒绝「文件读不出来」，不再把元数据缺失当 0 必拒）。
+ * @returns {Promise<{size:number, source:'PICKED'|'PLATFORM'|'READ'|'NONE'}>}
+ */
+async function resolveTicketSize(platform, filePath, pickedSize) {
+  const picked = positiveBytesOf(pickedSize);
+  if (picked > 0) {
+    return { size: picked, source: 'PICKED' };
+  }
+  const platformSize = positiveBytesOf(await getFileSize(platform, filePath));
+  if (platformSize > 0) {
+    return { size: platformSize, source: 'PLATFORM' };
+  }
+  const readSize = positiveBytesOf(await boundedReadBytes(platform, filePath));
+  return readSize > 0 ? { size: readSize, source: 'READ' } : { size: 0, source: 'NONE' };
+}
+
 function uploadFile(cloudPath, filePath) {
   return new Promise((resolve, reject) => {
     wx.cloud.uploadFile({
@@ -158,18 +214,24 @@ async function prepareAvatar(platform, filePath) {
   return { filePath: compressed.tempFilePath, size: compressed.size };
 }
 
-// 票据：先 ≤500KB 大小闸；超限走压缩阶梯（P0-10：长边≤1440 + 质量 3 档，≤3 次仍超限才拒绝）。
+// 票据：先按真实字节数判 ≤500KB 大小闸；超限走压缩阶梯（P0-10：长边≤1440 + 质量 3 档，≤3 次仍超限才拒绝）。
 // 聊天来源的扩展名不受控，类型不做客户端拦截（OCR 由服务端识别失败兜底，CONTRACT §4.3），因此 TYPE 不阻断。
 const TICKET_TOO_LARGE_MESSAGE = '截图超过 500KB，自动压缩后仍太大：请裁剪掉无关部分，或换一张截图再试';
 
-async function prepareTicket(platform, filePath) {
-  const size = await getFileSize(platform, filePath);
+async function prepareTicket(platform, filePath, pickedSize) {
+  // D44：size 三级解析（选图元数据 → getFileInfo → 有界 readFile 真实字节数）；
+  // 只有「文件本身三路都读不出来」才拒，元数据缺失不再按 0 必拒。
+  const resolved = await resolveTicketSize(platform, filePath, pickedSize);
+  const size = resolved.size;
+  if (size <= 0) {
+    throw new client.CallError('VALIDATION_FAILED', invalidMessage('TICKET', 'EMPTY'));
+  }
   const picked = avatar.validatePicked({ path: filePath, size }, MAX_TICKET_BYTES);
   if (picked.ok) {
-    return { filePath, size, compressed: false };
+    return { filePath, size, compressed: false, sizeSource: resolved.source };
   }
   if (picked.reason !== 'SIZE') {
-    return { filePath, size };
+    return { filePath, size, sizeSource: resolved.source };
   }
   // 压缩产物必须重新判大小（服务端仍按 500KB 闸；客户端压缩不替代服务端校验）
   const compressed = await avatar.compressTicket({ platform, filePath, maxBytes: MAX_TICKET_BYTES });
@@ -179,7 +241,8 @@ async function prepareTicket(platform, filePath) {
       filePath: compressed.tempFilePath,
       size: compressed.size,
       compressed: true,
-      attempts: compressed.attempts
+      attempts: compressed.attempts,
+      sizeSource: 'COMPRESSED'
     };
   }
   const unreadable = compressed && (compressed.reason === 'EMPTY'
@@ -201,10 +264,11 @@ async function prepareAndUpload(options) {
     throw new client.CallError('VALIDATION_FAILED', '请先选择文件');
   }
   // 先本地校验/压缩，再向服务端申请票据：prepare 必须收到真实 size/contentType，否则服务端闸空转。
+  // D44：选图接口返回的真实 size 作为第一优先级交给上传链路（聊天图 getFileInfo 读不到时靠它，不再按 0 拒）。
   const platform = platformNow();
   const local = purpose === 'AVATAR'
     ? await prepareAvatar(platform, sourcePath)
-    : await prepareTicket(platform, sourcePath);
+    : await prepareTicket(platform, sourcePath, options && options.size);
   const preparePayload = { purpose, size: local.size };
   if (purpose === 'AVATAR') {
     preparePayload.contentType = contentTypeOf(local.filePath, sourcePath);
@@ -226,16 +290,9 @@ async function prepareAndUpload(options) {
   };
 }
 
-async function cancelTicket(uploadTicketId) {
-  if (!uploadTicketId) {
-    return { canceled: false };
-  }
-  return uploadModule.cancel({ uploadTicketId });
-}
-
 module.exports = {
   prepareAndUpload,
-  cancelTicket,
+  resolveTicketSize,
   MAX_TICKET_BYTES,
   DEFAULT_AVATAR_BYTES
 };

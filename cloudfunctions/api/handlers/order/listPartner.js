@@ -305,6 +305,8 @@ module.exports = async function orderListPartner(ctx, payload) {
   const result = await pageOf(ctx, partner._id, filter, query);
   // 工作台行级快捷操作（批 6-B 前置）：只给 workbench 行内联 actions[]，history 与 listCustomer 不动。
   const list = await dto.buildOrderDtos(ctx, result.page, 'PARTNER', { withActions: view === WORKBENCH_VIEW });
-  const counts = await buildCounts(ctx, partner._id, common.nowMsOf(ctx));
+  // P0-2/TD-073：只有 workbench 视图计算 counts（页面总览/红点消费它）；history 视图不白算 6 个 count。
+  // 响应形状不变（DATA_MODEL §7.5）：history 仍回 counts 键，值为零值模板（不计入、无查询）。
+  const counts = view === WORKBENCH_VIEW ? await buildCounts(ctx, partner._id, common.nowMsOf(ctx)) : orderView.countsTemplate();
   return { list, nextCursor: nextCursorOf(result), counts };
 };

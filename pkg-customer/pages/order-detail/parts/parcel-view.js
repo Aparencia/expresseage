@@ -136,10 +136,29 @@ function imagesView(order) {
   };
 }
 
+/**
+ * 服务类型展示（D41/D49）：名称取订单快照；历史已停用类型（服务端 DTO.service.deprecated=true，如 PICKUP_DOOR）
+ * 按 shared/enums 名称单源渲染「送寝上门（已停用）」，不新造名称。说明=公开配置 serviceCatalog 的 desc 单源
+ * （标准代取＝送到寝室门口（上楼）/ 送至楼下＝宿舍楼下/约定地点（不上楼））；停用类型/目录外 code 无说明。
+ */
+function serviceView(order, config) {
+  const service = order && order.service && typeof order.service === 'object' ? order.service : {};
+  const code = textOf(service.code);
+  const deprecated = service.deprecated === true;
+  const catalog = config && Array.isArray(config.serviceCatalog) ? config.serviceCatalog : [];
+  const hit = catalog.filter(function match(entry) { return entry && entry.code === code; })[0];
+  return {
+    serviceText: deprecated ? (enums.serviceNameOf(code) || textOf(service.name)) : textOf(service.name),
+    serviceDeprecated: deprecated,
+    serviceDesc: deprecated || !hit ? '' : textOf(hit.desc)
+  };
+}
+
 /** 页面可直接 Object.assign 的扩展字段（含 image，覆盖旧单图 imageView） */
-function pageExtras(order) {
+function pageExtras(order, config) {
   const parcels = parcelsView(order);
   const delivery = deliveryView(order);
+  const service = serviceView(order, config);
   return {
     parcels: parcels,
     parcelCount: parcels.length,
@@ -148,7 +167,9 @@ function pageExtras(order) {
     deliveryRecipient: delivery.recipientName,
     deliveryIsOther: delivery.isOther,
     manualEntryText: order && order.manualEntry === true ? '无截图·手填' : '',
-    image: imagesView(order)
+    image: imagesView(order),
+    serviceText: service.serviceText,
+    serviceDesc: service.serviceDesc
   };
 }
 
@@ -159,5 +180,6 @@ module.exports = {
   addressTextOf,
   deliveryView,
   imagesView,
+  serviceView,
   pageExtras
 };

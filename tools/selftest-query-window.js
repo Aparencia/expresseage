@@ -6,6 +6,8 @@
  *    软删（deletedByCustomerAt 真值）与 isTest 隔离口径不变；小数据边界作正控。
  * Q2 TD-043：单日完成 >100 时 order.listPartner.counts.todayCompleted 必须精确（≥今日起点的 count，
  *    不再 find(limit:100) 后内存过滤）；昨日完成与测试单不计入。
+ * Q2b TD-073（P0-2）：order.listPartner({view:'history'}) 不再白算 6 个 count——读计数探针证明
+ *    workbench 基线真发生 6 次 orders.count、history 0 次，且响应形状不变（counts 六键零值模板）。
  * Q3 TD-050：绑定 >100 时 partner.listBindings 分页/关键词必须覆盖全量；某状态进行中单 >300 时
  *    行级 activeOrderCount 必须精确（按状态分页全量扫描，不再 300 条窗口截断）。
  * Q4 TD-050：单状态月区间 >300 时 partner.stats 四格计数/series/todayCompleted 必须精确
@@ -28,7 +30,7 @@ const {
 } = cases;
 
 const MINUTE = 60 * 1000;
-const EXPECTED_ASSERTIONS = 18;
+const EXPECTED_ASSERTIONS = 23;
 
 function pad4(value) {
   return String(value).padStart(4, '0');
@@ -48,6 +50,33 @@ function orderAt(orderNo, status, atMs, extra) {
     statusUpdatedAt: dateOf(atMs),
     createdAt: dateOf(atMs - 60 * MINUTE)
   }, extra || {}));
+}
+
+// 读计数包装（P0-2/TD-073 有牙判据）：只统计 orders 集合的 count/find 次数，其余接口原样透传，
+// 不改 fake DB 的读写语义（集合名/where/指令仍走同一实例）。
+function wrapCollection(name, builder, counters) {
+  const proxy = {};
+  ['where', 'orderBy', 'limit', 'skip'].forEach((method) => {
+    proxy[method] = function chain() { builder[method].apply(builder, arguments); return proxy; };
+  });
+  proxy.get = function get() { if (name === 'orders') counters.orderGets += 1; return builder.get(); };
+  proxy.count = function count() { if (name === 'orders') counters.orderCounts += 1; return builder.count(); };
+  proxy.add = function add(payload) { return builder.add(payload); };
+  proxy.update = function update(payload) { return builder.update(payload); };
+  proxy.remove = function remove() { return builder.remove(); };
+  proxy.doc = function doc(id) { return builder.doc(id); };
+  return proxy;
+}
+
+function countingApiOf(db, openid) {
+  const counters = { orderCounts: 0, orderGets: 0 };
+  const wrapped = {
+    command: db.command,
+    serverDate: db.serverDate,
+    runTransaction: (fn) => db.runTransaction(fn),
+    collection: (name) => wrapCollection(name, db.collection(name), counters)
+  };
+  return { counters, api: apiOf(wrapped, openid) };
 }
 
 // ================================================================ Q1 TD-040
@@ -163,6 +192,26 @@ async function sectionQ2(t) {
   t.eq(workbench.data.counts,
     { submitted: 2, accepted: 1, picked: 1, delivered: 1, exception: 1, todayCompleted: 131 },
     'Q2.2 todayCompleted=131 精确（含 00:00 边界；昨日 5 单与测试 2 单不计入）');
+
+  // P0-2/TD-073：history 视图不再白算 6 个 count（响应形状不变）。读计数有牙：
+  // workbench 基线必须真发生 6 次 orders.count；history 必须 0 次——判据不是空集。
+  const counted = countingApiOf(world({ orders: partnerTodayWindowOrders() }), P1);
+  const countedWorkbench = await counted.api.call('order.listPartner', {});
+  t.eq([countedWorkbench.ok, counted.counters.orderCounts], [true, 6],
+    'Q2.3 合法基线：workbench counts 六项 = orders.count 6 次（收口前先证明计数探针真能读到）');
+  counted.counters.orderCounts = 0;
+  counted.counters.orderGets = 0;
+  const history = await counted.api.call('order.listPartner', { view: 'history' });
+  t.eq([history.ok, counted.counters.orderCounts], [true, 0],
+    'Q2.4 history 视图 0 次 orders.count（TD-073：历史摘要不再白算 counts）');
+  t.eq(history.data.counts,
+    { submitted: 0, accepted: 0, picked: 0, delivered: 0, exception: 0, todayCompleted: 0 },
+    'Q2.5 响应形状不变：history 仍返回 counts 六键（零值模板、不计入）');
+  t.eq([Array.isArray(history.data.list), history.data.list.length > 0, Object.keys(history.data).sort()],
+    [true, true, ['counts', 'list', 'nextCursor']],
+    'Q2.6 history 列表照旧返回且顶层键不变（数据面不受 counts 收口影响）');
+  t.check(counted.counters.orderGets >= 2,
+    'Q2.7 history 仍按状态各查 1 次取数（' + counted.counters.orderGets + ' 次 find，收口不误删查询预算）');
 }
 
 // ================================================================ Q3 TD-050 绑定 >100

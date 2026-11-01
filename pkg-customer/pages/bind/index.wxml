@@ -43,6 +43,8 @@
       </view>
     </view>
     <view class="muted">服务类型：{{servicesText}}</view>
+    <!-- D41：服务层级说明行（取公开目录 desc 单源，由 parts/service-view 生成，页面不硬编码） -->
+    <view class="muted small service-hint" wx:if="{{serviceHintText}}">{{serviceHintText}}</view>
     <view class="muted">服务范围：{{zonesText}}</view>
     <view class="muted" wx:if="{{!preview.acceptingOrders}}">这位兼职暂停接单，绑定后暂时不能下单。</view>
     <button

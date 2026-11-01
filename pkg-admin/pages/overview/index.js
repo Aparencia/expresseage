@@ -99,10 +99,6 @@ Page({
     this.loadAll().catch(function () {});
   },
 
-  onOpenCard(event) {
-    feedback.go(event.currentTarget.dataset.url);
-  },
-
   onOpenMessages() {
     feedback.go(C.PAGE_URLS.messages);
   },

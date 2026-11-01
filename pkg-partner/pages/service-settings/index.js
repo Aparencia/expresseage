@@ -161,7 +161,7 @@ Page({
           serviceConfig: saved,
           acceptingOrders: saved.acceptingOrders === true
         });
-        store.set({ partner: partner });
+        store.patch({ partner: partner });
         this.setData({ saving: false });
         wx.showToast({ title: writeHint('已保存，顾客端立即生效'), icon: 'none' });
         setTimeout(() => {

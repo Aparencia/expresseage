@@ -1,17 +1,20 @@
-// pkg-partner/pages/order-detail/parts/delivery-panel.js · 送达备注浮层纯件（deliveryNote / guest 24h 自动完成文案）
+// pkg-partner/pages/order-detail/parts/delivery-panel.js · 送达备注浮层纯件（deliveryNote / guest 日结批自动完成文案）
 // 契约：docs/ux/V4_UX_PARTNER.md §3.3「送达」、§4.14 代客单凭证；docs/data/V4_DATA_MODEL.md §7.5 order.markDelivered / §7.6 config.getPublic。
-// 边界：guest 判定只读服务端 DTO.source（= ORDER_SOURCE.PARTNER）；24h 文案与自动完成时间不本地推算状态。
+// 边界：guest 判定只读服务端 DTO.source（= ORDER_SOURCE.PARTNER）；自动完成时刻按 D43 日结批（默认 23:50），
+//       本零件不推算状态、不等同服务端 AUTO_COMPLETED 事件（文案只说明默认口径，配置改动以服务端为准）。
 const enums = require('../../../../shared/enums');
 
 const NOTE_MAX = 100;
-const AUTO_COMPLETE_HOURS = 24;
+// D43（CONTRACT §13）：UTC+8 日结批默认时刻（config.autoCompleteAt 出厂值）；文案说明「每天该时刻」。
+const AUTO_COMPLETE_AT = '23:50';
 const QUICK_TAGS = ['放宿舍门口', '交到室友手里', '放 3 号柜'];
 const COPY = {
   title: '标记送达',
   normalConfirm: '确认已送达？顾客会看到进度到「已送达·待确认」。',
-  guestConfirm: '该顾客未绑定，无需确认，系统将在 24h 后自动完成',
+  guestConfirm: '该顾客未绑定，无需确认；系统每天 ' + AUTO_COMPLETE_AT + ' 自动完成',
   guestChip: '已送达·待自动完成',
-  guestHint: '代客单没有顾客确认路径；请把交接位置写进送达备注，并线下告知顾客进度。',
+  guestHint: '代客单没有顾客确认路径；系统每天 ' + AUTO_COMPLETE_AT + ' 自动完成（送达当天已过 '
+    + AUTO_COMPLETE_AT + ' 的顺延次日），请把交接位置写进送达备注，并线下告知顾客进度。',
   notePlaceholder: '送达备注（选填，≤100 字；写清放在哪里）',
   noteTooLong: '送达备注最多 100 字',
   success: '已标记送达',
@@ -22,13 +25,13 @@ function textOf(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-// guest 单 = 兼职代客下单（source=PARTNER）：无顾客确认路径，24h 后 cleanup 自动完成
+// guest 单 = 兼职代客下单（source=PARTNER）：无顾客确认路径，每日日结批自动完成
 function isGuestOrder(order) {
   return textOf(order && order.source) === enums.ORDER_SOURCE.PARTNER;
 }
 
 function guestAutoCompleteText() {
-  return '系统将在 ' + AUTO_COMPLETE_HOURS + 'h 后自动完成';
+  return '系统每天 ' + AUTO_COMPLETE_AT + ' 自动完成（送达当天已过 ' + AUTO_COMPLETE_AT + ' 的顺延次日）';
 }
 
 function buildPanel(order) {
@@ -91,7 +94,6 @@ function buildSubmit(order, note) {
 module.exports = {
   COPY,
   NOTE_MAX,
-  AUTO_COMPLETE_HOURS,
   QUICK_TAGS,
   isGuestOrder,
   guestAutoCompleteText,

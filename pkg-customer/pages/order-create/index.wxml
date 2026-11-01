@@ -251,6 +251,8 @@
           <view class="muted">{{item.stationName}} · {{item.pickupCode || '待查码'}}{{item.trackingTail ? ' · 尾号 ' + item.trackingTail : ''}}</view>
         </view>
         <view class="muted small">服务：{{services[serviceIndex].name || '未选'}} · 预约：{{appointType === 'SLOT' ? (slots[slotIndex].label || '预约时段') : '尽快'}}</view>
+        <!-- D41：确认页补服务层级说明（说明取 config.serviceCatalog 的 desc 单源，不在此硬编码层级文案） -->
+        <view class="muted small service-desc" wx:if="{{services[serviceIndex].desc}}">{{services[serviceIndex].desc}}</view>
         <view class="muted small" wx:if="{{note}}">备注：{{note}}</view>
         <view class="muted small">送达：{{deliveryText}}</view>
         <view class="small link-text" wx:if="{{files.length}}" bindtap="onPreviewImage">点击查看截图（{{files.length}} 张）</view>

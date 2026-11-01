@@ -339,6 +339,13 @@ function assertImageFile(image, ticket) {
   if (!cloudPath || fileId.indexOf(cloudPath) < 0) {
     throw errors.validation('image', '截图与上传凭证不匹配，请重新上传');
   }
+  // D44：服务端复核票据登记的真实字节数（upload.prepare 收到的 size 来自客户端读到的真实字节数，
+  // 聊天图由 api/upload 三级兜底解析）。下单请求不带 image.size 时也不能绕过 500KB 大小闸；
+  // 票据归属/用途/路径与扩展名白名单校验不变（不弱化）。
+  const ticketBytes = Number(ticket.size);
+  if (Number.isFinite(ticketBytes) && ticketBytes > IMAGE_MAX_BYTES) {
+    throw errors.validation('image', '截图大小超出限制，请压缩后重新上传');
+  }
   if (image.size !== undefined) {
     const size = Number(image.size);
     if (!Number.isFinite(size) || size <= 0 || size > IMAGE_MAX_BYTES) {

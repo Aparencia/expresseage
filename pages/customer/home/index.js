@@ -13,6 +13,7 @@ const route = require('../../../config/route');
 const format = require('../parts/format');
 const ordersView = require('../parts/orders-view');
 const homeView = require('./parts/home-view');
+const renderPlan = require('./parts/render-plan');
 const guideView = require('./parts/guide-view');
 const share = require('../../../utils/share/handlers');
 const sharePlatform = require('../../../utils/share/platform');
@@ -38,14 +39,7 @@ function pickVm() {
   };
 }
 
-// 公告配置：{enabled,title,text}；enabled=false 一律不展示（DATA_MODEL §2.10）
-function announcementOf(config) {
-  const value = config && config.announcement;
-  if (!value || value.enabled === false) {
-    return '';
-  }
-  return format.announcementText(value);
-}
+// 公告配置：{enabled,title,text}；enabled=false 一律不展示（DATA_MODEL §2.10）——派生物理在 parts/render-plan.js。
 
 Page({
   data: {
@@ -92,6 +86,7 @@ Page({
   },
 
   onShow() {
+    this._hidden = false;
     if (this.data.singlePage) {
       return;
     }
@@ -114,11 +109,13 @@ Page({
   },
 
   onHide() {
+    this._hidden = true;
     this.clearTicker();
     this.clearLoadingTimer();
   },
 
   onUnload() {
+    this._hidden = true;
     if (this._off) this._off();
     this.clearTicker();
     this.clearLoadingTimer();
@@ -145,65 +142,25 @@ Page({
     }
   },
 
-  // store 通知扇出很密（每个成功响应都可能 notify）：先按引用判等，无关变化不重复 setData/派生
+  // store 通知扇出很密（每个成功响应都可能 notify，P0-4）：
+  //   ① 页面隐藏 → 挂起（0 批 setData；onShow 的 enter() 会补一次同步）；
+  //   ② 可见时先按引用判等，无变化 0 批；变化才 1 批下发（vm + 派生合并，不再 vm/派生各一批）。
   sync() {
-    const vm = pickVm();
-    const last = this._vmRefs || {};
-    const changed = last.customer !== vm.customer || last.binding !== vm.binding
-      || last.config !== vm.config || last.viewContext !== vm.viewContext
-      || last.badges !== vm.badges;
-    if (!changed) {
+    const plan = renderPlan.syncPlanOf({
+      hidden: this._hidden === true,
+      lastRefs: this._vmRefs,
+      readVm: pickVm,
+      partnerPublic: this.data.partnerPublic,
+      maintenanceClosed: this._maintenanceClosed
+    });
+    if (!plan.apply) {
       return;
     }
-    this._vmRefs = {
-      customer: vm.customer,
-      binding: vm.binding,
-      config: vm.config,
-      viewContext: vm.viewContext,
-      badges: vm.badges
-    };
-    this.setData({ vm: vm });
-    this.applyDerived();
-  },
-
-  // 一次 setData 下发全部派生字段（避免逐字段 setData 触发多轮渲染）
-  applyDerived() {
-    const vm = this.data.vm;
-    const partner = this.data.partnerPublic;
-    const config = vm.config || {};
-    const customer = vm.customer || {};
-    const viewContext = vm.viewContext || null;
-    const readonly = !!(viewContext && viewContext.viewMode === 'READONLY');
-    // bind.getCurrent 只回当前 ACTIVE 绑定；解绑后 binding=null（无 status 字段）
-    const announcement = announcementOf(config);
-    const active = !!(vm.binding && vm.binding.bindingId);
-    // 维护模式（UX_DEVELOPER §7.5）：全屏公告 + 写入口禁用；会话内可 ack 关闭，文案变化后重新出现
-    const maintenanceView = maintenance.buildMaintenanceView(config);
-    this._maintenanceView = maintenanceView;
-    const maintenanceClosed = maintenanceView.enabled && this._maintenanceClosed === maintenanceView.text;
-    // 下单前置预检（P1-6）：维护 > 资料 > 绑定 > 只读 > 接单开关 > 服务范围；本地仅预检，服务端仍是唯一权威
-    const reason = homeView.orderBlockReasonOf({
-      maintenanceText: maintenanceView.enabled ? maintenanceView.title : '',
-      profileComplete: customer.profileComplete === true,
-      bound: active === true,
-      readonly: readonly,
-      partnerClosed: !!(partner && partner.acceptingOrders === false),
-      zoneAllowed: homeView.zoneAllowedOf(partner, customer.zone, config.zoneLabels)
-    });
-    this.setData({
-      readonly: readonly,
-      announcement: announcement,
-      partnerCard: homeView.partnerCardOf(vm.binding, partner),
-      servicesText: homeView.serviceTextOf(partner, config.serviceCatalog || []),
-      scopeText: homeView.scopeTextOf(partner, config.zoneLabels),
-      canOrder: reason === '',
-      orderDisabledReason: reason,
-      maintenance: {
-        visible: maintenanceView.enabled && !maintenanceClosed,
-        title: maintenanceView.title,
-        text: maintenanceView.text
-      }
-    });
+    this._vmRefs = plan.refs;
+    if (plan.view) {
+      this._maintenanceView = plan.view;
+    }
+    this.setData(plan.patch);
   },
 
   // 公告/维护模式 onShow 生效（UX_DEVELOPER §7.4：端侧 onShow/60 秒内）；60s 节流，失败下次再试
@@ -289,8 +246,11 @@ Page({
     return pending.then((data) => data || bindApi.getCurrent());
   },
 
+  // 一次 refresh = 2 批 setData（P0-4）：第 1 批结果+派生、第 2 批 store 通知合并（详见 parts/render-plan.js）。
   async refresh() {
-    this.setData({ error: '' });
+    if (this.data.error) {
+      this.setData({ error: '' });
+    }
     this.scheduleLoading();
     const tasks = [this.bindingTask(), orderApi.listCustomer({ limit: 1 })];
     if (!this.data.vm.config || !this.data.vm.config.privacyVersion) {
@@ -301,24 +261,28 @@ Page({
       this.clearLoadingTimer();
       const bindingData = results[0] || {};
       const listData = results[1] || {};
-      if (results[2]) store.patch({ config: results[2] });
-      const binding = bindingData.binding || null;
-      const partnerPublic = bindingData.partnerPublic || null;
-      const order = (listData.list && listData.list.length > 0) ? listData.list[0] : null;
-      this.setData({
-        loading: false,
-        partnerPublic: partnerPublic,
-        order: order,
-        orderRow: order ? ordersView.rowView(order, {
-          nowMs: ordersView.serverNowMs(store.get('serverTimeSkew'), Date.now()),
-          config: this.data.vm.config || {}
-        }) : null,
-        waitedText: order ? '更新于 ' + format.formatTimeAgo(order.statusUpdatedAt) : ''
+      const plan = renderPlan.refreshPlanOf({
+        current: {
+          customer: store.get('customer'),
+          config: store.get('config'),
+          viewContext: store.get('viewContext'),
+          badges: store.get('badges')
+        },
+        config: results[2] || null,
+        binding: bindingData.binding || null,
+        partnerPublic: bindingData.partnerPublic || null,
+        order: (listData.list && listData.list.length > 0) ? listData.list[0] : null,
+        counts: listData.counts,
+        nowMs: ordersView.serverNowMs(store.get('serverTimeSkew'), Date.now()),
+        maintenanceClosed: this._maintenanceClosed
       });
+      if (plan.view) {
+        this._maintenanceView = plan.view;
+      }
+      this.setData(plan.setData);   // 第 1 批：结果 + 派生
+      // 单次 store.patch（config/binding/badges 合并）→ 一次 notify → sync 第 2 批（vm + 派生）
       // partnerPublic 一并存回 store.binding（P0-3）：其他页/下次进首页复用同一份，不重复拉
-      store.patch({ binding: binding ? Object.assign({}, binding, { partnerPublic: partnerPublic }) : null });
-      this.syncOngoingBadge(listData.counts && listData.counts.ongoing);
-      this.applyDerived();
+      store.patch(plan.store);
       this.startTicker();
     } catch (err) {
       this.clearLoadingTimer();
@@ -333,9 +297,9 @@ Page({
       const info = data || {};
       const binding = info.binding || null;
       const partnerPublic = info.partnerPublic || null;
+      // 先落页面 partnerPublic 再写 store：binding 通知触发的 sync 用新 partnerPublic 重算派生并 1 批 setData
       page.setData({ partnerPublic: partnerPublic });
       store.patch({ binding: binding ? Object.assign({}, binding, { partnerPublic: partnerPublic }) : null });
-      page.applyDerived();
     }).catch(function ignore() {
       // 重签失败不打断首页：保留默认头像/旧 URL
     });
@@ -360,15 +324,6 @@ Page({
     }).catch(function ignore() {
       // 红点读取失败不影响首页浏览，下次 onShow 再试
     });
-  },
-
-  // P1-5：订单 tab 数量角标 = 进行中订单数（不清零；onShow/下拉刷新更新，不新增轮询）
-  syncOngoingBadge(value) {
-    const total = Number(value);
-    const ongoing = isFinite(total) && total > 0 ? Math.floor(total) : 0;
-    const badges = store.get('badges') || {};
-    if (badges.ordersOngoing === ongoing) return;
-    store.patch({ badges: Object.assign({}, badges, { ordersOngoing: ongoing }) });
   },
 
   // P1-7：首用三步引导（只本机记忆；「我的→重新看新手引导」清标记后再次出现）

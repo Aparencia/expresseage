@@ -50,7 +50,7 @@ const precheck = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/
 const orderScopeReq = fsutil.tryRequire(path.join(ROOT, 'utils/order-scope.js'));
 const orderScope = orderScopeReq.value || {};
 
-const EXPECTED_ASSERTIONS = 273; // 实际断言总数（259 + 14：C 批 TD-064/068/070 收口断言）
+const EXPECTED_ASSERTIONS = 274; // 实际断言总数（273 + 1：D43 送达等待提示改日结批时刻）
 
 const STATUS = orderState.STATUS;
 const ACTION_KEYS = view.ACTION_KEYS;
@@ -62,6 +62,7 @@ const PAGES = {
   ordersWxml: 'pages/customer/orders/index.wxml',
   messages: 'pkg-customer/pages/messages/index.js',
   home: 'pages/customer/home/index.js',
+  homePlan: 'pages/customer/home/parts/render-plan.js',
   homeWxml: 'pages/customer/home/index.wxml',
   create: 'pkg-customer/pages/order-create/index.js',
   pickup: 'pkg-customer/pages/pickup-list/index.js',
@@ -570,7 +571,7 @@ function register(h) {
         orderNo: '20261022-0031',
         getOrder: orderApi.get,
         readonly: false,
-        config: { orderTimeoutMinutes: 120, autoCompleteHours: 24 },
+        config: { orderTimeoutMinutes: 120, autoCompleteAt: '23:50' },
         now: function now() { return NOW; }
       };
       const s1 = await flow.refresh(flow.startPoll(flow.createSession()), deps);
@@ -600,6 +601,7 @@ function register(h) {
       const applied = flow.applyOrder(s5, dto(STATUS.DELIVERED, { version: 5 }), deps);
       t.eq([applied.view.actions.confirm, applied.view.actions.cancel, applied.view.message.inputVisible],
         [true, false, true], 'G14 写动作返回 order 立即重绘（已送达 → 确认按钮出现，不等轮询）');
+      t.check(applied.view.waitingHint.indexOf('每天 23:50 自动完成') >= 0, 'G14b 已送达等待提示按 D43 日结批时刻（config.autoCompleteAt=23:50）');
       const ro = view.actionsView(dto(STATUS.SUBMITTED), true);
       t.check(ro.cancel === false && ro.readonly === true, 'G15 READONLY 视图零写按钮');
       t.eq([view.actionsView(dto(STATUS.DELIVERED, { actions: [] }), false).confirm,
@@ -749,12 +751,12 @@ function register(h) {
 
   // ---------------------------------------------------------------- J. A 批 P1-5/P1-6/P1-7（顾客端）
   h.section('J. A 批：订单角标接线/服务范围预检/首用三步引导（P1-5/P1-6/P1-7）', (t) => {
-    const home = textOf(PAGES.home);
+    const home = textOf(PAGES.home), homePlan = textOf(PAGES.homePlan);
     const orders = textOf(PAGES.orders);
 
     // P1-5 页面侧：订单格数量角标（不清零）
-    t.check(/ordersOngoing/.test(home) && /counts\.ongoing/.test(home),
-      'J1 首页用 counts.ongoing 更新 store.badges.ordersOngoing（P1-5）');
+    t.check(/renderPlan\.refreshPlanOf\(/.test(home) && /ordersOngoing/.test(homePlan) && /counts\.ongoing/.test(homePlan),
+      'J1 首页用 counts.ongoing 更新 store.badges.ordersOngoing（P1-5；判据单源 parts/render-plan，页内只接线）');
     t.check(/ordersOngoing/.test(orders) && /counts\.ongoing/.test(orders),
       'J2 订单列表同源更新 ordersOngoing（onShow/下拉刷新，不新增轮询）');
     t.check(!/ordersOngoing:\s*0/.test(home) && !/ordersOngoing:\s*0/.test(orders),
@@ -789,9 +791,8 @@ function register(h) {
       homeView.orderBlockReasonOf({ profileComplete: true, bound: true }),
       homeView.orderBlockReasonOf({ profileComplete: true, bound: true, zoneAllowed: true })
     ], ['', ''], 'J11 合法基线：条件全满足 → 可下单');
-    t.check(/scopeText/.test(textOf(PAGES.homeWxml)) && /homeView\.orderBlockReasonOf/.test(home)
-      && /homeView\.zoneAllowedOf/.test(home),
-    'J12 首页 WXML 展示服务范围 + CTA 预检走纯件（页面层零判据）');
+    t.check(/scopeText/.test(textOf(PAGES.homeWxml)) && /homeView\.orderBlockReasonOf/.test(homePlan) && /homeView\.zoneAllowedOf/.test(homePlan) && /renderPlan\.refreshPlanOf\(/.test(home),
+    'J12 首页 WXML 展示服务范围 + CTA 预检走纯件（页面层零判据；判据单源 parts/render-plan）');
 
     // P1-7 顾客首用三步引导
     t.eq([guideView.GUIDE_KEY, guideView.total()], ['CUSTOMER_HOME_V1', 3],
@@ -832,7 +833,7 @@ function register(h) {
   // ── K. 顾客端 UI 修复：兼职卡重排 / 服务范围中文名 / 服务类型截断 / 头像兜底 / tab 居中 / tabBar 选中态
   h.section('K. 顾客端 UI 修复（兼职卡/服务范围/服务类型/头像兜底/tab 居中/tabBar 选中态）', (t) => {
     const homeWxml = textOf(PAGES.homeWxml);
-    const home = textOf(PAGES.home);
+    const home = textOf(PAGES.home), homePlan = textOf(PAGES.homePlan);
     const ordersWxml = textOf(PAGES.ordersWxml);
     const ordersWxss = textOf('pages/customer/orders/index.wxss');
     const orders = textOf(PAGES.orders);
@@ -889,9 +890,8 @@ function register(h) {
       'K16 WXML 头像/接单状态取自 partnerCard（状态标在昵称旁）');
     t.check(home.indexOf('roomTag') === -1 && home.indexOf('dormKey') === -1,
       'K17 首页 vm 移除 roomTag/dormKey（不再向兼职卡下发楼栋）');
-    t.check(home.indexOf('homeView.partnerCardOf(') >= 0 && home.indexOf('homeView.serviceTextOf(') >= 0
-      && home.indexOf('homeView.scopeTextOf(') >= 0 && home.indexOf('function serviceText(') === -1,
-      'K18 兼职卡展示语义全部走纯件（页面零判据、不在页面里截断服务类型）');
+    t.check(home.indexOf('renderPlan.refreshPlanOf(') >= 0 && homePlan.indexOf('homeView.partnerCardOf(') >= 0 && homePlan.indexOf('homeView.serviceTextOf(') >= 0 && homePlan.indexOf('homeView.scopeTextOf(') >= 0 && homePlan.indexOf('function serviceText(') === -1,
+      'K18 兼职卡展示语义全部走纯件（页面零判据、不在页面里截断服务类型；判据单源 parts/render-plan）');
     t.check(homeWxml.indexOf('order-empty-card') >= 0, 'K19 无进行中订单卡压缩为一行提示（卡片高度收口）');
     t.check(homeWxml.indexOf('name="{{partnerCard.name}}"') >= 0,
       'K20 头像 name 传对方昵称（无头像时显示对方昵称首字，不回落「代」）');

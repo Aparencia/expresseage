@@ -39,6 +39,7 @@ cloudfunctions/*/shared/（由 shared/** 与 utils/ids.js、utils/room-tag.js、
 | S10 组件与资产 | ui-components（新） | `components/**` `custom-tab-bar/**` `assets/**` |
 
 - 云函数 `shared/` 副本**任何人不得手写**：由 `node tools/sync-cloud-shared.js` 生成（S2 提供脚本，S1 完成后 Lead 先跑一次）。
+- **批 16 组件删减（S10 域说明）**：`components/customer-row/`、`components/form-field/`、`components/role-switch/`、`components/section-card/` 四个全局注册组件在全仓 WXML 零使用，批 16 删除目录并从 `app.json` 全局 `usingComponents` 移除（`app.json` 该次改动由 Lead 授权 S2 执行）。S10 写作用域（`components/**`、`custom-tab-bar/**`、`assets/**`）不变；后续新增全局组件仍须登记本节 §3.5 组件表 + ENGINEERING §5.7，并同时进 `app.json` 注册与门禁 #36 扫描范围。
 - 公共文件一旦冻结（`app.json`、`app.wxss`、`shared/**`、`api/**`、`store/**`）：需要改动先发 Lead，由单写者合并。
 - 新增文件必须落在自己的写作用域内；跨域引用只读或走 `require`，不得改他人文件。
 
@@ -140,15 +141,13 @@ const off = store.subscribe((snapshot) => { this.setData({ vm: snapshot }); });
 | `room-tag-text` | `dormKey`、`tag` | — |
 | `status-pill` | `status`（七状态之一） | — |
 | `order-row` | `order`（服务端视图模型） | `tap` |
-| `customer-row` | `customer` | `tap` |
 | `failure-image` | `failureNo` | `loaded`、`error` |
 | `image-picker` | `maxCount`（默认 1；**WXML 绑定按 kebab-case 写 `max-count`**，TD-069）、`purpose`（`TICKET`/`AVATAR`） | `change`（`detail.files`） |
 | `code-editor` | `value`、`placeholder`、`maxlength` | `change`（`detail.value`） |
-| `section-card` | `title` | — |
 | `empty-state` | `text`、`actionText?` | `action` |
-| `form-field` | `label`、`value`、`type`、`placeholder`、`required` | `change`（`detail.value`） |
-| `role-switch` | `activeRole` | `change`（`detail.role`） |
 | `maintenance-mask`（页面级注册，非全局） | `view`（`{enabled,title,text}`，来自 `utils/maintenance.buildMaintenanceView`） | `ack`（关闭遮罩，仅本页内存态） |
+
+- `status-pill` 文案单源（批 16）：短文案/色调由组件内纯件 `components/status-pill/meta.js` 从 `shared/enums.ORDER_STATUS_TEXT` 派生（如「已取件·配送中」→「已取件」），组件 `index.js` 零硬编码七状态中文；色调只做视觉编码，不承载业务判据。
 
 - `app.wxss` 已提供全局工具类：`page-body`、`card`、`row`、`col`、`flex-1`、`between`、`center`、`title`、`section-title`、`subtitle`、`muted`、`small`、`strong`、`ellipsis`、`divider`、`btn`、`btn-primary`、`btn-ghost`、`btn-danger`、`btn-disabled`、`btn-block`、`tag`、`tag-test`、`safe-bottom`、`hidden`、`empty-text`、`form-row`、`form-label`、`form-input`。用到未定义的类必须写进本页 wxss（门禁 #9）。
 - `custom-tab-bar`：按 store 渲染 3 格；`setData({ selected, role })`；切格 `wx.switchTab`；无会话按 `activeRole`，有会话按 `viewContext.role`；**v1.1 起 `selected` 由各 tab 页 `onShow` 显式同步（见 §3.4），组件只在首次挂载/会话变化时推断，不覆盖页面显式值**。
@@ -209,7 +208,7 @@ const off = store.subscribe((snapshot) => { this.setData({ vm: snapshot }); });
 | `shared/gender.js` | 顾客性别枚举 + 「苑+楼栋」推断/归一/展示名（v1.1/D31；纯件，无 wx） |
 | `shared/validate.js` | 宿舍身份/尾号/文本上限/编号形态/邀请码形态校验 |
 | `shared/format.js` | 时间/编号展示/文本截断 |
-| `shared/order-view.js` | 订单视图模型（四档动线排序、状态桶、锚+键） |
+| `shared/order-view.js` | 订单视图模型：`bucketOf`（状态桶，生产唯一消费点 = `pages/partner/workbench/parts/group-view.js`）+ counts 六项键名/模板 + 状态文案查询；**四档动线排序生产实现 = `pages/partner/workbench/parts/group-view.js sortForRoute`（吃服务端 DTO、按整单最差件定档）；旧单件排序/文案簇生产 0 引用（`sortByPickupRoute` 等，其中 5 项登记 `tools/dead-export-baseline.json` 分类 `test-only`），单源收敛见 TD-082** |
 | `utils/ids.js` | 编号归一/parse/display（**无生成、无 random**） |
 | `utils/room-tag.js` | `toTag/tagRank/formatDormTag/isValidTag/compareByDormTag`（大写 A…Z/AA…，禁字符串排序） |
 | `config/defaults.js`（同步为 `cloudfunctions/*/shared/defaults.js`） | 云端种子与配置校验的唯一默认值来源；`tools/sync-cloud-shared.js` 的第 17 个源（`shared/**` 14 件 + `ids.js` + `room-tag.js` + `defaults.js`），hash 门禁 `tools/check.js` #17 覆盖该副本 |

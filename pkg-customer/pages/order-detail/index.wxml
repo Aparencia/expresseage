@@ -74,8 +74,10 @@
       </view>
       <view class="row between line">
         <view class="muted">服务类型</view>
-        <view class="flex-1 right">{{order.service.name}}</view>
+        <view class="flex-1 right">{{serviceText}}</view>
       </view>
+      <!-- D41/D49：服务层级说明取公开配置 serviceCatalog 的 desc 单源；历史停用类型无说明，只显示「（已停用）」标记 -->
+      <view class="small muted service-desc" wx:if="{{serviceDesc}}">{{serviceDesc}}</view>
       <view class="row between line">
         <view class="muted">送达地址</view>
         <view class="flex-1 right">{{deliveryText}}{{deliveryRecipient ? '（收件人：' + deliveryRecipient + '）' : ''}}</view>

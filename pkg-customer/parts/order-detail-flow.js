@@ -7,6 +7,7 @@
 const view = require('./status-view');
 const format = require('./format');
 const poll = require('./poll-policy');
+const enums = require('../../shared/enums');
 
 // 轮询失败只说真话并给下一步（不覆盖旧数据；E17「最近成功时间」由 lastUpdatedText 给）
 const POLL_ERROR_COPY = '网络不稳定，正在重试…';
@@ -28,6 +29,11 @@ function createSession() {
 
 function sessionOf(session) {
   return session || createSession();
+}
+
+// 终态（已完成/已取消）不再轮询：纯浪费 720 次/小时的根源（2026-11-01 性能研究 P0-3）
+function isTerminalOrder(order) {
+  return !!(order && enums.isTerminalOrderStatus && enums.isTerminalOrderStatus(order.status));
 }
 
 function hasEvent(events, type) {
@@ -111,7 +117,7 @@ async function refresh(session, deps) {
       everSucceeded: true,
       error: '',
       pollError: '',
-      poll: poll.onSuccess(current.poll)
+      poll: isTerminalOrder(order) ? poll.stop() : poll.onSuccess(current.poll)
     };
     return next;
   } catch (err) {
@@ -147,7 +153,8 @@ function applyOrder(session, order, options) {
     lastUpdatedAt: nowMs,
     everSucceeded: true,
     error: '',
-    pollError: ''
+    pollError: '',
+    poll: isTerminalOrder(order) ? poll.stop() : current.poll
   });
 }
 
@@ -159,7 +166,9 @@ function lastUpdatedText(session) {
 }
 
 function startPoll(session) {
-  return Object.assign({}, sessionOf(session), { poll: poll.start(sessionOf(session).poll) });
+  const current = sessionOf(session);
+  const nextPoll = isTerminalOrder(current.order) ? poll.stop() : poll.start(current.poll);
+  return Object.assign({}, current, { poll: nextPoll });
 }
 
 function stopPoll(session) {

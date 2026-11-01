@@ -12,7 +12,6 @@ const batchView = require('./parts/batch-view');
 const selectionFlow = require('./parts/selection-flow');
 const actionFlow = require('./parts/action-flow');
 const loadView = require('./parts/load-view');
-const historyView = require('./parts/history-view');
 const guideView = require('./parts/guide-view');
 const share = require('../../../utils/share/handlers');
 
@@ -81,6 +80,7 @@ const base = {
     this._maintenanceClosed = '';
     this._maintenanceView = null;
     this._configFetchedAt = 0;
+    this._historyDirty = false;
     this._completedFocusDate = focusDateOf(options);
     this.syncMode();
     this.watchStore();
@@ -136,6 +136,7 @@ const base = {
   },
 
   onPullDownRefresh() {
+    this._historyDirty = true;
     this.load({ silent: true }).then(() => { this.loadHistorySummary(); wx.stopPullDownRefresh(); })
       .catch(() => wx.stopPullDownRefresh());
   },
@@ -328,16 +329,13 @@ const base = {
     this.setData({ banner: loadView.bannerOf(counts, this._ack) });
   },
 
-  loadHistorySummary() {
-    return orderApi.listPartner(historyView.summaryQuery(Date.now()))
-      .then((data) => this.setData({ 'completed.text': historyView.collapsedState(data).text })).catch(() => {});
-  },
-
   onRefreshTap() {
+    this._historyDirty = true;
     this.load({ silent: true }).then(() => { this.loadHistorySummary(); this.toastMsg('已刷新'); });
   },
 
   onRetryTap() {
+    this._historyDirty = true;
     this.load({ silent: true }).then(() => this.loadHistorySummary());
   },
 

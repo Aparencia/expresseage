@@ -5,11 +5,13 @@
 const shared = require('../shared/collections');
 const enums = require('../shared/enums');
 const audit = require('../shared/audit-actions');
+const defaults = require('../shared/defaults');
 
 const BATCH = 100;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 const MINUTE_MS = 60 * 1000;
+const UTC8_OFFSET_MS = 8 * HOUR_MS;
 const SYSTEM = 'SYSTEM';
 // orders.images[] 上限 10 张（D40；CONTRACT §4.1/DATA_MODEL §2.5）→ 下标 0~9。
 // 云 DB 数组子元素没有通配点查语法（不支持 'images.$.fileId'），引用计数/到期扫描按逐下标点路径点查。
@@ -56,6 +58,18 @@ function hoursBefore(nowMs, hours) {
 
 function minutesBefore(nowMs, minutes) {
   return nowMs - minutes * MINUTE_MS;
+}
+
+// ── D43 日结批：UTC+8 时刻 cutoff「最近一个已过的 HH:MM」────────────────────────
+// 今天该时刻已过（含准点）取今天的时刻，未到取昨天的时刻；返回毫秒。
+// 用显式 UTC+8 偏移换算，不读本机时区（云函数时区不可控），也不复用本地 setHours（历史漂移点）。
+// 配置缺失/非法回落 config/defaults 的出厂时刻；调用方按 deliveredAt ≤ cutoff 判到期（含等号）。
+function autoCompleteCutoffOf(nowMs, clockText) {
+  const at = defaults.normalizeClockText(clockText) || defaults.DEFAULT_CONFIG.autoCompleteAt;
+  const minutes = Number(at.slice(0, 2)) * 60 + Number(at.slice(3, 5));
+  const localDayStart = Math.floor((nowMs + UTC8_OFFSET_MS) / DAY_MS) * DAY_MS;
+  const cutoff = localDayStart - UTC8_OFFSET_MS + minutes * MINUTE_MS;
+  return cutoff > nowMs ? cutoff - DAY_MS : cutoff;
 }
 
 // 配置值兜底：非正数/非有限值回落默认；可传 min/max 收窄到契约区间（如识别失败 7~30 天）。
@@ -368,6 +382,7 @@ module.exports = {
   daysAfter,
   hoursBefore,
   minutesBefore,
+  autoCompleteCutoffOf,
   numberConfig,
   scanPage,
   prefixUpperBound,

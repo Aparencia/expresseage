@@ -11,7 +11,7 @@
  */
 const path = require('path');
 const { createHarness, installCrashGuard } = require('./selftest');
-const { cloudStub, createTestDb, createUpdateProbeDb } = require('./selftest-cloud-fixtures');
+const { cloudStub, createTestDb, createUpdateProbeDb } = require('./selftest-cloud-fixtures'); const cloudConfigCases = require('./lib/cloud-config-clock-cases');
 
 const ROOT = path.resolve(__dirname, '..');
 const API = path.join(ROOT, 'cloudfunctions/api');
@@ -34,7 +34,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const ADMIN_OPENID = 'openid-admin-dev01';
 const ADMIN_ENV = { ADMIN_OPENIDS: JSON.stringify({ [ADMIN_OPENID]: 'DEV-01' }) };
 
-const EXPECTED_ASSERTIONS = 180; // 179 + 1：⑦ 服务端规则快照负例（时间/订单号/手机号不当取件码）
+const EXPECTED_ASSERTIONS = 192; // 180 + 12：D43 config 合同（autoCompleteAt 默认/白名单/公开子集/格式闸/旧键作废/审计）
 
 const API_PENDING_ASSERTS = 22;
 const CLEANUP_PENDING_ASSERTS = 14;
@@ -434,7 +434,7 @@ function register(h) {
     t.check(/^F-\d{8}-[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{6}$/.test(idGenerator.generateFailureNo(NOW)),
       'failureNo = F-日期-6 位 32 字母表');
   });
-
+  asyncSection('§7.3 config 合同（D43：autoCompleteAt 白名单/公开子集，旧小时数键作废）', (t) => cloudConfigCases.clockChecks(t, { createTestDb: createTestDb, adminOpenid: ADMIN_OPENID, userStatusActive: USER_STATUS.ACTIVE, adminEnv: ADMIN_ENV, now: NOW, auditConfigUpdate: AUDIT_ACTIONS.CONFIG_UPDATE, legacyHoursKey: ['autoComplete', 'Hours'].join('') }));
   // ---------------------------------------------------------------- §7.3 switch-session 中间件
   asyncSection('§7.3 switch-session：READONLY 拒写 / TEST_WRITE 白名单 / 票据过期审计', async (t) => {
     const db = createTestDb();
@@ -814,7 +814,7 @@ function register(h) {
       { _id: 'order-timeout', orderNo: '20261001-0001', requestKey: 'openid-timeout:timeout-1', customerId: 'openid-timeout', customerOpenid: 'openid-timeout', partnerId: 'partner-x', partnerOpenid: 'openid-partner-x', partnerNo: 'PABC23', status: ORDER_STATUS.SUBMITTED, statusUpdatedAt: longAgo, createdAt: longAgo, version: 1, isTest: false },
       { _id: 'order-auto', orderNo: '20261001-0002', requestKey: 'openid-timeout:auto-1', customerId: 'openid-timeout', customerOpenid: 'openid-timeout', partnerId: 'partner-x', partnerOpenid: 'openid-partner-x', partnerNo: 'PABC23', status: ORDER_STATUS.DELIVERED, statusUpdatedAt: longAgo, deliveredAt: longAgo, createdAt: longAgo, version: 1, isTest: false }
     ]);
-    db.seed('config', [{ _id: 'global', orderTimeoutMinutes: 120, autoCompleteHours: 24, screenshotRetentionDays: 7, privacyVersion: 'v4.0' }]);
+    db.seed('config', [{ _id: 'global', orderTimeoutMinutes: 120, autoCompleteAt: '23:50', screenshotRetentionDays: 7, privacyVersion: 'v4.0' }]);
     db.seed('admin_view_sessions', [{ _id: 'TK-CLEANUP', requestKey: 'vs-cleanup-0001', adminOpenid: ADMIN_OPENID, developerNo: 'DEV-01', viewMode: VIEW_MODE.READONLY, role: ROLES.CUSTOMER, targetId: 'openid-real-c', targetNo: 'CABCDEFGH', targetIsTest: false, createdAt: longAgo, expiresAt: NOW - 1000, endedAt: 0 }]);
     const config = db.dump('config')[0];
     const ctx = { dao, db, cloud: {}, env: ADMIN_ENV, config, now: NOW, requestId: 'req-cleanup', AppError: Error, COLLECTIONS };
@@ -825,7 +825,7 @@ function register(h) {
     const timeoutRerun = await byName.orderTimeout.run(ctx);
     t.eq(timeoutRerun.acted, 0, 'orderTimeout 重跑幂等（acted=0）');
     const autoResult = await byName.autoComplete.run(ctx);
-    t.check(!!autoResult && autoResult.acted >= 1, 'autoComplete 处理 DELIVERED 超时单');
+    t.check(!!autoResult && autoResult.acted >= 1, 'autoComplete 按 D43 日结批完成 DELIVERED 到期单');
     t.eq(db.dump('orders').filter((row) => row._id === 'order-auto')[0].status, ORDER_STATUS.COMPLETED, '送达超时 → COMPLETED');
     t.check(db.dump('order_events').some((row) => row.type === 'AUTO_COMPLETED'), '自动完成写 AUTO_COMPLETED 事件');
     await byName.viewSessions.run(ctx);

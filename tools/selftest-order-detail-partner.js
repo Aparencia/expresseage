@@ -31,7 +31,7 @@ const client = require(path.join(ROOT, 'api/client.js'));
 const orderApi = require(path.join(ROOT, 'api/modules/order.js'));
 const serverDto = require(path.join(ROOT, 'cloudfunctions/api/handlers/order/_dto.js'));
 
-const EXPECTED_ASSERTIONS = 170; // 实际断言总数（少算/多算都判红）
+const EXPECTED_ASSERTIONS = 172; // 实际断言总数（171 + 1：D43 送达浮层「24h」旧口径清零）
 const STATUS = orderState.STATUS;
 const STATUS_LITERALS = enums.ORDER_STATUS_LIST.slice();
 const PAGE_JS = 'pkg-partner/pages/order-detail/index.js';
@@ -379,8 +379,8 @@ function register(h) {
       'D2 正常单确认框写清「已送达·待确认」');
     t.check(normalPanel.quickTags.length === 3 && normalPanel.noteMax === 100, 'D3 正常单浮层：快捷标签 + ≤100');
     const guestPanel = deliveryPanel.buildPanel(guest);
-    t.eq(guestPanel.confirmText, '该顾客未绑定，无需确认，系统将在 24h 后自动完成',
-      'D4 guest 单确认框改为 24h 自动完成文案（source=PARTNER）');
+    t.eq(guestPanel.confirmText, '该顾客未绑定，无需确认；系统每天 23:50 自动完成',
+      'D4 guest 单确认框改为「每天 23:50」日结批文案（source=PARTNER，D43）');
     t.check(guestPanel.guest === true && guestPanel.guestHint.indexOf('线下告知') >= 0,
       'D5 guest 单提示线下告知进度（无顾客确认路径）');
     t.eq([deliveryPanel.isGuestOrder(guest), deliveryPanel.isGuestOrder(normal)], [true, false],
@@ -390,8 +390,12 @@ function register(h) {
       'D7 guest 送达后 chip 显示「已送达·待自动完成」');
     t.eq([deliveryPanel.deliveredChip(normal), deliveryPanel.deliveredChip(guest)], ['', ''],
       'D8 非 guest/未送达不给该 chip（不冒充自动完成）');
-    t.check(deliveryPanel.guestAutoCompleteHint(guestDelivered).indexOf('24h') >= 0,
-      'D9 guest 送达后提示 24h 后自动完成');
+    t.check(deliveryPanel.guestAutoCompleteHint(guestDelivered).indexOf('23:50') >= 0
+      && deliveryPanel.guestAutoCompleteHint(guestDelivered).indexOf('顺延次日') >= 0,
+    'D9 guest 送达后提示每天 23:50 自动完成（当天已过顺延次日，D43）');
+    t.check(deliveryPanel.guestAutoCompleteHint(guestDelivered).indexOf('24h') < 0
+      && deliveryPanel.buildPanel(guest).guestHint.indexOf('24h') < 0,
+    'D9b 送达浮层不再出现「24h」旧口径（D43 文案清零）');
     t.eq(deliveryPanel.validateNote('A'.repeat(100)), { ok: true, field: '', message: '', value: 'A'.repeat(100) },
       'D10 送达备注 100 字合法边界');
     t.check(deliveryPanel.validateNote('A'.repeat(101)).message.indexOf('100') >= 0, 'D11 送达备注 101 字被挡并说清上限');
@@ -543,6 +547,8 @@ function register(h) {
       'G19 顾客编号独立小字行（不显示 openid）');
     t.check(/MESSAGE_POLL_MS = 10000/.test(page) && /onShow\(\)[\s\S]*startMessagePoll/.test(page),
       'G19b 留言 10s 轮询：onShow 起，onHide/onUnload 停（离开页面不空转）');
+    t.check(page.indexOf('messagePoll.isTerminal') >= 0 && page.indexOf('stopMessagePoll();') >= 0,
+      'G19c 终态订单停止留言轮询：applyDetail 后 stop + startMessagePoll 终态守卫（P0-3）');
     t.check(/onHide\(\)[\s\S]*stopMessagePoll/.test(page) && /onUnload\(\)[\s\S]*stopMessagePoll/.test(page),
       'G19c 留言轮询与撤销倒计时在 onHide/onUnload 统一清理');
     const jsLines = fsutil.countLines(path.join(ROOT, PAGE_JS));

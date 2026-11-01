@@ -12,6 +12,7 @@ const { createHarness, installCrashGuard } = require('./selftest'); const fake =
 const CLEANUP = path.join(ROOT, 'cloudfunctions/cleanup');
 const RUN = require(path.join(CLEANUP, 'run.js')); const SWEEP_MOD = require(path.join(CLEANUP, 'sweeps/index.js'));
 const ordersSweep = require(path.join(CLEANUP, 'sweeps/orders.js')); const storageSweep = require(path.join(CLEANUP, 'sweeps/storage.js'));
+const cleanupUtil = require(path.join(CLEANUP, 'sweeps/_util.js'));
 const retentionSweep = require(path.join(CLEANUP, 'sweeps/retention.js')); const accountsSweep = require(path.join(CLEANUP, 'sweeps/accounts.js'));
 const invitationsSweep = require(path.join(CLEANUP, 'sweeps/invitations.js')); const viewSessionsSweep = require(path.join(CLEANUP, 'sweeps/viewSessions.js'));
 const countersSweep = require(path.join(CLEANUP, 'sweeps/counters.js')); const recognitionSweep = require(path.join(CLEANUP, 'sweeps/recognitionFailures.js'));
@@ -21,7 +22,9 @@ const { COLLECTIONS } = require(path.join(CLEANUP, 'shared/collections.js'));
 const enums = require(path.join(CLEANUP, 'shared/enums.js')); const auditActions = require(path.join(CLEANUP, 'shared/audit-actions.js'));
 // harness 完整性闸：先占位，首跑按真实断言数回填（少算/多算都判红）。
 const cleanupV1 = require(path.join(__dirname, 'lib', 'cleanup-v1-cases.js'));
-const EXPECTED_ASSERTIONS = 187 + cleanupV1.EXPECTED_ASSERTIONS; // 185 + 2：D40 images[9] 到期清理/删文件
+const autoCompleteCases = require(path.join(__dirname, 'lib', 'cleanup-auto-complete-cases.js'));
+const EXPECTED_ASSERTIONS = 187 + cleanupV1.EXPECTED_ASSERTIONS + (autoCompleteCases.EXPECTED_ASSERTIONS - 10);
+// ↑ 187 为基线（含旧逐单 24h 的 10 条 §C 断言）；§C 整节外移到 cleanup-auto-complete-cases.js（D43 日结批 30 条）。
 const NOW = Date.parse('2026-10-22T12:00:00+08:00');
 const MINUTE = 60 * 1000, HOUR = 60 * MINUTE, DAY = 24 * HOUR;
 const COLLECTION_NAMES = Object.keys(COLLECTIONS).map((key) => COLLECTIONS[key]);
@@ -251,6 +254,11 @@ const SWEEPS_RUN = {
 };
 // v1.0 用例表依赖（拆出 tools/lib/cleanup-v1-cases.js 控行数；夹具/断言计数单源在该文件）
 const V1_DEPS = { makeWorld: makeWorld, orderOf: orderOf, createCloud: createCloud, makeCtx: makeCtx, SWEEPS_RUN: SWEEPS_RUN, enums: enums, NOW: NOW, DAY: DAY, dateMs: dateMs, COLLECTIONS: COLLECTIONS };
+// D43 用例表依赖（拆出 tools/lib/cleanup-auto-complete-cases.js；cutoff 纯函数单源在 sweeps/_util）
+const AUTO_COMPLETE_DEPS = {
+  cleanupUtil: cleanupUtil, makeWorld: makeWorld, orderOf: orderOf, makeCtx: makeCtx, SWEEPS_RUN: SWEEPS_RUN,
+  enums: enums, NOW: NOW, HOUR: HOUR, MINUTE: MINUTE, dateMs: dateMs, COLLECTIONS: COLLECTIONS
+};
 
 // ---------------------------------------------------------------- §B orderTimeout
 async function orderTimeoutSection(t) {
@@ -307,40 +315,11 @@ async function orderTimeoutSection(t) {
   const result2 = await SWEEPS_RUN.orderTimeout(makeCtx(db2, { config: { orderTimeoutMinutes: 60 } }));
   t.eq(result2.acted, 1, '§B config.orderTimeoutMinutes=60 生效（70min 单到期）');
 }
-// ---------------------------------------------------------------- §C autoComplete
+// ---------------------------------------------------------------- §C autoComplete（D43 UTC+8 日结批，用例表外移控行数）
 async function autoCompleteSection(t) {
-  const before = orderOf({ _id: 'auto-before', status: enums.ORDER_STATUS.DELIVERED, deliveredAt: NOW - 23 * HOUR });
-  const due = orderOf({ _id: 'auto-due', status: enums.ORDER_STATUS.DELIVERED, deliveredAt: NOW - 25 * HOUR });
-  const guest = orderOf({
-    _id: 'auto-guest',
-    status: enums.ORDER_STATUS.DELIVERED,
-    deliveredAt: NOW - 25 * HOUR,
-    customerId: '',
-    customerOpenid: '',
-    customerNo: '',
-    guest: { name: '代客', phoneTail: '1234' }
-  });
-  const legacy = orderOf({ _id: 'auto-legacy', status: enums.ORDER_STATUS.DELIVERED, deliveredAt: null, statusUpdatedAt: NOW - 25 * HOUR });
-  const submitted = orderOf({ _id: 'auto-submitted', status: enums.ORDER_STATUS.SUBMITTED, statusUpdatedAt: NOW - 300 * HOUR });
-  const db = makeWorld({ orders: [before, due, guest, legacy, submitted] });
-  const ctx = makeCtx(db);
-  const result = await SWEEPS_RUN.autoComplete(ctx);
-  const after = (id) => db.dump(COLLECTIONS.ORDERS).filter((row) => row._id === id)[0];
-  t.eq(result.acted, 3, '§C DELIVERED 超 24h：到期 3 单（23h 不动）');
-  t.eq(after('auto-before').status, enums.ORDER_STATUS.DELIVERED, '§C 阈值前不动（23h 仍待确认）');
-  t.eq(after('auto-due').status, enums.ORDER_STATUS.COMPLETED, '§C 送达超时 → COMPLETED');
-  t.eq(dateMs(after('auto-due').completedAt), NOW, '§C completedAt=注入 now');
-  t.eq(db.dump(COLLECTIONS.ORDER_EVENTS).filter((row) => row.orderId === 'auto-due').map((row) => row.type),
-    ['AUTO_COMPLETED'], '§C 写 AUTO_COMPLETED 事件（SYSTEM actorRole）');
-  t.eq(after('auto-guest').status, enums.ORDER_STATUS.COMPLETED, '§C guest 单同样由 autoComplete 完成（无顾客确认路径）');
-  t.eq(after('auto-legacy').status, enums.ORDER_STATUS.COMPLETED, '§C 缺 deliveredAt 的脏数据回落 statusUpdatedAt（不永久滞留）');
-  t.eq(after('auto-submitted').status, enums.ORDER_STATUS.SUBMITTED, '§C 非 DELIVERED 单不动');
-  const rerun = await SWEEPS_RUN.autoComplete(ctx);
-  t.eq(rerun.acted, 0, '§C 重跑幂等：acted=0');
-  const db2 = makeWorld({ orders: [orderOf({ _id: 'auto-config', status: enums.ORDER_STATUS.DELIVERED, deliveredAt: NOW - 2 * HOUR })] });
-  const result2 = await SWEEPS_RUN.autoComplete(makeCtx(db2, { config: { autoCompleteHours: 1 } }));
-  t.eq(result2.acted, 1, '§C config.autoCompleteHours=1 生效（2h 单完成）');
+  await autoCompleteCases.autoCompleteChecks(t, AUTO_COMPLETE_DEPS);
 }
+
 // ---------------------------------------------------------------- §D files
 async function filesSection(t) {
   const image = (fileId) => ({ fileId, width: 800, height: 600, failureId: '' });

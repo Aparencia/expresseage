@@ -157,8 +157,6 @@ const LIMITS = {
 const CONFIG_RANGE = {
   orderTimeoutMin: 10,
   orderTimeoutMax: 1440,
-  autoCompleteMin: 1,
-  autoCompleteMax: 168,
   screenshotMax: 7,
   ttlMin: 5,
   ttlMax: 60,

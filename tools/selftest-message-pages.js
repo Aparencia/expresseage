@@ -81,6 +81,7 @@ const FILES = {
   partnerWxss: 'pkg-partner/pages/messages/index.wxss',
   partnerParts: 'pkg-partner/pages/messages/parts/message-view.js',
   home: 'pages/customer/home/index.js',
+  homePlan: 'pages/customer/home/parts/render-plan.js',
   homeWxml: 'pages/customer/home/index.wxml',
   orders: 'pages/customer/orders/index.js',
   homeJson: 'pages/customer/home/index.json',
@@ -364,8 +365,9 @@ function register(h) {
     const ordersTabBadge = textOf(FILES.tabJs)
       .match(/pagePath: 'pages\/customer\/orders\/index'[^\n]*badgeKey: 'ordersOngoing'/g) || [];
     t.eq(ordersTabBadge.length, 1, 'D13 顾客「订单」tab 按 badgeKey=ordersOngoing 渲染数量角标（P1-5）');
-    t.check(/ordersOngoing/.test(textOf(FILES.home)) && /counts\.ongoing/.test(textOf(FILES.home)),
-      'D14 首页用 order.listCustomer 的 counts.ongoing 更新 ordersOngoing（onShow/下拉刷新，无轮询）');
+    t.check(/renderPlan\.refreshPlanOf\(/.test(textOf(FILES.home))
+      && /ordersOngoing/.test(textOf(FILES.homePlan)) && /counts\.ongoing/.test(textOf(FILES.homePlan)),
+      'D14 首页用 order.listCustomer 的 counts.ongoing 更新 ordersOngoing（onShow/下拉刷新，无轮询；判据单源 parts/render-plan）');
     t.check(/ordersOngoing/.test(textOf(FILES.orders)) && /counts\.ongoing/.test(textOf(FILES.orders)),
       'D15 订单列表同源更新 ordersOngoing（服务端 counts 不受 tab/关键词影响）');
     t.check(!/ordersOngoing:\s*0/.test(textOf(FILES.home)) && !/ordersOngoing:\s*0/.test(textOf(FILES.orders)),
@@ -481,8 +483,9 @@ function register(h) {
     t.check(/onShow\(\)\s*\{[\s\S]*this\.refreshConfig\(\)/.test(textOf(FILES.home))
       && /refreshConfig\(\)/.test(textOf(FILES.home)),
     'F17 顾客首页 onShow 60s 节流刷 configPublic（维护/公告生效）');
-    t.check(/function announcementOf/.test(textOf(FILES.home)) && /enabled === false/.test(textOf(FILES.home)),
-      'F18 顾客首页公告按 announcement.enabled 展示（关闭即不展示）');
+    t.check(/function announcementOf/.test(textOf(FILES.homePlan)) && /enabled === false/.test(textOf(FILES.homePlan))
+      && /renderPlan\.refreshPlanOf\(/.test(textOf(FILES.home)),
+      'F18 顾客首页公告按 announcement.enabled 展示（关闭即不展示；判据单源 parts/render-plan）');
 
     t.check(/<maintenance-mask/.test(textOf(FILES.workbenchWxml))
       && /enabled="\{\{maintenance\.visible\}\}"/.test(textOf(FILES.workbenchWxml)),

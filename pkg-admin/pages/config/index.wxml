@@ -65,9 +65,9 @@
         <text class="muted">分钟</text>
       </view>
       <view class="form-row">
-        <text class="form-label">自动完成</text>
-        <input class="form-input" type="number" value="{{form.autoCompleteHours}}" data-field="autoCompleteHours" bindinput="onNumberInput" />
-        <text class="muted">小时</text>
+        <text class="form-label">自动完成时间</text>
+        <input class="form-input" value="{{form.autoCompleteAt}}" maxlength="5" placeholder="HH:MM" data-field="autoCompleteAt" bindinput="onNumberInput" />
+        <text class="muted">HH:MM</text>
       </view>
       <view class="form-row">
         <text class="form-label">截图留存</text>
@@ -89,7 +89,7 @@
         <input class="form-input" type="number" value="{{form.avatarMaxKb}}" data-field="avatarMaxKb" bindinput="onNumberInput" />
         <text class="muted">KB</text>
       </view>
-      <view class="small">截图留存最多 7 天；识别失败留存 7~30 天；切换会话 5~60 分钟；头像大小上限 100~200KB。</view>
+      <view class="small">截图留存最多 7 天；识别失败留存 7~30 天；切换会话 5~60 分钟；头像大小上限 100~200KB；自动完成时间为 UTC+8 的 HH:MM（默认 23:50，每日该时刻按日结批完成当天已送达的单，当天该时刻后送达的顺延次日）。</view>
     </view>
 
     <view class="card">

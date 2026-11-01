@@ -33,7 +33,7 @@ const uploadCommon = require(path.join(ROOT, 'cloudfunctions/api/handlers/upload
 const profileVm = require(path.join(ROOT, 'pages/profile/parts/view-model.js'));
 const avatarSave = require(path.join(ROOT, 'pages/profile/parts/avatar-save.js'));
 
-const EXPECTED_ASSERTIONS = 194;
+const EXPECTED_ASSERTIONS = 192; // 194 - 2（批 16 死代码专项：草稿指针三件套删除，对应 2 条测试断言移除；TD-008）
 
 const TOKEN = 'T'.repeat(32);
 const CONSENT_AT = 1700000000000;
@@ -173,9 +173,9 @@ function register(h) {
       && storage.isGuideSeen('CUSTOMER_HOME_V1', plat.api) === true, '引导标记只认白名单键');
     t.check(storage.clearGuideSeen('CUSTOMER_HOME_V1', plat.api) === true
       && storage.isGuideSeen('CUSTOMER_HOME_V1', plat.api) === false, '引导标记可清除（供重看）');
-    t.check(storage.setDraftPointer('bad pointer!', plat.api) === false, '草稿指针非法字符被拒');
-    t.check(storage.setDraftPointer('order-draft_01', plat.api) === true
-      && storage.getDraftPointer(plat.api) === 'order-draft_01', '草稿指针合法值往返一致');
+
+    // 批 16（TD-008 承诺执行）：草稿指针三件套（getDraftPointer/setDraftPointer/clearDraftPointer）
+    // 生产 0 引用，已从 utils/storage.js 删除；draftPointer 历史键仍在 normalize 白名单内被剥/保留为 null。
 
     // 取件清单本机勾选（D26）：只存 orderNo#itemIndex 布尔标记，不存取件码/站点；非法 key 拒绝。
     t.check(storage.setPickupCheck('20261022-0001#0', true, plat.api) === true
@@ -365,7 +365,9 @@ function register(h) {
   h.section('§3.3 上传链顺序（本地校验/压缩 → prepare(size/contentType) → uploadFile）', (t) => {
     const uploadJs = readSource('api/upload.js');
     const start = uploadJs.indexOf('async function prepareAndUpload');
-    const end = uploadJs.indexOf('async function cancelTicket');
+    // body 上界 = 导出块起点（B 批已删死导出 cancelTicket，旧 slice marker 会变空串导致切片为空）；
+    // 语义不变：只看 prepareAndUpload 函数体，不弱化任何断言。
+    const end = uploadJs.indexOf('module.exports = {');
     const body = start < 0 || end <= start ? '' : uploadJs.slice(start, end);
     const localAt = Math.min(body.indexOf('await prepareAvatar('), body.indexOf('await prepareTicket('));
     const prepareAt = body.indexOf('uploadModule.prepare(');

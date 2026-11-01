@@ -4,8 +4,5 @@ const client = require('../client');
 module.exports = {
   prepare(payload) {
     return client.call('upload.prepare', payload || {});
-  },
-  cancel(payload) {
-    return client.call('upload.cancel', payload || {});
   }
 };

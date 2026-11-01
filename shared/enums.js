@@ -369,16 +369,8 @@ function cancelReasonText(code) {
   return CANCEL_REASON_TEXT[code] || '';
 }
 
-function releaseReasonText(code) {
-  return RELEASE_REASON_TEXT[code] || '';
-}
-
 function isOrderStatus(status) {
   return ORDER_STATUS_LIST.indexOf(status) !== -1;
-}
-
-function isActiveOrderStatus(status) {
-  return ORDER_ACTIVE_STATUSES.indexOf(status) !== -1;
 }
 
 function isTerminalOrderStatus(status) {
@@ -479,8 +471,6 @@ module.exports = {
   orderStatusText,
   serviceNameOf,
   cancelReasonText,
-  releaseReasonText,
   isOrderStatus,
-  isActiveOrderStatus,
   isTerminalOrderStatus
 };

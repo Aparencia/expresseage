@@ -11,20 +11,12 @@ const ids = require('../../../utils/ids');
 const rebind = require('../../../utils/rebind');
 const autoQuery = require('./parts/auto-query');
 const autoBind = require('./parts/auto-bind');
+const serviceView = require('./parts/service-view');
 const share = require('../../../utils/share/handlers');
 
 const HOME_PAGE = '/pages/customer/home/index';
 const PROFILE_PAGE = '/pages/profile/index';
 const REBIND_TITLE = '换绑兼职';
-
-function serviceNames(services, catalog) {
-  return (services || [])
-    .filter(function on(item) { return item.enabled !== false; })
-    .map(function map(item) {
-      const found = (catalog || []).filter(function match(entry) { return entry.code === item.code; })[0];
-      return found ? found.name : item.code;
-    });
-}
 
 Page({
   data: {
@@ -36,6 +28,7 @@ Page({
     error: '',
     preview: null,
     servicesText: '',
+    serviceHintText: '',
     zonesText: '',
     currentBinding: null,
     currentPartnerName: '',
@@ -206,7 +199,8 @@ Page({
     const partner = data || {};
     const config = store.snapshot().config || {};
     const catalog = config.serviceCatalog || [];
-    const names = serviceNames(partner.services, catalog);
+    // D41：服务能力两行（名称串 + 说明行）统一由 parts/service-view 纯件从目录 desc 生成，页面零文案硬编码
+    const capability = serviceView.capabilityOf(partner.services, catalog);
     const partnerNo = partner.partnerNo || (meta && meta.partnerNo) || '';
     this.setData({
       loading: false,
@@ -217,7 +211,8 @@ Page({
         status: partner.status || '',
         acceptingOrders: partner.acceptingOrders !== false
       },
-      servicesText: names.length > 0 ? names.join(' / ') : '服务类型加载中',
+      servicesText: capability.servicesText,
+      serviceHintText: capability.serviceHintText,
       zonesText: (partner.zones || []).join(' / ') || '全部苑'
     });
     // D38：预览就绪是自动绑定的必要前提（预检未回来时纯件会等预检，回来后再触发）
@@ -328,10 +323,6 @@ Page({
   // 「已绑定·去下单」：已绑定同号不再 create，直接回顾客首页下单（D38）
   onGoOrder() {
     wx.switchTab({ url: HOME_PAGE });
-  },
-
-  onRetry() {
-    this.onQuery();
   },
 
   onShareAppMessage() {

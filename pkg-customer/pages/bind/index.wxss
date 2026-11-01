@@ -13,6 +13,12 @@
   color: var(--v4-warning);
 }
 
+/* D41：绑定预览服务能力说明行（层级说明，取目录 desc 单源） */
+.service-hint {
+  margin-top: 8rpx;
+  line-height: 1.5;
+}
+
 .error-text {
   margin-top: 16rpx;
   color: var(--v4-danger);

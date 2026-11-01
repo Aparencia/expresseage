@@ -1,6 +1,6 @@
 'use strict';
 /**
- * tools/check.js — v4 代码/配置门禁（ENGINEERING §8.2 的 31 条判据逐条实现）。
+ * tools/check.js — v4 代码/配置门禁（ENGINEERING §8.2 的 36 条判据逐条实现）。
  * 口径：docs/engineering/V4_ENGINEERING.md v0.9 §8.2；失败含义见同表。汇总行必须存在（没有汇总输出 = 读数作废）。
  *
  * 与 check-docs 的分工（文件头登记差异，§8.2 #18）：
@@ -967,17 +967,18 @@ check(32, '单函数行数', '生产源码单函数 ≤50 行（全文本口径�
 
 // ---------------------------------------------------------------- #33
 check(33, '分享卡口中性', '19 页挂好友转发/3 页朋友圈/后台零分享；卡片单源 utils/share；固定中性封面；会话禁分享收口 switch-bar', () => require('./lib/check-share').run());
-
 // ---------------------------------------------------------------- #34
 check(34, '打包忽略清单', '根目录每个目录 ∈ 源码白名单 或 project.config.json packOptions.ignore folder 项；配置缺失/不可解析/空集判红（TD-071）', () => require('./lib/check-pack-ignore').run());
-
+// ---------------------------------------------------------------- #35/#36
+check(35, '未引用导出扫描', '生产 0 引用且文件内不自用的导出必须逐条登记 tools/dead-export-baseline.json（history/test-only/contract-slot + 理由）；新增即红、基线失效即红', () => require('./lib/dead-code').runDeadExports());
+check(36, '页面死函数扫描', '页面/组件目录内定义但 JS/WXML 均无引用的函数必须登记基线（平台生命周期/框架保留键豁免）；新增即红、页面死函数清理后基线项自动作废', () => require('./lib/dead-code').runPageDeadFunctions());
 // ---------------------------------------------------------------- 输出
 const opts = process.argv.slice(2);
 const failOnly = opts.includes('--fail-only');
 let pass = 0;
 let failed = 0;
 let skipped = 0;
-console.log('== tools/check.js · v4 门禁（ENGINEERING §8.2 · 34 条）==');
+console.log('== tools/check.js · v4 门禁（ENGINEERING §8.2 · 36 条）==');
 for (const r of results) {
   const id = '#' + String(r.no).padStart(2, '0');
   if (r.pass) {

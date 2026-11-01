@@ -12,6 +12,7 @@ const exceptionPanel = require('./parts/exception-panel');
 const reasonPanel = require('./parts/reason-panel');
 const undoPart = require('./parts/undo');
 const viewModel = require('./parts/view-model');
+const messagePoll = require('./parts/message-poll');
 const share = require('../../../utils/share/handlers');
 
 const UNDO_TICK_MS = 1000;
@@ -95,9 +96,9 @@ Page({
     this.clearUndoTimer();
   },
 
-  // 留言 10s 轮询（页面可见时；离页停止，不在后台空转）
+  // 留言 10s 轮询（页面可见时；离页/终态停止，不在后台空转）
   startMessagePoll() {
-    if (this.messageTimer || !this.data.orderNo) {
+    if (this.messageTimer || !this.data.orderNo || messagePoll.isTerminal(this.data.order)) {
       return;
     }
     this.messageTimer = setInterval(() => {
@@ -126,7 +127,6 @@ Page({
         this.setData({ loading: false, error: (err && err.message) || COPY.loadFail });
       });
   },
-
   applyDetail(data) {
     const order = (data && data.order) || {};
     const events = eventView.buildEvents(data && data.events);
@@ -145,7 +145,7 @@ Page({
       customerNoText: view.customerNoText,
       loading: false
     });
-    this.syncUndoTimer();
+    this.syncUndoTimer(); if (messagePoll.isTerminal(order)) this.stopMessagePoll();
     return this.loadMessages();
   },
 

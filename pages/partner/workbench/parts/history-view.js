@@ -1,8 +1,9 @@
 // pages/partner/workbench/parts/history-view.js · 已完结自然日分区纯件（零 wx）
 // 口径：UX_PARTNER §4.10（活动区之外「已完结 · 今天 N 单 >」折叠入口；展开用 view:'history' + from/to
 //       拉当天/昨天；「更早还有 N 单 >」继续翻页；取消单灰显 + 原因；DELIVERED 不归档）。
-// 说明：listPartner 的 history counts 未回传终态总数（DATA_MODEL §7.5 只有活动区 counts 六项），
-//       故折叠入口的 N 用「今天窗口已加载条数」如实展示（有下一页时带 +），不虚构精确总数。
+// 说明：listPartner 的 history 视图不计入 counts（P0-2/TD-073；响应仍回零值模板、页面不消费，
+//       只有 workbench 视图算 6 个 count），故折叠入口的 N 用「今天窗口已加载条数」如实展示
+//       （有下一页时带 +），不虚构精确总数。
 'use strict';
 
 const groupView = require('./group-view');
@@ -25,6 +26,40 @@ function yesterdayStartMs(nowMs) {
 function summaryQuery(nowMs) {
   const now = typeof nowMs === 'number' ? nowMs : Date.now();
   return { view: 'history', from: dayStartMs(now), to: now, limit: HISTORY_LIMIT };
+}
+
+// P0-2/TD-073：工作台每一次 onShow 都会先拉主列表（counts 六项随响应更新），历史摘要只在
+// 「没拉过 / 请求在途 / 显式刷新 / 筛选变了 / 今日计数版本变了」时才需要再发 1 次 history 调用。
+// counts 版本 = 六项逐值指纹（不用时间戳，避免每次 onShow 都判成脏）。
+function countsFingerprintOf(counts) {
+  const input = counts || {};
+  const keys = ['submitted', 'accepted', 'picked', 'delivered', 'exception', 'todayCompleted'];
+  return keys.map(function valueOf(key) {
+    const value = Number(input[key]);
+    return isFinite(value) && value > 0 ? Math.floor(value) : 0;
+  }).join(',');
+}
+
+// 历史摘要调用计划（进工作台一次的计划云调用数 = 主列表 1 + 摘要 0/1）。
+// 判等：同筛选 + 同 counts 版本 + 无显式脏标记 + 无在途请求 → 摘要 0 次（TD-073 去重）。
+function summaryCallPlan(state) {
+  const current = state || {};
+  if (current.pending === true) {
+    return { call: false, reason: 'pending', calls: 1 };
+  }
+  if (current.dirty === true) {
+    return { call: true, reason: 'dirty', calls: 2 };
+  }
+  if (current.hasSummary !== true) {
+    return { call: true, reason: 'cold', calls: 2 };
+  }
+  if (current.filter !== current.lastFilter) {
+    return { call: true, reason: 'filter', calls: 2 };
+  }
+  if (current.countsVersion !== current.lastCountsVersion) {
+    return { call: true, reason: 'counts', calls: 2 };
+  }
+  return { call: false, reason: 'clean', calls: 1 };
 }
 
 // 展开：一次拉「今天+昨天」（from=昨天 0 点，to=now；客户端按终态时间分区）
@@ -169,6 +204,8 @@ module.exports = {
   dayStartMs,
   yesterdayStartMs,
   summaryQuery,
+  countsFingerprintOf,
+  summaryCallPlan,
   expandQuery,
   olderQuery,
   finishedMsOf,

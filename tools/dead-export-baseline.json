@@ -1,0 +1,567 @@
+{
+  "schema": 1,
+  "gate": "#35 未引用导出 / #36 页面死函数（ENGINEERING §8.2）",
+  "owner": "S2 工具链（批 16 · deadcode-gates）",
+  "howTo": "本文件是存量白名单：只登记「生产端 0 引用且文件内不自用」的导出与「页面/组件目录内 JS/WXML 均无引用」的函数。 新增命中必须优先补生产调用或删除；确需保留时按史实登记 reason + evidence/note（禁止整文件/整目录白名单）。 云函数 shared/ 生成副本不计生产消费；已删除/已移出导出的基线项自动作废（不阻塞），仍导出却出现生产引用的项判红，须从基线移除。",
+  "reasons": {
+    "test-only": "仅测试引用：被 tools/selftest-* 断言使用，生产端 0 调用；保留测试覆盖、登记不删",
+    "history": "历史遗留：真实死代码/死函数，但不在本批任务卡删除清单（跨域或后续批处理）；删除后移除本项",
+    "contract-slot": "契约预留：为 P1 契约面保留的导出占位，暂无可达生产调用"
+  },
+  "deadExports": [
+    {
+      "file": "api/client.js",
+      "symbol": "restoreTransport",
+      "reason": "test-only",
+      "evidence": "tools/selftest-admin-pages.js:834",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "api/client.js",
+      "symbol": "setTransport",
+      "reason": "test-only",
+      "evidence": "tools/selftest-admin-pages.js:778",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "api/mode-guard.js",
+      "symbol": "sessionBanner",
+      "reason": "test-only",
+      "evidence": "tools/selftest-bind.js:192",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "api/modules/config.js",
+      "symbol": "clearCache",
+      "reason": "test-only",
+      "evidence": "tools/selftest-performance.js:149",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "api/upload.js",
+      "symbol": "DEFAULT_AVATAR_BYTES",
+      "reason": "history",
+      "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
+      "note": "历史死导出（teammate B（代客下单/聊天图链路，批 16 并行））：批 16 死代码专项只清任务卡清单内的符号，本项未动、待该域收口时删除"
+    },
+    {
+      "file": "config/defaults.js",
+      "symbol": "CONFIG_LIMITS",
+      "reason": "test-only",
+      "evidence": "tools/selftest-testaccount.js:211",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "config/defaults.js",
+      "symbol": "UPLOAD_LIMITS",
+      "reason": "test-only",
+      "evidence": "tools/selftest-state.js:249",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "config/route.js",
+      "symbol": "isRolePageAllowed",
+      "reason": "test-only",
+      "evidence": "tools/selftest-state.js:525",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "pages/customer/parts/orders-view.js",
+      "symbol": "tickRows",
+      "reason": "test-only",
+      "evidence": "tools/selftest-order-customer.js:363",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "pages/partner/workbench/parts/group-view.js",
+      "symbol": "toGroups",
+      "reason": "test-only",
+      "evidence": "tools/selftest-bind.js:312",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "pages/partner/workbench/parts/history-view.js",
+      "symbol": "countIn",
+      "reason": "history",
+      "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
+      "note": "历史死导出（teammate E（工作台/性能，批 16 并行））：批 16 死代码专项只清任务卡清单内的符号，本项未动、待该域收口时删除"
+    },
+    {
+      "file": "pages/partner/workbench/parts/parcel-view.js",
+      "symbol": "pieceCountOf",
+      "reason": "history",
+      "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
+      "note": "历史死导出（teammate E（工作台/性能，批 16 并行））：批 16 死代码专项只清任务卡清单内的符号，本项未动、待该域收口时删除"
+    },
+    {
+      "file": "pages/partner/workbench/parts/selection-flow.js",
+      "symbol": "restore",
+      "reason": "test-only",
+      "evidence": "tools/selftest-deletion.js:724",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "pkg-admin/common/format.js",
+      "symbol": "formatClock",
+      "reason": "history",
+      "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
+      "note": "历史死导出（pkg-admin 域（批 16 未排期））：批 16 死代码专项只清任务卡清单内的符号，本项未动、待该域收口时删除"
+    },
+    {
+      "file": "pkg-customer/pages/order-create/parts/bootstrap.js",
+      "symbol": "serviceIndexes",
+      "reason": "history",
+      "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
+      "note": "历史死导出（teammate C（下单链路，批 16 并行））：批 16 死代码专项只清任务卡清单内的符号，本项未动、待该域收口时删除"
+    },
+    {
+      "file": "pkg-customer/pages/order-create/parts/model.js",
+      "symbol": "stepTitle",
+      "reason": "test-only",
+      "evidence": "tools/selftest-state.js:596",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "pkg-customer/pages/order-create/parts/reorder.js",
+      "symbol": "applyToItems",
+      "reason": "test-only",
+      "evidence": "tools/selftest-order-customer.js:453",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "pkg-customer/pages/order-create/parts/reorder.js",
+      "symbol": "PREFILL_KEYS",
+      "reason": "history",
+      "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
+      "note": "历史死导出（teammate C（下单链路，批 16 并行））：批 16 死代码专项只清任务卡清单内的符号，本项未动、待该域收口时删除"
+    },
+    {
+      "file": "pkg-customer/parts/poll-policy.js",
+      "symbol": "MAX_BACKOFF_MS",
+      "reason": "test-only",
+      "evidence": "tools/selftest-order-customer.js:319",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "pkg-customer/parts/privacy-text.js",
+      "symbol": "buildText",
+      "reason": "test-only",
+      "evidence": "tools/selftest-privacy-text.js:50",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "pkg-customer/parts/privacy-text.js",
+      "symbol": "TEXT_VERSION",
+      "reason": "test-only",
+      "evidence": "tools/selftest-privacy-text.js:221",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "pkg-customer/parts/status-view.js",
+      "symbol": "canConfirmDelivery",
+      "reason": "test-only",
+      "evidence": "tools/selftest-state.js:558",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "pkg-customer/parts/status-view.js",
+      "symbol": "canDeleteRecord",
+      "reason": "test-only",
+      "evidence": "tools/selftest-state.js:560",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "pkg-customer/parts/status-view.js",
+      "symbol": "canMessage",
+      "reason": "test-only",
+      "evidence": "tools/selftest-state.js:563",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "pkg-customer/parts/status-view.js",
+      "symbol": "canViewImage",
+      "reason": "test-only",
+      "evidence": "tools/selftest-state.js:566",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "pkg-partner/pages/create-on-behalf/parts/recognize-model.js",
+      "symbol": "recognizedItemOf",
+      "reason": "history",
+      "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
+      "note": "历史死导出（teammate B（代客下单，批 16 并行））：批 16 死代码专项只清任务卡清单内的符号，本项未动、待该域收口时删除"
+    },
+    {
+      "file": "pkg-partner/pages/messages/parts/message-view.js",
+      "symbol": "countUnread",
+      "reason": "test-only",
+      "evidence": "tools/selftest-message-pages.js:176",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "pkg-partner/pages/order-detail/parts/correct-panel.js",
+      "symbol": "stillNeedCodeText",
+      "reason": "test-only",
+      "evidence": "tools/selftest-order-detail-partner.js:321",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "pkg-partner/pages/order-detail/parts/exception-panel.js",
+      "symbol": "buildResolve",
+      "reason": "test-only",
+      "evidence": "tools/selftest-order-detail-partner.js:361",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "shared/actions.js",
+      "symbol": "ACTION_COUNT",
+      "reason": "history",
+      "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
+      "note": "历史死导出：本批未列入删除清单，待后续批清理（清理后移除本项，判据会自动作废）"
+    },
+    {
+      "file": "shared/actions.js",
+      "symbol": "CLIENT_ACTIONS",
+      "reason": "test-only",
+      "evidence": "tools/selftest-cloud.js:22",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "shared/actions.js",
+      "symbol": "INTERNAL_ACTIONS",
+      "reason": "test-only",
+      "evidence": "tools/lib/project.js:127",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "shared/actions.js",
+      "symbol": "isClientAction",
+      "reason": "test-only",
+      "evidence": "tools/selftest-bind.js:208",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "shared/actions.js",
+      "symbol": "isInternalAction",
+      "reason": "test-only",
+      "evidence": "tools/selftest-bind.js:208",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "shared/audit-actions.js",
+      "symbol": "AUDIT_ACTION_COUNT",
+      "reason": "test-only",
+      "evidence": "tools/selftest-switch.js:462",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "shared/audit-actions.js",
+      "symbol": "isAuditAction",
+      "reason": "test-only",
+      "evidence": "tools/selftest-switch.js:467",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "shared/enums.js",
+      "symbol": "CODE_ALPHABET_CLASS",
+      "reason": "history",
+      "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
+      "note": "历史死导出：本批未列入删除清单，待后续批清理（清理后移除本项，判据会自动作废）"
+    },
+    {
+      "file": "shared/enums.js",
+      "symbol": "CUSTOMER_NO_GROUPS",
+      "reason": "history",
+      "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
+      "note": "历史死导出：本批未列入删除清单，待后续批清理（清理后移除本项，判据会自动作废）"
+    },
+    {
+      "file": "shared/enums.js",
+      "symbol": "DEVELOPER_NO_SAMPLE",
+      "reason": "history",
+      "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
+      "note": "历史死导出：本批未列入删除清单，待后续批清理（清理后移除本项，判据会自动作废）"
+    },
+    {
+      "file": "shared/enums.js",
+      "symbol": "ORDER_EVENT_COUNT",
+      "reason": "test-only",
+      "evidence": "tools/selftest-state.js:101",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "shared/enums.js",
+      "symbol": "ORDER_SOURCE_LABELS",
+      "reason": "history",
+      "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
+      "note": "历史死导出：本批未列入删除清单，待后续批清理（清理后移除本项，判据会自动作废）"
+    },
+    {
+      "file": "shared/enums.js",
+      "symbol": "PARTNER_NO_GROUPS",
+      "reason": "history",
+      "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
+      "note": "历史死导出：本批未列入删除清单，待后续批清理（清理后移除本项，判据会自动作废）"
+    },
+    {
+      "file": "shared/enums.js",
+      "symbol": "RECOGNITION_SOURCE_LIST",
+      "reason": "test-only",
+      "evidence": "tools/selftest-ai.js:415",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "shared/enums.js",
+      "symbol": "ROOM_TAG_ALPHABET",
+      "reason": "history",
+      "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
+      "note": "历史死导出：本批未列入删除清单，待后续批清理（清理后移除本项，判据会自动作废）"
+    },
+    {
+      "file": "shared/enums.js",
+      "symbol": "ROOM_TAG_MIN_SEQ",
+      "reason": "history",
+      "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
+      "note": "历史死导出：本批未列入删除清单，待后续批清理（清理后移除本项，判据会自动作废）"
+    },
+    {
+      "file": "shared/enums.js",
+      "symbol": "URGENT_SERVICE_CODE",
+      "reason": "history",
+      "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
+      "note": "历史死导出：本批未列入删除清单，待后续批清理（清理后移除本项，判据会自动作废）"
+    },
+    {
+      "file": "shared/enums.js",
+      "symbol": "VIEW_MODE_TEXT",
+      "reason": "test-only",
+      "evidence": "tools/selftest-state.js:216",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "shared/error-codes.js",
+      "symbol": "ERROR_CODE_MAP",
+      "reason": "history",
+      "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
+      "note": "历史死导出：本批未列入删除清单，待后续批清理（清理后移除本项，判据会自动作废）"
+    },
+    {
+      "file": "shared/format.js",
+      "symbol": "anchorLine",
+      "reason": "test-only",
+      "evidence": "tools/selftest-state.js:318",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "shared/format.js",
+      "symbol": "formatRelative",
+      "reason": "test-only",
+      "evidence": "tools/selftest-state.js:337",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "shared/format.js",
+      "symbol": "tailLabel",
+      "reason": "test-only",
+      "evidence": "tools/selftest-state.js:323",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "shared/format.js",
+      "symbol": "truncate",
+      "reason": "test-only",
+      "evidence": "tools/selftest-state.js:327",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "shared/order-state.js",
+      "symbol": "canTransition",
+      "reason": "test-only",
+      "evidence": "tools/selftest-core.js:76",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "shared/order-view.js",
+      "symbol": "PICKUP_TIERS",
+      "reason": "test-only",
+      "evidence": "tools/selftest-state.js:273",
+      "note": "仅测试引用（生产端唯一消费是 orderView.bucketOf；本排序/文案簇已被 workbench group-view.sortForRoute 取代，TD-082 待收敛）"
+    },
+    {
+      "file": "shared/order-view.js",
+      "symbol": "pickupTierText",
+      "reason": "test-only",
+      "evidence": "tools/selftest-state.js:282",
+      "note": "仅测试引用（生产端唯一消费是 orderView.bucketOf；本排序/文案簇已被 workbench group-view.sortForRoute 取代，TD-082 待收敛）"
+    },
+    {
+      "file": "shared/order-view.js",
+      "symbol": "sortByFinishedDesc",
+      "reason": "test-only",
+      "evidence": "tools/selftest-state.js:305",
+      "note": "仅测试引用（生产端唯一消费是 orderView.bucketOf；本排序/文案簇已被 workbench group-view.sortForRoute 取代，TD-082 待收敛）"
+    },
+    {
+      "file": "shared/order-view.js",
+      "symbol": "sortByPickupRoute",
+      "reason": "test-only",
+      "evidence": "tools/selftest-state.js:293",
+      "note": "仅测试引用（生产端唯一消费是 orderView.bucketOf；本排序/文案簇已被 workbench group-view.sortForRoute 取代，TD-082 待收敛）"
+    },
+    {
+      "file": "shared/order-view.js",
+      "symbol": "sortByStatusUpdatedDesc",
+      "reason": "test-only",
+      "evidence": "tools/selftest-state.js:300",
+      "note": "仅测试引用（生产端唯一消费是 orderView.bucketOf；本排序/文案簇已被 workbench group-view.sortForRoute 取代，TD-082 待收敛）"
+    },
+    {
+      "file": "shared/stations.js",
+      "symbol": "DEFAULT_STATIONS",
+      "reason": "history",
+      "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
+      "note": "历史死导出：本批未列入删除清单，待后续批清理（清理后移除本项，判据会自动作废）"
+    },
+    {
+      "file": "store/index.js",
+      "symbol": "isCustomerActiveRole",
+      "reason": "history",
+      "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
+      "note": "历史死导出（S0 Lead 域）：批 16 死代码专项只清任务卡清单内的符号，本项未动、待该域收口时删除"
+    },
+    {
+      "file": "store/index.js",
+      "symbol": "isPartnerActiveRole",
+      "reason": "history",
+      "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
+      "note": "历史死导出（S0 Lead 域）：批 16 死代码专项只清任务卡清单内的符号，本项未动、待该域收口时删除"
+    },
+    {
+      "file": "utils/avatar.js",
+      "symbol": "SIZE_RPX",
+      "reason": "history",
+      "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
+      "note": "历史死导出（S6 头像域（批 16 未排期））：批 16 死代码专项只清任务卡清单内的符号，本项未动、待该域收口时删除"
+    },
+    {
+      "file": "utils/ids.js",
+      "symbol": "displayInvitationCode",
+      "reason": "test-only",
+      "evidence": "tools/selftest-state.js:425",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "utils/ids.js",
+      "symbol": "isCustomerNo",
+      "reason": "test-only",
+      "evidence": "tools/selftest-core.js:44",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "utils/ids.js",
+      "symbol": "isDeveloperNo",
+      "reason": "test-only",
+      "evidence": "tools/selftest-state.js:427",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "utils/ocr/frame.js",
+      "symbol": "bandRanges",
+      "reason": "test-only",
+      "evidence": "tools/selftest-recognize.js:454",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "utils/ocr/frame.js",
+      "symbol": "isUsableFrame",
+      "reason": "test-only",
+      "evidence": "tools/selftest-recognize.js:446",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "utils/ocr/index.js",
+      "symbol": "FAILURE_CODES",
+      "reason": "test-only",
+      "evidence": "tools/selftest-recognize.js:551",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "utils/privacy-policy.js",
+      "symbol": "isConsentValid",
+      "reason": "test-only",
+      "evidence": "tools/selftest-profile.js:307",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "utils/privacy-policy.js",
+      "symbol": "needsConsent",
+      "reason": "test-only",
+      "evidence": "tools/selftest-profile.js:307",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "utils/privacy-policy.js",
+      "symbol": "scopeMatrix",
+      "reason": "test-only",
+      "evidence": "tools/selftest-profile.js:311",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "utils/recognize/codes.js",
+      "symbol": "isAutoFillCode",
+      "reason": "test-only",
+      "evidence": "tools/selftest-recognize.js:204",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "utils/recognize/codes.js",
+      "symbol": "pickCodes",
+      "reason": "test-only",
+      "evidence": "tools/selftest-recognize.js:181",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "utils/recognize/station.js",
+      "symbol": "ALIASES",
+      "reason": "test-only",
+      "evidence": "tools/selftest-recognize.js:105",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "utils/recognize/station.js",
+      "symbol": "stationIdOfName",
+      "reason": "test-only",
+      "evidence": "tools/selftest-recognize.js:113",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "utils/recognize/text.js",
+      "symbol": "dedupeLines",
+      "reason": "test-only",
+      "evidence": "tools/selftest-recognize.js:59",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "utils/room-tag.js",
+      "symbol": "compareByDormTag",
+      "reason": "test-only",
+      "evidence": "tools/selftest-core.js:67",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "utils/storage.js",
+      "symbol": "clearAll",
+      "reason": "test-only",
+      "evidence": "tools/selftest-profile.js:199",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "utils/storage.js",
+      "symbol": "clearPickupChecks",
+      "reason": "test-only",
+      "evidence": "tools/selftest-profile.js:196",
+      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    }
+  ],
+  "pageDeadFunctions": []
+}

@@ -64,10 +64,6 @@ function canonicalRoom(value) {
   return digits;
 }
 
-function isRoom(value) {
-  return canonicalRoom(value) !== '';
-}
-
 function buildingText(zone, buildingNo) {
   const code = normalizeZone(zone);
   if (!code || !isBuildingNo(buildingNo)) {
@@ -131,7 +127,6 @@ module.exports = {
   zoneLabel,
   isBuildingNo,
   canonicalRoom,
-  isRoom,
   buildingText,
   dormKey,
   parseDormKey,

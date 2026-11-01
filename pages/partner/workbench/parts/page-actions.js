@@ -309,6 +309,35 @@ module.exports = {
     wx.navigateTo({ url: CREATE_ON_BEHALF_PAGE });
   },
 
+  // P0-2/TD-073：历史摘要（已完结折叠入口文案）按调用计划去重——同筛选/同 counts 版本/无脏/无在途
+  // 一律 0 次 request；显式刷新（下拉/刷新/重试）由页面置 _historyDirty 后才重拉。请求在途时合并。
+  loadHistorySummary() {
+    const filter = this.data.filter;
+    const countsVersion = historyView.countsFingerprintOf(this.data.counts);
+    const plan = historyView.summaryCallPlan({
+      pending: this._historyPending === true,
+      dirty: this._historyDirty === true,
+      hasSummary: this._historyFilter !== undefined,
+      filter: filter,
+      lastFilter: this._historyFilter,
+      countsVersion: countsVersion,
+      lastCountsVersion: this._historyCountsVersion
+    });
+    if (!plan.call) {
+      return Promise.resolve();
+    }
+    this._historyDirty = false;
+    this._historyPending = true;
+    return orderApi.listPartner(historyView.summaryQuery(Date.now())).then((data) => {
+      this._historyPending = false;
+      this._historyFilter = filter;
+      this._historyCountsVersion = countsVersion;
+      this.setData({ 'completed.text': historyView.collapsedState(data).text });
+    }).catch(() => {
+      this._historyPending = false;
+    });
+  },
+
   onCompletedToggle() {
     const current = this.data.completed;
     if (current.loading) {

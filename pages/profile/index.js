@@ -13,6 +13,7 @@ const storage = require('../../utils/storage');
 const enums = require('../../shared/enums');
 const vm = require('./parts/view-model');
 const ui = require('./parts/ui');
+const renderPlan = require('./parts/render-plan');
 const shareCard = require('./parts/share-card');
 const saveFlow = require('./parts/save-flow');
 const avatarRefresh = require('./parts/avatar-refresh');
@@ -76,6 +77,7 @@ Page({
   },
 
   onShow() {
+    this._hidden = false;
     if (!this.guard()) {
       return;
     }
@@ -89,7 +91,13 @@ Page({
     inviteFlow.prompt(this);
   },
 
+  // P0-4：隐藏页挂起订阅刷新（隐藏期间 store 通知不再全量 setData，onShow 再补刷）。
+  onHide() {
+    this._hidden = true;
+  },
+
   onUnload() {
+    this._hidden = true;
     if (this.unsubscribe) {
       this.unsubscribe();
       this.unsubscribe = null;
@@ -116,19 +124,29 @@ Page({
     return true;
   },
 
+  // 订阅回调 / onShow / 保存后共用的渲染入口（P0-4）：隐藏挂起（onShow 再补）、视图模型无变化零 setData。
+  // 取值入口 build 由本页注入：隐藏时纯件不调用 → buildVm/modeGuard/readVersion 同步 API 全不跑。
   refresh() {
-    const snap = store.snapshot();
-    const built = vm.buildVm(snap);
-    const readonly = modeGuard.isReadonly();
-    const canEdit = modeGuard.canRenderWriteButton();
-    this.setData(Object.assign({}, built, {
-      loading: false,
-      readonly: readonly,
-      canEdit: canEdit,
-      editMode: this.data.editMode && canEdit,
-      showSwitchRole: built.roles.length > 1 && !built.viewSession && canEdit && !built.closed,
-      version: ui.readVersion()
-    }));
+    const plan = renderPlan.refreshPlanOf({
+      hidden: this._hidden === true,
+      lastKey: this._vmKey,
+      editMode: this.data.editMode === true,
+      build: () => {
+        const snap = store.snapshot();
+        return {
+          vm: vm.buildVm(snap),
+          readonly: modeGuard.isReadonly(),
+          canEdit: modeGuard.canRenderWriteButton(),
+          version: ui.readVersion()
+        };
+      }
+    });
+    if (!plan.apply) {
+      return false;
+    }
+    this._vmKey = plan.key;
+    this.setData(plan.patch);
+    return true;
   },
 
   // 头像/昵称 onShow 重取（UX_CUSTOMER §3.5 头像缓存口径）；D42 临时 URL 取数与重签全部在 parts/avatar-refresh.js。

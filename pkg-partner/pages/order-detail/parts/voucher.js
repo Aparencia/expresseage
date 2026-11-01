@@ -6,6 +6,7 @@
 const orderState = require('../../../../shared/order-state');
 const enums = require('../../../../shared/enums');
 const format = require('../../../../shared/format');
+const orderView = require('./order-view');
 
 const STATUS = orderState.STATUS;
 const CONFIRM_EVENT_TYPE = STATUS.COMPLETED;
@@ -84,7 +85,7 @@ function buildVoucher(order, events) {
   const rows = [
     { label: '订单号', value: textOf(item.orderNo) || COPY.empty },
     { label: '站点', value: textOf(item.parcel && item.parcel.stationName) || COPY.empty },
-    { label: '服务类型', value: textOf(item.service && item.service.name) || COPY.empty },
+    { label: '服务类型', value: orderView.serviceNameOfOrder(item) || COPY.empty },
     { label: '接单时间', value: item.acceptedAt ? dateTimeText(item.acceptedAt) : COPY.empty },
     { label: '取件时间', value: item.pickedAt ? dateTimeText(item.pickedAt) : COPY.empty },
     { label: '送达时间', value: item.deliveredAt ? dateTimeText(item.deliveredAt) : COPY.empty },
@@ -97,7 +98,7 @@ function buildVoucher(order, events) {
     footer: COPY.footer,
     orderNo: textOf(item.orderNo),
     stationName: textOf(item.parcel && item.parcel.stationName),
-    serviceName: textOf(item.service && item.service.name),
+    serviceName: orderView.serviceNameOfOrder(item),
     acceptedAtText: item.acceptedAt ? dateTimeText(item.acceptedAt) : '',
     pickedAtText: item.pickedAt ? dateTimeText(item.pickedAt) : '',
     deliveredAtText: item.deliveredAt ? dateTimeText(item.deliveredAt) : '',

@@ -6,13 +6,6 @@ const stations = require('../shared/stations');
 const PICKUP_CODE_MAX = validate.PICKUP_CODE_MAX_RAW;
 const LOCKER_NO_MAX = validate.TEXT_LIMITS.lockerNo;
 const TRACKING_TAIL_LENGTH = 5;
-const FIELD_LABEL = {
-  stationId: '站点',
-  stationName: '站点',
-  pickupCode: '取件码',
-  lockerNo: '柜号',
-  trackingTail: '运单尾号'
-};
 const FIELD_MESSAGE = {
   pickupCode: {
     TOO_LONG: '取件码最多 40 个字符',
@@ -111,32 +104,9 @@ function validatePatch(patch, options) {
   return { ok: true, field: '', message: '', patch: normalized };
 }
 
-function buildPatch(form, options) {
-  const opts = options || {};
-  const patch = normalizePatch(form);
-  if (!opts.keepStation) {
-    delete patch.stationId;
-    delete patch.stationName;
-  }
-  return patch;
-}
-
-function codeStatusOf(patch) {
-  const next = normalizePatch(patch);
-  return textOf(next.pickupCode) ? 'OK' : 'NEED_CODE';
-}
-
-function fieldLabel(field) {
-  return FIELD_LABEL[field] || field;
-}
-
 module.exports = {
   PICKUP_CODE_MAX,
   LOCKER_NO_MAX,
   TRACKING_TAIL_LENGTH,
-  normalizePatch,
-  validatePatch,
-  buildPatch,
-  codeStatusOf,
-  fieldLabel
+  validatePatch
 };

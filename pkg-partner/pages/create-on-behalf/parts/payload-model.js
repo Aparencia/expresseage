@@ -1,8 +1,8 @@
 // pkg-partner/pages/create-on-behalf/parts/payload-model.js · 代客下单请求体纯件（零 wx、零请求）
-// 口径：docs/contract/V4_CONTRACT.md §4/§5.2/§5.3 v1.0（D23/D24/D25）：order.create 单入口
-//       {parcels[1~10], images[0~5], tickets?[], serviceCode, appoint, note, manualEntry, guest?/bindingId?, delivery?}
-//       createBatch 已移除（一图多码 = 同一订单多包裹）。
-// 边界：只做请求体/幂等键签名装配；校验在 form-model.validate（调用方唯一入口）。
+// 口径：docs/contract/V4_CONTRACT.md §4/§5.2/§5.3 v1.0（D23/D24/D25）与 D44：order.create 单入口
+//       {parcels[1~10], images[0~10], tickets?[], serviceCode, appoint, note, manualEntry, guest?/bindingId?, delivery?}
+//       createBatch 已移除（一图多码 = 同一订单多包裹）；每件包裹各自输出 stationId/stationName（D44）。
+// 边界：只做请求体/幂等键签名装配；校验在 form-model.validateDetailed（调用方唯一入口）。
 'use strict';
 
 const formModel = require('./form-model');
@@ -25,14 +25,21 @@ function appointOf(state) {
   return appoint;
 }
 
-// 截图是 0~1 张（代客单每单一张）；v1.0 顶层改 images[] + tickets[]，无截图 = 空数组 + manualEntry
-function imageOf(state) {
-  const ticket = textOf(state.imageTicketId);
-  const fileId = textOf(state.imageFileId);
-  if (!ticket || !fileId) {
-    return null;
-  }
-  return { image: { fileId: fileId }, ticket: ticket };
+// 截图 0~10 张（D40/D44）：顶层 images[] + tickets[] 同序一一对应；无截图 = 空数组 + manualEntry=true
+function imagesOf(state) {
+  const source = state || {};
+  const images = [];
+  const tickets = [];
+  listOf(source.files).forEach(function each(file) {
+    const fileId = textOf(file && file.fileId);
+    const ticket = textOf(file && file.uploadTicketId);
+    if (!fileId || !ticket || images.length >= formModel.IMAGE_MAX) {
+      return;
+    }
+    images.push({ fileId: fileId });
+    tickets.push(ticket);
+  });
+  return { images: images, tickets: tickets };
 }
 
 // D25：代客单本单配送地址 = guest 快照（收件人=代客称呼）；已绑定路径不传，服务端按下单人宿舍默认
@@ -54,28 +61,37 @@ function deliveryOf(state) {
   };
 }
 
-function parcelPayloadOf(item, state) {
-  const parcel = item || formModel.emptyParcel();
-  const station = formModel.currentStation(state);
-  return {
+// D44：每件输出自己的站点（不再把页面级单值复制给所有件）；imageIndex 只在该件确实来自某张图时带上
+function parcelPayloadOf(item, index, imageCount) {
+  const parcel = item || formModel.emptyParcel(1);
+  const row = {
     pickupCode: textOf(parcel.pickupCode),
     lockerNo: textOf(parcel.lockerNo),
     trackingTail: textOf(parcel.trackingTail),
-    stationId: textOf(station && station.id),
-    stationName: station && station.id ? textOf(station.name) : ''
+    stationId: textOf(parcel.stationId),
+    stationName: textOf(parcel.stationName) || formModel.stationNameOfItem(parcel)
   };
+  const imageIndex = Number(parcel.imageIndex);
+  if (Number.isInteger(imageIndex) && imageIndex >= 0 && imageIndex < imageCount) {
+    row.imageIndex = imageIndex;
+  }
+  const failureId = textOf(parcel.failureId);
+  if (failureId) {
+    row.failureId = failureId;
+  }
+  return row;
 }
 
 // 请求体：v1.0 单入口 order.create（parcels 多件；无截图 manualEntry=true；代客单带 guest+delivery）
 function buildPayload(state) {
   const source = state || {};
-  const message = formModel.validate(source);
-  if (message) {
-    return { ok: false, batch: false, data: null, message: message };
+  const detailed = formModel.validateDetailed(source);
+  if (detailed.message) {
+    return { ok: false, batch: false, data: null, message: detailed.message, step: detailed.step };
   }
   const items = listOf(source.items);
   const service = formModel.currentService(source);
-  const image = imageOf(source);
+  const imageParts = imagesOf(source);
   const guest = source.customerMode === 'GUEST' ? {
     displayName: textOf(source.guest.displayName),
     phoneTail: textOf(source.guest.phoneTail),
@@ -85,24 +101,19 @@ function buildPayload(state) {
     dormKey: formModel.guestDormKey(source.guest)
   } : null;
   const binding = source.customerMode === 'BOUND' ? formModel.currentBinding(source) : null;
-  const failureId = textOf(source.recognitionFailureId);
-  const parcels = items.map((item, index) => {
-    const row = parcelPayloadOf(item, source);
-    if (failureId && index === 0) {
-      row.failureId = failureId;
-    }
-    return row;
+  const parcels = items.map(function each(item, index) {
+    return parcelPayloadOf(item, index, imageParts.images.length);
   });
   const data = {
     parcels: parcels,
     serviceCode: service.code,
     appoint: appointOf(source),
     note: textOf(source.note),
-    manualEntry: !image
+    manualEntry: imageParts.images.length === 0
   };
-  if (image) {
-    data.images = [image.image];
-    data.tickets = [image.ticket];
+  if (imageParts.images.length > 0) {
+    data.images = imageParts.images;
+    data.tickets = imageParts.tickets;
   }
   if (binding) {
     data.bindingId = binding.bindingId;
@@ -111,7 +122,7 @@ function buildPayload(state) {
     data.guest = guest;
     data.delivery = deliveryOf(source);
   }
-  return { ok: true, batch: false, data: data, message: '' };
+  return { ok: true, batch: false, data: data, message: '', step: 0 };
 }
 
 // 提交内容签名：内容变化 → 更换幂等键（避免旧键复用导致"提交成功却报重复"）
@@ -119,6 +130,7 @@ function contentSignature(state) {
   const source = state || {};
   const binding = source.customerMode === 'BOUND' ? formModel.currentBinding(source) : null;
   const guest = source.customerMode === 'GUEST' ? (source.guest || {}) : null;
+  const imageParts = imagesOf(source);
   return JSON.stringify({
     mode: source.customerMode,
     bindingId: binding ? binding.bindingId : '',
@@ -130,14 +142,17 @@ function contentSignature(state) {
       room: textOf(guest.room)
     } : null,
     service: (formModel.currentService(source) || {}).code || '',
-    station: (formModel.currentStation(source) || {}).id || '',
     appoint: formModel.currentAppoint(source).key || '',
-    parcels: listOf(source.items).map((item) => [
-      textOf(item && item.pickupCode), textOf(item && item.lockerNo), textOf(item && item.trackingTail)
-    ]),
+    parcels: listOf(source.items).map(function map(item) {
+      return [
+        textOf(item && item.stationId),
+        textOf(item && item.pickupCode),
+        textOf(item && item.lockerNo),
+        textOf(item && item.trackingTail)
+      ];
+    }),
+    images: imageParts.images.map(function map(image) { return image.fileId; }),
     note: textOf(source.note),
-    ticket: textOf(source.imageTicketId),
-    image: textOf(source.imageFileId),
     recognition: textOf(source.recognitionFailureId)
   });
 }
@@ -146,6 +161,6 @@ module.exports = {
   buildPayload,
   contentSignature,
   deliveryOf,
-  imageOf,
+  imagesOf,
   parcelPayloadOf
 };

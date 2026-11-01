@@ -1,9 +1,10 @@
 // pkg-partner/pages/create-on-behalf/index.js · 代客下单（两条顾客路径：已绑定 bindingId / 新顾客 guest；均不写 bindings）
-// 口径：docs/ux/V4_UX_PARTNER.md §3.4；docs/data/V4_DATA_MODEL.md §7.5 批 7（bindingId 与 guest 二选一）
+// 口径：docs/ux/V4_UX_PARTNER.md §3.4；docs/data/V4_DATA_MODEL.md §7.5 批 7（bindingId 与 guest 二选一）；
+//       CONTRACT D44：逐件站点（默认继承首件、可逐件改、逐件必填）、截图 0~10 张、选图自动识别预填。
+// 页面只做接线：校验/预填/请求体/视图快照全在 parts/（form-model / recognize-model / payload-model / view-model）。
 const orderApi = require('../../../api/modules/order');
 const partnerApi = require('../../../api/modules/partner');
 const configApi = require('../../../api/modules/config');
-const aiApi = require('../../../api/modules/ai');
 const client = require('../../../api/client');
 const store = require('../../../store/index');
 const modeGuard = require('../../../api/mode-guard');
@@ -11,16 +12,15 @@ const formModel = require('./parts/form-model');
 const payloadModel = require('./parts/payload-model');
 const presetModel = require('./parts/preset-model');
 const resultModel = require('./parts/result-model');
+const viewModel = require('./parts/view-model');
+const recognizeModel = require('./parts/recognize-model');
+const recognizeFlow = require('./parts/recognize-flow');
 const share = require('../../../utils/share/handlers');
 
 const BINDING_OPTIONS_LIMIT = 50;
 
 function textOf(value) {
   return typeof value === 'string' ? value.trim() : '';
-}
-
-function clone(value) {
-  return value === undefined ? value : JSON.parse(JSON.stringify(value));
 }
 
 // 服务端时间基准：store.serverTimeSkew = 本机时刻 - 服务端时刻（api/client 校时后写入）
@@ -32,6 +32,12 @@ function serverNowMs() {
 Page({
   data: {
     step: 1,
+    errorText: '',
+    readonly: false,
+    submitting: false,
+    recognizing: false,
+    recognizeText: '',
+    result: null,
     customerMode: 'GUEST',
     modes: [],
     bindingOptions: [],
@@ -44,13 +50,13 @@ Page({
     services: [],
     serviceIndex: 0,
     serviceName: '',
+    serviceDesc: '',
     servicesEmpty: true,
     stationOptions: [],
-    stationIndex: 0,
-    stationName: '',
     items: [],
     itemsCount: 0,
     canAddItem: true,
+    stationLines: [],
     appointOptions: [],
     appointIndex: 0,
     appointLabel: '',
@@ -61,17 +67,14 @@ Page({
     lockerNoMax: formModel.LOCKER_NO_MAX,
     tailLength: formModel.TRACKING_TAIL_LENGTH,
     displayNameMax: formModel.DISPLAY_NAME_MAX,
-    imageFileId: '',
-    imageTicketId: '',
+    batchMax: formModel.BATCH_MAX,
+    files: [],
+    imageCount: 0,
+    imageMax: formModel.IMAGE_MAX,
     noImage: true,
     reviewText: '',
-    recognizing: false,
-    presetMiss: false,
-    submitting: false,
-    readonly: false,
-    errorText: '',
     customerSummary: '',
-    result: null
+    presetMiss: false
   },
 
   onLoad(options) {
@@ -79,6 +82,8 @@ Page({
     this.result = null;
     this.requestKey = { clientRequestId: '', signature: '' };
     this.step = 1;
+    this.recognizeToken = 0;
+    this.recognized = {};
     this.setData({ readonly: !modeGuard.canRenderWriteButton() });
     this.loadBase((options && options.bindingId) || '');
   },
@@ -108,52 +113,20 @@ Page({
       });
   },
 
+  // 视图快照单源在 parts/view-model（页面不堆字段拼装；行数/函数行数闸）
   render() {
-    const state = this.state;
-    if (!state) {
+    if (!this.state) {
       return;
     }
-    const binding = formModel.currentBinding(state);
-    const service = formModel.currentService(state);
-    const station = formModel.currentStation(state);
-    const appoint = formModel.currentAppoint(state);
-    const guest = state.guest || {};
-    const guestName = textOf(guest.displayName) || '未填称呼';
-    this.setData({
+    this.setData(viewModel.build(this.state, {
       step: this.step,
-      customerMode: state.customerMode,
-      modes: formModel.CUSTOMER_MODES.map((key) => ({ key: key, label: formModel.MODE_LABEL[key] })),
-      bindingOptions: state.bindingOptions,
-      bindingIndex: state.bindingIndex,
-      bindingLabel: binding ? binding.label : '',
-      bindingSub: binding ? binding.sub : '',
-      guest: state.guest,
-      guestDormKeyText: formModel.guestDormKey(guest),
-      zones: state.zones,
-      services: state.services,
-      servicesEmpty: state.services.length === 0,
-      serviceIndex: state.serviceIndex,
-      serviceName: service ? service.name : '',
-      stationOptions: state.stationOptions,
-      stationIndex: state.stationIndex,
-      stationName: station ? station.name : '',
-      items: state.items,
-      itemsCount: state.items.length,
-      canAddItem: state.items.length < formModel.BATCH_MAX,
-      appointOptions: state.appointOptions,
-      appointIndex: state.appointIndex,
-      appointLabel: appoint.label || '',
-      appointNotice: state.appointNotice || '',
-      note: state.note,
-      imageFileId: state.imageFileId,
-      imageTicketId: state.imageTicketId,
-      noImage: !state.imageFileId,
-      reviewText: state.reviewText || '',
-      presetMiss: state.presetMiss === true,
-      customerSummary: state.customerMode === 'BOUND' ? '已绑定：' + (binding ? binding.label : '未选择')
-        : '新顾客（代客单）：' + guestName + (textOf(guest.phoneTail) ? ' · 尾号' + textOf(guest.phoneTail) : ''),
+      readonly: this.data.readonly,
+      submitting: this.data.submitting,
+      errorText: this.data.errorText,
+      recognizing: this.data.recognizing,
+      recognizeText: this.data.recognizeText,
       result: this.result
-    });
+    }));
   },
 
   update(patch) {
@@ -170,7 +143,7 @@ Page({
   },
 
   onModeTap(event) {
-    if (this.data.readonly) {
+    if (this.data.readonly || !this.state) {
       return;
     }
     const mode = event.currentTarget.dataset.mode === 'BOUND' ? 'BOUND' : 'GUEST';
@@ -185,7 +158,7 @@ Page({
   },
 
   onGuestInput(event) {
-    if (this.data.readonly) {
+    if (this.data.readonly || !this.state) {
       return;
     }
     const field = event.currentTarget.dataset.field;
@@ -195,7 +168,7 @@ Page({
   },
 
   onZoneTap(event) {
-    if (this.data.readonly) {
+    if (this.data.readonly || !this.state) {
       return;
     }
     const guest = Object.assign({}, this.state.guest);
@@ -204,12 +177,12 @@ Page({
   },
 
   onItemInput(event) {
-    if (this.data.readonly) {
+    if (this.data.readonly || !this.state) {
       return;
     }
     const index = Number(event.currentTarget.dataset.index);
     const field = event.currentTarget.dataset.field;
-    const items = clone(this.state.items);
+    const items = this.state.items.map((item) => Object.assign({}, item));
     if (!items[index]) {
       return;
     }
@@ -217,29 +190,34 @@ Page({
     this.update({ items: items, result: null });
   },
 
-  onAddItem() {
-    if (this.data.readonly || this.state.items.length >= formModel.BATCH_MAX) {
+  // D44：每件独立站点；data-index 逐件写（旧实现页面级单值复制给所有件）
+  onItemStationChange(event) {
+    if (this.data.readonly || !this.state) {
       return;
     }
-    this.update({ items: clone(this.state.items).concat([formModel.emptyParcel()]) });
+    this.update(formModel.applyItemStation(
+      this.state,
+      Number(event.currentTarget.dataset.index),
+      Number(event.detail.value)
+    ));
+  },
+
+  onAddItem() {
+    if (this.data.readonly || !this.state || this.state.items.length >= formModel.BATCH_MAX) {
+      return;
+    }
+    this.update(formModel.appendParcel(this.state));
   },
 
   onRemoveItem(event) {
-    if (this.data.readonly || this.state.items.length <= 1) {
+    if (this.data.readonly || !this.state) {
       return;
     }
-    const index = Number(event.currentTarget.dataset.index);
-    const items = clone(this.state.items);
-    items.splice(index, 1);
-    this.update({ items: items });
+    this.update(formModel.removeParcel(this.state, Number(event.currentTarget.dataset.index)));
   },
 
   onServiceChange(event) {
     this.update({ serviceIndex: Number(event.detail.value) });
-  },
-
-  onStationChange(event) {
-    this.update({ stationIndex: Number(event.detail.value) });
   },
 
   onAppointChange(event) {
@@ -251,18 +229,20 @@ Page({
     this.update({ note: raw.slice(0, formModel.NOTE_MAX) });
   },
 
+  // D44：多图（0~10）上传完成 → 对新增图自动识别预填；识别失败/取消都不阻塞手填与提交
   onImageChange(event) {
-    const files = (event.detail && event.detail.files) || [];
-    if (!files.length) {
+    if (!this.state) {
       return;
     }
-    const uploaded = files[0] || {};
-    this.update({
-      imageFileId: uploaded.fileId || '',
-      imageTicketId: uploaded.uploadTicketId || '',
-      reviewText: '',
-      recognitionFailureId: ''
-    });
+    const files = (event.detail && event.detail.files) || [];
+    this.update({ files: files, result: null });
+    if (this.data.readonly) {
+      return;
+    }
+    const pending = files.filter((file) => file && file.fileId && file.uploadTicketId && !this.recognized[file.fileId]);
+    if (pending.length > 0) {
+      this.runRecognize(pending);
+    }
   },
 
   onImageError(event) {
@@ -270,38 +250,76 @@ Page({
     this.setData({ errorText: detail.message || '截图上传失败，请重试或手填' });
   },
 
-  // 识别失败兜底（D23/C2 口径：NO_TEXT 时服务端不外呼但必须入复核队列并给手填引导；无截图单不进识别链路）
-  onRecognizeTap() {
-    if (this.data.readonly) {
-      wx.showToast({ title: '开发者只读视角不能操作', icon: 'none' });
+  // 识别编排在 parts/recognize-flow：OCR 降采样 + 逐图 aiApi.parseParcel 兜底；进度与取消只动 UI 状态
+  runRecognize(files) {
+    if (this.data.readonly || this.data.recognizing || !this.state) {
       return;
     }
-    if (this.data.recognizing) {
+    const list = (files || []).filter((file) => file && (file.localPath || file.path) && file.uploadTicketId);
+    if (!list.length) {
+      wx.showToast({ title: '先选一张取件截图，或直接手填', icon: 'none' });
       return;
     }
-    if (!this.state.imageTicketId) {
-      wx.showToast({ title: '先选一张取件截图，或直接手填（无截图·手填）', icon: 'none' });
-      return;
-    }
-    this.setData({ recognizing: true, errorText: '' });
-    aiApi.parseParcel({
-      ocrTextMasked: '',
-      hintTrackingTail: textOf(this.state.items[0] && this.state.items[0].trackingTail) || undefined,
-      uploadTicketId: this.state.imageTicketId,
-      role: 'PARTNER'
-    })
-      .then((result) => {
-        this.update(formModel.applyRecognition(this.state, result || {}));
-        this.setData({ recognizing: false });
+    const token = this.recognizeToken + 1;
+    this.recognizeToken = token;
+    const config = configApi.getCachedPublic() || store.get('config') || {};
+    this.setData({
+      recognizing: true,
+      recognizeText: recognizeModel.progressTextOf({ index: 1, total: list.length }),
+      errorText: ''
+    });
+    recognizeFlow.identifyFiles(list, {
+      stations: config.stations,
+      onProgress: (progress) => {
+        if (this.recognizeToken !== token) return;
+        this.setData({ recognizeText: recognizeModel.progressTextOf(progress) });
+      },
+      isCancelled: () => this.recognizeToken !== token
+    }).then((result) => this.onRecognizeDone(result, list, token))
+      .catch(() => this.onRecognizeFail(token));
+  },
+
+  // 识别完成：合并预填（只填空白、手填优先）；识别期间新加的图继续识别，不丢不阻塞
+  onRecognizeDone(result, list, token) {
+    if (this.recognizeToken !== token) return;
+    this.setData({ recognizing: false, recognizeText: '' });
+    if (!result || result.cancelled) return;
+    list.forEach((file) => { this.recognized[file.fileId] = true; });
+    const merged = recognizeModel.mergeRecognizedItems(this.state, result.items || []);
+    const first = (result.items || [])[0] || {};
+    this.update({
+      items: merged.items,
+      parcelSeq: merged.parcelSeq,
+      reviewText: recognizeModel.recognitionTextOf({
+        filled: merged.filled,
+        failed: result.failed,
+        lowSuggestions: result.low,
+        failureId: first.failureId || ''
       })
-      .catch((err) => {
-        this.setData({ recognizing: false });
-        this.update({ reviewText: '识别没完成，可以直接手填；提交后也可在订单详情里补码' });
-        if (err && err.code === 'VIEW_TICKET_EXPIRED') {
-          store.clearViewContext();
-          wx.reLaunch({ url: '/pkg-admin/pages/account-switch/index' });
-        }
-      });
+    });
+    const pending = (this.state.files || []).filter((file) => file && file.fileId && !this.recognized[file.fileId]);
+    if (pending.length > 0) {
+      this.runRecognize(pending);
+    }
+  },
+
+  onRecognizeFail(token) {
+    if (this.recognizeToken !== token) return;
+    this.setData({ recognizing: false, recognizeText: '' });
+    this.update({ reviewText: recognizeModel.EMPTY_TEXT });
+  },
+
+  onRecognizeTap() {
+    this.runRecognize(this.state ? this.state.files : []);
+  },
+
+  // 取消识别：token 前进 → 后续 OCR/AI 结果丢弃，页面立即可继续手填
+  onCancelRecognize() {
+    this.recognizeToken += 1;
+    this.setData({ recognizing: false, recognizeText: '' });
+    if (this.state) {
+      this.update({ reviewText: recognizeModel.CANCEL_TEXT });
+    }
   },
 
   onSubmit() {
@@ -309,12 +327,15 @@ Page({
       wx.showToast({ title: '开发者只读视角不能操作', icon: 'none' });
       return;
     }
-    if (this.data.submitting) {
+    if (this.data.submitting || !this.state) {
       return;
     }
     const built = payloadModel.buildPayload(this.state);
     if (!built.ok) {
-      this.setData({ errorText: built.message, step: 1 });
+      // D44：本地校验失败回到正确步骤（顾客问题回第 1 步、件/站点/截图回第 2 步、服务/备注回第 3 步）
+      this.step = built.step || 1;
+      this.setData({ errorText: built.message });
+      this.render();
       return;
     }
     const signature = payloadModel.contentSignature(this.state);

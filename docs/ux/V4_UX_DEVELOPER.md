@@ -586,7 +586,7 @@ USED / REVOKED / EXPIRED = 终态；不存在「重新生效」，需要时重�
 | 苑名 | `zoneLabels` | D/X/N/B/C 五个；默认东苑/西苑/南苑/北苑/翠苑（D8 已裁决，可改） | 下一请求 |
 | 站点名称（v1.1/D32） | `stations[{id,name}]` | 固定 8 个 id（P1~P8）；名称非空、1~20 字、唯一；默认取 `shared/stations.js`；保存整表校验（缺/多/重复 id 拒绝） | 下一请求（识别/选择器/AI prompt 用新名） |
 | 公告 | `announcement{enabled,title,text}` | 标题 ≤30、正文 ≤500（设计上限，DATA_MODEL 定稿） | 端侧 `onShow`/60 秒内 |
-| 超时 / 自动完成 | `orderTimeoutMinutes`/`autoCompleteHours` | 默认 120 分钟 / 24 小时；整数正数（建议 10~1440 / 1~168） | 新判定 |
+| 超时 / 自动完成（D43） | `orderTimeoutMinutes`/`autoCompleteAt` | 接单超时默认 120 分钟（整数 10~1440）；自动完成时间为 **UTC+8 的 `HH:MM`（默认 `23:50`，日结批 cutoff）**；旧的「小时数」键作废；非法时刻（`24:00`/`7:5`/空串）保存时被拦并提示格式 | 新判定（下一轮 cleanup） |
 | 截图留存 | `screenshotRetentionDays` | 默认 7；**上限 7**（不高于隐私承诺 §11.1/D9） | cleanup 下一轮 |
 | 切换会话时长 | `viewTicketTtlMinutes` | 默认 30；5~60（真实/测试共用，§1.2/§1.3） | 新开会话 |
 | 头像大小上限 | `avatarMaxBytes` | 默认 200KB；**≤200KB**（客户/兼职头像上传；后台不展示头像） | 新上传 |

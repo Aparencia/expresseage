@@ -321,6 +321,20 @@ function applyAdminMask(dto, counterpart) {
     : null;
 }
 
+// D41（2026-10-28 用户拍板）：服务目录固定 5 类，原 PICKUP_DOOR（送寝上门）停用、不可新启用，
+// 仅历史订单保留订单快照名。历史单只补「已停用」标记（响应只增不减、快照名不改，客户端按
+// shared/enums.LEGACY_SERVICE_NAME 渲染「送寝上门（已停用）」）；现行 5 类恒 false。
+// 标记嵌在既有 service 键内 → 行 DTO 顶层键白名单不变。
+function buildServiceDto(service) {
+  const input = service && typeof service === 'object' ? service : {};
+  const code = textOf(input.code);
+  return {
+    code: code,
+    name: textOf(input.name),
+    deprecated: code !== '' && enums.SERVICE_CODES.indexOf(code) < 0
+  };
+}
+
 // 订单视图字段装配（buildOrderDto 的主体；拆出以控单函数行数，参数 parts 见调用处）
 function buildOrderFields(order, parts) {
   const side = parts.side;
@@ -336,7 +350,7 @@ function buildOrderFields(order, parts) {
     needCode: needCodeOf(order),
     failureHint: failureHintOf(order),
     source: textOf(order.source),
-    service: { code: textOf(order.service && order.service.code), name: textOf(order.service && order.service.name) },
+    service: buildServiceDto(order.service),
     appoint: buildAppointDto(order.appoint),
     parcels,
     parcel: parcels[0] || buildParcelDto(null),

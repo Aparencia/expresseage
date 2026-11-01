@@ -104,13 +104,9 @@
     "failure-image": "/components/failure-image/index",
     "status-pill": "/components/status-pill/index",
     "order-row": "/components/order-row/index",
-    "customer-row": "/components/customer-row/index",
     "image-picker": "/components/image-picker/index",
     "code-editor": "/components/code-editor/index",
-    "section-card": "/components/section-card/index",
-    "empty-state": "/components/empty-state/index",
-    "form-field": "/components/form-field/index",
-    "role-switch": "/components/role-switch/index"
+    "empty-state": "/components/empty-state/index"
   },
   "style": "v2",
   "componentFramework": "glass-easel",

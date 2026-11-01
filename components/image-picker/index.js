@@ -1,5 +1,7 @@
 // components/image-picker/index.js · 截图/头像选择与上传（相册/拍照/聊天；唯一上传路径经 api/upload）
 // v1.0（D23）：支持一次多选/分多次添加的 0~maxCount 张；去重、删除、超限明确文案；半途失败不丢已上传文件。
+// D44（2026-11-01）：① 聊天图/相册图把 {path,size,name,type} 元数据透传给 api/upload（修聊天图 size 丢失被误拒）；
+//   ② 上传并发 2（P0-1 组件侧，按 state.uploadPlanOf 分批）；③ 事件 files 快照带 size/name/type。
 // P1-8（TD-060）：相册/拍照/聊天直接走 wx.chooseMedia / wx.chooseMessageFile，不再预请求任何 scope
 //   （尤其不请求 scope.writePhotosAlbum——那是「保存到相册」，不是选图所需）；首拒给替代路径文案。
 // P1-4：单图模式（maxCount=1）再选图 = 替换旧图（修复换图静默无效）；多图模式按 D23 追加。
@@ -93,14 +95,16 @@ Component({
       this.chooseMedia(['camera']);
     },
 
+    // D44：聊天图必须带 index 透传 {path,size,name,type}——旧实现只取 path 丢掉 size，
+    // 上传链路读不到 size 便按 0 申请票据，服务端以「图片大小超出限制」误拒（真 bug）。
     onChooseChat() {
       if (!this.canPick()) return;
       wx.chooseMessageFile({
         count: state.pickCountOf(this.data.files.length, this.data.maxCount),
         type: 'image',
         success: (res) => {
-          const paths = (res.tempFiles || []).map((item) => item.path);
-          this.uploadAll(paths);
+          const raw = res.tempFiles || res.tempFilePaths || [];
+          this.uploadAll(state.pickedFilesOf(raw));
         },
         fail: (err) => {
           this.onChooseFail('chat', err);
@@ -116,8 +120,13 @@ Component({
         mediaType: ['image'],
         sourceType: list,
         success: (res) => {
-          const paths = (res.tempFiles || []).map((item) => item.tempFilePath);
-          this.uploadAll(paths);
+          const raw = (res.tempFiles || []).map((item) => ({
+            path: item.tempFilePath,
+            size: item.size,
+            name: '',
+            type: 'image'
+          }));
+          this.uploadAll(state.pickedFilesOf(raw));
         },
         fail: (err) => {
           this.onChooseFail(source, err);
@@ -147,29 +156,37 @@ Component({
       }
     },
 
-    async uploadAll(paths) {
+    // P0-1（组件侧）：上传并发 2——按 state.uploadPlanOf 分批 Promise.all；批内/批间失败都不丢已上传文件。
+    // D44：每张图把选图元数据 {size,name,type} 一并交给 api/upload（聊天图不再因 size 缺失被误拒）。
+    async uploadAll(pickedFiles) {
       if (this.data.disabled) {
         return;
       }
-      const picked = state.newPathsOf(this.data.files, paths)
+      const picked = state.newPickedOf(this.data.files, pickedFiles)
         .slice(0, state.pickCountOf(this.data.files.length, this.data.maxCount));
       if (!picked.length) {
         return;
       }
-      this.setData({ uploading: true, progressText: '正在上传…（' + picked.length + ' 张）' });
+      const plan = state.uploadPlanOf(picked.length);
       const uploadedFiles = [];
       let failed = null;
-      for (let i = 0; i < picked.length; i += 1) {
-        try {
-          const uploaded = await uploadApi.prepareAndUpload({
-            purpose: this.data.purpose,
-            filePath: picked[i]
-          });
-          uploadedFiles.push(Object.assign({ localPath: picked[i] }, uploaded));
-        } catch (err) {
-          failed = err || {};
-          break;
-        }
+      const total = plan.total;
+      for (let round = 0; round < plan.batches.length; round += 1) {
+        if (this.data.disabled) break;
+        const batch = plan.batches[round];
+        this.setData({
+          uploading: true,
+          progressText: '正在上传…（第 ' + (uploadedFiles.length + 1) + '~' + (uploadedFiles.length + batch.length) + '/' + total + ' 张）'
+        });
+        const results = await Promise.all(batch.map((index) => this.uploadOne(picked[index])));
+        results.forEach((one) => {
+          if (one && one.ok) {
+            uploadedFiles.push(one.file);
+          } else if (!failed) {
+            failed = (one && one.error) || {};
+          }
+        });
+        if (failed) break;
       }
       // 半途失败：已成功的文件仍然保留（不因一张失败把已上传的图丢掉），用 error.files 交给页面；
       // 单图模式替换失败时保留旧图（新图没有上传成功就不算替换，不能把可用旧图弄丢）
@@ -187,6 +204,21 @@ Component({
           message: failed.message || '上传失败，请重试',
           files
         });
+      }
+    },
+
+    async uploadOne(meta) {
+      try {
+        const uploaded = await uploadApi.prepareAndUpload({
+          purpose: this.data.purpose,
+          filePath: meta.path,
+          size: meta.size,
+          name: meta.name,
+          type: meta.type
+        });
+        return { ok: true, file: state.fileSnapshotOf(meta, uploaded) };
+      } catch (err) {
+        return { ok: false, error: err || {} };
       }
     },
 

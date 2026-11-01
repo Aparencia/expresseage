@@ -145,7 +145,7 @@ docs/
 | 组件/工具 | `components/` 16 套（含维护遮罩、切换条、测试角标、头像、空态/骨架等）+ 根 `custom-tab-bar/`；`api/` 唯一网络出口 + 10 个域模块 + upload/privacy/mode-guard；`store/` 内存快照；`shared/` 口径纯件；`utils/` 纯件（识别/OCR/编号/roomTag/头像/存储/隐私策略等） | `docs/engineering/V4_ARCHITECTURE.md` §3 |
 | 云函数 | `cloudfunctions/api`（入口/router/app + 7 中间件 + db/dao + lib + 11 域 handlers）与 `cloudfunctions/cleanup`（13 个幂等 sweep + 独立 dao）；依赖只 `wx-server-sdk` | `docs/engineering/V4_ARCHITECTURE.md` §4、`V4_ENGINEERING.md` §4 |
 | 数据 | 14 集合（users/customers/partners/bindings/orders/order_events/order_messages/invitation_codes/admin_view_sessions/counters/config/admin_audit/upload_tickets/recognition_failures）、13 错误码、16 审计枚举、81 动作（client 与 internal 分级） | `docs/contract/V4_CONTRACT.md` §4/§5.3、`docs/data/V4_DATA_MODEL.md` §1~§7 |
-| 门禁 | `check.ps1`（4 步）→ `tools/check.js`（34 条）、`tools/check-docs.js`（12 条）、`tools/zero-money-scan.js`（3 范围）、`tools/selftest.js`（34 套断言）；另 `tools/mutation.ps1` 变异电池、`tools/sync-cloud-shared.js` 副本对帐、`gate.ps1` 范围/体量闸、`doctor.ps1` 环境体检 | `docs/engineering/V4_ENGINEERING.md` §8 |
+| 门禁 | `check.ps1`（4 步）→ `tools/check.js`（36 条）、`tools/check-docs.js`（12 条）、`tools/zero-money-scan.js`（3 范围）、`tools/selftest.js`（35 套断言）；另 `tools/mutation.ps1` 变异电池、`tools/sync-cloud-shared.js` 副本对帐、`gate.ps1` 范围/体量闸、`doctor.ps1` 环境体检 | `docs/engineering/V4_ENGINEERING.md` §8 |
 | 分层铁律 | ①页面层零业务判据（不出现 `wx.cloud.*`/状态字符串字面量/编号或 roomTag 生成/随机数）；②客户端不直连数据库/存储；③云函数不出现 `db.collection`（只经 `db/dao.js`）；共享副本只由 `tools/sync-cloud-shared.js` 生成 | `docs/engineering/V4_ARCHITECTURE.md` §1~§4、根 `AGENTS.md` §2 |
 
 ## 7. 门禁与自证（取数命令）
@@ -203,8 +203,8 @@ powershell -File tools/doctor.ps1
 | 范围 | 内容 | 时效与用法 |
 | :-- | :-- | :-- |
 | `docs/archive/overview/` | `V4_INTERIM_OVERVIEW_2026-10-23.md`（临时总览 v1.3，2026-10-23/28 快照） | 已由本文件取代；仅用于追溯当时的进度/门禁读数。 |
-| `docs/archive/research/` | `CONVENIENCE_2026-10-22.md`（便利性调研）、`LOCATION_2026-10-22.md` + `_v2`（D27 位置方案调研，**D27 仍待用户裁决**）、`PERFORMANCE_2026-10-22.md`（性能基线）、`_BRIEF.md`（调研简报） | 2026-10-22 基线；D27 未决前「不采集定位」口径不变。 |
-| `docs/archive/reviews/` | `CODE_2026-10-22_v4-full.md` + `_parts/`（10 份分域审查）、`2026-10-28_USER_FEEDBACK_TRIAGE.md`（用户反馈定位报告） | 历史审查证据；P1×3 已修，M-03 无单独收口记录；反馈项多已由 c9af8cd / D37~D42 落地，遗留四项见 TECH_DEBT。 |
+| `docs/archive/research/` | `CONVENIENCE_2026-10-22.md`（便利性调研）、`LOCATION_2026-10-22.md` + `_v2`（D27 位置方案调研，**D27 仍待用户裁决**）、`PERFORMANCE_2026-10-22.md`（性能基线）、`PERFORMANCE_2026-11-01.md`（性能增量研究，HEAD `9526e37` 快照）、`2026-11-01_WORKBENCH_DATE_GROUPING.md`（工作台按日期分类设计研究，D45）、`_BRIEF.md`（调研简报） | 2026-10-22 基线；D27 未决前「不采集定位」口径不变；性能增量研究已按 Q10 并入批 16/17 实施；D45 研究推荐 M1（批 17 实施）。 |
+| `docs/archive/reviews/` | `CODE_2026-10-22_v4-full.md` + `_parts/`（10 份分域审查）、`2026-10-28_USER_FEEDBACK_TRIAGE.md`（用户反馈定位报告）、`2026-11-01_USER_FEEDBACK_PROPOSAL.md`（用户反馈方案探讨稿，**已裁决 D43~D50**） | 历史审查证据；P1×3 已修，M-03 无单独收口记录；反馈项多已由 c9af8cd / D37~D42 落地，遗留四项见 TECH_DEBT；本方案裁决后按 D43~D50 分批实施。 |
 | `docs/governance/lessons/`（非归档，持续更新） | 28 张踩坑卡（2026-10-22 ~ 2026-10-30） | 按主题：口径/数据一致性、门禁与工具链、UI 与组件、平台能力（OCR/分享/编码）、清理与注销。新增前先查重。 |
 
 > 归档原则：归档文档只保留历史价值，**不参与验收、不冒充现行口径**；归档目录留在 `docs/` 内，继续受 `check-docs` 与零金额扫描覆盖（移出 `docs/` 会退出扫描，属门禁假绿，禁止）。

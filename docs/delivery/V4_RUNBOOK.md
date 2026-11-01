@@ -73,7 +73,8 @@
 
 - 位置：`cloudfunctions/cleanup` 右键上传部署；随后 云开发控制台 → 云函数 → `cleanup` → 触发管理 → 添加定时触发器。
 - 配置：**只配一条**，每 10 分钟执行一次（单触发器跑全部到期任务，幂等；ENGINEERING §4.7）。
-- 证据：触发器配置截图（频率/下一次执行时间）+ 首次执行日志。
+- **D43 日结批前置（用户控制台确认，由用户执行、agent 不代跑）**：送达单自动完成按 UTC+8 日结批——`config.autoCompleteAt`（默认 `23:50`）为 cutoff 时刻，10 分钟触发器粒度 ⇒ 实际完成落 23:50~24:00；**若触发器未配/被停用，送达单不会自动完成**，顾客确认窗口也不存在（D43 不额外保留确认窗口）。上线前由用户在控制台确认「`cleanup` 触发器存在、启用、每 10 分钟」，并把截图与下一次执行时间记入 §13。
+- 证据：触发器配置截图（频率/下一次执行时间 + 启用开关）+ 首次执行日志。**日结批取证**：跨 23:50 的两轮日志（`autoComplete` 的 `scanned/acted/failed`）+ 控制台 `orders`/`order_events` 抽查（`status=COMPLETED`、`AUTO_COMPLETED`、actor=SYSTEM），并记录当次 `config.autoCompleteAt` 的实际值。
 - 失败处理：不执行时检查触发器是否启用、函数版本是否最新、日志里是否有超时；可先在控制台手工测试调用一次。**判正常不能只看 `ok:true`**：注册表加载失败现返回 `ok:false/INTERNAL_ERROR`（M-20），须标记异常并排查 sweep 文件是否缺失。
 - **入口来源校验（批 10 / M-14）**：`cleanup` 入口只接受「无 OPENID」的调用方（定时触发器/控制台/部署脚本）；客户端 `wx.cloud.callFunction({name:'cleanup'})` 携带 OPENID → `FORBIDDEN`，拒绝执行任何 sweep 且不写审计。**控制台手工调用与定时触发器在函数内不可区分**（平台无更细来源字段）——控制台权限即运维边界；不要把控制台权限授予不可信人员。
 
@@ -98,6 +99,20 @@
 2. 环境冒烟（唯一环境 + 测试账号）：`health.check` + 本批新增动作的最小链路（用户真机或 Lead 调云函数）；批 2/3/4/8 的专项冒烟见 ENGINEERING §10.3。
 3. 更新 `CHANGELOG.md`"未发布"与 `STATE.md` → Lead 提交 → 回读 HEAD → `gate.ps1` 绿 → 保留真实输出。
 4. 体验版只在批 5/6/8/9 由用户发布；每批验收项写入 `docs/delivery/V4_QA_CHECKLIST.md`；**agent 不代勾人执行项**。批 9 发布前按 §10 执行门禁回执、灰度分批、观测判停与回滚演练（记录 §10.6）。
+
+### 4.1 一次性数据回填：存量兼职「送至楼下」（D49，仅批 16）
+
+> 执行人：**用户**（云开发控制台操作）；agent 只给脚本与步骤，不代跑、不写库。脚本：`tools/backfill-pickup-low.js`（仓库文件即云函数代码，单文件自包含）。D41 后新激活兼职默认 5 类全开，本步骤只处理**存量兼职**。
+>
+> 1. 云开发控制台 → 云函数 → 新建云函数（Node.js 版本与 `api` 一致，任意名称如 `backfill-pickup-low`；不配触发器/环境变量）。
+> 2. 打开该云函数 → 在线编辑 `index.js` → **整文件替换为仓库 `tools/backfill-pickup-low.js` 全部内容** → 保存并部署。
+> 3. **dry-run**：云函数 → 测试 → 事件 `{}` → 预期 `{ok:true,dryRun:true,summary:{scanned:N,pending:M,applied:0,skipped:J},summaryLine:"backfill-pickup-low：扫描 N / 待改 M / 已改 0 / 跳过 J"}`；日志含逐人 `[plan]` 变化行。**核对 pending 人数与预期一致；此步不写任何数据。**
+> 4. **写入**：事件 `{"apply":true}` → 预期 `dryRun:false` 且 `applied=M`；日志**先**逐人输出 `[backup] {"partnerNo":...,"serviceConfig":{...}}`（**复制保存为批次证据**），再逐人 `[write]`，`failed` 应为 0。
+> 5. **验证**：①再次 dry-run（`{}`）应为「待改 0」（幂等）；②顾客端下单页服务类型选择器出现「送至楼下」且两档说明可区分；③兼职端「我的 → 服务类型与范围」5 类齐全。
+> 6. 用完删除临时云函数（一次性脚本不进 `api`/`cleanup` 部署单元）。
+>
+> **回滚**：按保存的 `[backup]` 行逐条把该兼职 `serviceConfig` 还原为备份 JSON（控制台 → 数据库 → `partners` → 按 `partnerNo` 搜索 → 编辑 `serviceConfig`）；或仅删除本次新增的 `{code:'PICKUP_LOW',enabled:true}` 条目。脚本幂等，重跑不会重复追加。
+> **证据**：两次测试返回体（dry-run/apply）+ `[backup]`/汇总日志截图 + 顾客端选择器截图。
 
 ## 5. 云函数配置基线（记录实际值，不写死）
 
@@ -133,7 +148,8 @@
 | `testAccountMaxPerRole` | 3（每开发者合计 ≤6） | admin.updateConfig |
 | `testDataRetentionDays` | 30 | admin.updateConfig |
 | `recognitionFailureRetentionDays` | 30（7~30） | admin.updateConfig |
-| `orderTimeoutMinutes` / `autoCompleteHours` / `screenshotRetentionDays` | 120 / 24 / 7 | admin.updateConfig |
+| `orderTimeoutMinutes` / `screenshotRetentionDays` | 120 / 7 | admin.updateConfig |
+| `autoCompleteAt`（D43） | `'23:50'`（**UTC+8 的 `HH:MM`**；送达单日结批 cutoff——最近一个已过该时刻；10 分钟触发器粒度 ⇒ 实际完成落该时刻~+10 分钟；旧的「小时数」键作废） | admin.updateConfig（HH:MM 格式闸；后台配置页可改） |
 | `zoneLabels` / `serviceCatalog` / `announcement` / `maintenance` | 五苑展示名 / 五类服务 / 公告 / 维护开关 | admin.updateConfig |
 | `stations`（v1.1/D32） | 8 条 `{id,name}` 站点正式名（P1~P8 固定；识别/选择器/AI prompt 用当前名称；缺省回退默认） | admin.updateConfig（后台配置页可改；名称 1~20 字、唯一） |
 | `privacyVersion` | 定稿候选文本 v1.3（历史 v1.0 留痕）对应 `v4.0.0`（首次发布保持；仅当体验版已让用户同意旧文本才 bump，见 `docs/privacy/发布前填写清单.md` §1#17） | admin.updateConfig（白名单文本键；后台 config 页不提供编辑入口，发布前由 Lead/用户一次性写入并留证） |
@@ -154,13 +170,13 @@
 | 6 | 测试数据隔离 | 统计/红点/邀请码/后台列表不计测试数据 | Lead/用户 | 截图 |
 | 7 | 头像链路 | 上传 → 保存 → 展示；替换后旧文件已删；失败不落 fileID；≤上限 | 用户 | 录屏 |
 | 8 | 删除测试账号 | `dryRun` 先看计数 → 二次确认 → 级联删；审计含前后条数 | 用户 | 截图 |
-| 9 | `cleanup` | 触发器到点执行，日志 `scanned/acted/failed` 正常；重跑幂等 | Lead | 日志 |
+| 9 | `cleanup` | 触发器到点执行，日志 `scanned/acted/failed` 正常；重跑幂等；**日结批（D43）跨 23:50 一轮 `autoComplete` 有 acted、随后一轮 acted=0** | Lead/用户 | 日志 |
 | 10 | AI 兜底降级 | `aiFallback.enabled=false` 或 Key 为空时零外呼、返回 `recognized=false` 且失败入队 | Lead | 返回 + 队列截图 |
 | 11 | 复核页 | 原图临时 URL 5 分钟、每次访问有审计；补录/忽略写审计 | 用户 | 后台截图 |
 | 12 | 后台脱敏（批 8） | `admin.listCustomers`/`admin.getCustomer`/`admin.getOrder` 返回无 `avatarFileId`/openid、昵称脱敏（`小***`）、码/尾号/柜号按脱敏值；`admin.stats.developerNo` = 当前抬头编号 | Lead/用户 | 返回原文 + 后台截图 |
 | 13 | 切换会话读写边界（批 8） | READONLY 读白名单成功、写 `FORBIDDEN`；TEST_WRITE 仅测试账号、业务可写且 `isTest/impersonatedBy` 落库；`admin.viewAsEnd` 后审计 `ACCOUNT_SWITCH_END` 可查 | 用户 | 录屏 + 审计截图 |
 | 14 | 异常介入取消（批 8） | 仅 `EXCEPTION` 单可介入取消、原因必填、`cancelledBy='ADMIN'`、审计 `ORDER_ANOMALY_CANCEL`；非异常单 `INVALID_TRANSITION` | Lead/用户 | 返回原文 + 后台截图 |
-| 15 | cleanup 重跑幂等（批 8） | 触发器到点执行，日志/审计 `CLEANUP` 汇总 `scanned/acted/failed` 正常；紧接一轮 `acted` 收敛（无重复写审计）；`orderTimeout/autoComplete/retention/recognitionFailures/testData` 按到期条件生效 | Lead | 两轮日志 |
+| 15 | cleanup 重跑幂等（批 8；D43 日结批） | 触发器到点执行，日志/审计 `CLEANUP` 汇总 `scanned/acted/failed` 正常；紧接一轮 `acted` 收敛（无重复写审计）；`orderTimeout/autoComplete/retention/recognitionFailures/testData` 按到期条件生效；**`autoComplete` 按 `config.autoCompleteAt`（默认 23:50，UTC+8）日结批生效，`DELIVERED` 单转 `COMPLETED` 且逐单写 `AUTO_COMPLETED`** | Lead/用户 | 两轮日志 + 控制台订单/事件抽查 |
 | 16 | 维护模式（批 8） | 开启后读（`user.bootstrap`/`config.getPublic`/`message.list`）正常、客户端写 `INVALID_STATE`、端侧全屏公告可见；关闭后写恢复；开启/关闭均 `CONFIG_UPDATE` 审计 | 用户 | 录屏 + 返回原文 |
 | 17 | 隐私文本一致性（批 8） | `config.getPublic.privacyVersion` 与 `docs/privacy/隐私保护指引`（定稿候选 v1.3，历史 v1.0 留痕）一致；端内 help 全文离线可读、关键条目（数据项/留存/AI/测试账号/未成年人/权利）齐全；launch 弹窗口径与 §4.1/§4.2 一致 | Lead/用户 | 返回原文 + 截图 + `docs/privacy/发布前填写清单.md` 勾选 |
 
@@ -329,7 +345,7 @@
 | 单环境清零（发布前） | §10.2.1 七项记录 + 审计 `TEST_DATA_PURGE` 前后条数 + 备份路径 | 未执行（首次发布前） |
 | 集合/索引/安全规则 | 集合列表截图 + 索引导出 + 规则截图 | **部分执行**：集合名已逐字核对、`uk_code` 已补（2026-10-22，STATE §7 #26/§9.1）；完整集合/索引/安全规则以 STATE §4 #6/#7/#8 为准（未完成，§3.5 补齐） |
 | 环境变量 | 键名可见、值打码的截图 | **部分执行**：`DEEPSEEK_API_KEY` 已配置（2026-10-30；值只存 `api` 云函数环境变量，仓库零落值）；`ADMIN_OPENIDS` 按 STATE §4 #6 核对；截图待用户存档 |
-| 定时触发器 | 触发管理截图 + 首次执行日志 | 未执行（STATE §4 #10；`cleanup` 部署后配置 10 分钟触发器） |
+| 定时触发器 | 触发管理截图 + 首次执行日志；**D43 日结批**：跨 23:50 两轮 `autoComplete` 日志 + 控制台 `orders/order_events` 抽查（记录当次 `config.autoCompleteAt`） | 未执行（STATE §4 #10；`cleanup` 部署后由用户在控制台配置 10 分钟触发器并按 §3.6 取证） |
 | 云存储权限 | 权限页截图 + 真机上传记录 | 未执行（STATE §4 #7；E5 待实测） |
 | 云函数部署与冒烟 | 部署成功截图 + `health.check`/`admin.bootstrap` 返回原文 | **部分执行**：`api` 已部署并经「隐私同意 + 后台总览」真实调用复验（STATE §7 #25/#26、§9.1）；`cleanup` 部署与 `health.check`/`admin.bootstrap` 冒烟待补（STATE §9.2） |
 | 账号切换/测试账号/头像 | 用户录屏 + 审计查询截图 | 未执行（批 2 起） |

@@ -29,14 +29,9 @@ const COLLECTION_COUNT = 14;
 // 单文档集合的固定 _id（config 只有一个全局文档）
 const CONFIG_DOC_ID = 'global';
 
-function isCollection(name) {
-  return typeof name === 'string' && ALL_COLLECTIONS.indexOf(name) !== -1;
-}
-
 module.exports = {
   COLLECTIONS,
   ALL_COLLECTIONS,
   COLLECTION_COUNT,
-  CONFIG_DOC_ID,
-  isCollection
+  CONFIG_DOC_ID
 };

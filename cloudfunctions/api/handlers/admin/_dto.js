@@ -363,7 +363,8 @@ function configForAdmin(config) {
     announcement: source.announcement,
     maintenance: source.maintenance || { enabled: false, text: '' },
     orderTimeoutMinutes: source.orderTimeoutMinutes,
-    autoCompleteHours: source.autoCompleteHours,
+    // D43：送达单日结批时刻（UTC+8 的 HH:MM；后台配置页回填/展示用）。旧的「小时数」键作废。
+    autoCompleteAt: source.autoCompleteAt,
     // v1.0（D23）：合并窗口（0~60，默认 10，0=关闭）——服务端治理参数，后台配置页可读可编辑；不下发客户端
     orderMergeWindowMinutes: source.orderMergeWindowMinutes,
     screenshotRetentionDays: source.screenshotRetentionDays,
