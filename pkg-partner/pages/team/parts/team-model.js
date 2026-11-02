@@ -1,7 +1,7 @@
 // pkg-partner/pages/team/parts/team-model.js · 我的团队（D59）视图模型纯件（零 wx、零请求、零全局状态）
 // 口径：docs/contract/V4_CONTRACT.md §13 D59；docs/archive/reviews/2026-11-03_BATCH26_27_INTERFACE_DRAFT.md §2.3/§2.4；
 //      批 26/27 派工单 §9。服务端 DTO：partner.listSubMembers
-//        · 主兼职：{team:null, members[{partnerNo,displayName,status,teamJoinedAt}], pendingInvites[{codeTail,expiresAt,batchId}], quota{used,max}}
+//        · 主兼职：{team:null, members[{partnerNo,displayName,status,teamJoinedAt}], pendingInvites[{codeTail,expiresAt,batchId}], quota{used,reserved,max}}
 //        · 子队员：{team:{parentPartnerNo,memberCount}, members:[], pendingInvites:[], quota:null}（只有队伍摘要）
 // 纪律：页面层零业务判据——成员状态中文只从 shared/enums 标签表取；成员/邀请码行只渲染 DTO 字段；
 //      本件不出现队伍/邀请码/订单状态字符串字面量、不拼编号、不生成邀请码、不碰 wx。
@@ -93,17 +93,22 @@ function inviteGroupOf(list, nowMs) {
   }));
 }
 
-// 名额：quota{used,max} 由服务端下发；待使用子码同样占名额（服务端 reserved=used+pending，发码前校验），
-// 因此有效剩余 = max - used - pendingCount：无剩余时禁用发码并给原因（D59 达上限禁发）。
+// 名额单源 = 服务端 quota{used,reserved,max}：reserved = 在队队员 + 未过期待用子码（与发码闸同口径），
+// 剩余可发 = max - reserved——有 reserved 时不再叠加本页 pendingInvites（双计会把可发数量算少）；
+// 仅旧服务端缺 reserved 时才回退本地 max-used-pendingCount 推导（兼容期兜底，不放宽服务端判据）。
 function quotaOf(quota, pendingCount) {
   const used = countOf(quota && quota.used);
   const max = countOf(quota && quota.max);
   const pending = countOf(pendingCount);
+  const hasReserved = !!quota && typeof quota.reserved === 'number'
+    && Number.isFinite(quota.reserved) && quota.reserved >= 0;
+  const reserved = hasReserved ? countOf(quota.reserved) : used + pending;
   if (max <= 0) {
     return {
       used: used,
       max: max,
       pending: pending,
+      reserved: reserved,
       remaining: 0,
       canCreate: false,
       disabled: true,
@@ -111,22 +116,26 @@ function quotaOf(quota, pendingCount) {
       fullReasonText: '名额信息没取到，请刷新后重试'
     };
   }
-  const remaining = Math.max(0, max - used - pending);
+  const remaining = Math.max(0, max - reserved);
   const canCreate = remaining > 0;
+  // 满员原因按 reserved 判：队员本身占满说人数；队员没满而是被待用码占满则说清细分
+  const pendingInReserved = Math.max(0, reserved - used);
   let fullReasonText = '';
   if (!canCreate) {
-    fullReasonText = pending > 0
-      ? '名额已满（已用 ' + used + '/' + max + '，另有 ' + pending + ' 个待使用邀请码占用），不能再发子邀请码；如需扩容请联系管理员'
-      : '人数已达上限（' + used + '/' + max + '），不能再发子邀请码；如需扩容请联系管理员';
+    fullReasonText = used >= max
+      ? '人数已达上限（' + used + '/' + max + '），不能再发子邀请码；如需扩容请联系管理员'
+      : '名额已满（队员+待用码已占用 ' + reserved + '/' + max + '，其中队员 ' + used
+        + ' 名、待用码 ' + pendingInReserved + ' 个），不能再发子邀请码；如需扩容请联系管理员';
   }
   return {
     used: used,
     max: max,
     pending: pending,
+    reserved: reserved,
     remaining: remaining,
     canCreate: canCreate,
     disabled: !canCreate,
-    usedText: '已用 ' + used + ' / ' + max + ' 人',
+    usedText: '已用 ' + reserved + ' / ' + max + ' 人（含待使用邀请码）',
     fullReasonText: fullReasonText
   };
 }
@@ -240,13 +249,14 @@ function buildSnapshot(dto, options) {
     view.showCreateForm = false;
     view.team = {
       parentPartnerNo: textOf(summary.parentPartnerNo),
-      memberCountText: '成员数 ' + countOf(summary.memberCount) + ' 人',
+      // P2-1：只给数值（「3 人」）——行标签「成员数」由 WXML 承载，避免渲染成「成员数 成员数 3 人」
+      memberCountText: countOf(summary.memberCount) + ' 人',
       noteText: MEMBER_NOTE
     };
     return view;
   }
 
-  // 主兼职（队长）视角：成员列表 + 待用子码分组 + 发码表单 + 名额（待用码同占名额）
+  // 主兼职（队长）视角：成员列表 + 待用子码分组 + 发码表单 + 名额（reserved 优先，缺省回退本地推导）
   view.captain = true;
   view.hasData = true;
   view.members = arrOf(data.members).map(memberRowOf);

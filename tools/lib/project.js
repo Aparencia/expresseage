@@ -122,7 +122,9 @@ add('admin', ['createInvites', 'revokeInvite', 'setPartnerStatus', 'updateConfig
   'createTestAccount', 'deleteTestAccount', 'purgeTestData', 'fixRecognitionFailure', 'ignoreRecognitionFailure'], WRITE);
 add('admin', ['listInvites', 'listCustomers', 'getCustomer', 'listPartners', 'listOrders', 'getOrder', 'listAudit',
   'stats', 'listTestAccounts', 'listRecognitionFailures', 'getRecognitionFailure'], READ);
-add('admin', ['bootstrap'], READ, 'internal');
+// admin.bootstrap 虽为 internal 但会写 config/_id='global' 种子 + BOOTSTRAP 审计（ENGINEERING §5 部署步骤 5；
+// handlers/admin/bootstrap.js ensureConfig/writeAudit）→ write=true，与 shared/actions.js 一致（批 26/27 审查 P2-11 裁决）。
+add('admin', ['bootstrap'], WRITE, 'internal');
 add('ai', ['parseParcel'], WRITE);
 add('health', ['check'], READ, 'internal');
 // cleanup 定时任务（内部动作；只由定时触发器调用，不注册给客户端）

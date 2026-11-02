@@ -30,11 +30,11 @@
         <avatar-view src="{{order.counterpart.avatarUrl}}" fileId="{{order.counterpart.avatarFileId}}" name="{{order.counterpart.displayName}}" size="{{64}}" bindretry="onCounterpartAvatarRetry" />
         <view class="flex-1 counterpart-main">
           <view class="strong">{{order.counterpart.displayName || '顾客'}}</view>
-          <view class="small" bindtap="onCopyCustomerNo">顾客编号 {{customerNoText || '—'}} · 复制</view>
+          <view class="small" bindtap="onCopyCustomerNo">顾客编号 {{customerNoText}}<text wx:if="{{customerNoText}}"> · 复制</text></view>
         </view>
       </view>
-      <view wx:else class="small customer-no-line" bindtap="onCopyCustomerNo">
-        顾客编号 {{customerNoText || '—'}}<text wx:if="{{customerNoText}}"> · 复制</text>
+      <view wx:elif="{{customerNoText}}" class="small customer-no-line" bindtap="onCopyCustomerNo">
+        顾客编号 {{customerNoText}}<text wx:if="{{customerNoText}}"> · 复制</text>
       </view>
       <view wx:if="{{guestAutoHint}}" class="small auto-hint">{{guestAutoHint}}</view>
     </view>
@@ -116,7 +116,7 @@
         </view>
         <view wx:if="{{item.recognitionSourceText}}" class="small">识别来源：{{item.recognitionSourceText}}</view>
         <view wx:if="{{item.failureHint}}" class="flag-tip">识别失败已反馈开发者复核，可手填补码</view>
-        <view wx:if="{{!readonly}}" class="row parcel-ops">
+        <view wx:if="{{!readonly && (item.action || canCorrect)}}" class="row parcel-ops">
           <view
             wx:if="{{item.action}}"
             class="btn {{item.picked ? 'btn-ghost' : 'btn-primary'}} mini-btn piece-action-btn"
@@ -124,7 +124,7 @@
             data-key="{{item.action.key}}"
             bindtap="onPieceAction"
           >{{item.action.label}}</view>
-          <view class="btn btn-ghost mini-btn" data-index="{{item.index}}" bindtap="onCorrectItemTap">改正这一件</view>
+          <view wx:if="{{canCorrect}}" class="btn btn-ghost mini-btn" data-index="{{item.index}}" bindtap="onCorrectItemTap">改正这一件</view>
         </view>
       </view>
       <view wx:if="{{order.needCode}}" class="flag-tip">这单还有件缺取件码，先补码再取件</view>
@@ -196,9 +196,9 @@
     <view class="card">
       <view class="row between">
         <view class="section-title">留言</view>
-        <view wx:if="{{!readonly}}" class="btn btn-ghost mini-btn" bindtap="onOpenMessage">写留言</view>
+        <view wx:if="{{!readonly && canMessage}}" class="btn btn-ghost mini-btn" bindtap="onOpenMessage">写留言</view>
       </view>
-      <view wx:if="{{!messages.length}}" class="small">还没有留言，有问题可以直接问顾客</view>
+      <view wx:if="{{!messages.length}}" class="small">{{canMessage ? '还没有留言，有问题可以直接问顾客' : '还没有留言'}}</view>
       <view wx:for="{{messages}}" wx:key="id" class="message-row">
         <view class="small">{{item.fromText}} · {{item.atText}}</view>
         <view>{{item.text}}</view>

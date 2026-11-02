@@ -43,6 +43,10 @@ Page(Object.assign({
     events: [],
     messages: [],
     actions: [],
+    // P2-4：「改正这一件」「写留言」入口由服务端 actions[] 派生（canCorrect/canMessage），
+    // 目标兼职 PENDING 视图只有转派动作时不渲染这两类写入口
+    canCorrect: false,
+    canMessage: false,
     // D58 转派：可见性/文案全部由 DTO actions[] 与 transfer 块驱动（纯件装配，页面零状态判据）
     transferCard: transferPart.closedCard(),
     transferPanel: transferPart.requestPanel(),
@@ -131,6 +135,8 @@ Page(Object.assign({
       guestAutoHint: view.guestAutoHint,
       undoBar: view.undoBar,
       customerNoText: view.customerNoText,
+      canCorrect: view.canCorrect,
+      canMessage: view.canMessage,
       loading: false
     });
     this.syncUndoTimer(); if (messagePoll.isTerminal(order)) this.stopMessagePoll();

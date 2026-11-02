@@ -395,7 +395,9 @@ async function perfChecks(t) {
 }
 
 // ── 批 27/D59：团队页（Q 组）夹具与静态纪律样本 ──────────────────────────────
-// 服务端 DTO = partner.listSubMembers：主兼职 {members[],pendingInvites[],quota}，子队员 {parentPartnerNo,memberCount}
+// 服务端 DTO = partner.listSubMembers：主兼职 {members[],pendingInvites[],quota{used,reserved,max}}，
+// 子队员 {team{parentPartnerNo,memberCount},members[],pendingInvites[],quota:null}
+// 名额口径（批 26 收尾/W3）：reserved = 在队队员 + 未过期待用子码（与发码闸同口径），页面按 max-reserved 收窄。
 const TEAM_BATCH_A = 'TB20261022-1';
 const TEAM_BATCH_B = 'TB20261021-2';
 const TEAM_RELS = [
@@ -408,7 +410,7 @@ const TEAM_RELS = [
 // 队伍/邀请码状态字面量（页面层零判据：状态中文只取 shared/enums 标签表）
 const TEAM_STATUS_WORDS = ['UNUSED', 'USED', 'REVOKED', 'EXPIRED', 'ACTIVE', 'SUSPENDED', 'CLOSED', 'SUB', 'DEV', 'PENDING'];
 // Q 组断言数（含首红正控；实跑为准，改断言必须同步本条）
-const TEAM_PAGE_ASSERTIONS = 40;
+const TEAM_PAGE_ASSERTIONS = 48;
 
 function teamCaptainDto(overrides) {
   return Object.assign({
@@ -421,7 +423,7 @@ function teamCaptainDto(overrides) {
       { codeTail: 'JKLM', expiresAt: NOW + 3 * DAY, batchId: TEAM_BATCH_A },
       { codeTail: 'NPQR', expiresAt: NOW + DAY, batchId: TEAM_BATCH_B }
     ],
-    quota: { used: 2, max: 5 }
+    quota: { used: 2, reserved: 5, max: 5 }
   }, overrides || {});
 }
 
@@ -486,16 +488,29 @@ async function teamChecks(t) {
   'Q8 组内逐码只显示尾 4 位 + 到期时刻（完整码只在创建响应）');
   const available = teamModel.buildSnapshot(teamCaptainDto({ pendingInvites: [], quota: { used: 2, max: 5 } }), { nowMs: NOW });
   t.eq([available.quota.usedText, available.quota.canCreate, available.quota.disabled, available.quota.remaining],
-    ['已用 2 / 5 人', true, false, 3], 'Q9 名额基线：used/max 文案 + 可发码（名额取服务端 quota，不本地计数）');
+    ['已用 2 / 5 人（含待使用邀请码）', true, false, 3],
+    'Q9 名额基线：按 reserved/max 展示 + 可发码（旧服务端缺 reserved 时回退 max-used-pending=3）');
   const fullByPending = teamModel.buildSnapshot(teamCaptainDto(), { nowMs: NOW }).quota;
-  const fullByMembers = teamModel.buildSnapshot(teamCaptainDto({ pendingInvites: [], quota: { used: 5, max: 5 } }), { nowMs: NOW }).quota;
+  const fullByMembers = teamModel.buildSnapshot(teamCaptainDto({
+    pendingInvites: [],
+    quota: { used: 5, reserved: 5, max: 5 }
+  }), { nowMs: NOW }).quota;
   t.check(fullByPending.canCreate === false && fullByPending.disabled === true
-    && fullByPending.fullReasonText.indexOf('待使用') >= 0 && fullByPending.fullReasonText.indexOf('2/5') >= 0
+    && fullByPending.reserved === 5 && fullByPending.fullReasonText.indexOf('队员+待用码已占用 5/5') >= 0
+    && fullByPending.fullReasonText.indexOf('待用码 3 个') >= 0
     && fullByMembers.fullReasonText.indexOf('人数已达上限') >= 0 && fullByMembers.fullReasonText.indexOf('5/5') >= 0,
-  'Q10 名额达上限禁用发码 + 给原因（待用码同占名额/人数已满两种原因分别说真话）');
+  'Q10 名额达上限禁用发码 + 按 reserved 给原因（队员 2 + 待用码 3 = 5/5；人数本身占满另说真话）');
   t.eq([view.countOptions, available.countOptions,
     teamModel.buildSnapshot(teamCaptainDto({ pendingInvites: [], quota: { used: 4, max: 5 } }), { nowMs: NOW }).countOptions],
-  [[], [1, 2, 3], [1]], 'Q11 数量选项 1~5 内按有效剩余（扣掉待用码）收窄；满员前最后一码仍可发');
+  [[], [1, 2, 3], [1]], 'Q11 数量选项 1~5 内按 max-reserved 收窄；满员前最后一码仍可发');
+  const reservedWins = teamModel.buildSnapshot(teamCaptainDto({ quota: { used: 1, reserved: 4, max: 5 } }), { nowMs: NOW });
+  t.eq([reservedWins.quota.reserved, reservedWins.quota.remaining, reservedWins.countOptions, reservedWins.quota.usedText],
+    [4, 1, [1], '已用 4 / 5 人（含待使用邀请码）'],
+    'Q11b 服务端 quota.reserved=4（含 3 个待用码）→ 剩余 1、选项收窄 [1]；不再叠加本页待用码数（双计必为 0）');
+  const fallbackWins = teamModel.buildSnapshot(teamCaptainDto({ quota: { used: 1, max: 5 } }), { nowMs: NOW });
+  t.eq([fallbackWins.quota.reserved, fallbackWins.quota.remaining, fallbackWins.countOptions],
+    [4, 1, [1]],
+    'Q11c 旧服务端缺 reserved → 回退本地 used+本页待用码推导（1+3=4，剩余 1）；兼容期不放行超发');
   t.eq(view.validityOptions.map((item) => [item.key, item.label]),
     [['24H', '24 小时'], ['72H', '72 小时'], ['7D', '7 天']],
     'Q12 有效期恰三档 24h/72h/7d 且文案非空（D59）');
@@ -542,8 +557,8 @@ async function teamChecks(t) {
   const memberView = teamModel.buildSnapshot(teamMemberDto(), { nowMs: NOW });
   t.eq([memberView.member, memberView.captain, memberView.team.parentPartnerNo, memberView.team.memberCountText,
     memberView.showCreateForm, memberView.members.length, memberView.inviteGroups.length],
-  [true, false, 'P8F3K2M', '成员数 3 人', false, 0, 0],
-  'Q24 子队员视角：只显示所属队伍 P-XXX / 成员数，无成员列表与发码/作废入口（D59 仅一层）');
+  [true, false, 'P8F3K2M', '3 人', false, 0, 0],
+  'Q24 子队员视角：只显示所属队伍 P-XXX / 成员数（数值「3 人」，行标签由 WXML 承载），无成员列表与发码/作废入口（D59 仅一层）');
   const readonlyView = teamModel.buildSnapshot(teamCaptainDto(), { nowMs: NOW, readonly: true });
   t.eq([readonlyView.canWrite, readonlyView.showCreateForm, readonlyView.readonlyText],
     [false, false, '开发者只读视角不能操作'],
@@ -603,6 +618,34 @@ async function teamChecks(t) {
   t.eq([fsutil.countLines(path.join(ROOT, 'pkg-partner/pages/team/index.js')),
     fsutil.countLines(path.join(ROOT, 'pkg-partner/pages/team/parts/team-model.js'))].every((lines) => lines <= 500),
   true, 'Q38 团队页页面脚本/纯件均 ≤500 行（门禁 #18）');
+
+  // ⑥ 审查修复 P2-1/P2-2：成员数不重复渲染 + 一次性完整码切后台即清 + 可复制
+  t.eq([memberView.team.memberCountText.indexOf('成员数') === -1, wxmlSrc.indexOf('成员数') >= 0],
+    [true, true],
+    'Q39 P2-1：成员数只给数值「3 人」，行标签「成员数」只在 WXML 出现——不再渲染「成员数 成员数 3 人」');
+  const resultCode = teamModel.resultOf({ batchId: TEAM_BATCH_A, codes: ['ABCD2345EFGH'], expiresAt: NOW + DAY }, NOW);
+  const afterReturn = teamModel.buildSnapshot(teamCaptainDto(), { nowMs: NOW, result: null });
+  const hideBody = pageSrc.slice(pageSrc.indexOf('onHide('), pageSrc.indexOf('onPullDownRefresh('));
+  t.check(pageSrc.indexOf('onHide()') >= 0 && hideBody.indexOf('this.result = null') >= 0
+    && hideBody.indexOf('teamModel.emptyResult()') >= 0
+    && resultCode.visible === true && afterReturn.result.visible === false,
+  'Q40 P2-2：切后台/离开页面 onHide 清空结果块（result=null + emptyResult），回前台重建空结果（不把旧完整码装回）');
+  t.eq([/wx\.[A-Za-z]*Storage[A-Za-z]*/.test(pageSrc), /navigateTo|redirectTo/.test(pageSrc),
+    /onShareAppMessage/.test(pageSrc), wxmlSrc.indexOf('open-type="share"') >= 0],
+  [false, false, false, false],
+  'Q41 P2-2：完整码不落本地存储/不进 URL/不放分享卡（只存在于本次结果块与剪贴板）');
+  t.check(wxmlSrc.indexOf('bindtap="onCopyResultCode"') >= 0 && wxmlSrc.indexOf('bindlongpress="onCopyResultCode"') >= 0
+    && wxmlSrc.indexOf('data-code="{{item.display}}"') >= 0 && pageSrc.indexOf('wx.setClipboardData(') >= 0,
+  'Q42 P2-2：完整码可点「复制」+ 长按复制（剪贴板出口单一，成功提示当面告知对方）');
+
+  // ⑦ 批次并发/限流两条服务端可见路径：错误人话直出（W3：发码事务 CAS 冲突 CONFLICT + rl:subInvite RATE_LIMITED）
+  t.eq([teamModel.failureText({ code: 'CONFLICT', message: '并发生成冲突，请刷新后重试' }),
+    teamModel.failureText({ code: 'RATE_LIMITED', message: '操作太频繁，请稍后再试' }),
+    teamModel.failureText({})],
+  ['并发生成冲突，请刷新后重试', '操作太频繁，请稍后再试', '操作没成功，请重试'],
+  'Q43 CONFLICT（并发冲突）/RATE_LIMITED（限流）走 failureText 直出服务端人话；无 message 时兜底不留空白');
+  t.eq((pageSrc.match(/teamModel\.failureText\(err\)/g) || []).length, 3,
+    'Q44 团队页三条写失败路径（发码/作废/移除）统一接 teamModel.failureText（不各写一份错误文案）');
   t.notEmpty(view.members, 'Q 组样本非空（防止空集全绿）');
 }
 

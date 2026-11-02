@@ -24,6 +24,22 @@ const DEFAULT_SUB_INVITE_RATE = DEFAULT_CONFIG.subInviteRate;
 const SUB_INVITE_VALIDITY_HOURS = { '24H': 24, '72H': 72, '7D': 168 };
 const TEAM_MEMBER_STATUSES = [enums.PARTNER_STATUS.ACTIVE, enums.PARTNER_STATUS.SUSPENDED];
 const TRANSFER_TARGET_FIELDS = ['transfer.fromPartnerId', 'transfer.toPartnerId'];
+// 平台单事务预算 100 ops（V4_ENGINEERING §8.2 / TD-055）：移除队员事务内取消 PENDING 转派按
+// "订单 update 1 + TRANSFER_CANCELLED 事件 1" 计 2 ops/单 → 40 单 = 80 ops，留 20 给成员 patch/幂等键；
+// 超出上界的余量不阻塞移除，靠转派 TTL 惰性过期（order/_transfer.expireIfNeeded）兜底（上界有注释、可复核）。
+const TX_TRANSFER_CANCEL_LIMIT = 40;
+// 并发冲突内部信号（不暴露客户端）：日批次序号 CAS 失败 = 另一并发请求已抢到同一序号 → 事务回滚。
+const TX_CONFLICT_CODE = 'TX_CONFLICT';
+
+function txConflictError() {
+  const error = new Error('并发冲突：批次序号已被抢占');
+  error.code = TX_CONFLICT_CODE;
+  return error;
+}
+
+function isTxConflict(error) {
+  return !!(error && error.code === TX_CONFLICT_CODE);
+}
 
 // ── 层级（仅一层）──────────────────────────────────────────────────────────────
 function parentPartnerIdOf(partner) {
@@ -106,15 +122,58 @@ function rateKeysOf(openid, nowMs) {
   };
 }
 
+// 限流计数行"首建"并发（真实云 DB 正确性）：counters.key 唯一索引下两请求同时首建同一 key，后到者 add 撞唯一键
+// 且事务已被打 abort（Mongo 语义：冲突写后同一事务读写全部失败）→ 不能同事务"重读后 update"，只能整体回滚、
+// 事务外层重试一次：第二次读到并发赢家已提交的行 → update 递增；两次仍冲突 → CONFLICT（不伪装 RATE_LIMITED）。
+const RATE_BUCKET_RACE_CODE = 'RATE_BUCKET_RACE';
+const RATE_BUCKET_ATTEMPTS = 2;
+
+function rateBucketRaceError(cause) {
+  const error = new Error('限流计数行首建并发冲突');
+  error.code = RATE_BUCKET_RACE_CODE;
+  error.cause = cause;
+  return error;
+}
+function isRateBucketRace(error) {
+  return !!(error && error.code === RATE_BUCKET_RACE_CODE);
+}
+
 async function bumpCounter(trx, key, nowDate) {
   const row = await trx.findOne(COLLECTIONS.COUNTERS, { where: { key } });
   if (!row) {
-    await trx.add(COLLECTIONS.COUNTERS, { key, seq: 1, updatedAt: nowDate });
-    return 1;
+    try {
+      await trx.add(COLLECTIONS.COUNTERS, { key, seq: 1, updatedAt: nowDate });
+      return 1;
+    } catch (error) {
+      // 首建撞唯一索引 = 并发赢家已插同 key 行（真实库）→ 标记后交事务外层重试（同事务重读不可用）。
+      if (!trx.isDuplicateError || !trx.isDuplicateError(error)) throw error;
+      throw rateBucketRaceError(error);
+    }
   }
   const seq = (typeof row.seq === 'number' ? row.seq : 0) + 1;
   await trx.update(COLLECTIONS.COUNTERS, row._id, { seq, updatedAt: nowDate });
   return seq;
+}
+
+async function bumpRateCountersOnce(ctx, keys, nowDate) {
+  return ctx.dao.transaction(async (trx) => {
+    const minute = await bumpCounter(trx, keys.minute, nowDate);
+    const day = await bumpCounter(trx, keys.day, nowDate);
+    return { minute, day };
+  });
+}
+
+// 限流递增（事务外层重试一次）：只重试"计数行首建撞唯一键"；其余错误原样上抛，由上层如实映射。
+async function bumpRateCounters(ctx, keys, nowDate) {
+  for (let attempt = 1; attempt <= RATE_BUCKET_ATTEMPTS; attempt += 1) {
+    try {
+      return await bumpRateCountersOnce(ctx, keys, nowDate);
+    } catch (error) {
+      if (!isRateBucketRace(error)) throw error;
+      if (attempt === RATE_BUCKET_ATTEMPTS) throw errors.conflict('操作并发冲突，请重试');
+    }
+  }
+  return null; // 循环内必 return/throw（RATE_BUCKET_ATTEMPTS≥1），此行为函数收口
 }
 
 // D59 限流：窗口/日两个计数器同事务递增；超阈值 → RATE_LIMITED（计数已计，与中间件同语义）。
@@ -124,11 +183,7 @@ async function consumeSubInviteRate(ctx, nowMs, config) {
   const rate = subInviteRateOf(config);
   const keys = rateKeysOf(openid, nowMs);
   const nowDate = new Date(time.toMs(nowMs));
-  const used = await ctx.dao.transaction(async (trx) => {
-    const minute = await bumpCounter(trx, keys.minute, nowDate);
-    const day = await bumpCounter(trx, keys.day, nowDate);
-    return { minute, day };
-  });
+  const used = await bumpRateCounters(ctx, keys, nowDate);
   if (used.minute > rate.perMinute || used.day > rate.perDay) {
     throw errors.rateLimited('操作太频繁，请稍后再试');
   }
@@ -136,22 +191,34 @@ async function consumeSubInviteRate(ctx, nowMs, config) {
 }
 
 // ── 批次序号（batchId = 'TB' + yyyyMMdd + 2 位序号，与 admin.createInvites 的 B/3 位形制错开）──
-async function nextBatchSeq(ctx, nowMs) {
+// 并发口径（批 26 收尾）：读-改-写改为 CAS（updateWhere 带旧 seq 条件）——并发发码在序号计数器上互斥，
+// 抢不到的一个抛 TX_CONFLICT 回滚（handler 回读幂等映射/返回 CONFLICT），既防 batchId 撞号，
+// 也让紧随其后的名额复核不存在"两个请求各自过闸"的 TOCTOU 窗口。必须由调用方放在同一事务的最前面。
+async function nextBatchSeqInTx(trx, nowMs) {
   const key = 'subInviteBatch:' + time.dayKey(nowMs);
   const nowDate = new Date(time.toMs(nowMs));
-  return ctx.dao.transaction(async (trx) => {
-    const row = await trx.findOne(COLLECTIONS.COUNTERS, { where: { key } });
-    if (!row) {
+  const row = await trx.findOne(COLLECTIONS.COUNTERS, { where: { key } });
+  if (!row) {
+    try {
       await trx.add(COLLECTIONS.COUNTERS, { key, seq: 1, updatedAt: nowDate });
       return 1;
+    } catch (error) {
+      // 并发首建：唯一键冲突 → 让事务回滚，按并发冲突处理（幂等映射/客户端重试兜底）
+      if (trx.isDuplicateError && trx.isDuplicateError(error)) {
+        throw txConflictError();
+      }
+      throw error;
     }
-    const seq = (typeof row.seq === 'number' ? row.seq : 0) + 1;
-    if (seq > BATCH_SEQ_MAX) {
-      throw errors.invalidState('今日发码批次已用完，请明天再试');
-    }
-    await trx.update(COLLECTIONS.COUNTERS, row._id, { seq, updatedAt: nowDate });
-    return seq;
-  });
+  }
+  const seq = (typeof row.seq === 'number' ? row.seq : 0) + 1;
+  if (seq > BATCH_SEQ_MAX) {
+    throw errors.invalidState('今日发码批次已用完，请明天再试');
+  }
+  const result = await trx.updateWhere(COLLECTIONS.COUNTERS, { key, seq: row.seq }, { seq, updatedAt: nowDate });
+  if (!result || result.updated !== 1) {
+    throw txConflictError();
+  }
+  return seq;
 }
 
 // ── 队伍成员（仅一层：parentPartnerId === 主兼职 _id；CLOSED 不返回）──────────────
@@ -181,12 +248,8 @@ function memberBriefOf(member) {
 
 // 期限归一：库里可能是 Date（管理端写）或毫秒数；无值/非法归 0（0 = 无期限，不算过期）。
 function deadlineMsOf(value) {
-  if (value instanceof Date) {
-    return isFinite(value.getTime()) ? value.getTime() : 0;
-  }
-  if (typeof value === 'number') {
-    return isFinite(value) ? value : 0;
-  }
+  if (value instanceof Date) return isFinite(value.getTime()) ? value.getTime() : 0;
+  if (typeof value === 'number') return isFinite(value) ? value : 0;
   if (typeof value === 'string' && value.trim()) {
     const parsed = Date.parse(value);
     return isFinite(parsed) ? parsed : 0;
@@ -217,6 +280,29 @@ async function pendingInvitesOf(ctx, issuerPartnerId, nowMs) {
   return out;
 }
 
+// ── 名额口径（单源）：reserved = 在队队员 + 未过期待用子码；上限 = config.teamMaxMembers，后台不可超 10 ──
+// 发码闸、事务内复核、团队摘要 quota 三处共用同一算法，杜绝"页面放行 / 服务端拒绝"的口径漂移（批 26 收尾）。
+function quotaViewOf(used, pendingCount, max) {
+  return { used: used, reserved: used + pendingCount, max: max };
+}
+
+async function quotaOf(ctx, partnerId, nowMs, config) {
+  const used = await memberCountOf(ctx, partnerId);
+  const pending = await pendingInvitesOf(ctx, partnerId, nowMs);
+  return quotaViewOf(used, pending.length, teamMaxMembersOf(config));
+}
+
+function assertQuotaFit(quota, count) {
+  if (quota.reserved + count > quota.max) {
+    throw errors.validation('count', '队伍人数已达上限（最多 ' + quota.max + ' 人），请先移除队员再生成');
+  }
+}
+
+// 事务内名额复核（TOCTOU 收口）：不用事务外快照，必须在拿稳日批次序号 CAS 之后调用。
+async function assertQuotaInTx(trx, partnerId, count, config, nowMs) {
+  assertQuotaFit(await quotaOf({ dao: trx }, partnerId, nowMs, config), count);
+}
+
 // 子队员视角的队伍摘要（parentPartnerNo + memberCount；不含成员明细/quota）。
 async function teamSummaryOf(ctx, subPartner) {
   const parentId = parentPartnerIdOf(subPartner);
@@ -235,34 +321,28 @@ function requestKeyOf(prefix, partnerId, clientRequestId) {
 }
 
 async function requestReplayOf(ctx, key) {
-  if (!key) {
-    return null;
-  }
+  if (!key) return null;
   return ctx.dao.findOne(COLLECTIONS.COUNTERS, { where: { key: key } });
 }
 
 async function markRequestInTx(trx, key, detail, nowDate) {
   const row = await trx.findOne(COLLECTIONS.COUNTERS, { where: { key: key } });
-  if (row) {
-    return false;
-  }
+  if (row) return false;
   await trx.add(COLLECTIONS.COUNTERS, Object.assign({ key: key, updatedAt: nowDate }, detail || {}));
   return true;
 }
 
 // ── D59 级联：取消相关 PENDING 转派（单源 = order/_transfer.resolvePendingTransferOf，含 TRANSFER_CANCELLED 事件）──
-// ctx.dao 既可能是普通 dao（admin 级联），也可能是 trx（removeSubMember 外层事务）：无 transaction 时直接写，
-// 保证"解除隶属 + 取消邀请"同事务提交。
-function applyCancellationOf(ctx, order, resolved, nowDate) {
+// ctx.dao 既可能是普通 dao（admin 级联），也可能是 trx（removeSubMember 外层事务）：opts.inTx（或 dao 无
+// transaction 能力）时直接写，保证"解除隶属 + 取消转派"同事务提交；否则按单订单开小事务（admin 级联既有口径）。
+function applyCancellationOf(ctx, order, resolved, nowDate, inTx) {
   const apply = async (dao) => {
     await dao.update(COLLECTIONS.ORDERS, order._id, {
       transfer: resolved.transfer,
       version: (Number(order.version) || 1) + 1,
       updatedAt: nowDate
     });
-    if (!resolved.event) {
-      return;
-    }
+    if (!resolved.event) return;
     try {
       await dao.add(COLLECTIONS.ORDER_EVENTS, resolved.event);
     } catch (error) {
@@ -271,13 +351,13 @@ function applyCancellationOf(ctx, order, resolved, nowDate) {
       }
     }
   };
-  if (typeof ctx.dao.transaction === 'function') {
+  if (!inTx && typeof ctx.dao.transaction === 'function') {
     return ctx.dao.transaction(apply);
   }
   return apply(ctx.dao);
 }
 
-async function cancelPendingTransferOfOrder(ctx, order, nowDate) {
+async function cancelPendingTransferOfOrder(ctx, order, nowDate, inTx) {
   const resolved = transferLib.resolvePendingTransferOf(order, {
     status: enums.TRANSFER_STATUS.CANCELLED,
     reason: enums.TRANSFER_RESOLVE_REASON.STATE_CHANGED,
@@ -286,7 +366,7 @@ async function cancelPendingTransferOfOrder(ctx, order, nowDate) {
   if (!resolved) {
     return false;
   }
-  await applyCancellationOf(ctx, order, resolved, nowDate);
+  await applyCancellationOf(ctx, order, resolved, nowDate, inTx);
   return true;
 }
 
@@ -305,6 +385,26 @@ async function cancelPendingTransfersOf(ctx, partnerIds, nowMs) {
           cancelled += 1;
         }
       }
+    }
+  }
+  return cancelled;
+}
+
+// 移除队员事务内的"定向取消"：只按 transfer.toPartnerId 读（被移除者只能作为转派目标；作为发起方的单
+// 已被"进行中订单"闸挡在事务外），单次上限 TX_TRANSFER_CANCEL_LIMIT 单（见文件头 ops 预算注释）；
+// 返回取消条数（事件写入与订单 update 同事务，测试按 ORDER_EVENTS 条数断言）。
+async function cancelIncomingTransfersInTx(trx, partnerId, nowDate) {
+  if (!partnerId) {
+    return 0;
+  }
+  const orders = await trx.find(COLLECTIONS.ORDERS, {
+    where: { 'transfer.toPartnerId': partnerId, 'transfer.status': enums.TRANSFER_STATUS.PENDING },
+    limit: TX_TRANSFER_CANCEL_LIMIT
+  });
+  let cancelled = 0;
+  for (let i = 0; i < orders.length; i += 1) {
+    if (await cancelPendingTransferOfOrder({ dao: trx }, orders[i], nowDate, true)) {
+      cancelled += 1;
     }
   }
   return cancelled;
@@ -332,6 +432,38 @@ async function cascadeSubMembers(scope, mainPartner, status, reason, hooks) {
   return { affectedMembers: affectedMembers, cancelledTransfers: cancelledTransfers };
 }
 
+// 批 26 收尾：admin 恢复子队员时的悬挂上级清理。上级已注销/停用/不存在时，恢复后不能留下
+// parentPartnerId 指向不可用上级（会同时触发"子队员禁代客单"且永不能转出）→ 解除隶属视为主兼职；
+// 返回被解除的上级 _id（'' = 无需处理，上级仍 ACTIVE）。只改 partners 一单条，审计由调用方写 detail。
+async function detachOrphanParent(scope, subPartner) {
+  const parentId = parentPartnerIdOf(subPartner);
+  if (!parentId) {
+    return '';
+  }
+  const parent = await scope.dao.get(COLLECTIONS.PARTNERS, parentId);
+  if (parent && parent.status === enums.PARTNER_STATUS.ACTIVE && !parent.deletedAt) {
+    return '';
+  }
+  await scope.dao.update(COLLECTIONS.PARTNERS, subPartner._id, {
+    parentPartnerId: '',
+    teamJoinedAt: '',
+    updatedAt: scope.nowDate
+  });
+  return parentId;
+}
+
+// admin 治理编排（单源）：SUSPENDED/CLOSED 级联子队员 + 取消该队 PENDING 转派；ACTIVE 恢复时清理悬挂上级。
+// hooks 由 admin 域注入（复用该域既有分批事务/幂等语义）；返回 affectedMembers/cancelledTransfers/detachedParentId。
+async function cascadeOrDetachForAdmin(scope, partner, status, reason, hooks) {
+  const outcome = { affectedMembers: 0, cancelledTransfers: 0, detachedParentId: '' };
+  if (status === enums.PARTNER_STATUS.ACTIVE) {
+    outcome.detachedParentId = await detachOrphanParent(scope, partner);
+    return outcome;
+  }
+  const cascaded = await cascadeSubMembers(scope, partner, status, reason, hooks);
+  return Object.assign(outcome, cascaded);
+}
+
 module.exports = {
   SUB_INVITE_BATCH_MAX,
   parentPartnerIdOf,
@@ -343,15 +475,23 @@ module.exports = {
   noteOf,
   requireClientRequestId,
   consumeSubInviteRate,
-  nextBatchSeq,
+  nextBatchSeqInTx,
   listTeamMembers,
   memberCountOf,
   memberBriefOf,
   pendingInvitesOf,
+  quotaViewOf,
+  quotaOf,
+  assertQuotaFit,
+  assertQuotaInTx,
   teamSummaryOf,
   requestKeyOf,
   requestReplayOf,
   markRequestInTx,
+  txConflictError,
+  isTxConflict,
   cancelPendingTransfersOf,
-  cascadeSubMembers
+  cancelIncomingTransfersInTx,
+  cascadeSubMembers,
+  cascadeOrDetachForAdmin
 };

@@ -6,7 +6,7 @@
   <block wx:if="{{!forbidden}}">
   <view class="row between">
     <text class="section-title">邀请码</text>
-    <view class="btn btn-primary btn-small" bindtap="onOpenCreate">生成邀请码</view>
+    <view class="btn btn-primary btn-small" wx:if="{{!readonly}}" bindtap="onOpenCreate">生成邀请码</view>
   </view>
 
   <scroll-view class="filter-row" scroll-x="true">
@@ -16,6 +16,12 @@
     </view>
   </scroll-view>
 
+  <view class="kind-row">
+    <picker range="{{kindLabels}}" value="{{kindIndex}}" bindchange="onKindChange">
+      <view class="kind-picker">类型：{{kindLabels[kindIndex]}} ▾</view>
+    </picker>
+  </view>
+
   <view class="empty-text" wx:if="{{loading}}">加载中…</view>
 
   <view class="card" wx:if="{{error}}" bindtap="onRetry">
@@ -23,17 +29,22 @@
     <text class="link"> 点此重试</text>
   </view>
 
-  <view class="empty-text" wx:if="{{!loading && !error && list.length === 0}}">{{activeStatus === '' ? '还没有邀请码。生成后可线下发给要开通兼职的同学。' : '没有符合当前状态的邀请码。'}}</view>
+  <view class="empty-text" wx:if="{{!loading && !error && list.length === 0}}">{{emptyText}}</view>
 
   <view class="card" wx:for="{{list}}" wx:key="invitationCode">
     <view class="row between">
       <text class="code-text">{{item.codeMasked}}</text>
       <text class="tag">{{item.statusText}}</text>
     </view>
-    <view class="muted">批次 {{item.batchText}} · 有效期至 {{item.expiresText}}</view>
+    <view class="muted">类型 {{item.kindText}} · 批次 {{item.batchText}} · 有效期至 {{item.expiresText}}</view>
+    <view class="muted" wx:if="{{item.issuerText}}">{{item.issuerText}}</view>
     <view class="small">创建 {{item.createdAtText}}{{item.note ? ' · 备注：' + item.note : ''}}</view>
     <view class="tag" wx:if="{{item.usedByText}}">使用人 {{item.usedByText}} · {{item.usedAtText}}</view>
-    <view class="btn btn-danger btn-small" wx:if="{{item.isUnused}}" data-index="{{index}}" bindtap="onRevoke">作废</view>
+    <view class="row between readonly-row" wx:if="{{item.isSub}}">
+      <text class="tag">只读</text>
+      <text class="muted">{{item.readonlyHint}}</text>
+    </view>
+    <view class="btn btn-danger btn-small" wx:if="{{item.canRevoke}}" data-index="{{index}}" bindtap="onRevoke">作废</view>
   </view>
 
   <view class="mask" wx:if="{{showCreate}}" bindtap="onCloseCreate">

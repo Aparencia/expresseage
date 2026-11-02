@@ -25,7 +25,7 @@
  *      补充文档派生物三处同源写明「仅存本机、不上传不共享、可随时清空、换机/清缓存丢失」；
  *      兼职端与开发者后台（含只读视角）不可见、不强制建单或绑定、上限 50 条、端侧识别不外呼第三方 AI；
  *      定稿文档登记本机键 ex_college_v4.pickcodes 与 D57 留痕（附录 A 差异表 + 附录 C 核对表）；
- *      QA §AD AD1~AD6 与附录 E 计数 336 同源锁定；批 24 起 QA §AE AE1~AE7 与附录 E 计数 343 同源锁定（D64~D67）；批 25 起 QA §AF AF1~AF7 与计数 350 同源锁定（D61/D62）。
+ *      QA §AD AD1~AD6 与附录 E 计数 336 同源锁定；批 24 起 QA §AE AE1~AE7 与附录 E 计数 343 同源锁定（D64~D67）；批 25 起 QA §AF AF1~AF7 与计数 350 同源锁定（D61/D62）；批 26/27 起 QA §AG AG1~AG12 与计数 362 同源锁定（D58/D59/D63）。
  *
  * 纪律：不 mock 全局 wx；只读文档/源码 + 纯件；先合法基线再反例；EXPECTED_ASSERTIONS 与实际断言数精确相等。
  * 取数：node tools/selftest-privacy-text.js | Select-Object -Last 2
@@ -38,7 +38,7 @@ const privacyText = require(path.join(__dirname, '..', 'pkg-customer/parts/priva
 const defaults = require(path.join(__dirname, '..', 'config/defaults.js'));
 
 const ROOT = path.resolve(__dirname, '..');
-const EXPECTED_ASSERTIONS = 291; // 259 + 30（2026-11-01 D57 本机取件码清单）+ 1（2026-11-02 D64~D67 QA §AE 与计数 343）+ 1（2026-11-03 D61/D62 QA §AF 与计数 350）
+const EXPECTED_ASSERTIONS = 295; // 291 + 4（2026-11-03 D58/D59/D63：QA §AG 分区声明/AG1~AG12 区间/12 行精确计数/人列且未代勾）；259 + 30（2026-11-01 D57 本机取件码清单）+ 1（2026-11-02 D64~D67 QA §AE 与计数 343）+ 1（2026-11-03 D61/D62 QA §AF 与计数 350）
 
 const PART_FILE = 'pkg-customer/parts/privacy-text.js';
 const HELP_JS = 'pkg-customer/pages/help/index.js';
@@ -532,6 +532,16 @@ function register(h) {
     t.check(qaDoc.indexOf('## AE. v1.9 批 24 增补（D64/D65/D66/D67') !== -1
       && qaDoc.indexOf('| AE1 |') !== -1 && qaDoc.indexOf('| AE7 |') !== -1,
     'QA 真机清单新增 §AE AE1~AE7（D64~D67；人（真机），agent 不代勾）');
+    // 审查 P2-10：旧判据只验附录 E 计数 362，未验 §AG 实体（计数可被手改而分区缺失仍绿）；补齐分区/区间/行数/人列四向。
+    t.check(qaDoc.indexOf('## AG. v2.1 批 26/27 增补（D58 转派 / D59 子队员 / D63 顾客邀请顾客') !== -1
+      && qaDoc.indexOf('全部为「人（真机/控制台）」项') !== -1,
+    'QA 真机清单新增 §AG 分区并声明全部为「人（真机/控制台）」项（agent 不代勾）');
+    t.check(qaDoc.indexOf('| AG1 |') !== -1 && qaDoc.indexOf('| AG12 |') !== -1,
+      'QA §AG 覆盖 AG1~AG12（D58/D59/D63；人（真机/控制台），agent 不代勾）');
+    const agRows = qaDoc.match(/^\| AG\d+ \|/gm) || [];
+    t.eq(agRows.length, 12, 'QA §AG 精确 12 行（AG1~AG12 无缺号/无重复，与附录 E 合计口径同源）');
+    const agHumanRows = qaDoc.match(/^\| AG\d+ \|.*\| 人（[^|]+） \| \[ \] \|/gm) || [];
+    t.eq(agHumanRows.length, 12, 'QA §AG 每条都标「人（…）」且完成列为 [ ]（真机项只能用户点检，agent 不代勾）');
   });
 }
 

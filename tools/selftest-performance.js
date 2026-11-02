@@ -23,6 +23,7 @@
 const path = require('path');
 const { createHarness, installCrashGuard, ROOT } = require('./selftest');
 const fsutil = require('./lib/fsutil');
+const project = require('./lib/project');
 const { createFakeDb } = require('./fake-db');
 
 const client = require(path.join(ROOT, 'api/client.js'));
@@ -36,7 +37,7 @@ const partnerMessagePoll = require(path.join(ROOT, 'pkg-partner/pages/order-deta
 const cloudActions = require(path.join(ROOT, 'cloudfunctions/api/shared/actions.js'));
 const { createApi } = require(path.join(ROOT, 'cloudfunctions/api/app.js'));
 
-const EXPECTED_ASSERTIONS = 145; // 实际断言总数（110 + 33：P0-2 去重 12 + P0-4 首页/隐藏页 21；批24-D64 底部栏抽取 +2）；少算/多算都判红
+const EXPECTED_ASSERTIONS = 147; // 实际断言总数（145 + 2：审查 P1-9 E16 改独立期望源拆 1→3 断）；少算/多算都判红
 const NOW = Date.parse('2026-10-22T12:00:00+08:00');
 const ROLES = { CUSTOMER: 'CUSTOMER', PARTNER: 'PARTNER' };
 const USER_STATUS = { ACTIVE: 'ACTIVE' };
@@ -258,13 +259,29 @@ function register(h) {
       cloudActions.ACTION_MAP[action].visibility === 'client' || router.INTERNAL_ALLOWED.indexOf(action) >= 0
     )).sort();
     t.eq(Object.keys(routes).sort(), expected, 'E15 getRouter 全量注册集 = client 动作 + admin.bootstrap/health.check');
-    // 数字不写死：order 域期望集直接从注册表动态取（数量随 shared/actions.js 变化，不维护 18/22 这类常量）
-    const orderDomainActions = Object.keys(cloudActions.ACTION_MAP).filter((action) => (
-      action.indexOf('order.') === 0 && (cloudActions.ACTION_MAP[action].visibility === 'client'
+    // E16 期望源必须与实现源独立（审查 P1-9：旧版两侧同取 cloudActions.ACTION_MAP，删注册表项两侧一起变仍绿）：
+    // 期望侧 = CONTRACT 动作镜像 tools/lib/project.js 的 order.*（契约侧），实现侧 = router.expectedActionsOf（注册表侧）。
+    // order 域无 internal 动作，镜像 order.* 即本域「client 动作」全集；数量随契约动态取，不写死 18/22。
+    const orderContractActions = Object.keys(project.ACTIONS)
+      .filter((action) => action.indexOf('order.') === 0).sort();
+    t.eq(router.expectedActionsOf('order'), orderContractActions,
+      'E16 order 域期望集（注册表侧）= project.ACTIONS 的 order.*（独立期望源：契约镜像 vs 注册表，任一方向漏/多登记即红）');
+    // D58 转派四动作显式字面清单：即使有人同时删注册表与镜像，本条仍红（不依赖任一动态源）。
+    const TRANSFER_ACTIONS = ['order.requestTransfer', 'order.acceptTransfer',
+      'order.declineTransfer', 'order.cancelTransfer'];
+    t.check(TRANSFER_ACTIONS.every((action) => router.expectedActionsOf('order').indexOf(action) >= 0
+      && orderContractActions.indexOf(action) >= 0),
+    'E16b D58 转派四动作在 order 域期望集内（显式字面清单，契约镜像与注册表两侧都命中）');
+    // 反例（不真改文件）：模拟注册表侧漏登记 requestTransfer（删 ACTION_MAP 项）——实现侧期望集随之少一项，
+    // 与独立契约镜像不再相等 → 上述 E16 必红；旧同源版在同样改动下两侧仍相等（证明旧判据无牙、新期望源独立）。
+    const mutatedMap = Object.assign({}, cloudActions.ACTION_MAP);
+    delete mutatedMap['order.requestTransfer'];
+    const mutatedActions = Object.keys(mutatedMap).filter((action) => (
+      action.indexOf('order.') === 0 && (mutatedMap[action].visibility === 'client'
         || router.INTERNAL_ALLOWED.indexOf(action) >= 0)
     )).sort();
-    t.eq(router.expectedActionsOf('order'), orderDomainActions,
-      'E16 order 域期望集 = 注册表 order.* 动作逐一对齐（清单/数量动态取，不写死）');
+    t.check(JSON.stringify(mutatedActions) !== JSON.stringify(orderContractActions),
+      'E16c 反例：注册表删 requestTransfer 后实现侧 ≠ 契约期望源（独立源判据有牙；同源自证版此处仍绿）');
     t.eq(router.expectedActionsOf('cleanup'), [], 'E17 cleanup 域不属 api 部署单元（期望集为空）');
     const appSrc = codeOf('cloudfunctions/api/app.js');
     t.check(appSrc.indexOf('router.getHandler(') >= 0, 'E18 请求热路径走 getHandler（首请求只加载首用域）');
@@ -310,8 +327,9 @@ function register(h) {
     t.eq(nextBadge, { workbenchPending: 2, messages: 1 }, 'F8 角标计算幂等（输入不变 → 输出不变，判等有意义）');
     // 批 26（D58）：工作台加载/红点接线按门禁 #18 拆到 parts/load-flow（index.js 499→377 行），
     // 判等逻辑逐字保留在 syncBadge，扫描目标随拆件改为 load-flow（防拆件时丢掉「先判等再 patch」）。
+    // 批 26 审查修复 P1-3：红点签名收窄为 syncBadge(counts)（只取 counts.submitted，待接收不进红点），扫描同步。
     const loadFlow = codeOf('pages/partner/workbench/parts/load-flow.js');
-    t.check(/syncBadge\(counts, transferPending\)[\s\S]{0,320}next\.workbenchPending === current\.workbenchPending[\s\S]{0,120}next\.messages === current\.messages/.test(loadFlow),
+    t.check(/syncBadge\(counts\)[\s\S]{0,320}next\.workbenchPending === current\.workbenchPending[\s\S]{0,120}next\.messages === current\.messages/.test(loadFlow),
       'F9 workbench 角标先判等再 store.patch（无变化零通知；批 26 拆件后按 load-flow 扫描）');
 
     t.eq(client.SKEW_NOTIFY_MS, 1000, 'F10 校时阈值常量为 1s（|Δ|≤1000ms 不写不通知）');

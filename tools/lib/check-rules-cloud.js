@@ -11,6 +11,12 @@ const {
   findActionMap, visibilityOf, hasWriteFlag, valuesOf
 } = require('./check-helpers');
 
+/** 取 write 标记值（兼容 write/isWrite 两种键名；缺失返回 undefined）。 */
+function writeFlagValue(entry) {
+  if (!entry || typeof entry !== 'object') return undefined;
+  return entry.write === undefined ? entry.isWrite : entry.write;
+}
+
 /** 门禁 #13 action 注册表（原 tools/check.js 判据体，逐字搬移）。 */
 function actionRegistry() {
   const reg = requireRegistry(['shared/actions.js']);
@@ -28,7 +34,13 @@ function actionRegistry() {
     const vis = visibilityOf(map[a]);
     if (!vis) out.push(a + ' 缺 visibility（client/internal）');
     else if (vis !== P.ACTIONS[a].visibility) out.push(a + ' visibility=' + vis + '，应为 ' + P.ACTIONS[a].visibility);
-    if (!hasWriteFlag(map[a])) out.push(a + ' 缺 write 布尔标记');
+    if (!hasWriteFlag(map[a])) { out.push(a + ' 缺 write 布尔标记'); return; }
+    // 审查 P2-11：旧判据只验「有 write 布尔」不比值，admin.bootstrap 的 true/false 漂移被判绿；
+    // 现在注册表与 CONTRACT 镜像（tools/lib/project.js）的 write 值必须双向相等，任一方向漂移即红。
+    const write = writeFlagValue(map[a]);
+    if (write !== P.ACTIONS[a].write) {
+      out.push(a + ' write=' + write + '，应为 ' + P.ACTIONS[a].write + '（注册表与 CONTRACT 镜像 write 值不一致）');
+    }
   });
   const clientSet = new Set(Object.keys(P.ACTIONS).filter((a) => P.ACTIONS[a].visibility === 'client'));
   const mods = RELS.filter((r) => /^api\/modules\/.*\.js$/.test(r));

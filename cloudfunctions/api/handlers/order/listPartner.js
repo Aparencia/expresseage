@@ -15,30 +15,21 @@ const { errors } = require('../../lib/errors');
 const common = require('./_common');
 const dto = require('./_dto');
 const summaryPure = require('./_summary');
-const transfer = require('./_transfer');
+const access = require('./_transfer-access');
+const listTransfer = require('./_list-transfer');
+const { readKeyword, readOptionalBindingId, parseTimeBound } = require('./_list-query');
 
 const WORKBENCH_VIEW = 'workbench';
 const DAY_VIEW = 'day';
 const HISTORY_VIEW = 'history';
 const CUSTOMER_VIEW = 'customer';
-// D58/Q1：待接收转派列表（目标兼职视角）；单账号 PENDING 邀请量级 = 日上限（TTL 10 分钟），一次扫描足够
+// D58/Q1：待接收转派列表（目标兼职视角，见 _list-transfer.js）
 const TRANSFER_VIEW = 'transfer';
-const MAX_TRANSFER_SCAN = 100;
 const YESTERDAY_MS = time.DAY_MS;
-const KEYWORD_MAX_CHARS = 40;
-const BINDING_ID_MAX = 64;
 // 今日流水行内不显示写操作（D54/批 20）：待确认（delivered 桶）与已完结（history 桶）只读
 const DAY_READONLY_BUCKETS = ['delivered', 'history'];
 
-function parseTimeBound(value) {
-  if (value === undefined || value === null || value === '') {
-    return 0;
-  }
-  const ms = time.toMs(value);
-  return ms;
-}
-
-// view 显式四值：缺省=workbench（页面首屏不传）、day=今日订单流水（批 20）；非法值拒绝而不是静默降级
+// view 显式五值：缺省=workbench（页面首屏不传）、day=今日订单流水（批 20）；非法值拒绝而不是静默降级
 // （否则筛选口径被悄悄改掉）。
 function resolveView(input) {
   const raw = typeof input.view === 'string' ? input.view.trim().toLowerCase() : '';
@@ -50,40 +41,6 @@ function resolveView(input) {
     return raw;
   }
   throw errors.validation('view', '视图参数不正确，请刷新页面后重试');
-}
-
-// 工作台搜索词：空=不过滤；超长/非串拒绝（静默忽略会让「搜了但没筛」变成全量返回）。
-function readKeyword(value) {
-  if (value === undefined || value === null || value === '') {
-    return '';
-  }
-  if (typeof value !== 'string') {
-    throw errors.validation('keyword', '搜索词不正确，请重新输入');
-  }
-  const text = value.trim();
-  if (text.length > KEYWORD_MAX_CHARS) {
-    throw errors.validation('keyword', '搜索词过长，请缩短后重试');
-  }
-  return text;
-}
-
-// 绑定顾客筛选参数（批 7 view=customer 必传）：非串/超长拒绝；空串=未给（由调用处按视图裁决）。
-function readOptionalBindingId(input) {
-  const value = input && typeof input === 'object' ? input.bindingId : undefined;
-  if (value === undefined || value === null) {
-    return '';
-  }
-  if (typeof value !== 'string') {
-    throw errors.validation('bindingId', '绑定顾客参数不正确，请刷新页面后重试');
-  }
-  const text = value.trim();
-  if (text === '') {
-    return '';
-  }
-  if (text.length > BINDING_ID_MAX) {
-    throw errors.validation('bindingId', '绑定顾客参数不正确，请刷新页面后重试');
-  }
-  return text;
 }
 
 // 停用/注销兼职不再返回业务数据（CONTRACT §1：只看到「已停用」提示；DATA_MODEL §12 #3）。
@@ -327,6 +284,7 @@ async function buildCounts(ctx, partnerId, nowMs) {
 // 客户订单视图：bindingId 必须属于当前兼职（他人/不存在一律 FORBIDDEN，不暴露绑定是否存在）；
 // 只返回该绑定顾客在本人名下的订单（partnerId=me AND customerId=binding.customerId），
 // guest 单 customerId='' 天然不进入；行复用 history 行、不内联 actions[]、不发 counts。
+// P1-3：行级遮蔽与详情同口径（_transfer-access.maskFlagsOf），转派进入的单不会在列表泄漏 customerNo/昵称。
 async function listCustomerOrders(ctx, partner, input) {
   const bindingId = readOptionalBindingId(input);
   if (!bindingId) {
@@ -340,98 +298,13 @@ async function listCustomerOrders(ctx, partner, input) {
   const query = pageQueryOf(input, 300);
   query.extraWhere = { customerId: binding.customerId };
   const result = await pageOf(ctx, partner._id, filter, query);
-  const list = await dto.buildOrderDtos(ctx, result.page, 'PARTNER', { withActions: false });
+  const maskFlags = await access.maskFlagsOf(ctx, result.page, partner);
+  const list = await dto.buildOrderDtos(ctx, result.page, 'PARTNER', { withActions: false, maskFlags });
   return { list, nextCursor: nextCursorOf(result) };
 }
 
 function scanLimitOf(paging) {
   return Math.min(Math.max(paging.limit * 3, 60), 300);
-}
-
-// ── D58 待接收转派（view='transfer'，裁决 Q1=A）───────────────────────────────
-// D58：待接收转派角标（服务端计数，客户端不自行计数、不额外轮询 view=transfer）。
-// 口径 = 本人为目标 + PENDING + 订单仍 ACCEPTED + 未过期；count 单查询（不惰性写库，过期项由读路径收敛）。
-async function countTransferPending(ctx, partner, nowMs) {
-  return ctx.dao.count(COLLECTIONS.ORDERS, {
-    where: {
-      'transfer.toPartnerId': partner._id,
-      'transfer.status': enums.TRANSFER_STATUS.PENDING,
-      'transfer.expiresAt': ctx.dao.command('gt', new Date(nowMs)),
-      status: enums.ORDER_STATUS.ACCEPTED,
-      isTest: common.isTestSession(ctx)
-    }
-  });
-}
-
-// 数据源 = orders.transfer（目标=本人、PENDING、订单仍 ACCEPTED）；服务端过滤 + 惰性过期，客户端零过滤。
-// 顶层只增 transferPending（有效邀请数由服务端计数），counts 六项零值模板形状不变。
-function transferRequestedMsOf(order) {
-  return transfer.dateMsOf(order && order.transfer && order.transfer.requestedAt);
-}
-
-// transfer 视图不消费筛选参数：静默忽略会让"筛了但没筛"变成全量返回，统一拒绝（与其它视图同口径）
-function assertTransferQuery(input) {
-  if (readOptionalBindingId(input)) {
-    throw errors.validation('bindingId', '待接收转派列表不支持该筛选参数');
-  }
-  if (readKeyword(input.keyword)) {
-    throw errors.validation('keyword', '待接收转派列表不支持搜索');
-  }
-  if (typeof input.status === 'string' && input.status.trim() !== '') {
-    throw errors.validation('status', '待接收转派列表不支持状态筛选');
-  }
-  if (parseTimeBound(input.from) > 0 || parseTimeBound(input.to) > 0) {
-    throw errors.validation('from', '待接收转派列表不支持时间筛选');
-  }
-}
-
-function transferCursorOf(page, hasMore) {
-  const last = page[page.length - 1];
-  if (!hasMore || !last) {
-    return null;
-  }
-  return { sortValue: transferRequestedMsOf(last), orderNo: last.orderNo || '' };
-}
-
-// 逐行惰性过期：过期/订单已离开 ACCEPTED 的先落库再排除（读到即收敛，无需 sweep）
-async function validPendingRowsOf(ctx, rows, nowMs) {
-  const valid = [];
-  for (let i = 0; i < rows.length; i += 1) {
-    let current = await transfer.expireIfNeeded(ctx, rows[i], nowMs);
-    current = await transfer.expireForStateChange(ctx, current, nowMs);
-    if (transfer.isPending(current) && current.status === enums.ORDER_STATUS.ACCEPTED) {
-      valid.push(current);
-    }
-  }
-  return valid;
-}
-
-async function listTransferOrders(ctx, partner, input) {
-  assertTransferQuery(input);
-  const paging = common.parsePaging(input);
-  const nowMs = common.nowMsOf(ctx);
-  const rows = await ctx.dao.find(COLLECTIONS.ORDERS, {
-    where: {
-      'transfer.toPartnerId': partner._id,
-      'transfer.status': enums.TRANSFER_STATUS.PENDING,
-      isTest: common.isTestSession(ctx)
-    },
-    orderBy: [['transfer.requestedAt', 'desc'], ['orderNo', 'desc']],
-    limit: MAX_TRANSFER_SCAN
-  });
-  const valid = await validPendingRowsOf(ctx, rows, nowMs);
-  const candidates = valid.filter((row) => common.isAfterCursor(
-    transferRequestedMsOf(row), row.orderNo, paging.cursor
-  ));
-  const page = candidates.slice(0, paging.limit);
-  // 目标兼职视角：无 counterpart/customerNo（§1.4），行不内联 actions（入口点进详情）
-  const list = await dto.buildOrderDtos(ctx, page, '', { withActions: false, transferTarget: true });
-  return {
-    list,
-    nextCursor: transferCursorOf(page, candidates.length > paging.limit),
-    counts: orderView.countsTemplate(),
-    transferPending: valid.length
-  };
 }
 
 // 视图附加 summary（从 orderListPartner 拆出控单函数行数）：workbench=苑/栋+状态聚合、day=今日已送达；
@@ -465,7 +338,7 @@ module.exports = async function orderListPartner(ctx, payload) {
   }
   // D58/Q1：待接收转派列表（目标兼职本人视角；服务端过滤，无需 bindingId/keyword）
   if (view === TRANSFER_VIEW) {
-    return listTransferOrders(ctx, partner, input);
+    return listTransfer.listTransferOrders(ctx, partner, input);
   }
   // bindingId 只服务 customer 视图；在其它视图静默忽略参数会让「按顾客筛」变成全量返回。
   if (readOptionalBindingId(input)) {
@@ -481,7 +354,9 @@ module.exports = async function orderListPartner(ctx, payload) {
   }
   const result = await pageOf(ctx, partner._id, filter, query);
   const inlineActions = view === WORKBENCH_VIEW || view === DAY_VIEW;
-  let list = await dto.buildOrderDtos(ctx, result.page, 'PARTNER', { withActions: inlineActions });
+  // P1-3：行级顾客身份遮蔽（与详情同口径；转派进入的单在列表同样零 customerNo/昵称泄漏），动作矩阵不动
+  const maskFlags = await access.maskFlagsOf(ctx, result.page, partner);
+  let list = await dto.buildOrderDtos(ctx, result.page, 'PARTNER', { withActions: inlineActions, maskFlags });
   // D54/批 20：今日流水的待确认/已完结行只读（不显示写操作）；workbench/history/customer 不动
   if (view === DAY_VIEW) {
     list = stripWriteActionsOf(list);
@@ -493,7 +368,7 @@ module.exports = async function orderListPartner(ctx, payload) {
   // D58：待接收转派角标只在需要它的主视图下发（workbench/day 轮询用；history/customer 保持既有严格形状，
   // 避免把 TD-050 的「零额外查询」口径扩到全视图；transfer 视图自带角标）。
   if (view === WORKBENCH_VIEW || view === DAY_VIEW) {
-    body.transferPending = await countTransferPending(ctx, partner, nowMs);
+    body.transferPending = await listTransfer.countTransferPending(ctx, partner, nowMs);
   }
   return attachSummaries(body, view, result, nowMs);
 };

@@ -243,19 +243,26 @@ async function loadOrderDisplayNames(scope, orders) {
 }
 
 // ── 订单 ─────────────────────────────────────────────────────────────────────
-// D58（批 26）转派只读留痕（admin 投影）：只给状态/双方编号/失效时刻/解决原因，无 openid、无内部 id；
-// 历史单无 transfer 字段 → null（零迁移）。列表行与详情共用（详情另经 orderDetail 继承）。
+// D58（批 26）转派只读留痕（admin 投影）：状态/双方编号/申请与失效/解决时刻/解决原因（中文服务端单源），
+// 无 openid、无内部 id；历史单无 transfer 字段 → null（零迁移）。列表行与详情共用（详情另经 orderDetail 继承）。
+// 后台详情页消费形状（pkg-admin/pages/order-detail/parts/view-model.js）：requestedAt/resolvedAt 走既有
+// admin 时间字段形制（dateValue 原值），resolveReasonText 为中文单源（shared/enums.TRANSFER_RESOLVE_REASON_TEXT）。
 function transferBrief(order) {
   const block = order && order.transfer;
   if (!block || typeof block !== 'object') {
     return null;
   }
+  const reason = typeof block.resolveReason === 'string' ? block.resolveReason : '';
+  const reasonTexts = enums.TRANSFER_RESOLVE_REASON_TEXT || {};
   return {
     status: typeof block.status === 'string' ? block.status : '',
     fromPartnerNo: typeof block.fromPartnerNo === 'string' ? block.fromPartnerNo : '',
     toPartnerNo: typeof block.toPartnerNo === 'string' ? block.toPartnerNo : '',
+    requestedAt: dateValue(block.requestedAt),
     expiresAt: dateValue(block.expiresAt),
-    resolveReason: typeof block.resolveReason === 'string' ? block.resolveReason : ''
+    resolvedAt: dateValue(block.resolvedAt),
+    resolveReason: reason,
+    resolveReasonText: reasonTexts[reason] || ''
   };
 }
 

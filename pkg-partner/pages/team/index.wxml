@@ -121,8 +121,9 @@
           <view class="section-title">{{result.title}}</view>
           <text wx:if="{{result.batchText}}" class="small">{{result.batchText}}</text>
         </view>
-        <view wx:for="{{result.codeRows}}" wx:key="key" class="code-row">
-          <text class="code-text">{{item.display}}</text>
+        <view wx:for="{{result.codeRows}}" wx:key="key" class="row between code-row">
+          <text class="code-text" bindlongpress="onCopyResultCode" data-code="{{item.display}}">{{item.display}}</text>
+          <view class="btn btn-ghost mini-btn code-copy-btn" bindtap="onCopyResultCode" data-code="{{item.display}}">复制</view>
         </view>
         <view class="small result-hint">{{result.hintText}}</view>
         <view wx:if="{{result.expiresText}}" class="small">{{result.expiresText}}</view>

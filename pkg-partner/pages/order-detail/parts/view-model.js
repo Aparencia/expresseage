@@ -37,6 +37,11 @@ function buildView(order, events, options) {
   // D58：转派四动作不进底部动作条（由转派区块/面板承载），其余动作仍原样下发底部条
   const actionSplit = transferPart.splitActions(visibleActions);
   const actions = actionSplit.status;
+  // P2-4：改正这一件/写留言入口与底部动作同源（服务端 actions[]）——服务端在下发时已按状态收窄
+  // （DELIVERED/终态无 correct、终态无 message），目标兼职 PENDING 视图只有转派动作；
+  // 页面不得凭「非只读」自行渲染，否则会出现必然失败的越权入口。
+  const canCorrect = actionsPart.hasAction(visibleActions, 'correct');
+  const canMessage = actionsPart.hasAction(visibleActions, 'message');
   const transferCard = transferPart.cardOf(item, visibleActions, { readonly: readonly, nowMs: nowMs });
   const voucher = voucherPart.buildVoucher(item, events);
   // 只读视角不出现撤销条（UX §4.7/§6.3：写操作全置灰/隐藏）
@@ -46,6 +51,8 @@ function buildView(order, events, options) {
   return {
     order: Object.assign({}, item, detail),
     actions: actions,
+    canCorrect: canCorrect,
+    canMessage: canMessage,
     transferCard: transferCard,
     transferPanel: transferPart.requestPanel(),
     voucher: voucher,

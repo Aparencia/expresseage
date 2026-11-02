@@ -122,7 +122,7 @@ const off = store.subscribe((snapshot) => { this.setData({ vm: snapshot }); });
 - **启动期绑定水合（P0-3 性能口径）**：`app.js` 启动关键路径只 `await user.bootstrap`；`bind.getCurrent` 在启动后台推进（不阻塞首帧），成功后把 `{binding, partnerPublic}` 一并写入 `store.binding`（`partnerPublic` 为可选字段）。首页首次 `onShow` 在 30 秒窗口内复用同一 `bind.getCurrent` 结果（不再重复发请求）；**切换会话期间禁止复用**（`viewContext` 存在即跳过）；离开首页再回来/下拉刷新仍自行重拉，不做永久缓存。
 - **首页对方卡兜底（v1.1）**：home 视图用纯件 `partnerCardOf(binding, partnerPublic)`——`partnerPublic` 优先；未到达时允许用 `store.binding` 的启动期字段 `partnerNo/partnerDisplayName/partnerAvatarFileId` 作合法展示回退（首帧不空卡、不错误显示默认「代」）；`bind.getCurrent` 到达后覆盖；**不得**用顾客本人资料冒充对方。
 - **tabBar 选中格 per-page 同步（v1.1；D64 修订）**：每个真实 tab 页 `onShow` 显式 `getTabBar().setData({selected})`（顾客 home=0/orders=1/profile=3，兼职 workbench=0/customers=1/profile=2）；伪 tab 页 `pages/customer/pickcodes/index` 不调 `getTabBar()`，由页内共用底部栏组件按 `selected=2` 渲染；`custom-tab-bar` 路径未命中（伪 tab 页）时保留页面显式值、不回落 0 覆盖。
-- **D58/D59 不进全局 store 快照（v1.10）**：转派待接收角标 `transferPending` 由工作台 `order.listPartner({view:'transfer'})` 响应驱动、页面自管，**不写入 `store.badges`**（避免 30s 轮询额外扇出）；团队页数据直读 `partner.listSubMembers`（主兼职）或 `user.bootstrap.partner.team` 摘要（子队员），`store` **不新增 `team` 字段**（可选快照不实现）。
+- **D58/D59 不进全局 store 快照（v1.10）**：转派待接收角标 `transferPending` 由工作台 `order.listPartner` 响应顶层加带（**`view='workbench'`/`'day'` 才加带**；`view='transfer'` 自带=本次结果条数；`history`/`customer` 不带）驱动、页面自管，**不写入 `store.badges`**（避免 30s 轮询额外扇出）；团队页数据直读 `partner.listSubMembers`（主兼职全队 / 子队员摘要，响应同形状），`store` **不新增 `team` 字段**（可选快照不实现）。
 
 ### 3.5 页面与组件约定
 

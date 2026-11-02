@@ -6,6 +6,7 @@ const enums = require('../../shared/enums');
 const { errors } = require('../../lib/errors');
 const store = require('./_store');
 const transfer = require('./_transfer');
+const access = require('./_transfer-access');
 
 const ACTION = 'order.requestTransfer';
 
@@ -68,11 +69,13 @@ async function loadCheckedTarget(ctx, info, payload) {
   return target;
 }
 
-// 幂等重放：同 clientRequestId/same (from,to) → 返回当前 DTO + duplicated:true（零二次写）
-async function duplicatedResult(ctx, order) {
+// 幂等重放：同 clientRequestId/same (from,to) → 返回当前 DTO + duplicated:true（零二次写）。
+// P1-1：先做读权限复检——转派完成后原履约人重放旧 crid 一律 FORBIDDEN（不再回带订单内容）。
+async function duplicatedResult(ctx, order, event) {
+  const view = await access.replayViewOf(ctx, order, event);
   return {
-    order: await transfer.viewOf(ctx, order, 'PARTNER', false),
-    transfer: transfer.blockOf(order, 'PARTNER'),
+    order: await transfer.viewOf(ctx, order, view.side, view),
+    transfer: transfer.blockOf(order, view.side || 'PARTNER'),
     duplicated: true
   };
 }
@@ -106,7 +109,9 @@ async function writeRequest(ctx, info, target) {
   });
   const result = await transfer.writeTransferAction(ctx, order, { patch: { transfer: block }, event, nowMs });
   const body = {
-    order: await transfer.viewOf(ctx, result.order, 'PARTNER', false),
+    order: await transfer.viewOf(ctx, result.order, 'PARTNER', {
+      maskCustomer: await access.maskCustomerOf(ctx, result.order, partner)
+    }),
     transfer: transfer.blockOf(result.order, 'PARTNER')
   };
   if (result.duplicated) {
@@ -120,9 +125,11 @@ module.exports = async function orderRequestTransfer(ctx, payload) {
   await transfer.consumeRate(ctx, info.config);
   info.clientRequestId = transfer.clientRequestIdOf(ctx);
   const requestKey = transfer.requestKeyOf(info.order, ACTION, info.clientRequestId);
-  if (await transfer.findActionEvent(ctx, requestKey)) {
-    return duplicatedResult(ctx, info.order);
+  const replayEvent = await transfer.findActionEvent(ctx, requestKey);
+  if (replayEvent) {
+    return duplicatedResult(ctx, info.order, replayEvent);
   }
+  access.assertExpectedVersion(ctx, info.order);
   const target = await loadCheckedTarget(ctx, info, payload);
   return writeRequest(ctx, info, target);
 };

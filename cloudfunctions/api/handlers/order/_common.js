@@ -84,7 +84,15 @@ async function applyOrderActionWrite(trx, params) {
   if (params.transferExpiry) {
     patch.transfer = params.transferExpiry.transfer;
   }
-  await trx.update(store.COLLECTIONS.ORDERS, order._id, patch);
+  // P1-4：事务内条件更新（where 带读到的 version）——陈旧快照（他端已确认转派/已改状态）不得整值覆盖，
+  // updated===0 即抛 CONFLICT 让整笔事务回滚：orders/order_events 零写入（含转派过期钩子的事件）。
+  const written = await trx.updateWhere(store.COLLECTIONS.ORDERS, {
+    _id: order._id,
+    version: order.version
+  }, patch);
+  if (!written.updated) {
+    throw errors.conflict('订单已被更新，请刷新后重试');
+  }
   await trx.add(store.COLLECTIONS.ORDER_EVENTS, params.eventDoc);
   if (params.transferExpiry) {
     await trx.add(store.COLLECTIONS.ORDER_EVENTS, params.transferExpiry.event);

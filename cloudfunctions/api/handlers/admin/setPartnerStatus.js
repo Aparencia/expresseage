@@ -415,6 +415,7 @@ async function writeStatusAudit(scope, info) {
       affectedOrders: info.outcome.affectedOrders,
       affectedMembers: Number(info.outcome.affectedMembers) || 0,
       cancelledTransfers: Number(info.outcome.cancelledTransfers) || 0,
+      detachedFromParent: !!info.outcome.detachedParentId,
       requestId: info.clientRequestId
     },
     info.requestKey
@@ -437,16 +438,7 @@ async function replayOf(scope, replay) {
   };
 }
 
-// D59（CONTRACT §13）：主兼职 SUSPENDED/CLOSED 时级联同队子队员（复用本文件既有最终段/注销分批事务，不写第二份治理实现；恢复不级联）。
-function teamCascadeOf(scope, partner, status, reason) {
-  if (status === enums.PARTNER_STATUS.ACTIVE) {
-    return Promise.resolve({ affectedMembers: 0, cancelledTransfers: 0 });
-  }
-  return team.cascadeSubMembers(scope, partner, status, reason, {
-    suspendMember: (member) => commitFinalSegment(scope, member, status, reason),
-    closeMember: (member) => governPartner(scope, member, member.status, enums.PARTNER_STATUS.CLOSED, reason)
-  });
-}
+// D59（CONTRACT §13）：停用/注销级联同队子队员、恢复时清理悬挂上级——级联单源已收敛到 partner/_team.cascadeOrDetachForAdmin。
 
 async function handler(ctx, payload) {
   const scope = await createAdminScope(ctx);
@@ -473,9 +465,11 @@ async function handler(ctx, payload) {
   const from = partner.status;
   assertTransition(from, status);
   const outcome = await governPartner(scope, partner, from, status, reason);
-  const teamOutcome = await teamCascadeOf(scope, partner, status, reason);
-  outcome.affectedMembers = teamOutcome.affectedMembers;
-  outcome.cancelledTransfers = teamOutcome.cancelledTransfers;
+  const teamOutcome = await team.cascadeOrDetachForAdmin(scope, partner, status, reason, {
+    suspendMember: (member) => commitFinalSegment(scope, member, status, reason),
+    closeMember: (member) => governPartner(scope, member, member.status, enums.PARTNER_STATUS.CLOSED, reason)
+  });
+  Object.assign(outcome, teamOutcome);
   const action = status === enums.PARTNER_STATUS.ACTIVE
     ? AUDIT_ACTIONS.PARTNER_RESTORE
     : AUDIT_ACTIONS.PARTNER_SUSPEND;

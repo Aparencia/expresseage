@@ -107,6 +107,12 @@
   color: var(--v4-partner);
 }
 
+/* P2-2：完整码行内「复制」按钮（与长按复制同出口，提示一次性口径） */
+.code-copy-btn {
+  margin-left: 16rpx;
+  flex-shrink: 0;
+}
+
 .result-hint {
   margin-top: 8rpx;
   color: #8A6D00;

@@ -19,34 +19,6 @@
     <text class="new-banner-action">{{banner.actionText}}</text>
   </view>
 
-  <!-- D58：待接收转派区块（顶部入口）。N = 服务端 order.listPartner 顶层 transferPending（客户端不自算）；
-       行 = view='transfer' 服务端过滤结果（目标兼职视角，已遮蔽顾客昵称/头像/客户编号），点行进订单详情 -->
-  <view wx:if="{{transfer.visible}}" class="card transfer-card">
-    <view class="row between transfer-head">
-      <view class="strong">{{transfer.title}}</view>
-      <view class="mini-btn btn btn-ghost" bindtap="onTransferRefreshTap">刷新</view>
-    </view>
-    <view
-      wx:for="{{transfer.rows}}"
-      wx:key="orderNo"
-      wx:for-item="row"
-      class="transfer-line"
-      data-order-no="{{row.orderNo}}"
-      bindtap="onTransferRowTap"
-    >
-      <view class="row between transfer-line-top">
-        <text class="small transfer-from">{{row.fromText}}</text>
-        <text wx:if="{{row.remainingText}}" class="tag transfer-remain">{{row.remainingText}}</text>
-      </view>
-      <view class="row between transfer-line-foot">
-        <text class="small order-no-text">{{row.orderNo}}</text>
-        <text wx:if="{{row.metaText}}" class="small transfer-meta">{{row.metaText}}</text>
-      </view>
-    </view>
-    <view wx:if="{{transfer.hintText}}" class="small transfer-hint">{{transfer.hintText}}</view>
-    <view wx:if="{{transfer.moreText}}" class="small transfer-hint">{{transfer.moreText}}</view>
-  </view>
-
   <view class="card counts-card">
     <view class="counts-grid">
       <view class="count-cell" data-count="submitted" bindtap="onCountTap">
@@ -79,6 +51,36 @@
       <text class="small">汇总只到苑/栋，可发到顾客群</text>
       <view class="mini-btn btn btn-ghost" bindtap="onCopySummaryTap">复制汇总</view>
     </view>
+  </view>
+
+  <!-- D58：待接收转派区块——位置在「进度总览（counts 卡）」下方（P2-7 对齐冻结 UX §4.1/§4.12）。
+       N = 服务端 order.listPartner 顶层 transferPending（客户端不自算、不计入 tabBar 待接单红点，红点只取 counts.submitted）；
+       行 = view='transfer' 服务端过滤结果（目标兼职视角已遮蔽顾客昵称/头像/客户编号；顺序原样取服务端 requestedAt desc，
+       客户端不按 expiresAt 重排）；行文案 = 订单号末 4 位 + 宿舍锚 + 件数 + 发起方编号 + 剩余 N 分钟；点行进订单详情 -->
+  <view wx:if="{{transfer.visible}}" class="card transfer-card">
+    <view class="row between transfer-head">
+      <view class="strong">{{transfer.title}}</view>
+      <view class="mini-btn btn btn-ghost" bindtap="onTransferRefreshTap">刷新</view>
+    </view>
+    <view
+      wx:for="{{transfer.rows}}"
+      wx:key="orderNo"
+      wx:for-item="row"
+      class="transfer-line"
+      data-order-no="{{row.orderNo}}"
+      bindtap="onTransferRowTap"
+    >
+      <view class="row between transfer-line-top">
+        <text class="small transfer-from">{{row.fromText}}</text>
+        <text wx:if="{{row.remainingText}}" class="tag transfer-remain">{{row.remainingText}}</text>
+      </view>
+      <view class="row between transfer-line-foot">
+        <text class="small order-no-text">{{row.orderNoText}}</text>
+        <text wx:if="{{row.metaText}}" class="small transfer-meta">{{row.metaText}}</text>
+      </view>
+    </view>
+    <view wx:if="{{transfer.hintText}}" class="small transfer-hint">{{transfer.hintText}}</view>
+    <view wx:if="{{transfer.moreText}}" class="small transfer-hint">{{transfer.moreText}}</view>
   </view>
 
   <view wx:if="{{syncError}}" class="card warn-card"><text class="warn-text">{{syncError}}</text></view>

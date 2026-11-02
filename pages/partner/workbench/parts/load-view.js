@@ -204,17 +204,15 @@ function chunkPlanOf(groups) {
   return { first: chunks[0], rest: chunks.slice(1), hasRest: chunks.length > 1 };
 }
 
-// 红点：工作台格显示待接单数 + D58 待接收转派数（测试会话订单服务端已隔离，不额外判断）；
+// 红点：tabBar 工作台格只显示待接单数（冻结口径：红点 = counts.submitted，按订单计）；
+// 待接收转派数由「待接收转派（N）」区块自己的标题角标承载，两者不同源、不合并、不互相覆盖（UX §4.12）。
 // 复用既有 badges.workbenchPending 机制，不新增红点键；不得覆盖消息红点。
-function badgePatch(counts, currentBadges, transferPending) {
+function badgePatch(counts, currentBadges) {
   const current = currentBadges || {};
   const submitted = counts && typeof counts.submitted === 'number' ? counts.submitted : 0;
-  const pending = typeof transferPending === 'number' && isFinite(transferPending) && transferPending > 0
-    ? Math.floor(transferPending)
-    : 0;
-  const total = submitted + pending;
+  const pending = submitted > 0 ? Math.floor(submitted) : 0;
   return {
-    workbenchPending: total > 0 ? total : 0,
+    workbenchPending: pending,
     messages: typeof current.messages === 'number' ? current.messages : 0
   };
 }

@@ -17,10 +17,12 @@ const sharedStations = require(path.join(ROOT, 'shared/stations.js'));
 const copy = require(path.join(ROOT, 'pkg-admin/common/copy.js'));
 const C = require(path.join(ROOT, 'pkg-admin/common/constants.js'));
 const adminClockCases = require(path.join(__dirname, 'lib', 'admin-config-clock-cases.js'));
+const adminInviteCases = require(path.join(__dirname, 'lib', 'admin-invite-cases.js'));
 const adminOrdersCases = require(path.join(__dirname, 'lib', 'admin-orders-cases.js'));
+const adminDto = require(path.join(ROOT, 'cloudfunctions/api/handlers/admin/_dto.js'));
+const adminFormat = require(path.join(ROOT, 'pkg-admin/common/format.js'));
 
 const overviewVm = require(path.join(ROOT, 'pkg-admin/pages/overview/parts/view-model.js'));
-const inviteVm = require(path.join(ROOT, 'pkg-admin/pages/invite-codes/parts/view-model.js'));
 const customersVm = require(path.join(ROOT, 'pkg-admin/pages/customers/parts/view-model.js'));
 const customerDetailVm = require(path.join(ROOT, 'pkg-admin/pages/customer-detail/parts/view-model.js'));
 const partnersVm = require(path.join(ROOT, 'pkg-admin/pages/partners/parts/view-model.js'));
@@ -31,7 +33,7 @@ const accountSwitchVm = require(path.join(ROOT, 'pkg-admin/pages/account-switch/
 const reviewVm = require(path.join(ROOT, 'pkg-admin/pages/recognition-review/parts/view-model.js'));
 const messagesVm = require(path.join(ROOT, 'pkg-admin/pages/messages/parts/view-model.js'));
 
-const EXPECTED_ASSERTIONS = 154 + 22 + 3 + 11 + 3 + adminOrdersCases.CLIENT_ASSERTIONS; // +3：批26-D58 后台转派留痕（P 组）；+11：D43 自动完成时间用例表；+6：订单行/消息行「称呼（编号）」；余同批 16 前：v1.1/D32 站点卡 16 + 反馈④ 6 + D41 目录 3
+const EXPECTED_ASSERTIONS = 146 + 22 + 3 + 11 + 5 + adminOrdersCases.CLIENT_ASSERTIONS + adminInviteCases.CLIENT_ASSERTIONS; // 146+…=C 组 8 条移入 tools/lib/admin-invite-cases.js（含原 8 + D59 新增 15，合计 CLIENT_ASSERTIONS）；+5：批26-D58 后台转派留痕（P 组，D58 真实 DTO 驱动后 3→5）；+11：D43 自动完成时间用例表；+6：订单行/消息行「称呼（编号）」；余同批 16 前：v1.1/D32 站点卡 16 + 反馈④ 6 + D41 目录 3
 
 const ADMIN_PAGES = ['overview', 'invite-codes', 'customers', 'customer-detail', 'partners', 'orders', 'order-detail', 'config', 'account-switch', 'messages', 'recognition-review'];
 const STATUS_LITERALS = ['SUBMITTED', 'ACCEPTED', 'PICKED', 'DELIVERED', 'COMPLETED', 'CANCELLED', 'EXCEPTION'];
@@ -196,49 +198,8 @@ function register(h) {
   });
 
   // ------------------------------------------------------------------ C. 邀请码
-  h.section('C §3.2/§4 邀请码：状态筛选/掩码/作废前置/生成表单校验', (t) => {
-    const tabs = inviteVm.buildTabs('UNUSED', { '': 32, UNUSED: 20 });
-    const activeTab = tabs.filter(function findActive(tab) { return tab.active; })[0];
-    t.check(tabs.length === C.INVITE_STATUS_TABS.length && activeTab.key === 'UNUSED' && activeTab.countText === ' 20',
-      '状态筛选 tab 覆盖全部注册状态、高亮当前状态、计数取服务端 counts');
-    const unusedRow = inviteVm.decorateRow({
-      invitationCode: 'ABCD-EFGH-9XYZ', status: 'UNUSED', batchId: 'B1',
-      expiresAt: Date.now(), createdAt: Date.now(), note: '首批'
-    });
-    t.check(unusedRow.codeMasked.indexOf('9XYZ') >= 0 && unusedRow.codeMasked.indexOf('ABCD') < 0
-      && unusedRow.invitationCode === 'ABCD-EFGH-9XYZ',
-    '列表只展示掩码（****-****-后4），完整码只留在内存供作废调用');
-    t.check(unusedRow.isUnused === true && unusedRow.statusText === C.INVITE_STATUS_LABELS.UNUSED,
-      '未使用行展示中文状态并可作废');
-    const usedRow = inviteVm.decorateRow({
-      invitationCode: 'ABCD-EFGH-1AAA', status: 'USED', usedByPartnerNo: 'P-7K2-M9X',
-      usedByDisplayName: '小**', usedAt: Date.now()
-    });
-    t.check(usedRow.isUnused === false && usedRow.usedByText.indexOf('P-7K2-M9X') >= 0,
-      '已使用行只读展示使用人兼职编号+脱敏昵称');
-    t.eq([
-      inviteVm.revokeBlockedCopy(enums.INVITATION_STATUS.USED),
-      inviteVm.revokeBlockedCopy(enums.INVITATION_STATUS.EXPIRED),
-      inviteVm.revokeBlockedCopy(enums.INVITATION_STATUS.REVOKED),
-      inviteVm.revokeBlockedCopy(enums.INVITATION_STATUS.UNUSED)
-    ], [
-      '这个邀请码已被使用，不能作废。',
-      '这个邀请码已过期，无需作废。',
-      '这个邀请码已作废，无需重复作废。',
-      ''
-    ], '作废前置按真实状态分支（已使用/已过期/已作废/可作废）');
-    const createMatrix = [
-      inviteVm.validateCreate({ count: '0', note: '' }).ok,
-      inviteVm.validateCreate({ count: '51', note: '' }).ok,
-      inviteVm.validateCreate({ count: '50', note: '' }).ok,
-      inviteVm.validateCreate({ count: '1', note: 'x'.repeat(51) }).ok,
-      inviteVm.validateCreate({ count: '3', note: '  首批  ' }).note
-    ];
-    t.eq(createMatrix, [false, false, true, false, '首批'], '生成表单校验：数量 1~50、备注 ≤50、提交前去空白');
-    t.check(inviteVm.pickExpires(2).label.indexOf('7') >= 0, '默认有效期 = 7 天（索引 2）');
-    const result = inviteVm.buildResult({ batchId: 'B2', expiresAt: Date.now(), codes: ['AAA', 'BBB'] });
-    t.check(result.count === 2 && result.codeText === 'AAA\nBBB' && result.batchId === 'B2',
-      '批量结果整批可复制（换行拼接）+ 批次号展示');
+  h.section('C §3.2/§4 邀请码：状态筛选/掩码/作废前置/生成表单校验 + D59 类型列/SUB 只读/类型筛选', (t) => {
+    adminInviteCases.registerC(t);
   });
 
   // ------------------------------------------------------------------ D. 顾客列表/详情
@@ -969,19 +930,52 @@ function register(h) {
     t.check(textOf('pkg-admin/pages/messages/index.wxml').indexOf('去复核') >= 0,
       '后台消息页识别失败摘要行给「去复核」跳转');
   });
-  h.section('P. D58 转派留痕：详情编号级留痕、列表转派标签、旧单不显示、零 openid/昵称头像', (t) => {
-    const transfer = { status: 'PENDING', fromPartnerNo: 'P-AAA-AAA', toPartnerNo: 'P-BBB-BBB', requestedAt: Date.now(), expiresAt: Date.now() + 600000, resolveReasonText: '订单状态已变，邀请失效' };
-    const trace = orderDetailVm.buildDetailView({ order: { orderNo: '20261022-0031', transfer: transfer }, events: [] }, '').order.transfer || {};
-    t.eq([trace.statusText, trace.fromPartnerNoText, trace.toPartnerNoText, trace.requestedAtText.length > 0, trace.resolveReasonText,
-      orderDetailVm.decorateOrder({ orderNo: 'X' }, 'X').transfer, JSON.stringify(trace).indexOf('openid')],
-    [enums.TRANSFER_STATUS_TEXT.PENDING, 'P-AAA-AAA', 'P-BBB-BBB', true, '订单状态已变，邀请失效', null, -1], 'P1 详情只读留痕：状态中文取 shared 单源 + 发起/接收方编号 + 时间/结果；旧单无 transfer 不留痕；投影零 openid');
-    t.eq([ordersVm.decorateRow({ orderNo: 'Y', transfer: transfer }).transferText, ordersVm.decorateRow({ orderNo: 'Z' }).transferText],
-    ['转派 P-AAA-AAA→P-BBB-BBB', ''], 'P2 列表行转派标签只含编号（无转派/无编号不渲染，不新增列破坏布局）');
+  h.section('P. D58 转派留痕：真实 admin DTO 驱动详情编号级留痕、列表标签、缺字段降级、零 openid/昵称头像', (t) => {
+    const stamp = Date.parse('2026-11-03T10:00:00+08:00');
+    // 订单原始文档 → 真实服务端投影（admin._dto.orderDetail/orderBrief）；端侧只能消费投影键，
+    //   不直接读 orders.transfer 原始块（requestedAt/resolvedAt/resolveReasonText 由 transferBrief 下发，
+    //   W2 追加中：DTO 给了才渲染，未给则对应行降级不展示）。
+    const orderDoc = {
+      orderNo: '20261022-0031', status: 'ACCEPTED', createdAt: new Date(stamp), statusUpdatedAt: new Date(stamp),
+      transfer: {
+        status: 'ACCEPTED', fromPartnerNo: 'P-AAA-AAA', toPartnerNo: 'P-BBB-BBB',
+        requestedAt: new Date(stamp), expiresAt: new Date(stamp + 600000),
+        resolvedAt: new Date(stamp + 120000), resolveReason: 'TARGET_ACCEPTED'
+      }
+    };
+    const detail = adminDto.orderDetail(orderDoc, {});
+    const brief = detail.transfer || {};
+    const trace = orderDetailVm.buildDetailView({ order: adminDto.orderDetail(orderDoc, {}), events: [] }, '').order.transfer || {};
+    const timeText = function textOf(value) { return value ? adminFormat.formatTime(value) : ''; };
+    t.eq([trace.statusText, trace.fromPartnerNoText, trace.toPartnerNoText, trace.expiresAtText,
+      trace.requestedAtText, trace.resolvedAtText, trace.resolveReasonText,
+      JSON.stringify(trace).indexOf('openid'), JSON.stringify(trace).indexOf('displayName'),
+      JSON.stringify(trace).indexOf('TARGET_ACCEPTED')],
+    [(enums.TRANSFER_STATUS_TEXT || {})[brief.status] || brief.status, 'P-AAA-AAA', 'P-BBB-BBB',
+      timeText(brief.expiresAt), timeText(brief.requestedAt), timeText(brief.resolvedAt),
+      brief.resolveReasonText || '', -1, -1, -1],
+    'P1 真实 admin DTO 驱动：状态中文取 shared 单源、双方编号/失效时刻/发起与处理时间/处理结果由 transferBrief 决定；投影零 openid/昵称/裸枚举码');
+    const listBrief = adminDto.orderBrief(orderDoc, false, {});
+    t.eq([ordersVm.decorateRow(listBrief).transferText, ordersVm.decorateRow({ orderNo: 'Z' }).transferText],
+      ['转派 P-AAA-AAA→P-BBB-BBB', ''],
+      'P2 列表行转派标签由真实 orderBrief 驱动，只含编号（无转派不渲染，不新增列破坏布局）');
+    const minimalDoc = {
+      orderNo: '20261022-0002', status: 'ACCEPTED',
+      transfer: { status: 'PENDING', fromPartnerNo: 'P-AAA-AAA', toPartnerNo: 'P-BBB-BBB' }
+    };
+    const minimal = orderDetailVm.buildDetailView({ order: adminDto.orderDetail(minimalDoc, {}), events: [] }, '').order.transfer || {};
+    t.eq([minimal.expiresAtText, minimal.requestedAtText, minimal.resolvedAtText, minimal.resolveReasonText,
+      /undefined|NaN/.test(JSON.stringify(minimal))], ['', '', '', '', false],
+    'P3 字段缺失降级：transferBrief 未下发时间/处理结果时对应行不渲染（空串，不出现 undefined/NaN）');
+    t.eq([orderDetailVm.decorateOrder({ orderNo: 'X' }, 'X').transfer,
+      adminDto.orderDetail({ orderNo: 'X', status: 'ACCEPTED' }, {}).transfer], [null, null],
+    'P4 旧单无 transfer：DTO 与页面投影都不留痕（零迁移）');
     t.check(textOf('pkg-admin/pages/order-detail/index.wxml').indexOf('转派留痕') >= 0
       && textOf('pkg-admin/pages/order-detail/index.wxml').indexOf('order.transfer.fromPartnerNoText') >= 0
       && textOf('pkg-admin/pages/order-detail/index.wxml').indexOf('order.transfer.toPartnerNoText') >= 0
+      && textOf('pkg-admin/pages/order-detail/index.wxml').indexOf('order.transfer.requestedAtText') >= 0
       && textOf('pkg-admin/pages/orders/index.wxml').indexOf('item.transferText') >= 0,
-    'P3 后台详情/列表 WXML 渲染编号级转派留痕（只读、无 openid/昵称头像）');
+    'P5 后台详情/列表 WXML 渲染编号级转派留痕（只读、无 openid/昵称头像）');
   });
 }
 

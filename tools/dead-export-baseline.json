@@ -46,13 +46,6 @@
     },
     {
       "file": "config/defaults.js",
-      "symbol": "CONFIG_LIMITS",
-      "reason": "test-only",
-      "evidence": "tools/selftest-testaccount.js:211",
-      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
-    },
-    {
-      "file": "config/defaults.js",
       "symbol": "UPLOAD_LIMITS",
       "reason": "test-only",
       "evidence": "tools/selftest-state.js:249",
@@ -140,13 +133,6 @@
       "symbol": "canDeleteRecord",
       "reason": "test-only",
       "evidence": "tools/selftest-state.js:560",
-      "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
-    },
-    {
-      "file": "pkg-customer/parts/status-view.js",
-      "symbol": "canMessage",
-      "reason": "test-only",
-      "evidence": "tools/selftest-state.js:563",
       "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
     },
     {

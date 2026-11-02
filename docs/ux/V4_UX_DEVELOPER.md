@@ -245,9 +245,9 @@ wx 启动 → pages/launch/index → user.bootstrap
 行：{orderNo} · {状态} · {服务类型} · D4 · {statusUpdatedAt} · {N 件（N>1 时）} · {无截图（manualEntry）}   [详情]
 测试行（开启后出现）：[测试] {orderNo} · {状态} · {服务类型} · {statusUpdatedAt}
 异常行（置顶）：{异常码文案} · 上报 {t} · P-7K2-M9X
-转派标记（D58，有则显示，不新增列）：行尾小标签「转派中」/「已转派」——只显示状态与目标编号，不展示 openid/顾客昵称
+转派标记（D58，有则显示，不新增列）：行尾小标签「转派 P-A→P-B」（`fromPartnerNo`→`toPartnerNo`，缺编号以「—」占位、两者皆空则不显示）——编号级留痕，不展示 openid/顾客昵称/状态文案
 ```
-**组件/数据来源**：状态筛选 tab（含计数，**只计真实数据**）、搜索框、订单行卡（脱敏、无头像）、测试数据开关（默认关）、分页、空态；数据= `admin.listOrders({status?,keyword?,cursor,limit,includeTest})`（默认 `includeTest=false`，仅测试数据时可切 `true`）；**v1.0/D23 行字段**：`parcelCount`（件数，仅 N>1 显示「N 件」chip）、`needCodeCount`（「N 件需查明」）、`manualEntry`（「无截图」chip）、`delivery{zone,buildingNo,buildingText}`（地址列只显苑/楼栋或下单人宿舍脱敏串）；**列表行不下发逐件取件码/柜号/尾号**（防泄漏，逐件只在详情打码后展示）；**D58 行只读转派投影**：`transfer{status,toPartnerNo}` 可选下发（仅真实单；`PENDING`→「转派中」、`ACCEPTED`→「已转派」；**无 openid/无顾客昵称/无 fromPartnerId**），列表不因此加列（放行尾小标签，窄屏不破版）。
+**组件/数据来源**：状态筛选 tab（含计数，**只计真实数据**）、搜索框、订单行卡（脱敏、无头像）、测试数据开关（默认关）、分页、空态；数据= `admin.listOrders({status?,keyword?,cursor,limit,includeTest})`（默认 `includeTest=false`，仅测试数据时可切 `true`）；**v1.0/D23 行字段**：`parcelCount`（件数，仅 N>1 显示「N 件」chip）、`needCodeCount`（「N 件需查明」）、`manualEntry`（「无截图」chip）、`delivery{zone,buildingNo,buildingText}`（地址列只显苑/楼栋或下单人宿舍脱敏串）；**列表行不下发逐件取件码/柜号/尾号**（防泄漏，逐件只在详情打码后展示）；**D58 行只读转派投影**：`transfer{status,fromPartnerNo,toPartnerNo,expiresAt,resolveReason}` **五键**可选下发（仅真实单、**无文案字段**；**无 openid/无顾客昵称/无内部 id**），行尾由纯件拼「转派 P-A→P-B」小标签，列表不因此加列（窄屏不破版）。
 **状态/交互校验**：加载=骨架；空=`当前筛选下没有订单。`；异常空=`没有待处理的异常工单。`；错误=错误条+重试；无权限=回总览。状态筛选/搜索只影响列表、不改计数；异常工单置顶；行只读；**测试数据开关只影响列表展示，不改统计与红点**；分页 20、下拉刷新。
 **文案/跳转**：见本文 §11.5；行 → `order-detail?orderNo=`；异常行 → 详情并显示「介入取消」；测试行带 `测试` 标签（不可介入取消，测试单按测试流程处理）。
 
@@ -559,7 +559,7 @@ USED / REVOKED / EXPIRED = 终态；不存在「重新生效」，需要时重�
 | 动作 | 动作名 | 对象/前置状态 | 确认级别 | 副作用 | 审计 |
 | :-- | :-- | :-- | :-- | :-- | :-- |
 | 停用兼职 | `admin.setPartnerStatus`（SUSPENDED + 原因） | ACTIVE 兼职 | 危险二次确认 | 登录仅停用提示；未完成订单转异常；顾客不能新下单 | `PARTNER_SUSPEND` |
-| 恢复兼职 | `admin.setPartnerStatus`（ACTIVE） | SUSPENDED 兼职 | 二次确认 | 恢复登录/接单；历史与异常单需逐单处理 | `PARTNER_RESTORE` |
+| 恢复兼职 | `admin.setPartnerStatus`（ACTIVE） | SUSPENDED 兼职 | 二次确认 | 恢复登录/接单；历史与异常单需逐单处理；子队员上级不可用（不存在/非 ACTIVE/已注销）时自动解除隶属（审计 `detachedFromParent=true`） | `PARTNER_RESTORE` |
 | 异常介入取消 | `order.cancel`（ADMIN 执行） | `EXCEPTION` 订单 | 危险二次确认 + 原因必填 | 订单 `CANCELLED`；双方可见原因 | `ORDER_ANOMALY_CANCEL` |
 | 配置更新 / 维护模式 | `admin.updateConfig` | 白名单字段 | 二次确认（列变更项） | 下一次请求生效；维护时端侧公告、写接口拒绝 | `CONFIG_UPDATE` |
 | 识别失败补录 | `admin.fixRecognitionFailure` | `PENDING` 复核记录（可关联订单） | 二次确认 | 仅回填 `parcel.stationId/stationName/pickupCode`；不改状态/不代确认/不创建/不改归属；可通知上传者 | `FAILURE_FIX` |
@@ -575,7 +575,7 @@ USED / REVOKED / EXPIRED = 终态；不存在「重新生效」，需要时重�
 ### 7.2 兼职停用与恢复
 - 入口：`partners` 行内「停用/恢复」；二次确认后果句见本文 §11.6；停用原因必填（≤100，写入 `partners.suspendedReason` 与审计 detail）。
 - 停用后：兼职登录只见「已停用」提示与联系方式，看不到任何业务数据（§1）；名下未完成订单转 `EXCEPTION`（`by='ADMIN'`、`code='OTHER'`、说明「兼职账号已停用」），`DELIVERED` 单不转、由自动完成收尾（以 DATA_MODEL 定稿为准）；绑定保留但顾客端显示「已停用」、不能新下单（`order.create` 返回 `PARTNER_CLOSED`）。
-- 恢复：`SUSPENDED → ACTIVE`，恢复登录/接单，历史订单与绑定不受影响；停用期间转异常的单仍需逐单处理，恢复不会自动回滚订单状态；审计 `PARTNER_SUSPEND`/`PARTNER_RESTORE`；**后台页面不提供「注销兼职」入口**（`admin.setPartnerStatus(CLOSED)` 为运维兜底能力：级联释放绑定/订单转异常或完成/匿名化见 DATA_MODEL §8，需控制台或脚本调用；兼职侧无自助注销 action），停用 ≠ 注销。
+- 恢复：`SUSPENDED → ACTIVE`，恢复登录/接单，历史订单与绑定不受影响；停用期间转异常的单仍需逐单处理，恢复不会自动回滚订单状态；**恢复子队员（v1.10/D59，W3 收尾）**：若其上级主兼职不存在/非 `ACTIVE`/已注销，服务端清 `parentPartnerId/teamJoinedAt`（恢复为独立主兼职），审计 `detail.detachedFromParent=true`；上级仍 `ACTIVE` 则保留队伍隶属（`false`）；页面无新增入口/提示，操作仍是一次「恢复」；审计 `PARTNER_SUSPEND`/`PARTNER_RESTORE`；**后台页面不提供「注销兼职」入口**（`admin.setPartnerStatus(CLOSED)` 为运维兜底能力：级联释放绑定/订单转异常或完成/匿名化见 DATA_MODEL §8，需控制台或脚本调用；兼职侧无自助注销 action），停用 ≠ 注销。
 
 ### 7.3 异常订单介入取消
 - 仅 `EXCEPTION` 状态显示「介入取消」，其他状态不显示（服务端非法状态返回 `INVALID_TRANSITION`）。

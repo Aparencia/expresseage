@@ -167,7 +167,9 @@ function buildCustomerActions(actions, order) {
 }
 
 // D58（批 26）转派动作：目标视角给"确认接收/拒收"；履约人视角 PENDING 给"撤回"、否则给"转派"。
-// 一件已取（D61）不广告 requestTransfer（必然 INVALID_STATE）；终态/其它状态不广告（页面零判据）。
+// D61 一件已取不广告 requestTransfer（必然 INVALID_STATE）；终态/其它状态不广告（页面零判据）。
+// P1-2：picked 闸只挡"发起转派"——PENDING 期间的撤回/确认/拒收广告不受已取件影响（状态机会拒绝它们的
+// 唯一场景是邀请已失效，与件级取件无关；吞掉广告会让用户看不到仍在有效期内的撤回入口）。
 function buildTransferActions(actions, order, options) {
   const opts = options || {};
   if (opts.transferTarget) {
@@ -177,11 +179,14 @@ function buildTransferActions(actions, order, options) {
     }
     return;
   }
-  if (order.status !== enums.ORDER_STATUS.ACCEPTED || transfer.hasPickedAny(order)) {
+  if (order.status !== enums.ORDER_STATUS.ACCEPTED) {
     return;
   }
   if (transfer.isPending(order)) {
     pushAction(actions, 'cancelTransfer');
+    return;
+  }
+  if (transfer.hasPickedAny(order)) {
     return;
   }
   pushAction(actions, 'requestTransfer');
@@ -315,8 +320,11 @@ async function buildOrderDto(ctx, order, options) {
   const withActions = opts.withActions !== false;
   const withCounterpart = opts.withCounterpart !== false;
   const transferTarget = opts.transferTarget === true;
+  // P0-1：遮蔽（maskCustomer）与动作矩阵（transferTarget）解耦——转派完成后新履约人按 §1.4 仍遮蔽顾客身份，
+  // 但动作条回落正常 PARTNER 矩阵（ACCEPTED 含 pick/requestTransfer、PICKED 含 deliver 等）。
+  const maskCustomer = transferTarget || opts.maskCustomer === true;
   const identity = (ctx && ctx.identity) || {};
-  const counterpart = withCounterpart && side !== 'ADMIN' && !transferTarget
+  const counterpart = withCounterpart && side !== 'ADMIN' && !maskCustomer
     ? await party.resolveCounterpart(ctx, order, side)
     : null;
   // 转派块按角色剪裁：转派目标 = 双方白名单 7 键；顾客只含 ACCEPTED 后的 status/toPartnerNo；admin 5 键
@@ -333,8 +341,8 @@ async function buildOrderDto(ctx, order, options) {
     images: buildImageDtos(order),
     delivery: deliveryOf(order)
   });
-  // 目标兼职视角（§1.4）：D58 明示不给顾客昵称/头像/客户编号；清键而非置空值（字符串级零泄漏断言）
-  if (transferTarget) {
+  // 遮蔽视图（草案 §1.4 目标列 / P2-11）：不给顾客昵称头像与客户编号；清键而非置空值（字符串级零泄漏断言）
+  if (maskCustomer) {
     delete dto.customerNo;
     dto.counterpart = null;
     dto.guest = null;
@@ -353,9 +361,15 @@ async function buildOrderDto(ctx, order, options) {
 async function buildOrderDtos(ctx, orders, side, options) {
   const list = Array.isArray(orders) ? orders : [];
   const opts = Object.assign({ withActions: false, withCounterpart: false }, options || {});
+  // P1-3：行级遮蔽标志（与 list 等长）；无列表既有选项时逐行走 opts.maskCustomer
+  const maskFlags = Array.isArray(opts.maskFlags) ? opts.maskFlags : null;
   const out = [];
   for (let i = 0; i < list.length; i += 1) {
-    out.push(await buildOrderDto(ctx, list[i], Object.assign({ side }, opts)));
+    const rowOptions = Object.assign({ side }, opts);
+    if (maskFlags) {
+      rowOptions.maskCustomer = maskFlags[i] === true;
+    }
+    out.push(await buildOrderDto(ctx, list[i], rowOptions));
   }
   return out;
 }

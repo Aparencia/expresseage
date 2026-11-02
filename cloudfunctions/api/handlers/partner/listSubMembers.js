@@ -1,7 +1,9 @@
 // handlers/partner/listSubMembers.js · partner.listSubMembers（D59 团队摘要/成员/待用子码/名额）
 // 口径：CONTRACT §13 D59；草案 §2.4 可见性矩阵：主兼职看本队 members（partnerNo+displayName+status+
-// teamJoinedAt，无头像/fileId）+ 自己发的 pendingInvites（只后 4 位码）+ quota{used,max}；
+// teamJoinedAt，无头像/fileId）+ 自己发的 pendingInvites（只后 4 位码）+ quota{used,reserved,max}；
 // 子队员只回自己的队伍摘要（parentPartnerNo+memberCount），不看全队成员/名额。
+// 批 26 收尾：quota.reserved = 队员 + 未过期待用码，与发码闸同口径——页面按 reserved 判 canCreate，
+// 不再出现"按钮放行但服务端拒"的错位（已用 used 仍只数真实队员，供"已用 X/Y 人"文案）。
 'use strict';
 
 const identity = require('../user/_common');
@@ -10,11 +12,12 @@ const team = require('./_team');
 
 async function mainPartnerView(ctx, partner, nowMs, config) {
   const members = await team.listTeamMembers(ctx, partner._id);
+  const pendingInvites = await team.pendingInvitesOf(ctx, partner._id, nowMs);
   return {
     team: null,
     members: members.map(team.memberBriefOf),
-    pendingInvites: await team.pendingInvitesOf(ctx, partner._id, nowMs),
-    quota: { used: members.length, max: team.teamMaxMembersOf(config) }
+    pendingInvites: pendingInvites,
+    quota: team.quotaViewOf(members.length, pendingInvites.length, team.teamMaxMembersOf(config))
   };
 }
 

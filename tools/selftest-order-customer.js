@@ -62,7 +62,7 @@ const orderScope = orderScopeReq.value || {};
 const caseLib = require('./lib/order-customer-cases');
 const pickupCases = require('./lib/order-customer-pickup-cases'); // 批25-C/D61：Q 组件级取件顾客可见性
 // 实跑读数；批24-D64/D66：P 组扩 37（H 组 4 条并入并删除，+14 一级入口/文案断言）；批25-C/D61：+Q 组；批26-D58：+R 组 7
-const EXPECTED_ASSERTIONS = 335 + pickupCases.ASSERTIONS + 7;
+const EXPECTED_ASSERTIONS = 335 + pickupCases.ASSERTIONS + 9; // +9：D58 转派 R 组（R1~R6 共 7 + 批27 审查 P2-5 补 R3b/R3c 2）
 const {
   STATUS, PAGES, ISO, NOW, DOC_MS, textOf, actionsFor, dto, event, orderDoc,
   FAKE_DTO_CTX
@@ -952,6 +952,23 @@ function register(h) {
     t.eq([events[0].text, events[1].text, bare[0].text, bare[0].text.indexOf('TRANSFER')],
       ['由 P-NEW-001 接手履约', '已接单', '兼职已交接，后续由新兼职继续履约', -1],
       'R3 时间线 TRANSFER_ACCEPTED 换顾客人话（有编号带编号；编号缺失退回通用人话，不出现英文事件名）；其余事件原样');
+    // R3b/R3c（审查 P2-5）：二次转派 A→B→C 只改写最近一条，更早一条通用人话（顾客侧事件 DTO 无 payload.toPartnerNo）
+    const acceptedNow = Object.assign(dto(STATUS.ACCEPTED), {
+      fulfillmentPartnerNo: 'P-LATEST-002',
+      transfer: { status: enums.TRANSFER_STATUS.ACCEPTED, toPartnerNo: 'P-LATEST-002' }
+    });
+    const older = { id: 't1', type: 'TRANSFER_ACCEPTED', at: '2026-11-03T10:00:00+08:00' };
+    const newer = { id: 't2', type: 'TRANSFER_ACCEPTED', at: '2026-11-03T11:00:00+08:00' };
+    const desc = transferView.eventsView([newer, older], acceptedNow);
+    const asc = transferView.eventsView([older, newer], acceptedNow);
+    t.eq([desc[0].text, desc[1].text, asc[0].text, asc[1].text],
+      ['由 P-LATEST-002 接手履约', '兼职已交接，后续由新兼职继续履约',
+        '兼职已交接，后续由新兼职继续履约', '由 P-LATEST-002 接手履约'],
+      'R3b 二次转派（A→B→C）只把最近一条 TRANSFER_ACCEPTED 换成当前编号，更早一条退回通用人话；与下发顺序无关');
+    const noAt = transferView.eventsView([{ id: 'n1', type: 'TRANSFER_ACCEPTED' }, { id: 'n2', type: 'TRANSFER_ACCEPTED' }], acceptedNow);
+    t.eq([noAt[0].text, noAt[1].text],
+      ['兼职已交接，后续由新兼职继续履约', '由 P-LATEST-002 接手履约'],
+      'R3c 历史事件缺 at 时按下发顺序以最后一条为最近交接（不拿当前编号冒充更早的交接）');
     t.check(/wx:if="\{\{transferHint\}\}"/.test(detailWxml) && /\.transfer-hint\s*\{/.test(detailWxss)
       && /parts\/transfer-view/.test(detailJs) && /transferView\.pageExtras\(payload\.order\)/.test(detailJs)
       && /transferView\.eventsView\(payload\.events, payload\.order\)/.test(detailJs),

@@ -15,8 +15,10 @@ const store = require('./_store');
 const STATUS = enums.TRANSFER_STATUS;
 const REASON = enums.TRANSFER_RESOLVE_REASON;
 const RATE_SCOPE = 'transfer';
-const MAX_TTL_MINUTES = 60;
+// P2-2：TTL 上限取自 CONFIG_LIMITS 单源（shared/defaults 的治理范围），不在本文件写死数字
+const MAX_TTL_MINUTES = defaults.CONFIG_LIMITS.transferTtlMinutes.max;
 const MINUTE_MS = time.MINUTE_MS;
+const DEFAULT_TRANSFER_RATE = defaults.DEFAULT_CONFIG.transferRate || {};
 
 function textOf(value) {
   return typeof value === 'string' ? value : '';
@@ -64,9 +66,17 @@ function ttlMinutesOf(config) {
   return defaults.DEFAULT_CONFIG.transferTtlMinutes;
 }
 
+// P2-1：config.transferRate 缺键/非法值逐字段回落出厂默认（0 = 不限，绝不能由缺键退化成"关闸"）
 function rateLimitsOf(config) {
-  const source = (config && config.transferRate) || defaults.DEFAULT_CONFIG.transferRate || {};
-  return { perMinute: numberOrZero(source.perMinute), perDay: numberOrZero(source.perDay) };
+  const source = (config && config.transferRate) || {};
+  const pick = (value, fallback) => {
+    const num = numberOrZero(value);
+    return num > 0 ? num : numberOrZero(fallback);
+  };
+  return {
+    perMinute: pick(source.perMinute, DEFAULT_TRANSFER_RATE.perMinute),
+    perDay: pick(source.perDay, DEFAULT_TRANSFER_RATE.perDay)
+  };
 }
 
 // ── 限流窗口键（CONTRACT §10 转派 scope；UTC+8）：分钟桶 wYYYYMMDDHHmm / 日桶 dYYYYMMDD ──
@@ -161,7 +171,10 @@ function isPendingTargetOf(order, partnerId) {
   return isTargetOf(order, partnerId, [STATUS.PENDING]);
 }
 
-// ── DTO 可见性矩阵（草案 §1.4）：顾客仅 ACCEPTED 后见 status/toPartnerNo；双方见 7 键；admin 5 键 ──
+// ── DTO 可见性矩阵：顾客仅 ACCEPTED 后见 {status,toPartnerNo}（草案 §1.4 顾客列）；双方 7 键；
+//    admin 经 order.get 的只读投影 5 键（status/fromPartnerNo/toPartnerNo/expiresAt/resolveReason）；
+//    admin.listOrders/getOrder 另走 handlers/admin/_dto.transferBrief 的 8 键投影（+requestedAt/resolvedAt/
+//    resolveReasonText，供后台详情页三段留痕），两处均无 openid/内部 id ──
 function blockOf(order, relation) {
   const block = transferOf(order);
   if (!block) {
@@ -293,49 +306,6 @@ function expiryOnStatusChangeOf(order, toStatus, nowDate) {
   return resolved ? { transfer: resolved.transfer, event: resolved.event } : null;
 }
 
-// ── 惰性过期（读到 PENDING 且 now>expiresAt ⇒ 落一次 EXPIRED + 事件）──────────────
-async function persistResolvedTransfer(ctx, order, resolved, nowMs) {
-  const nowDate = store.toDate(nowMs);
-  try {
-    await ctx.dao.transaction(async (trx) => {
-      await trx.update(COLLECTIONS.ORDERS, order._id, {
-        transfer: resolved.transfer,
-        version: numberOrZero(order.version) + 1,
-        updatedAt: nowDate
-      });
-      await trx.add(COLLECTIONS.ORDER_EVENTS, resolved.event);
-    });
-  } catch (error) {
-    // 并发读到同一过期邀请：唯一 requestKey 撞索引 = 另一请求已落库（不再二次写）
-    if (!(ctx.dao.isDuplicateError && ctx.dao.isDuplicateError(error))) {
-      throw error;
-    }
-  }
-  const fresh = await store.getOrderById(ctx, order._id);
-  return fresh || order;
-}
-
-async function expireIfNeeded(ctx, order, nowMs) {
-  if (!isExpired(order, nowMs)) {
-    return order;
-  }
-  const resolved = resolvePendingTransferOf(order, {
-    status: STATUS.EXPIRED, reason: REASON.EXPIRED, nowDate: store.toDate(nowMs)
-  });
-  return resolved ? persistResolvedTransfer(ctx, order, resolved, nowMs) : order;
-}
-
-// Q4：订单已不在 ACCEPTED 却仍 PENDING（历史脏数据/他端越过钩子）→ 先落 EXPIRED/STATE_CHANGED 再报错
-async function expireForStateChange(ctx, order, nowMs) {
-  if (!isPending(order) || order.status === enums.ORDER_STATUS.ACCEPTED) {
-    return order;
-  }
-  const resolved = resolvePendingTransferOf(order, {
-    status: STATUS.EXPIRED, reason: REASON.STATE_CHANGED, nowDate: store.toDate(nowMs)
-  });
-  return resolved ? persistResolvedTransfer(ctx, order, resolved, nowMs) : order;
-}
-
 // ── 入参 / 载入 / 视图 ───────────────────────────────────────────────────────
 function readOrderNo(payload) {
   return store.normalizeOrderNoInput(payload && payload.orderNo);
@@ -359,7 +329,9 @@ function clientRequestIdOf(ctx) {
 }
 
 // 四个动作共用前半段：可写身份 → 订单可见性/测试隔离 → 兼职身份 ACTIVE → 配置 → 惰性过期落库
+// 惰性过期在 _transfer-expire.js（延迟 require：它反向依赖本文件的纯件，顶层 require 会成环）
 async function loadTransferContext(ctx, payload) {
+  const expire = require('./_transfer-expire');
   store.assertWritable(ctx);
   const orderNo = readOrderNo(payload);
   const order = await store.getOrderByNo(ctx, orderNo);
@@ -370,10 +342,10 @@ async function loadTransferContext(ctx, payload) {
   const partner = await store.loadWritablePartner(ctx);
   const nowMs = store.nowMsOf(ctx);
   const config = await store.loadConfig(ctx);
-  const normalized = await expireIfNeeded(ctx, order, nowMs);
+  const normalized = await expire.expireIfNeeded(ctx, order, nowMs);
   return {
     partner,
-    order: await expireForStateChange(ctx, normalized, nowMs),
+    order: await expire.expireForStateChange(ctx, normalized, nowMs),
     nowMs,
     config
   };
@@ -400,20 +372,28 @@ function requirePendingTarget(order, partner) {
   return block;
 }
 
-// 事务写（orders 单文档 + 1 条事件同事务）；唯一键冲突按幂等重放处理，返回 duplicated 标记
+// 事务写（orders 单文档 + 1 条事件同事务）；唯一键冲突按幂等重放处理，返回 duplicated 标记。
+// P1-4：事务内条件更新（where 带读到的 version）——updated===0 = 他端已推进（并发确认/撤回/状态变更），
+// 本次零写、零事件；若事件已由并发同 crid 请求写入则按 duplicated 返回，否则报 INVALID_STATE 让页面刷新。
 async function writeTransferAction(ctx, order, options) {
   const opts = options || {};
   const nowDate = store.toDate(opts.nowMs);
+  let skipped = false;
   try {
     await ctx.dao.transaction(async (trx) => {
-      await trx.update(COLLECTIONS.ORDERS, order._id, Object.assign({}, opts.patch, {
+      const written = await trx.updateWhere(COLLECTIONS.ORDERS, {
+        _id: order._id,
+        version: numberOrZero(order.version)
+      }, Object.assign({}, opts.patch, {
         version: numberOrZero(order.version) + 1,
         updatedAt: nowDate
       }));
+      if (!written.updated) {
+        skipped = true;
+        return;
+      }
       await trx.add(COLLECTIONS.ORDER_EVENTS, opts.event);
     });
-    const fresh = await store.getOrderById(ctx, order._id);
-    return { order: fresh || order, duplicated: false };
   } catch (error) {
     if (ctx.dao.isDuplicateError && ctx.dao.isDuplicateError(error)) {
       const fresh = await store.getOrderById(ctx, order._id);
@@ -421,14 +401,24 @@ async function writeTransferAction(ctx, order, options) {
     }
     throw error;
   }
+  const fresh = await store.getOrderById(ctx, order._id);
+  if (!skipped) {
+    return { order: fresh || order, duplicated: false };
+  }
+  if (await findActionEvent(ctx, opts.event.requestKey)) {
+    return { order: fresh || order, duplicated: true };
+  }
+  throw errors.invalidState('转派状态已变化，请刷新后重试');
 }
 
-// 订单视图（side = PARTNER 履约人全量；transferTarget = 转派目标视角，按 §1.4 遮蔽 customerNo/对方昵称头像）
-async function viewOf(ctx, order, side, transferTarget) {
+// 订单视图（side = PARTNER 履约人；transferTarget = PENDING 邀请目标视角；maskCustomer = 顾客身份遮蔽）
+async function viewOf(ctx, order, side, options) {
   const dto = require('./_dto');
+  const opts = options || {};
   return dto.buildOrderDto(ctx, order, {
     side: side || '',
-    transferTarget: transferTarget === true
+    transferTarget: opts.transferTarget === true,
+    maskCustomer: opts.maskCustomer === true
   });
 }
 
@@ -463,9 +453,6 @@ module.exports = {
   withResolutionOf,
   resolvePendingTransferOf,
   expiryOnStatusChangeOf,
-  persistResolvedTransfer,
-  expireIfNeeded,
-  expireForStateChange,
   readOrderNo,
   readToPartnerNo,
   clientRequestIdOf,

@@ -1,8 +1,9 @@
 // handlers/partner/createSubInvites.js · partner.createSubInvites（D59 主兼职批量发子邀请码）
 // 口径：CONTRACT §13 D59（批 26 冻结）；草案 §2.3。守卫：ACTIVE 且 parentPartnerId===''（仅一层）→ 数量 1~5 →
-// 有效期 24H/72H/7D → note≤50 → 队伍名额（config.teamMaxMembers，队员数+本批 ≤ 上限）→ 限流 rl:subInvite。
+// 有效期 24H/72H/7D → note≤50 → 队伍名额（config.teamMaxMembers，队员+待用码+本批 ≤ 上限）→ 限流 rl:subInvite。
 // 落库：kind='SUB'/issuerPartnerId=me/createdBy='PARTNER:'+myNo；batchId='TB'+yyyyMMdd+'-'+2 位序号；
 // 完整码只在本次响应返回（重放同 clientRequestId 返回同批，仍只回给发码人）。
+// 并发（批 26 收尾）：日批次序号 CAS + 事务内名额复核 + 事务内幂等映射 → 并发两请求恰一个落码，另一个回同批或 CONFLICT。
 'use strict';
 
 const { COLLECTIONS } = require('../../shared/collections');
@@ -29,8 +30,10 @@ function replayResponseOf(mapping) {
   };
 }
 
-// 同 clientRequestId 重放：先读 counters 映射（batchId+完整码），命中即返回同批。
-async function replayOf(ctx, requestKey) {
+// 同 clientRequestId 重放：先读 counters 映射；映射未存 code 时回读码表补全。
+// 回读必须带 issuerPartnerId 隔离（批 26 收尾）：batchId 是日序号，跨队可能撞号，只按 batchId
+// 回读会把别队子码回给本请求 → 一律 issuerPartnerId + batchId 双条件。
+async function replayOf(ctx, requestKey, partnerId) {
   const row = await team.requestReplayOf(ctx, requestKey);
   if (!row || !row.batchId) {
     return null;
@@ -39,28 +42,21 @@ async function replayOf(ctx, requestKey) {
     return replayResponseOf(row);
   }
   const codes = await ctx.dao.find(COLLECTIONS.INVITATION_CODES, {
-    where: { batchId: row.batchId },
+    where: { issuerPartnerId: partnerId, batchId: row.batchId },
     orderBy: [['createdAt', 'asc']],
     limit: team.SUB_INVITE_BATCH_MAX
   });
-  return replayResponseOf({
-    batchId: row.batchId,
-    expiresAt: row.expiresAt,
-    codes: codes.map((item) => item.code)
-  });
+  return replayResponseOf({ batchId: row.batchId, expiresAt: row.expiresAt, codes: codes.map((item) => item.code) });
 }
 
-// 名额：队员数 + 待使用子码数 + 本批数量 ≤ 上限（恰好补满可发最后一码；已达上限再发 → VALIDATION_FAILED）。
-// 待用码也占名额，防"members 未满但已发出远超额度的码 → 全部激活后超员"。
-async function assertQuota(ctx, partner, count, config, nowMs) {
-  const used = await team.memberCountOf(ctx, partner._id);
-  const pending = await team.pendingInvitesOf(ctx, partner._id, nowMs);
-  const reserved = used + pending.length;
-  const max = team.teamMaxMembersOf(config);
-  if (reserved + count > max) {
-    throw errors.validation('count', '队伍人数已达上限（最多 ' + max + ' 人），请先移除队员再生成');
-  }
-  return { used: used, reserved: reserved, max: max };
+// 入参归一（count 1~5 / 有效期枚举 / note≤50）集中一处，handler 保持单函数行数内。
+function readFields(payload) {
+  const input = payload && typeof payload === 'object' ? payload : {};
+  return {
+    count: team.countOf(input.count),
+    validity: team.validityOf(input.validity),
+    note: team.noteOf(input.note)
+  };
 }
 
 function buildCodeDoc(options) {
@@ -83,26 +79,67 @@ function buildCodeDoc(options) {
   };
 }
 
-// 主事务：本批 N 条码 + 幂等映射（counters.key 唯一索引兜底并发重放）。
+// 主事务（顺序敏感）：① 日序号 CAS——并发发码在此互斥，抢不到抛 TX_CONFLICT 回滚（batchId 不撞号）；
+// ② 事务内重算名额（TOCTOU 收口）；③ 先写幂等映射（并发同请求第二次 → 回滚，不重复插码）；④ 插本批 N 条码。
 async function createBatch(ctx, options) {
   const opt = options;
   return ctx.dao.transaction(async (trx) => {
+    const seq = await team.nextBatchSeqInTx(trx, opt.nowMs);
+    const batchId = batchIdOf(opt.nowMs, seq);
+    await team.assertQuotaInTx(trx, opt.partnerId, opt.fields.count, opt.config, opt.nowMs);
+    const marked = await team.markRequestInTx(trx, opt.requestKey, {
+      batchId: batchId,
+      expiresAt: opt.expiresAt,
+      count: opt.fields.count
+    }, opt.nowDate);
+    if (!marked) {
+      throw team.txConflictError();
+    }
     const codes = [];
-    for (let i = 0; i < opt.count; i += 1) {
+    for (let i = 0; i < opt.fields.count; i += 1) {
       const inserted = await idGenerator.insertUnique(trx, COLLECTIONS.INVITATION_CODES, {
         field: 'code',
         generate: idGenerator.generateInviteCode,
-        build: (code) => buildCodeDoc(Object.assign({}, opt, { code: code }))
+        build: (code) => buildCodeDoc({
+          code: code,
+          partner: opt.partner,
+          batchId: batchId,
+          expiresAt: opt.expiresAt,
+          note: opt.fields.note,
+          nowDate: opt.nowDate
+        })
       });
       codes.push(inserted.value);
     }
-    await team.markRequestInTx(trx, opt.requestKey, {
-      batchId: opt.batchId,
-      expiresAt: opt.expiresAt,
-      count: opt.count
-    }, opt.nowDate);
-    return codes;
+    return { batchId: batchId, codes: codes };
   });
+}
+
+// 发码编排：事务失败区分"并发重放（回同批）"与"真并发冲突（CONFLICT）"，其余错误原样上抛。
+async function runCreate(ctx, options, requestKey) {
+  const opt = options;
+  try {
+    const created = await createBatch(ctx, {
+      partner: opt.partner,
+      partnerId: opt.partnerId,
+      fields: opt.fields,
+      expiresAt: opt.expiresAt,
+      config: opt.config,
+      requestKey: requestKey,
+      nowMs: opt.nowMs,
+      nowDate: opt.nowDate
+    });
+    return { batchId: created.batchId, expiresAt: opt.expiresAt, codes: created.codes };
+  } catch (error) {
+    const raced = await replayOf(ctx, requestKey, opt.partnerId);
+    if (raced) {
+      return raced;
+    }
+    if (team.isTxConflict(error) || ctx.dao.isDuplicateError(error)) {
+      throw errors.conflict('并发生成冲突，请刷新后重试');
+    }
+    throw error;
+  }
 }
 
 async function handler(ctx, payload) {
@@ -110,46 +147,26 @@ async function handler(ctx, payload) {
   const { partner } = await identity.requireActivePartner(ctx);
   team.assertMainPartner(partner);
   team.requireClientRequestId(ctx);
-  const input = payload && typeof payload === 'object' ? payload : {};
-  const count = team.countOf(input.count);
-  const validity = team.validityOf(input.validity);
-  const note = team.noteOf(input.note);
+  const fields = readFields(payload);
   const nowMs = identity.nowMs(ctx);
-  const nowDate = new Date(nowMs);
   const config = await configCommon.loadRuntimeConfig(ctx);
-  const requestKey = team.requestKeyOf('subInviteReq', String(partner._id), ctx.clientRequestId);
-  const replay = await replayOf(ctx, requestKey);
+  const partnerId = String(partner._id);
+  const requestKey = team.requestKeyOf('subInviteReq', partnerId, ctx.clientRequestId);
+  const replay = await replayOf(ctx, requestKey, partnerId);
   if (replay) {
     return replay;
   }
-  await assertQuota(ctx, partner, count, config, nowMs);
+  team.assertQuotaFit(await team.quotaOf(ctx, partnerId, nowMs, config), fields.count);
   await team.consumeSubInviteRate(ctx, nowMs, config);
-  const seq = await team.nextBatchSeq(ctx, nowMs);
-  const batchId = batchIdOf(nowMs, seq);
-  const expiresAt = time.addHours(nowMs, validity.hours);
-  let codes = null;
-  try {
-    codes = await createBatch(ctx, {
-      partner: partner,
-      count: count,
-      batchId: batchId,
-      expiresAt: new Date(expiresAt),
-      note: note,
-      requestKey: requestKey,
-      nowDate: nowDate
-    });
-  } catch (error) {
-    // 并发重放：本批映射键已被同请求抢先写入 → 回读映射返回同批（不重复发码）
-    if (!ctx.dao.isDuplicateError(error)) {
-      throw error;
-    }
-    const raced = await replayOf(ctx, requestKey);
-    if (raced) {
-      return raced;
-    }
-    throw error;
-  }
-  return { batchId: batchId, expiresAt: expiresAt, codes: codes };
+  return runCreate(ctx, {
+    partner: partner,
+    partnerId: partnerId,
+    fields: fields,
+    expiresAt: time.addHours(nowMs, fields.validity.hours),
+    config: config,
+    nowMs: nowMs,
+    nowDate: new Date(nowMs)
+  }, requestKey);
 }
 
 module.exports = { handler };

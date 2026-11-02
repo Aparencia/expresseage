@@ -86,13 +86,11 @@ function sectionActionRules(h) {
   h.section('§5.1 动作规则与角色（接单/取消/undo/异常恢复）', (t) => {
     const rules = state.ACTION_RULES;
     const actionNames = Object.keys(rules);
-    // 批 26/D58：转派四动作先落冻结层，CONTRACT 动作镜像（tools/lib/project.js）在批 27 文档回写时补；
-    // 这里显式豁免并以新组断言其登记（防「镜像未同步」与「规则漏登记」互相掩盖）。
-    const TRANSFER_ACTION_RULES = ['order.requestTransfer', 'order.acceptTransfer',
-      'order.declineTransfer', 'order.cancelTransfer'];
     t.notEmpty(actionNames, '§5.1 动作规则样本（空集不得判绿）');
-    t.check(actionNames.filter((a) => TRANSFER_ACTION_RULES.indexOf(a) === -1)
-      .every((a) => !!project.ACTIONS[a]), '§5.1 动作规则全部在 CONTRACT 动作镜像中登记（批 26 转派 4 动作待批 27 回写）');
+    // 批 26/27 起 CONTRACT §5.3 镜像（tools/lib/project.js）已登记 D58 转派四动作，不再豁免：
+    // 规则漏登记镜像即红（与门禁 #13 的注册表判据双向独立，防「镜像未同步」与「规则漏登记」互相掩盖）。
+    t.check(actionNames.every((a) => !!project.ACTIONS[a]),
+      '§5.1 动作规则全部在 CONTRACT 动作镜像中登记（含 D58 转派四动作，无豁免）');
     t.check(actionNames.every((a) => rules[a].from.every((s) => state.isOrderStatus(s))),
       '§5.1 from 全部为合法状态');
     t.check(actionNames.every((a) => ['SAME', 'UNDO', 'FROM_STATUS'].indexOf(rules[a].to) !== -1

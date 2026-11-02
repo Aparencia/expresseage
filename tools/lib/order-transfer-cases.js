@@ -47,10 +47,12 @@ const TEST_PID2 = 'partner-b26-test2';
 const PRIVACY_VERSION = 'v4.0.0';
 const CONSENT = { version: PRIVACY_VERSION, at: NOW };
 const TEMP_URL = 'https://tmp.example/b26';
-// 转派块键集（草案 §1.4 白名单）：双方 7 键 / 顾客 2 键 / admin 5 键（admin 另见 handlers/admin/_dto）
+// 转派块键集（草案 §1.4 白名单）：双方 7 键 / 顾客 2 键 / admin 只读投影 8 键（含后台详情页消费的
+// requestedAt/resolvedAt/resolveReasonText；无 openid/内部 id，见 handlers/admin/_dto.transferBrief）
 const PARTNER_TRANSFER_KEYS = ['expiresAt', 'fromPartnerNo', 'requestedAt', 'resolveReason', 'resolvedAt', 'status', 'toPartnerNo'];
 const CUSTOMER_TRANSFER_KEYS = ['status', 'toPartnerNo'];
-const ADMIN_TRANSFER_KEYS = ['expiresAt', 'fromPartnerNo', 'resolveReason', 'status', 'toPartnerNo'];
+const ADMIN_TRANSFER_KEYS = ['expiresAt', 'fromPartnerNo', 'requestedAt', 'resolveReason', 'resolveReasonText',
+  'resolvedAt', 'status', 'toPartnerNo'];
 const TRANSFER_BLOCK_KEYS = ['expiresAt', 'fromPartnerId', 'fromPartnerNo', 'requestedAt', 'resolveReason',
   'resolvedAt', 'status', 'toPartnerId', 'toPartnerNo'];
 // DTO 内不得出现的内部键（字符级扫描：目标兼职视图断言字符串里不含这些词）

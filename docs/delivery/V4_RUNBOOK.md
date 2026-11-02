@@ -433,4 +433,4 @@
 
 - **真机项**：`docs/delivery/V4_QA_CHECKLIST.md` **§AG1~AG12**（全部「人（真机/控制台）」，**agent 不代勾、不宣布通过**）；附双机录屏/返回体 + 控制台脱敏截图。
 - **回滚**：本批为**增量字段/动作**——回退 `api` 版本即可让新动作不可用（旧数据里的 `orders.transfer`/`partners.parentPartnerId` 只是多余字段，旧代码忽略，无需清库）；索引可保留（对旧代码无影响）。回滚前确认无进行中的转派邀请（`PENDING` 记录在回滚后不会自动过期，需用户/Lead 接受陈旧或临时用控制台清理——审计口径见 §12）。
-- **风险提示（登记 TD-090/TD-091）**：①`message.list` 事件可见性仍是黑名单式（新增私有事件需同步 `MESSAGE_HIDDEN_EVENT_TYPES`）；②转派过期只做惰性判定，不读则 `PENDING` 停留（不影响业务判定）。
+- **风险提示（登记 TD-090/TD-091）**：①`message.list` 事件可见性仍是黑名单式（新增私有事件需同步 `MESSAGE_HIDDEN_EVENT_TYPES`）；②转派过期只做惰性判定，不读则 `PENDING` 停留（不影响业务判定）；③`partner.createSubInvites` 日批次序号 CAS：并发发码恰一成功、另一 `CONFLICT`（客户端按服务端文案提示刷新重试）；发码/作废/移除共用 `rl:subInvite` 限流（超限 `RATE_LIMITED`）；④`partner.removeSubMember` 单次同事务定向取消 ≤40 单（超出部分靠转派 TTL 惰性过期、不阻塞移除；单队员待接收转派 >40 属异常运维场景，需人工关注）。

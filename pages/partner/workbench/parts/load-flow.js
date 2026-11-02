@@ -12,7 +12,6 @@ const loadView = require('./load-view');
 const groupView = require('./group-view');
 const filterView = require('./filter-view');
 const dayView = require('./day-view');
-const transferView = require('./transfer');
 
 const ACCOUNT_SWITCH_PAGE = '/pkg-admin/pages/account-switch/index';
 const CHUNK_DELAY_MS = 16;
@@ -113,8 +112,9 @@ module.exports = {
     if (result.chunk) {
       this.appendChunks(result.appendPatches, token);
     }
-    // D58：转派待接收数由服务端顶层 transferPending 下发（客户端不自算），同时参与红点与顶部区块
-    this.syncBadge(plan.counts, transferView.pendingOf(data));
+    // D58：转派待接收数由服务端顶层 transferPending 下发（客户端不自算），只喂顶部区块；
+    // 红点按冻结口径只取 counts.submitted（待接收不计入 tabBar 红点，UX §4.12）。
+    this.syncBadge(plan.counts);
     this.syncBanner(plan.counts);
     this.applyTransfer(data);
   },
@@ -137,10 +137,10 @@ module.exports = {
   },
 
   // P0-6：先判等再 store.patch（轮询无变化时零通知，隐藏页/其他订阅者不再重算）
-  // D58：红点复用既有 badges.workbenchPending（待接单 + 待接收转派；不新增红点机制）
-  syncBadge(counts, transferPending) {
+  // 冻结口径（UX §4.12）：红点 = counts.submitted（待接单数）；待接收转派数只在顶部区块标题角标，不进红点
+  syncBadge(counts) {
     const current = store.get('badges') || {};
-    const next = loadView.badgePatch(counts, current, transferPending);
+    const next = loadView.badgePatch(counts, current);
     if (next.workbenchPending === current.workbenchPending && next.messages === current.messages) return;
     store.patch({ badges: next });
   },

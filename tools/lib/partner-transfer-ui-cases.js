@@ -22,6 +22,9 @@ const actionsPart = require(path.join(ROOT, 'pkg-partner/pages/order-detail/part
 const viewModel = require(path.join(ROOT, 'pkg-partner/pages/order-detail/parts/view-model.js'));
 const transferView = require(path.join(ROOT, 'pages/partner/workbench/parts/transfer.js'));
 const loadView = require(path.join(ROOT, 'pages/partner/workbench/parts/load-view.js'));
+const eventView = require(path.join(ROOT, 'pkg-partner/pages/order-detail/parts/event-view.js'));
+const client = require(path.join(ROOT, 'api/client.js'));
+const transferFlow = require(path.join(ROOT, 'pages/partner/workbench/parts/transfer-flow.js'));
 
 const STATUS = orderState.STATUS;
 const TRANSFER_STATUS = enums.TRANSFER_STATUS;
@@ -275,8 +278,26 @@ async function detailTransferChecks(t) {
   const acceptedCard = cardOfDto(acceptedDto);
   t.eq(acceptedCard.result.text, '已转派：由 P-2ABC-DEF 接手履约',
     'K31 结果态 ACCEPTED → 「已转派：由 P-xxx 接手履约」（只编号，不昵称头像）');
-  t.eq([acceptedCard.result.visible, acceptedCard.request.visible, acceptedCard.keys], [true, true, ['requestTransfer']],
-    'K32 接手后新履约人仍可再次转派（入口取服务端 actions，不本地判历史结果/不隐藏入口）');
+  // P2-9 审查修复：K32 改走**真实 order.get**（假 DB + 真 api/handler），不再直喂 buildOrderDto——
+  // buildOrderDto 绕过了 get.js 的读权限/遮蔽分支（P0-1 解耦后正是这两条最容易回归）。
+  const real = require('./order-transfer-cases.js');
+  const acceptedDb = real.world({
+    config: { transferRate: { perMinute: 50, perDay: 500 } },
+    orders: [real.orderDoc('20261103-9201', real.ACCEPTED, {
+      partnerId: real.PID2,
+      partnerOpenid: real.P2,
+      partnerNo: 'PBBBBBB',
+      acceptedAt: new Date(real.NOW - 2000),
+      transfer: real.acceptedTransferBlock()
+    })]
+  });
+  const transferredGet = await real.apiOf(acceptedDb, real.P2).call('order.get', { orderNo: '20261103-9201' });
+  const transferredCard = cardOfDto(transferredGet.data.order);
+  t.check(transferredGet.ok, 'K32 接手后新履约人经真实 order.get 可读（P2-9：不再用 buildOrderDto 直喂掩盖读权限分支）');
+  t.eq([transferredCard.result.visible, transferredCard.result.text, transferredCard.keys,
+    transferredGet.data.order.counterpart],
+  [true, '已转派：由 PBBBBBB 接手履约', ['requestTransfer'], null],
+  'K32b 真实 order.get：接手后仍可再次转派（入口取服务端 actions）+ 顾客身份仍遮蔽');
 
   // ── 收口：一件已取 / 其它状态 → 服务端不下发转派入口，页面零入口 ──
   const pickedDoc = orderDoc(STATUS.ACCEPTED, { parcels: [parcelOf({ picked: true, pickedAt: NOW - MINUTE })] });
@@ -373,6 +394,82 @@ async function detailTransferChecks(t) {
     && actionsPart.isWriteKey('declineTransfer') && actionsPart.isWriteKey('cancelTransfer'), true,
   'K61 四个转派动作都按写动作登记（READONLY 自动进拒绝集）');
   t.notEmpty([requestable, initiatorDto, targetDto, acceptedDto], 'K62 K 组样本非空（真实 DTO 4 份）');
+
+  // ── P1-1（审查修复）：时间线裸英文 + 转派事件冒认「我」──
+  const unmapped = enums.ORDER_EVENTS.filter((type) => {
+    const label = eventView.EVENT_LABELS[type];
+    return typeof label !== 'string' || label === '' || label === type || /^[A-Z_]+$/.test(label);
+  });
+  t.eq(unmapped, [], 'K63 enums.ORDER_EVENTS 全部有中文映射（新增事件必须先补文案，绝不裸英文上屏）');
+  const transferLabels = ['TRANSFER_REQUESTED', 'TRANSFER_ACCEPTED', 'TRANSFER_DECLINED',
+    'TRANSFER_CANCELLED', 'TRANSFER_EXPIRED'].map((type) => eventView.EVENT_LABELS[type]);
+  t.eq(transferLabels, ['发起转派', '已转派', '对方已拒收', '已撤回转派', '邀请已过期'],
+    'K64 5 个 TRANSFER_* 事件人话逐条（P1-1：发起转派/已转派/对方已拒收/已撤回转派/邀请已过期）');
+  const transferEvents = eventView.buildEvents([
+    { type: 'TRANSFER_REQUESTED', at: ISO, actorRole: enums.ROLES.PARTNER, note: '' },
+    { type: 'TRANSFER_ACCEPTED', at: ISO, actorRole: enums.ROLES.PARTNER, note: '' }
+  ]);
+  t.eq(transferEvents.map((row) => row.actor), ['', ''],
+    'K65 转派事件 actorRole=PARTNER 不显示「我」（DTO 无发起/接收方编号，冒认比少一行更糟）');
+  t.eq(eventView.buildEvents([{ type: 'SOMETHING_NEW', at: ISO, actorRole: enums.ROLES.PARTNER }]).length, 0,
+    'K66 未登记事件类型不上屏裸英文（宁可少一行，也不暴露内部事件名）');
+
+  // ── P2-4（审查修复）：改正/留言入口由 DTO actions 驱动；顾客编号行条件渲染 ──
+  const ownerView = viewOf(requestable);
+  const deliveredView = viewOf(await dtoOf(orderDoc(STATUS.DELIVERED, { deliveredAt: NOW - MINUTE })));
+  const completedView2 = viewOf(await dtoOf(orderDoc(STATUS.COMPLETED, { completedAt: NOW - MINUTE })));
+  t.eq([[ownerView.canCorrect, ownerView.canMessage], [deliveredView.canCorrect, deliveredView.canMessage],
+    [completedView2.canCorrect, completedView2.canMessage]],
+  [[true, true], [false, true], [false, false]],
+  'K67 canCorrect/canMessage 由服务端 actions 派生：ACCEPTED 可改正可留言 / DELIVERED 只留言 / 终态两者皆无');
+  const targetOnlyView = viewOf(targetDto);
+  t.eq([targetOnlyView.canCorrect, targetOnlyView.canMessage, targetOnlyView.actions.length], [false, false, 0],
+    'K68 目标兼职 PENDING 视图只剩转派动作（改正这一件/写留言入口全关，无越权入口）');
+  const detailWxml = stripped(PAGE_WXML);
+  t.check(detailWxml.indexOf('wx:elif="{{customerNoText}}"') >= 0
+    && detailWxml.indexOf("customerNoText || '—'") === -1
+    && detailWxml.indexOf('!readonly && (item.action || canCorrect)') >= 0
+    && detailWxml.indexOf('wx:if="{{canCorrect}}"') >= 0
+    && detailWxml.indexOf('!readonly && canMessage') >= 0,
+  'K69 WXML：顾客编号为空且无 counterpart 时整行不渲染；改正/留言入口由 canCorrect/canMessage 驱动');
+
+  // ── P2-9（审查修复）：真实 order.get 覆盖「PENDING 邀请目标 → accept 后履约人」全链路 ──
+  const pendingDb = real.world({
+    config: { transferRate: { perMinute: 50, perDay: 500 } },
+    orders: [real.orderDoc('20261103-9202', real.ACCEPTED, {
+      acceptedAt: new Date(real.NOW - 2000), transfer: real.transferBlock()
+    })]
+  });
+  const targetGet = await real.apiOf(pendingDb, real.P2).call('order.get', { orderNo: '20261103-9202' });
+  t.check(targetGet.ok, 'K70 目标兼职经真实 order.get 可读 PENDING 邀请（D58 放宽读权限分支被真实覆盖）');
+  const realTargetDto = targetGet.data.order;
+  t.eq(keysOf(realTargetDto.actions), ['acceptTransfer', 'declineTransfer'],
+    'K71 真实 order.get 目标视角 actions 恰两个邀请动作（无履约动作 → 越权入口为零）');
+  const realTargetView = viewModel.buildView(realTargetDto, eventView.buildEvents(targetGet.data.events),
+    { nowMs: real.NOW });
+  t.eq([realTargetView.transferCard.invite.visible, realTargetView.actions.length, realTargetView.canCorrect,
+    realTargetView.canMessage, realTargetView.order.counterpart,
+    Object.prototype.hasOwnProperty.call(realTargetDto, 'customerNo')],
+  [true, 0, false, false, null, false],
+  'K72 真实 DTO 渲染：邀请卡在 / 底部条空 / 改正·留言关 / 顾客身份遮蔽（P2-4 越权入口为零）');
+  const realAccept = await real.apiOf(pendingDb, real.P2).call('order.acceptTransfer',
+    { orderNo: '20261103-9202' }, { clientRequestId: real.nextCrid('kw26') });
+  t.check(realAccept.ok, 'K73 目标兼职经真实 acceptTransfer 接手成功（写入 handler 一并覆盖）');
+  const afterGet = await real.apiOf(pendingDb, real.P2).call('order.get', { orderNo: '20261103-9202' });
+  const afterKeys = keysOf(afterGet.data.order.actions);
+  t.eq([afterGet.ok, afterKeys.indexOf('pick') >= 0, afterKeys.indexOf('requestTransfer') >= 0,
+    afterKeys.indexOf('acceptTransfer') < 0],
+  [true, true, true, true],
+  'K74 accept 后目标 order.get 有履约动作（pick + 可再转派），邀请动作消失（P0-1 动作矩阵与遮蔽解耦）');
+  const afterView = viewModel.buildView(afterGet.data.order, eventView.buildEvents(afterGet.data.events),
+    { nowMs: real.NOW });
+  t.eq([afterView.actions.length > 0, afterView.canCorrect, afterView.canMessage,
+    Object.prototype.hasOwnProperty.call(afterGet.data.order, 'customerNo'), afterGet.data.order.counterpart],
+  [true, true, true, false, null],
+  'K75 accept 后新履约人：履约动作条出现、可改正/留言，但顾客身份仍按 §1.4 遮蔽（转派成功不泄漏）');
+  const afterEvents = eventView.buildEvents(afterGet.data.events);
+  t.check(afterEvents.length > 0 && afterEvents.every((row) => row.label !== '' && row.label.indexOf('TRANSFER_') < 0),
+    'K76 真实 order.get 下发的转派事件渲染为人话（不裸英文；事件域与页面映射表对齐）');
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -382,7 +479,7 @@ function transferListRow(extra) {
   return Object.assign({
     orderNo: '20261102-0011',
     parcelCount: 2,
-    dorm: { roomTag: 'A' },
+    dorm: { dormKey: 'D4-522', buildingText: 'D4', room: '522', roomTag: 'A' },
     transfer: {
       status: TRANSFER_STATUS.PENDING,
       fromPartnerNo: 'P-8F3-K2M',
@@ -395,7 +492,7 @@ function transferListRow(extra) {
   }, extra || {});
 }
 
-function workbenchTransferChecks(t) {
+async function workbenchTransferChecks(t) {
   // ── N 的唯一来源 = 服务端顶层 transferPending（客户端不自算）──
   t.eq(transferView.pendingOf({ transferPending: 3 }), 3, 'O01 计数取服务端顶层 transferPending（不按行数/不自算）');
   t.eq(transferView.pendingOf({ transferPending: 2, list: [1, 2, 3, 4] }), 2,
@@ -409,26 +506,26 @@ function workbenchTransferChecks(t) {
   t.eq(transferView.query(), { view: 'transfer', limit: transferView.PAGE_LIMIT },
     'O05 待接收行查询 = view:transfer + limit（服务端过滤 PENDING，客户端不传 status/关键字）');
 
-  // ── 行文案：发起方编号 / 剩余分钟 / 件数房标 ──
+  // ── 行文案（P2-7）：订单号末 4 位 + 发起方编号 + 剩余分钟 + 宿舍锚/件数 ──
   const rows = transferView.rowsOf([transferListRow()], NOW);
   t.eq(rows.length, 1, 'O06 行样本非空（1 行待接收转派）');
-  t.eq([rows[0].orderNo, rows[0].fromText, rows[0].remainingText, rows[0].metaText],
-    ['20261102-0011', '来自 P-8F3-K2M 的转派邀请', '剩余 9 分钟', '2 件 · 房标 A'],
-    'O07 行文案：订单号 + 发起方编号 + 剩余 N 分钟 + 件数/房标');
+  t.eq([rows[0].orderNo, rows[0].orderNoText, rows[0].fromText, rows[0].remainingText, rows[0].metaText],
+    ['20261102-0011', '0011', '来自 P-8F3-K2M 的转派邀请', '剩余 9 分钟', 'D4-522A · 2 件'],
+    'O07 行文案：完整 orderNo 保留给点进详情，行上只显示末 4 位 + 发起方编号 + 剩余 N 分钟 + 宿舍锚/件数');
   const sparse = transferView.rowsOf([{ orderNo: 'X-1', transfer: { status: TRANSFER_STATUS.PENDING, expiresAt: isoAt(NOW + MINUTE) } }], NOW);
-  t.eq([sparse[0].fromText, sparse[0].metaText], ['', ''],
-    'O08 缺字段不拼残句（无 fromPartnerNo/件数/房标时给空串，不显示「来自」半句）');
+  t.eq([sparse[0].orderNoText, sparse[0].fromText, sparse[0].metaText], ['X-1', '', ''],
+    'O08 缺字段不拼残句（无 fromPartnerNo/宿舍/件数时给空串，不显示「来自」半句）');
   t.eq(transferView.rowsOf([{ orderNo: 'X-2' }], NOW).length, 0,
     'O09 无 transfer 块的行不进待接收区（防御脏数据）');
 
-  // ── 排序：最早过期在前（同刻按单号稳定）──
+  // ── 行顺序（P2-7）：原样取服务端 transfer.requestedAt desc，不再按 expiresAt 重排 ──
   const sortRows = transferView.rowsOf([
     transferListRow({ orderNo: 'B', transfer: pendingBlockOf(5) }),
     transferListRow({ orderNo: 'A', transfer: pendingBlockOf(2) }),
     transferListRow({ orderNo: 'C', transfer: pendingBlockOf(5) })
   ], NOW);
-  t.eq(sortRows.map((row) => row.orderNo), ['A', 'B', 'C'],
-    'O10 行排序：最早过期在前；同一时刻按订单号稳定排序（不依赖服务端顺序）');
+  t.eq(sortRows.map((row) => row.orderNo), ['B', 'A', 'C'],
+    'O10 行顺序原样取服务端 requestedAt desc（客户端不按 expiresAt 重排，即便 A 更早过期也不提上来）');
 
   // ── 区块状态：count 恒为服务端值；loading/失败/更多都给下一步 ──
   const state = transferView.stateOf(2, rows, {});
@@ -446,17 +543,26 @@ function workbenchTransferChecks(t) {
     'O15 拉行失败给可续的下一步提示（不误报还有 N 条）');
   const emptyRows = transferView.stateOf(0, rows, {});
   t.eq([emptyRows.visible, emptyRows.rows.length], [false, 0], 'O16 count=0 时清空行（不残留上一轮待接收）');
+  // ── P2-3（审查修复）：未知计数（缺 transferPending）≠ 0：显示不可用态，不写 0 ──
+  const unknownState = transferView.stateOf(null, [], {});
+  t.eq([unknownState.visible, unknownState.count, unknownState.title, unknownState.hintText.indexOf('没取到') >= 0],
+    [true, null, '待接收转派', true],
+    'O16b 计数未知（服务端缺 transferPending）→ 区块给不可用态、count 为 null（绝不写 0 冒充「没有待接收」）');
+  const unknownLoading = transferView.stateOf(null, [], { loading: true });
+  t.eq([unknownLoading.count, unknownLoading.loading, unknownLoading.hintText === '正在加载待接收转派…'],
+    [null, true, true],
+    'O16c 未知 + 首次加载 → 只出加载提示，仍不把计数落 0');
 
-  // ── 红点复用既有机制：badges.workbenchPending = 待接单 + 待接收转派，messages 不受影响 ──
-  t.eq(loadView.badgePatch({ submitted: 5 }, { messages: 2 }, 3), { workbenchPending: 8, messages: 2 },
-    'O17 红点复用既有 workbenchPending：待接单 + 待接收转派（不新增红点键、不覆盖 messages）');
+  // ── P1-3（审查修复）：tabBar 红点 = counts.submitted（待接收不计入，UX §4.12 冻结口径）──
+  t.eq(loadView.badgePatch({ submitted: 5 }, { messages: 2 }, 3), { workbenchPending: 5, messages: 2 },
+    'O17 红点只取 counts.submitted（传 transferPending=3 也不并入；不覆盖 messages 消息红点）');
   t.eq(loadView.badgePatch({ submitted: 5, messages: 0 }, { workbenchPending: 1, messages: 2 }),
     { workbenchPending: 5, messages: 2 },
-    'O18 旧两参调用仍成立（transferPending 缺省 0，向后兼容）');
-  t.eq(loadView.badgePatch({ submitted: 0 }, {}, 2), { workbenchPending: 2, messages: 0 },
-    'O19 待接单清零但有待接收转派 → 红点仍亮（不能漏掉待办）');
+    'O18 旧两参调用仍成立（函数签名不收 transferPending，向后兼容）');
+  t.eq(loadView.badgePatch({ submitted: 0 }, {}, 2), { workbenchPending: 0, messages: 0 },
+    'O19 待接单清零 → 红点灭（即使有 2 条待接收，也不并入红点；待接收数由区块标题角标承载）');
   t.eq(loadView.badgePatch({ submitted: 0 }, {}, 0), { workbenchPending: 0, messages: 0 },
-    'O20 两类待办都清零 → 红点归零');
+    'O20 两类都零 → 红点归零');
 
   // ── 页面接线静态：count 来自响应、行来自 view=transfer、点行进详情、不自行计数 ──
   const flowSrc = stripped(WORKBENCH_FLOW);
@@ -464,8 +570,11 @@ function workbenchTransferChecks(t) {
     && flowSrc.indexOf('orderApi.listPartner(transferView.query())') >= 0,
   'O21 接线：count 取响应 transferPending、行取 order.listPartner({view:transfer})（服务端过滤）');
   t.check(flowSrc.indexOf('const fallback = transferView.pendingOf(data)') >= 0
-    && flowSrc.indexOf('this.syncBadge(this.data.counts, count)') >= 0,
-  'O21b 主响应缺 transferPending 时用待接收列表响应的服务端计数兜底并补红点（客户端仍不按行数自算）');
+    && flowSrc.indexOf('known !== null ? known : (fallback !== null ? fallback : cachedCountOf(this))') >= 0
+    && flowSrc.indexOf('known === null ? cached : known') >= 0,
+  'O21b 主响应缺 transferPending 时用待接收列表响应的服务端计数兜底；仍缺则保留上次计数/未知（不写 0）');
+  t.check(flowSrc.indexOf('syncBadge') === -1,
+    'O21b2 待接收接线不碰红点（红点只在 load-flow.syncBadge 由 counts.submitted 派生，不同源不合并）');
   t.check(flowSrc.indexOf('rows.length') === -1 && flowSrc.indexOf('list.length') === -1,
     'O21c 接线代码不出现「按行数算 N」（count 只来自服务端字段，防退回客户端计数）');
   t.check(flowSrc.indexOf('DETAIL_PAGE') >= 0 && flowSrc.indexOf('wx.navigateTo(') >= 0,
@@ -475,10 +584,10 @@ function workbenchTransferChecks(t) {
   t.check(flowSrc.indexOf('onToggleRow') === -1 && flowSrc.indexOf('selecting') === -1,
     'O24 待接收行点击不受多选态影响（不触发勾选/批量）');
   const loadFlowSrc = stripped(WORKBENCH_LOAD_FLOW);
-  t.check(loadFlowSrc.indexOf('transferView.pendingOf(data)') >= 0
-    && loadFlowSrc.indexOf('this.syncBadge(plan.counts, transferView.pendingOf(data))') >= 0
-    && loadFlowSrc.indexOf('this.applyTransfer(data)') >= 0,
-  'O25 每次列表刷新都同步红点与待接收区块（count 服务端下发，客户端不自行 ++/--）');
+  t.check(loadFlowSrc.indexOf('this.syncBadge(plan.counts)') >= 0
+    && loadFlowSrc.indexOf('this.applyTransfer(data)') >= 0
+    && loadFlowSrc.indexOf('syncBadge(plan.counts,') === -1,
+  'O25 每次列表刷新都同步红点（只喂 counts.submitted，不接收 transferPending）与待接收区块');
   t.check(loadFlowSrc.indexOf('store.patch({ badges: next })') >= 0,
     'O26 红点走既有 store.patch({badges}) 机制（复用，不新建红点通道）');
   const indexSrc = stripped(WORKBENCH_JS);
@@ -493,14 +602,63 @@ function workbenchTransferChecks(t) {
   const wxmlSrc = stripped(WORKBENCH_WXML);
   t.check(wxmlSrc.indexOf('transfer.visible') >= 0 && wxmlSrc.indexOf('transfer.title') >= 0
     && wxmlSrc.indexOf('row.remainingText') >= 0 && wxmlSrc.indexOf('row.fromText') >= 0
+    && wxmlSrc.indexOf('row.orderNoText') >= 0 && wxmlSrc.indexOf('row.metaText') >= 0
     && wxmlSrc.indexOf('bindtap="onTransferRowTap"') >= 0,
-  'O30 WXML 顶部待接收区块：标题/行（发起方编号 + 剩余分钟）/点行进详情');
-  t.eq(wxmlSrc.indexOf('transfer-card') < wxmlSrc.indexOf('counts-card'), true,
-    'O31 区块位于工作台顶部（计数卡之前，打开就能看到待接收）');
+  'O30 WXML 待接收区块：标题 / 行（末 4 位单号 + 发起方编号 + 剩余分钟 + 宿舍锚/件数）/ 点行进详情');
+  t.eq(wxmlSrc.indexOf('transfer-card') > wxmlSrc.indexOf('counts-card'), true,
+    'O31 区块位于「进度总览（counts 卡）」下方（P2-7 对齐冻结 UX，不再压在计数卡之前）');
   t.check(wxmlSrc.indexOf('onTransferAcceptTap') === -1 && wxmlSrc.indexOf('onTransferDeclineTap') === -1
     && wxmlSrc.indexOf('onTransferCancelTap') === -1,
   'O32 待接收区块只读（写操作只在订单详情，不自造第二套入口）');
   t.notEmpty([rows, state, more], 'O33 O 组样本非空（行/区块态/更多提示）');
+
+  // ── P2-3：真实 transfer-flow 接线行为（只注入 api/client 的 transport 桩，ENGINEERING §6.3 唯一允许）──
+  const missing = await applyTransferWith({ main: {}, transfer: {} });
+  t.eq([missing.page.data.transfer.count, missing.page.data.transfer.visible,
+    missing.page.data.transfer.hintText.indexOf('没取到') >= 0, missing.page._transferCount],
+  [null, true, true, null],
+  'O34 两处响应都缺 transferPending → 保留未知态（count=null + 不可用提示），绝不写 0 把入口静默藏掉');
+  const kept = await applyTransferWith({ main: {}, transfer: {} }, { _transferCount: 2 });
+  t.eq([kept.page.data.transfer.count, kept.page.data.transfer.title], [2, '待接收转派（2）'],
+    'O35 两处都缺时保留上次服务端计数（已知 2 条不被冲成 0）');
+  const converged = await applyTransferWith({ main: {}, transfer: { list: [transferListRow()], transferPending: 3 } });
+  t.eq([converged.page.data.transfer.count, converged.page.data.transfer.title, converged.page.data.transfer.rows.length],
+    [3, '待接收转派（3）', 1],
+    'O36 主响应缺字段时用待接收列表响应的服务端计数兜底收敛（客户端仍不按行数计数）');
+  const normal = await applyTransferWith({ main: { transferPending: 2 }, transfer: { list: [transferListRow()], transferPending: 2 } });
+  t.eq([normal.page.data.transfer.count, normal.page.data.transfer.rows[0].orderNoText, normal.calls.join(',')],
+    [2, '0011', 'transfer'],
+    'O37 主响应已有计数也按 view=transfer 拉一次行；行渲染用订单号末 4 位');
+  const closed = await applyTransferWith({ main: { transferPending: 0 }, transfer: {} });
+  t.eq([closed.page.data.transfer.visible, closed.page.data.transfer.count, closed.calls.length], [false, 0, 0],
+    'O38 主响应 transferPending=0 → 区块隐藏且不再发 view=transfer 请求（省一次读）');
+}
+
+// P2-3：真实 transfer-flow 页面方法接线 —— 假 page + api/client transport 桩（不 mock 全局 wx）
+async function applyTransferWith(responses, pageExtra) {
+  const page = Object.assign({
+    data: { counts: { submitted: 1 }, transfer: transferView.closedState() },
+    _transferRows: [],
+    _transferCount: null
+  }, pageExtra || {});
+  Object.assign(page, transferFlow);
+  page.setData = function setData(patch) { Object.assign(this.data, patch); };
+  const calls = [];
+  const answers = responses || {};
+  client.setTransport((payload) => {
+    const view = payload && payload.data && payload.data.view;
+    calls.push(view === 'transfer' ? 'transfer' : 'main');
+    if (view === 'transfer') {
+      return Promise.resolve({ ok: true, data: Object.assign({ list: [], counts: {} }, answers.transfer || {}) });
+    }
+    return Promise.resolve({ ok: true, data: {} });
+  });
+  try {
+    await page.applyTransfer(answers.main || {});
+  } finally {
+    client.restoreTransport();
+  }
+  return { page: page, calls: calls };
 }
 
 function pendingBlockOf(minutes) {
@@ -529,8 +687,8 @@ function layerHitsWorkbench(code) {
 }
 
 module.exports = {
-  DETAIL_EXPECTED_ASSERTIONS: 62,
-  WORKBENCH_EXPECTED_ASSERTIONS: 35,
+  DETAIL_EXPECTED_ASSERTIONS: 77,
+  WORKBENCH_EXPECTED_ASSERTIONS: 43,
   detailTransferChecks,
   workbenchTransferChecks
 };

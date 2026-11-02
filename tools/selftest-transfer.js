@@ -22,7 +22,7 @@ const {
   TRANSFER_STATUS, TRANSFER_REASON, PARTNER_TRANSFER_KEYS, CUSTOMER_TRANSFER_KEYS, ADMIN_TRANSFER_KEYS,
   TRANSFER_BLOCK_KEYS, ROLES, PARTNER_STATUS, VIEW_MODE, ORDER_STATUS,
   SUBMITTED, ACCEPTED, PICKED, DELIVERED, COMPLETED, CANCELLED, EXCEPTION,
-  enums, retention, apiOf, handlerCtxWithCrid, nextCrid, iso,
+  enums, retention, apiOf, handlerCtxOf, handlerCtxWithCrid, nextCrid, iso,
   orderDoc, transferBlock, acceptedTransferBlock, configDoc, world,
   rowOf, eventsFor, eventTypesOf, countersOf, sameJson, transferKeysOf, jsonOf, bannedHitsOf,
   topKeysOf, expectCode, expectField, errorCodeOf, orderFiles, relOf, cleanupTestDb, cleanupCtx
@@ -33,6 +33,8 @@ const orderIndex = require(path.join(ORDERS_DIR, 'index.js'));
 const router = require(path.join(API, 'router.js'));
 const adminDto = require(path.join(API, 'handlers/admin/_dto.js'));
 const orderDto = require(path.join(API, 'handlers/order/_dto.js'));
+const transferLib = require(path.join(ORDERS_DIR, '_transfer.js'));
+const expireLib = require(path.join(ORDERS_DIR, '_transfer-expire.js'));
 const cleanupShared = require(path.join(ROOT, 'cloudfunctions/cleanup/shared/enums.js'));
 
 // 六项 counts 形状（零值模板）：D58 只加顶层 transferPending，不改 counts 形状
@@ -80,6 +82,13 @@ async function sectionT1(h) {
       [before.version + 1, PID1, 'PAAAAAA'], 'T1-5 发起 version 只 +1，transfer 记录发起方 id+编号快照');
     t.eq(msOfValue(requested.transfer.expiresAt) - msOfValue(requested.transfer.requestedAt), 10 * MINUTE,
       'T1-6 expiresAt=requestedAt+config.transferTtlMinutes（出厂 10 分钟，config 单源）');
+    // 非默认值对照：证明 TTL 读 config 而非写死 10（变异：把 ttlMinutesOf 改成常量 → 本条红）
+    const ttlDb = world({ config: { transferTtlMinutes: 30 },
+      orders: [orderDoc('20261103-1002', ACCEPTED, { acceptedAt: new Date(NOW - 2000) })] });
+    const ttlRes = await apiOf(ttlDb, P1).call('order.requestTransfer',
+      { orderNo: '20261103-1002', toPartnerNo: 'PBBBBBB' }, { clientRequestId: nextCrid('t1ttl') });
+    t.eq(msOfValue(ttlRes.data.transfer.expiresAt) - msOfValue(ttlRes.data.transfer.requestedAt), 30 * MINUTE,
+      'T1-6b 非默认 TTL 对照：config.transferTtlMinutes=30 → 间隔 30 分钟（读 config，非写死）');
     t.eq(eventTypesOf(db, '20261103-1001'), ['TRANSFER_REQUESTED'],
       'T1-7 发起恰一条 TRANSFER_REQUESTED 事件');
     const reqEvent = eventPayloadOf(db, '20261103-1001', 'TRANSFER_REQUESTED');
@@ -401,8 +410,10 @@ async function sectionT8(h) {
     const adminView = adminDto.orderDetail(rowOf(acceptedDb, '20261103-8002'), {
       customerDisplayName: '顾客甲', partnerDisplayName: '阿乙'
     });
-    t.eq(transferKeysOf(adminView), ADMIN_TRANSFER_KEYS,
-      'T8-10 admin 只读投影 transfer 恰 5 键（status/fromPartnerNo/toPartnerNo/expiresAt/resolveReason）');
+    t.eq([transferKeysOf(adminView), adminView.transfer.resolveReason, adminView.transfer.resolveReasonText,
+      adminView.transfer.requestedAt instanceof Date, adminView.transfer.resolvedAt instanceof Date],
+    [ADMIN_TRANSFER_KEYS, TRANSFER_REASON.TARGET_ACCEPTED, '对方已确认接收', true, true],
+    'T8-10 admin 只读投影 transfer 恰 8 键（含后台详情页消费的 requestedAt/resolvedAt/resolveReasonText）');
     const adminJson = jsonOf(adminView);
     t.eq(['openid', 'fromPartnerId', 'toPartnerId', 'requestKey'].filter((word) => adminJson.indexOf(word) >= 0), [],
       'T8-11 admin 投影字符串级零 openid/内部 id/幂等键（脱敏昵称/编号为合法字段）');
@@ -615,6 +626,9 @@ async function sectionT13(h) {
       }
     });
     t.eq(dbCollectionHits, [], 'T13-1 handlers/order/** 全部文件零 db.collection（唯一数据入口=dao）');
+    // 样本非空护栏：文件清单为空时上一条会"空集全绿"，判据没牙
+    t.check(orderFiles().length >= 15,
+      'T13-1a 静态扫描样本非空（handlers/order ≥15 个 .js 文件，空集不得全绿）');
     const scan = (text) => text.indexOf('db.collection') >= 0;
     t.eq([scan('x.db.collection("orders")'), scan('// 云函数不出现 db.collection')], [true, true],
       'T13-2 静态扫描有牙正控：合成样本与注释命中均能被检出');
@@ -640,6 +654,244 @@ async function sectionT13(h) {
   });
 }
 
+// ================================================================ T14 P0/P1 回归（独立审查追加）
+// 每条都配「合法基线 + 只有该闸能挡」的反例：P0-1 动作矩阵被遮蔽吞掉；P1-1 幂等重放先于读权限；
+// P1-2 picked 闸吞撤回/确认广告且 accept 不查已取件；P1-3 列表行未遮蔽；P1-4 事务外旧快照覆盖转派；
+// P2-1 限流缺键退化成不限；P2-2 TTL 上限写死；P2-7 expectedVersion 未接；P2-10 未授权读者触发惰性写；
+// P2-11 二次转派解除遮蔽；P2-8 私有事件未按角色过滤 / 转派事件文案退化。
+async function sectionT14(h) {
+  h.section('T14 P0/P1 回归：动作矩阵 / 重放鉴权 / 已取件邀请 / 列表遮蔽 / CAS / 限流回落 / 版本闸 / 鉴权顺序 / 二次转派 / 消息口径', async (t) => {
+    // --- P0-1：确认后新履约人动作条回正常 PARTNER 矩阵；遮蔽仍生效 ---
+    const acceptDb = world({ orders: [orderDoc('20261103-1401', ACCEPTED, { acceptedAt: new Date(NOW - 2000) })] });
+    const accP1 = apiOf(acceptDb, P1);
+    const accP2 = apiOf(acceptDb, P2);
+    await accP1.call('order.requestTransfer', { orderNo: '20261103-1401', toPartnerNo: 'PBBBBBB' },
+      { clientRequestId: nextCrid('t14req') });
+    await accP2.call('order.acceptTransfer', { orderNo: '20261103-1401' },
+      { clientRequestId: nextCrid('t14acc') });
+    const bGet = await accP2.call('order.get', { orderNo: '20261103-1401' });
+    const bKeys = (bGet.data.order.actions || []).map((item) => item.key);
+    t.eq([bKeys.indexOf('pick') >= 0, bKeys.indexOf('exception') >= 0, bKeys.indexOf('correct') >= 0,
+      bKeys.indexOf('cancel') >= 0, bKeys.indexOf('requestTransfer') >= 0, bKeys.indexOf('acceptTransfer')],
+    [true, true, true, true, true, -1],
+    'P0-1 确认后新履约人 order.get 动作条含 pick/exception/correct/cancel/requestTransfer，不再回邀请卡动作');
+    t.eq([Object.prototype.hasOwnProperty.call(bGet.data.order, 'customerNo'), bGet.data.order.counterpart],
+      [false, null], 'P0-1b 动作矩阵解耦后顾客身份遮蔽仍生效（customerNo 缺键 / counterpart=null）');
+    const pickedDb = world({ orders: [orderDoc('20261103-1402', PICKED, {
+      acceptedAt: new Date(NOW - 5000), pickedAt: new Date(NOW - 3000),
+      partnerId: PID2, partnerOpenid: P2, partnerNo: 'PBBBBBB', transfer: acceptedTransferBlock()
+    })] });
+    const pickedGet = await apiOf(pickedDb, P2).call('order.get', { orderNo: '20261103-1402' });
+    t.eq((pickedGet.data.order.actions || []).map((item) => item.key).indexOf('deliver') >= 0, true,
+      'P0-1c 逐件取完（PICKED）新履约人动作条含 deliver');
+
+    // --- P1-1：重放先鉴权（完成后原履约人重放四动作 FORBIDDEN 且零泄漏；本人重放仍幂等）---
+    const replayDb = world({ orders: [orderDoc('20261103-1411', ACCEPTED, { acceptedAt: new Date(NOW - 2000) })] });
+    const rp1 = apiOf(replayDb, P1);
+    const rp2 = apiOf(replayDb, P2);
+    const reqCrid = nextCrid('t14rep1');
+    const cancelCrid = nextCrid('t14repc');
+    const req2Crid = nextCrid('t14rep2');
+    const acceptCrid = nextCrid('t14repa');
+    await rp1.call('order.requestTransfer', { orderNo: '20261103-1411', toPartnerNo: 'PBBBBBB' },
+      { clientRequestId: reqCrid });
+    await rp1.call('order.cancelTransfer', { orderNo: '20261103-1411' }, { clientRequestId: cancelCrid });
+    await rp1.call('order.requestTransfer', { orderNo: '20261103-1411', toPartnerNo: 'PBBBBBB' },
+      { clientRequestId: req2Crid });
+    await rp2.call('order.acceptTransfer', { orderNo: '20261103-1411' }, { clientRequestId: acceptCrid });
+    const replayBefore = rowOf(replayDb, '20261103-1411');
+    const replayReq = await rp1.call('order.requestTransfer', { orderNo: '20261103-1411', toPartnerNo: 'PBBBBBB' },
+      { clientRequestId: req2Crid });
+    const replayCan = await rp1.call('order.cancelTransfer', { orderNo: '20261103-1411' },
+      { clientRequestId: cancelCrid });
+    const replayAcc = await rp1.call('order.acceptTransfer', { orderNo: '20261103-1411' },
+      { clientRequestId: acceptCrid });
+    const replayDec = await rp1.call('order.declineTransfer', { orderNo: '20261103-1411' },
+      { clientRequestId: nextCrid('t14repd') });
+    t.eq([[replayReq.ok, replayReq.code], [replayCan.ok, replayCan.code],
+      [replayAcc.ok, replayAcc.code], [replayDec.ok, replayDec.code]],
+    [[false, 'FORBIDDEN'], [false, 'FORBIDDEN'], [false, 'FORBIDDEN'], [false, 'FORBIDDEN']],
+    'P1-1 转派完成后原履约人重放四动作（含旧 crid）全部 FORBIDDEN');
+    t.eq([replayReq.data, replayCan.data, replayAcc.data, replayDec.data],
+      [undefined, undefined, undefined, undefined], 'P1-1b 重放拒绝零泄漏（不回带 order/transfer/事件）');
+    const replayAfter = rowOf(replayDb, '20261103-1411');
+    t.eq([replayAfter.version, eventTypesOf(replayDb, '20261103-1411').length],
+      [replayBefore.version, 4], 'P1-1c 拒绝重放零写入（version 与 4 条事件均不变）');
+    const bReplay = await rp2.call('order.acceptTransfer', { orderNo: '20261103-1411' },
+      { clientRequestId: acceptCrid });
+    t.eq([bReplay.ok, bReplay.data.duplicated,
+      (bReplay.data.order.actions || []).some((item) => item.key === 'pick')],
+    [true, true, true], 'P1-1d 对照：现任履约人本人重放命中 duplicated=true 且动作条正常（鉴权不误伤幂等）');
+
+    // --- P1-2：已有件被取时确认 → 邀请先落终态再 INVALID_STATE；PENDING 期间广告不受 picked 闸影响 ---
+    const partialDb = world({ orders: [orderDoc('20261103-1421', ACCEPTED, {
+      acceptedAt: new Date(NOW - 2000), transfer: transferBlock(),
+      parcels: [{ itemIndex: 0, stationId: 'P1', pickupCode: 'A11111', codeStatus: 'OK', pickedAt: new Date(NOW - 1000) }]
+    })] });
+    const partialBefore = rowOf(partialDb, '20261103-1421');
+    const partialAccept = await apiOf(partialDb, P2).call('order.acceptTransfer',
+      { orderNo: '20261103-1421' }, { clientRequestId: nextCrid('t14part') });
+    const partialAfter = rowOf(partialDb, '20261103-1421');
+    t.eq([partialAccept.ok, partialAccept.code], [false, 'INVALID_STATE'],
+      'P1-2 已有件被取（D61）时确认转派 → INVALID_STATE');
+    t.eq([partialAfter.transfer.status, partialAfter.transfer.resolveReason, partialAfter.partnerId],
+      [TRANSFER_STATUS.EXPIRED, TRANSFER_REASON.STATE_CHANGED, PID1],
+      'P1-2b 邀请先落 EXPIRED/STATE_CHANGED，订单归属零改动');
+    t.eq([eventTypesOf(partialDb, '20261103-1421'), partialAfter.version],
+      [['TRANSFER_EXPIRED'], partialBefore.version + 1],
+      'P1-2c 已有件被取恰落一条 TRANSFER_EXPIRED（version +1）');
+    const adsDb = world({ orders: [orderDoc('20261103-1422', ACCEPTED, {
+      acceptedAt: new Date(NOW - 2000), transfer: transferBlock(),
+      parcels: [{ itemIndex: 0, stationId: 'P1', pickupCode: 'A11111', codeStatus: 'OK', pickedAt: new Date(NOW - 1000) }]
+    })] });
+    const ownerAds = await apiOf(adsDb, P1).call('order.get', { orderNo: '20261103-1422' });
+    const targetAds = await apiOf(adsDb, P2).call('order.get', { orderNo: '20261103-1422' });
+    const adsKeys = (res) => (res.data.order.actions || []).map((item) => item.key);
+    t.eq([adsKeys(ownerAds).indexOf('cancelTransfer') >= 0, adsKeys(ownerAds).indexOf('requestTransfer'),
+      adsKeys(targetAds).indexOf('acceptTransfer') >= 0, adsKeys(targetAds).indexOf('declineTransfer') >= 0],
+    [true, -1, true, true], 'P1-2d PENDING 期间撤回/确认/拒收广告不受已取件影响（picked 闸只挡 requestTransfer）');
+
+    // --- P1-3 + P2-11：列表行遮蔽（转入后零 customerNo/昵称）与二次转派后仍遮蔽 ---
+    const listDb = world({ orders: [orderDoc('20261103-1431', ACCEPTED, { acceptedAt: new Date(NOW - 2000) })] });
+    const lp1 = apiOf(listDb, P1);
+    const lp2 = apiOf(listDb, P2);
+    const listBaseline = await lp1.call('order.listPartner', { view: 'workbench' });
+    t.eq(listBaseline.data.list[0].customerNo, 'CABCDEFGH',
+      'P1-3 基线：本人绑定顾客的 workbench 行仍带 customerNo（遮蔽不误伤正常单）');
+    await lp1.call('order.requestTransfer', { orderNo: '20261103-1431', toPartnerNo: 'PBBBBBB' },
+      { clientRequestId: nextCrid('t14lreq') });
+    await lp2.call('order.acceptTransfer', { orderNo: '20261103-1431' }, { clientRequestId: nextCrid('t14lacc') });
+    const bWork = await lp2.call('order.listPartner', { view: 'workbench' });
+    const bRow = bWork.data.list.filter((row) => row.orderNo === '20261103-1431')[0] || {};
+    t.eq([Object.prototype.hasOwnProperty.call(bRow, 'customerNo'), jsonOf(bRow).indexOf('CABCDEFGH') < 0,
+      jsonOf(bRow).indexOf('顾客甲') < 0, (bRow.actions || []).some((item) => item.key === 'pick')],
+    [false, true, true, true],
+    'P1-3b 转入后 workbench 行字符串级零 customerNo/displayName，动作矩阵保留');
+    await lp2.call('order.requestTransfer', { orderNo: '20261103-1431', toPartnerNo: 'PCCCCCC' },
+      { clientRequestId: nextCrid('t14l2req') });
+    const bSecond = await lp2.call('order.get', { orderNo: '20261103-1431' });
+    t.eq([Object.prototype.hasOwnProperty.call(bSecond.data.order, 'customerNo'), bSecond.data.order.counterpart],
+      [false, null], 'P2-11 二次转派（transfer 块被新 PENDING 覆盖）后现任履约人仍遮蔽顾客身份');
+
+    // --- P1-4：事务外旧快照不得覆盖已推进的转派（CAS：零写、零事件）---
+    const casDb = world({ orders: [orderDoc('20261103-1441', ACCEPTED, {
+      acceptedAt: new Date(NOW - 3000), partnerId: PID2, partnerOpenid: P2, partnerNo: 'PBBBBBB',
+      transfer: acceptedTransferBlock()
+    })] });
+    const casBefore = rowOf(casDb, '20261103-1441');
+    const staleSnapshot = Object.assign({}, casBefore, {
+      version: casBefore.version - 2,
+      transfer: transferBlock({ requestedAt: new Date(NOW - 20 * MINUTE), expiresAt: new Date(NOW - 5 * MINUTE) })
+    });
+    const casCtx = handlerCtxOf(casDb, P2, { role: ROLES.PARTNER }, 't14cas');
+    await expireLib.expireIfNeeded(casCtx, staleSnapshot, NOW);
+    const casAfter = rowOf(casDb, '20261103-1441');
+    t.eq([casAfter.version, casAfter.transfer.status, eventTypesOf(casDb, '20261103-1441').length],
+      [casBefore.version, TRANSFER_STATUS.ACCEPTED, 0],
+      'P1-4 陈旧 PENDING 快照对已 ACCEPTED 的库调用过期 → 零写、零事件');
+    let casCode = 'NO_ERROR';
+    try {
+      await transferLib.writeTransferAction(casCtx, staleSnapshot, {
+        patch: { transfer: transferBlock() },
+        event: { orderId: 'o-20261103-1441', orderNo: '20261103-1441', type: 'TRANSFER_REQUESTED', requestKey: 'rk-b26-stale-1441' },
+        nowMs: NOW
+      });
+    } catch (error) {
+      casCode = error && error.code;
+    }
+    const casAfter2 = rowOf(casDb, '20261103-1441');
+    t.eq([casCode, casAfter2.version, eventTypesOf(casDb, '20261103-1441').length],
+      ['INVALID_STATE', casBefore.version, 0],
+      'P1-4b 陈旧快照的动作写被版本 CAS 挡下（零写、零事件、报 INVALID_STATE）');
+
+    // --- P2-1：transferRate 缺键逐字段回落出厂默认（0 不能退化成"不限"）---
+    const rateDb = world({
+      config: { transferRate: {} },
+      orders: [
+        orderDoc('20261103-1451', ACCEPTED, { acceptedAt: new Date(NOW - 2000) }),
+        orderDoc('20261103-1452', ACCEPTED, { acceptedAt: new Date(NOW - 2000) }),
+        orderDoc('20261103-1453', ACCEPTED, { acceptedAt: new Date(NOW - 2000) }),
+        orderDoc('20261103-1454', ACCEPTED, { acceptedAt: new Date(NOW - 2000) })
+      ]
+    });
+    const rateApi = apiOf(rateDb, P1);
+    const rateCodes = [];
+    for (let i = 1; i <= 4; i += 1) {
+      const res = await rateApi.call('order.requestTransfer', { orderNo: '20261103-145' + i, toPartnerNo: 'PBBBBBB' },
+        { clientRequestId: nextCrid('t14rate' + i) });
+      rateCodes.push(res.ok ? 'OK' : res.code);
+    }
+    t.eq(rateCodes, ['OK', 'OK', 'OK', 'RATE_LIMITED'],
+      'P2-1 config.transferRate 缺键逐字段回落出厂默认（3/分钟，不退化成不限）');
+
+    // --- P2-2：TTL 上限取 CONFIG_LIMITS（越界钳到 60 分钟），非默认值证明读 config ---
+    const ttlDb = world({ config: { transferTtlMinutes: 999 }, orders: [orderDoc('20261103-1461', ACCEPTED, { acceptedAt: new Date(NOW - 2000) })] });
+    const ttlRes = await apiOf(ttlDb, P1).call('order.requestTransfer',
+      { orderNo: '20261103-1461', toPartnerNo: 'PBBBBBB' }, { clientRequestId: nextCrid('t14ttl') });
+    t.eq(msOfValue(ttlRes.data.transfer.expiresAt) - msOfValue(ttlRes.data.transfer.requestedAt), 60 * MINUTE,
+      'P2-2 transferTtlMinutes 越上限时按 CONFIG_LIMITS 钳到 60 分钟（上限不写死）');
+
+    // --- P2-7：四动作 expectedVersion（与 runOrderAction 同形；重放优先于版本闸）---
+    const verDb = world({ orders: [orderDoc('20261103-1471', ACCEPTED, { acceptedAt: new Date(NOW - 2000) })] });
+    const verApi = apiOf(verDb, P1);
+    const verCrid = nextCrid('t14ver');
+    const staleVer = await verApi.call('order.requestTransfer', { orderNo: '20261103-1471', toPartnerNo: 'PBBBBBB' },
+      { clientRequestId: verCrid, expectedVersion: 99 });
+    t.eq([staleVer.ok, staleVer.code], [false, 'CONFLICT'],
+      'P2-7 expectedVersion 不符 → CONFLICT（与 runOrderAction 同形）');
+    const verRow = rowOf(verDb, '20261103-1471');
+    t.eq([verRow.version, verRow.transfer], [3, undefined], 'P2-7b 版本闸拒绝零业务写入');
+    const goVer = await verApi.call('order.requestTransfer', { orderNo: '20261103-1471', toPartnerNo: 'PBBBBBB' },
+      { clientRequestId: verCrid, expectedVersion: 3 });
+    t.eq([goVer.ok, goVer.data.transfer.status], [true, TRANSFER_STATUS.PENDING],
+      'P2-7c 对照：expectedVersion 与库一致 → 放行');
+    const replayVer = await verApi.call('order.requestTransfer', { orderNo: '20261103-1471', toPartnerNo: 'PBBBBBB' },
+      { clientRequestId: verCrid, expectedVersion: 99 });
+    t.eq([replayVer.ok, replayVer.data.duplicated], [true, true],
+      'P2-7d 幂等重放先于版本闸（同 crid 重放仍 duplicated，不误报 CONFLICT）');
+
+    // --- P2-10：先鉴权后惰性写库（未授权读者零写；授权读者仍落 EXPIRED）---
+    const leakDb = world({ orders: [orderDoc('20261103-1481', ACCEPTED, {
+      acceptedAt: new Date(NOW - 20 * MINUTE),
+      transfer: transferBlock({ requestedAt: new Date(NOW - 20 * MINUTE), expiresAt: new Date(NOW - 5 * MINUTE) })
+    })] });
+    const leakBefore = rowOf(leakDb, '20261103-1481');
+    const leakGet = await apiOf(leakDb, P3).call('order.get', { orderNo: '20261103-1481' });
+    const leakAfter = rowOf(leakDb, '20261103-1481');
+    t.eq([leakGet.ok, leakGet.code], [false, 'FORBIDDEN'], 'P2-10 非参与方读含过期邀请的订单 → FORBIDDEN');
+    t.eq([leakAfter.version, eventTypesOf(leakDb, '20261103-1481').length], [leakBefore.version, 0],
+      'P2-10b 未授权读者不触发惰性过期写（鉴权先于落库：零 version/零事件）');
+    const ownerLeak = await apiOf(leakDb, P1).call('order.get', { orderNo: '20261103-1481' });
+    const leakAfter2 = rowOf(leakDb, '20261103-1481');
+    t.eq([ownerLeak.ok, leakAfter2.transfer.status, leakAfter2.version],
+      [true, TRANSFER_STATUS.EXPIRED, leakBefore.version + 1],
+      'P2-10c 对照：发起方读同一过期单 → 惰性落 EXPIRED（鉴权通过后才写库）');
+
+    // --- P2-8：消息中心私有事件按角色过滤 + TRANSFER_ACCEPTED 服务端人话文案 ---
+    const msgDb2 = world({ orders: [orderDoc('20261103-1491', ACCEPTED, {
+      acceptedAt: new Date(NOW - 3000), partnerId: PID2, partnerOpenid: P2, partnerNo: 'PBBBBBB',
+      transfer: acceptedTransferBlock()
+    })] });
+    msgDb2.seed('order_events', [
+      { _id: 'ev-b26-1491-1', orderId: 'o-20261103-1491', orderNo: '20261103-1491', type: 'TRANSFER_REQUESTED',
+        fromStatus: ACCEPTED, toStatus: ACCEPTED, actorRole: ROLES.PARTNER, at: new Date(NOW - 2 * MINUTE), note: '',
+        payload: { fromPartnerNo: 'PAAAAAA', toPartnerNo: 'PBBBBBB' }, requestKey: 'rk-b26-1491-1' },
+      { _id: 'ev-b26-1491-2', orderId: 'o-20261103-1491', orderNo: '20261103-1491', type: 'TRANSFER_ACCEPTED',
+        fromStatus: ACCEPTED, toStatus: ACCEPTED, actorRole: ROLES.PARTNER, at: new Date(NOW - MINUTE), note: '',
+        payload: { fromPartnerNo: 'PAAAAAA', toPartnerNo: 'PBBBBBB' }, requestKey: 'rk-b26-1491-2' }
+    ]);
+    const customerCenter = await apiOf(msgDb2, C1).call('message.list', {});
+    const partnerCenter = await apiOf(msgDb2, P2).call('message.list', {});
+    const customerItems = customerCenter.data.list.filter((item) => item.type === 'EVENT');
+    const partnerItems = partnerCenter.data.list.filter((item) => item.type === 'EVENT');
+    t.eq([customerItems.length, customerItems[0].title, customerItems[0].text],
+      [1, '订单已转派', '由 PBBBBBB 接手履约'],
+      'P2-8 顾客消息中心：私有事件拉黑，TRANSFER_ACCEPTED 给「由编号接手履约」人话（不退化成「已接单」）');
+    t.eq([partnerItems.length, partnerItems.some((item) => item.title === '订单已转派')],
+      [2, true], 'P2-8b 兼职侧消息中心全量（不拉黑私有事件）且同样用人话标题');
+  });
+}
+
 // cleanup 环境枚举/集合别名（避免与 api 域变量混淆）
 const cleanupEnums = require(path.join(ROOT, 'cloudfunctions/cleanup/shared/enums.js'));
 const cleanupCollectionsSource = require(path.join(ROOT, 'cloudfunctions/cleanup/shared/collections.js')).COLLECTIONS;
@@ -648,7 +900,7 @@ function cleanupCollectionsOf(key) {
 }
 
 // ================================================================ 注册
-const EXPECTED_ASSERTIONS = 111; // 实跑回填（node tools/selftest-transfer.js | Select-Object -Last 2）
+const EXPECTED_ASSERTIONS = 140; // 实跑回填（node tools/selftest-transfer.js | Select-Object -Last 2）
 
 function register(h) {
   h.setExpected(EXPECTED_ASSERTIONS);
@@ -665,6 +917,7 @@ function register(h) {
   sectionT11(h);
   sectionT12(h);
   sectionT13(h);
+  sectionT14(h);
 }
 
 module.exports = { register, EXPECTED_ASSERTIONS };

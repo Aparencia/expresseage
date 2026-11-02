@@ -103,10 +103,25 @@ function unreadOf(all) {
   };
 }
 
-// D58（批 26）：消息中心/红点拉黑 4 个私有转派事件；TRANSFER_ACCEPTED 保留可见（D29 机制，顾客可见）
-function visibleEventRowsOf(events) {
-  const hidden = common.enums.MESSAGE_HIDDEN_EVENT_TYPES || [];
+// D58（批 26）：消息中心/红点拉黑 4 个私有转派事件——**仅顾客侧**拉黑；兼职侧全量留痕（发起/撤回/拒收/过期）。
+// P2-8：按订单侧别过滤（同一双角色账号在两单里可以是不同侧，不能按全局角色一刀切）。
+function visibleEventRowsOf(events, side) {
+  const hidden = side === 'CUSTOMER' ? (common.enums.MESSAGE_HIDDEN_EVENT_TYPES || []) : [];
   return (Array.isArray(events) ? events : []).filter((event) => hidden.indexOf(event.type) < 0);
+}
+
+// D58：TRANSFER_ACCEPTED 给可理解人话（CONTRACT §5.4「由 P-XXX-XXX 接手履约」；服务端单源 title，
+// 不退化成状态名「已接单」）。编号来自事件 payload 的 toPartnerNo 快照（无 openid/内部 id）。
+const TRANSFER_ACCEPTED_TITLE = '订单已转派';
+
+function eventItemOf(scope, orderNo, event, readWatermarkMs) {
+  const item = common.buildEventItem(scope, orderNo, event, readWatermarkMs);
+  if (event && event.type === 'TRANSFER_ACCEPTED') {
+    const toPartnerNo = common.textOf(event.payload && event.payload.toPartnerNo);
+    item.title = TRANSFER_ACCEPTED_TITLE;
+    item.text = toPartnerNo ? '由 ' + toPartnerNo + ' 接手履约' : '订单已由其他兼职接手履约';
+  }
+  return item;
 }
 
 async function listCenter(ctx, payload) {
@@ -132,8 +147,9 @@ async function listCenter(ctx, payload) {
       orderBy: [['at', 'desc']],
       limit: common.EVENTS_PER_ORDER
     });
-    visibleEventRowsOf(events).forEach((event) => {
-      items.push(common.buildEventItem(scope, orderNo, event, readWatermarkMs));
+    const side = common.orderSideOf(ctx, order);
+    visibleEventRowsOf(events, side).forEach((event) => {
+      items.push(eventItemOf(scope, orderNo, event, readWatermarkMs));
     });
     const messages = await ctx.dao.find(common.COLLECTIONS.ORDER_MESSAGES, {
       where: { orderId: order._id },

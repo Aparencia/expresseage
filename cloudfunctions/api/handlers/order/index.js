@@ -1,4 +1,4 @@
-// handlers/order/index.js · 订单域 action 注册表（23 个动作，键名逐字对齐 shared/actions.js）
+// handlers/order/index.js · 订单域 action 注册表（22 个动作，键名逐字对齐 shared/actions.js）
 'use strict';
 
 module.exports = {

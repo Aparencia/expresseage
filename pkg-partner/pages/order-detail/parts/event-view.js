@@ -25,6 +25,13 @@ const EVENT_LABELS = {
   // D61（2026-11-02）：件级取件两种事件——note 里有件号就带上，没有就用通用人话（绝不裸英文上屏）
   PARCEL_PICKED: '已取走一件',
   PARCEL_PICKED_REVERTED: '撤销了一件已取件',
+  GUEST_ORDER_CLAIMED: '代客单已认领',
+  // D58（批 26）：5 个转派事件必须有人话（转派双方/后台都看时间线；中文单源 = shared/enums 转派文案表）
+  TRANSFER_REQUESTED: '发起转派',
+  TRANSFER_ACCEPTED: enums.TRANSFER_STATUS_TEXT[enums.TRANSFER_STATUS.ACCEPTED],
+  TRANSFER_DECLINED: enums.TRANSFER_STATUS_TEXT[enums.TRANSFER_STATUS.DECLINED],
+  TRANSFER_CANCELLED: '已撤回转派',
+  TRANSFER_EXPIRED: enums.TRANSFER_STATUS_TEXT[enums.TRANSFER_STATUS.EXPIRED],
   DELETED_BY_CUSTOMER: '顾客删除记录',
   TIMEOUT_CANCELLED: '超时未接单，系统取消',
   AUTO_COMPLETED: '系统自动完成',
@@ -43,6 +50,12 @@ const ACTOR_TEXT = {
   [enums.CANCELLED_BY.SYSTEM]: '系统',
   [enums.CANCELLED_BY.ADMIN]: '开发者'
 };
+
+// D58（P1-1）：转派事件的事件 DTO 只给 type/at/actorRole/note（不带发起/接收方编号），
+// actorRole=PARTNER 既可能是发起方也可能是接收方——显示「我」会把对方的动作冒认成自己的，
+// 故这 5 类事件一律不显示 actor（宁缺勿错；要显示编号须服务端先补 DTO 字段）。
+const TRANSFER_EVENT_TYPES = ['TRANSFER_REQUESTED', 'TRANSFER_ACCEPTED', 'TRANSFER_DECLINED',
+  'TRANSFER_CANCELLED', 'TRANSFER_EXPIRED'];
 
 // D61：服务端件级事件 note 形如「第2件」（A 侧约定）或空；有件号就进人话，没有就给通用句（不裸英文）
 function pieceNoOf(note) {
@@ -64,7 +77,11 @@ function labelOf(event) {
   if (type === 'PARCEL_PICKED' || type === 'PARCEL_PICKED_REVERTED') {
     return parcelEventLabelOf(type, note);
   }
-  const base = EVENT_LABELS[type] || type;
+  // 未登记类型不上屏裸英文（文案纪律）：宁可少一行，也不把内部事件名/错误码暴露给用户
+  const base = EVENT_LABELS[type] || '';
+  if (!base) {
+    return '';
+  }
   if (!note || base === note) {
     return base;
   }
@@ -74,11 +91,13 @@ function labelOf(event) {
 
 function buildEvent(item) {
   const event = item || {};
+  const type = textOf(event.type);
   const label = labelOf(event);
+  const isTransfer = TRANSFER_EVENT_TYPES.indexOf(type) >= 0;
   return {
-    key: textOf(event.type) + '@' + textOf(event.at),
+    key: type + '@' + textOf(event.at),
     label: label,
-    actor: ACTOR_TEXT[textOf(event.actorRole)] || '',
+    actor: isTransfer ? '' : (ACTOR_TEXT[textOf(event.actorRole)] || ''),
     atText: clockTextOf(event.at)
   };
 }
