@@ -32,6 +32,8 @@
 
 **2026-11-02 用户 11 条新需求裁决登记 → 2026-11-03 批 24 工程侧完成并收口（D64~D67）**：用户对《用户新需求理解、扩展与补全（2026-11-02）》Q1~Q11 逐条答复（Q1=A 任意兼职；Q2=B 顾客不绑子队员；Q3~Q6、Q8~Q11=采用推荐；Q7=不记录），CONTRACT §13 登记 **D58~D67**（D58 转派/目标确认接收、D59 主兼职发子邀请码开子账号、D60 快递来源研究结论=维持现状不做、D61 件级取件+订单状态聚合、D62 多站点按件分组、D63 顾客邀请顾客不记录关系、D64 取件码伪 tab 一级入口、D65 全局底部安全区修复、D66 首页下单文案、D67 兼职客户页筛选器），DECISIONS D58~D67 留痕，`tools/check-docs.js` D_MAX 57→67。**批 24（D64~D67）已收口**：`check.ps1` 4 步退出码 0（check.js 39/39 含 D65 三闸、check-docs 12/12、零金额 0、selftest 36 套 0 失败）、`gate.ps1` 红 0/黄 0（证据 §19）；真机项 QA §AE1~AE7/§L1/§AD2~§AD4 待用户点检。后续排期：**批 25（D61/D62）→ 批 26（D58/D59）→ 批 27（D63）**；每批先口径后代码。
 
+**2026-11-03 批 25 工程侧完成并收口（D61 件级取件 / D62 多站点按件分组）**：服务端 `order.markPicked`/`order.unmarkPicked` 增可选 `itemIndex`（缺省整单兼容；逐件写 `parcels[].pickedAt/pickedByNo`），订单 `PICKED` 由「全部件已取」聚合派生（最后一件才写订单级 `pickedAt` 并记 `PICKED`，部分取件只记 `PARCEL_PICKED`、订单保持 `ACCEPTED`），逐件撤销按原状态记 `PICKED_REVERTED`/`PARCEL_PICKED_REVERTED`，`order.undo` 撤整单取件同步清件级；事件 17→19 种（DATA_MODEL §8.4）；订单 DTO 增 `pickedCount/parcelCount/allPicked`、件 DTO 增 `picked/pickedAt(ms)/actions`（PARTNER 侧动作矩阵，顾客侧恒空），旧单按订单状态派生、无数据迁移。兼职端工作台/取件清单/订单详情缩进逐件展示、每码独立「已取件/撤销已取」（逐件免二次确认、无 5 秒撤销条）；D62 工作台/清单按件的站点分组（跨站单在每组各出现一次、行内只列本站件 +「另 N 件在 Pn」、组头单/件数、四档按本站件计算、多选与批量仍整单并去重提示）。顾客端详情逐件只读「已取件+时间/待取件」与「已取 n/m 件」（仅 ACCEPTED/PICKED/DELIVERED/COMPLETED/EXCEPTION）、列表行「已取 n/m 件」标签（仅部分取件且非终态）、19 种事件全部人话、顾客端零按件写入口。`check.ps1` 4 步退出码 0（check.js 39/39、check-docs 12/12、零金额 0 命中（白名单 108 项）、selftest 36 套 0 失败）、`gate.ps1` 红 0/黄 0（63 件/1576 行≤4800）；证据见 §20；真机项 QA §AF1~AF7 待用户点检。后续排期：**批 26（D58/D59）→ 批 27（D63）→ 全仓代码审查与修复 → 推送远端**。
+
 ## 2. 批次台账
 
 | 批 | 名称 | 状态 | 说明/证据 |
@@ -61,6 +63,7 @@
 | 批 22 | 提审材料包（文档 + 真实截图 + 示意图） | **已交付（2026-11-01）** | `docs/delivery/review/`：6 份说明文档 + `images/screenshots/` 25 张真实页面截图（微信开发者工具自动化 + 测试账号，2 倍放大）+ `images/diagrams/` 4 张示意图；审核文案/隐私对照/类目说明/操作步骤齐备，真实值留 `{{…}}` 占位由用户填写；未改代码与云函数；门禁读数与证据见 §17 |
 | 批 23 | 提审材料册合订本（6 份说明文档 + 29 张图片 → PDF/DOCX + 生成脚本） | **已交付（2026-11-02）** | `docs/delivery/review/提审材料册（合订本）.pdf/.docx`（封面/使用说明/目录 + 六部分 + 29 张图页，占位值留划线空白）；`tools/build_booklet.py` 可重出；`.gitattributes` 增 docx/pdf binary；`00` 增 §1.3；`check.ps1` 4 步 0、check 36/36、check-docs 12/12、零金额 0 命中（白名单 108 项）、selftest 36 套 0 失败；证据见 §18 |
 | 批 24 | 用户 11 条新需求第一批（D58~D67 登记 + D64~D67 实现） | **工程侧完成并收口（2026-11-03）** | D64 顾客取件码升一级入口（伪 tab、删 D26 订单区、改名、首页入口卡删除、禁分享）、D66 首页「下单」文案、D65 全局底部安全区修复 + 3 条机械门禁（check.js 36→39、check.ps1 钉 39）、D67 客户页筛选器（服务端四维 + 客户端 chips）；D58~D63 已登记待批 25/26/27；`check.ps1` 4 步 0、check 39/39、check-docs 12/12、零金额 0（白名单 108 项）、selftest 36 套 0 失败；`gate.ps1` 红 0/黄 0（108 件/1963 行≤4800）；真机项 QA §AE1~AE7/§L1/§AD2~§AD4 待用户；证据见 §19 |
+| 批 25 | 用户 11 条新需求第二批（D61 件级取件 / D62 多站点按件分组） | **工程侧完成并收口（2026-11-03）** | 服务端件级取件（可选 `itemIndex`、`parcels[].pickedAt/pickedByNo`、订单 PICKED 聚合派生、19 种事件、DTO 件级字段/actions、旧单派生无迁移）、兼职端逐件 UI（工作台/取件清单/订单详情，无 5 秒撤销条）、D62 按件站点分组（工作台/清单，批量仍整单）、顾客端只读件级进度与列表标签；`check.ps1` 4 步 0、check 39/39、check-docs 12/12、零金额 0（白名单 108 项）、selftest 36 套 0 失败；`gate.ps1` 红 0/黄 0（63 件/1576 行≤4800）；真机项 QA §AF1~AF7（+§E2/E9/§F24/§AC4 复验）待用户；证据见 §20 |
 
 ## 3. 批 1 并行交付快照（全部收口）
 
@@ -1141,4 +1144,55 @@ gate.ps1：红色 0 项；黄色 0 项（退出码 0）
 ### 19.5 提交
 
 - 代码/文档提交 `1e6cfcb`（feat，104 件：+1164/−1544 与 23 个新文件，含页面迁移/门禁/筛选器/文档回写）+ 本证据提交（STATE 仅回填本节哈希与快照读数）；同一锚点复跑 gate 仍为红色 0/黄色 0（104 件/2651 行≤4800）；工作树干净、未 push、未 tag/提审/发布。
+
+## 20. 批 25 用户 11 条新需求第二批（D61/D62）收口证据（2026-11-03）
+
+### 20.1 交付范围
+
+- **D61 件级取件（服务端）**：`handlers/order/_picked.js`（152 行纯件：件级判定/旧单派生/聚合/动作矩阵/写回归一）；`order.markPicked`/`order.unmarkPicked` 增可选 `itemIndex`（0~9，缺省=整单兼容；非整数/越界 `VALIDATION_FAILED(field=itemIndex)`）；逐件写 `parcels[].pickedAt/pickedByNo`；订单 `PICKED` 由「全部件已取」聚合派生（最后一件写订单 `pickedAt` + `PICKED` 事件 payload `{itemIndex,lastParcel:true}`；部分取件记 `PARCEL_PICKED`、订单保持 `ACCEPTED` 同状态回写）；逐件撤销（原 `PICKED`→`ACCEPTED` 记 `PICKED_REVERTED`；部分取件 `ACCEPTED`→`ACCEPTED` 记 `PARCEL_PICKED_REVERTED`）；`order.undo` 撤整单取件同步清件级 `pickedAt/pickedByNo`；`ORDER_EVENTS` 17→19 种；订单 DTO 增 `pickedCount/parcelCount/allPicked`、件 DTO 增 `picked/pickedAt(毫秒，未取=0)/actions`（PARTNER 侧动作矩阵，顾客侧恒空）；旧单按订单状态派生（`PICKED/DELIVERED/COMPLETED` 及 `EXCEPTION.from∈{PICKED,DELIVERED}`→全取）、无数据迁移；`shared/{enums,order-state}.js` 经 `sync-cloud-shared` 同步两云函数副本（36 件 hash 一致）。
+- **D61 兼职端 UI**：工作台订单行缩进逐件展示 + 每码独立「已取件/撤销已取」（`parts/{order-row,piece-actions,piece-flow}.js`；单件单不缩进、逐件免二次确认、无 5 秒撤销条；写请求带 `itemIndex/clientRequestId/expectedVersion`）；取件清单「待取件」件级状态与独立按钮；订单详情每件「已取件/待取件+时刻」+ 独立按钮、卡头「已取 n/m 件」；事件时间线补 2 条人话（note 有件号→「已取走第 N 件」，无 note→「已取走一件」，绝不裸英文）。
+- **D62 多站点按件分组**：工作台与兼职取件清单按**件的站点**分组——跨站点单在每件所属站点组各出现一次、行内只列本站件 +「另 N 件在 Pn」、组头同时给单数/件数、四档动线（需查明→快递柜→分段码→其他）与码序按本站件计算；多选/批量仍按订单（`orderNo` 去重 + 跨站选中提示 + 确认文案写明整单作用）；复制只含本站件。
+- **D61 顾客端可见性**：详情逐件只读「已取件+时间/待取件」与「已取 n/m 件」（仅 `ACCEPTED/PICKED/DELIVERED/COMPLETED/EXCEPTION` 显示，`SUBMITTED/CANCELLED` 不显示）；列表行「已取 n/m 件」标签（仅 `0<已取<件数` 且非终态；终态隐藏）；时间线 19 种事件全部人话（`PARCEL_PICKED`「兼职已取走一件」、`PARCEL_PICKED_REVERTED`「兼职撤销了一件已取件」，不显示第 N 件/英文名）；顾客端零按件写入口；进度条第 3 步仍由订单 `status=PICKED`（全取）驱动。
+- **口径/文档回写**：CONTRACT §5/§5.1（D61 状态表/补偿动作/事件清单）；DATA_MODEL §0.6/§2.5/§2.6/§7.5/§8.2/§8.3/§8.4（字段/入参/转移/事件/payload）；DECISIONS D61 DTO 冻结字段名对齐；ARCHITECTURE §2（批 25 新增文件清单与授权跨域）/§4.3（共享件变更）+ §2 文档漂移校正；ENGINEERING §8.1（`CheckCriteria` 36→39 文档漂移修正）；UX_CUSTOMER/UX_PARTNER 按 D61/D62 改写；QA 新增 §AF 7 条（总计 343→350）+ v2.0 判定补充 + 附录 B 批 25 行；`tools/selftest-privacy-text.js` 计数闸 343→350 并新增 §AF 存在性断言（290→291）；CHANGELOG 双段；本批新建接口契约草案 `docs/archive/reviews/2026-11-03_BATCH26_27_INTERFACE_DRAFT.md`（批 26/27 开工用，非本批交付）。
+
+### 20.2 门禁真实输出
+
+```text
+$ powershell -File check.ps1
+PASS  check.js 代码/配置门禁（39 条）
+PASS  check-docs.js 设计文档门禁（--batch 1）
+PASS  zero-money-scan.js 零金额扫描（源码+页面+文档）
+PASS  selftest.js 全部断言 suite（EXPECTED_ASSERTIONS 闸）
+selftest：运行 36 套；失败 0 套；SKIP 0 套（无）；完整性 0 项；非聚合辅助文件 4 件（已声明）
+check.ps1：全部通过（4 步，退出码 0）
+
+$ node tools/zero-money-scan.js
+零金额扫描：0 命中（白名单 108 项）
+
+$ powershell -File gate.ps1 -Anchor 139cd01 -ScopeFiles "CHANGELOG.md,STATE.md,shared/,pages/,pkg-customer/,pkg-partner/,cloudfunctions/,tools/,docs/" -Estimate 3200
+[PASS] 锚点可解析：139cd01（HEAD=待提交）
+[PASS] 变更集 63 件（锚点..HEAD + 工作区）
+[PASS] 范围前缀匹配（9 个前缀，63 件变更）
+[PASS] 无 lockfile/package.json 变更
+[PASS] 体量 1576 行 ≤ 预估 3200 × 1.5 = 4800
+[PASS] 提交信息格式合规
+gate.ps1：红色 0 项；黄色 0 项（退出码 0）
+```
+
+- 判据有牙：`selftest-order-partner` I 组 42 条件级断言（逐件/撤销聚合、DTO 矩阵、旧单派生、事件 payload、负向闸）、`selftest-order-workbench` N 组 33 条 + G15~G20 真实 `_dto.buildOrderDto` 联调（D62 分组/去重/四档/件级动作）、`selftest-order-customer` Q1~Q32（含终态/状态可见性收敛、旧 DTO 容错、端云联调）、`selftest-state` D61 六条状态规则、`selftest-privacy-text` 新增 §AF 同源锁定。
+
+### 20.3 关键测试读数（真实输出）
+
+- selftest 受影响套件：order 153/153、order-lifecycle 98/98、order-partner 170/170、state 361/361、cloud 209/209、order-workbench 386/386、pick-list 215/215、order-detail-partner 206/206、order-customer 367/367、order-flow 277/277、pickup-low 63/63、privacy-text 291/291、tools 50/50、share 195/195、core 202/202、profile 192/192、partner-pages 294/294；其余套件不受改（全 36 套 0 失败，断言合计以 `node tools/selftest.js` 汇总输出为准，不写死）。
+- `node tools/lib/dead-code.js`：46 目录、死函数候选 0、#35 问题 0、#36 问题 0；`node tools/sync-cloud-shared.js --check`：18 件 × 2 套 = 36 件 hash 一致。
+
+### 20.4 待用户（真机/控制台，agent 不代勾）
+
+- QA §AF1~AF7：兼职端逐件取件/撤销与负向、控制台件级数据与事件核对、D62 多站点分组与批量/取件清单、顾客端可见性与时间线、旧单兼容与回归。
+- QA §E2/§E9 复验（取件/撤销后顾客进度）、§F24（多包裹行按 D62 改判）、§AC4（取件清单双阶段按 D62 改判）。
+- **本批改了云函数 handler 与 `shared/{enums,order-state}.js`（无新集合/索引/触发器、无新 action 名）**：需用户重部署 `api`（`cleanup` 共享副本已同步）后真机点检；客户端需重新上传体验版。
+
+### 20.5 提交
+
+- 代码/文档提交与证据提交哈希：见本批证据提交说明（Lead 收口时回填）；工作树干净、未 push、未 tag/提审/发布。
 

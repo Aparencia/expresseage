@@ -25,7 +25,7 @@
  *      补充文档派生物三处同源写明「仅存本机、不上传不共享、可随时清空、换机/清缓存丢失」；
  *      兼职端与开发者后台（含只读视角）不可见、不强制建单或绑定、上限 50 条、端侧识别不外呼第三方 AI；
  *      定稿文档登记本机键 ex_college_v4.pickcodes 与 D57 留痕（附录 A 差异表 + 附录 C 核对表）；
- *      QA §AD AD1~AD6 与附录 E 计数 336 同源锁定；批 24 起 QA §AE AE1~AE7 与附录 E 计数 343 同源锁定（D64~D67）。
+ *      QA §AD AD1~AD6 与附录 E 计数 336 同源锁定；批 24 起 QA §AE AE1~AE7 与附录 E 计数 343 同源锁定（D64~D67）；批 25 起 QA §AF AF1~AF7 与计数 350 同源锁定（D61/D62）。
  *
  * 纪律：不 mock 全局 wx；只读文档/源码 + 纯件；先合法基线再反例；EXPECTED_ASSERTIONS 与实际断言数精确相等。
  * 取数：node tools/selftest-privacy-text.js | Select-Object -Last 2
@@ -38,7 +38,7 @@ const privacyText = require(path.join(__dirname, '..', 'pkg-customer/parts/priva
 const defaults = require(path.join(__dirname, '..', 'config/defaults.js'));
 
 const ROOT = path.resolve(__dirname, '..');
-const EXPECTED_ASSERTIONS = 290; // 259 + 30（2026-11-01 D57 本机取件码清单）+ 1（2026-11-02 D64~D67 QA §AE 与计数 343）
+const EXPECTED_ASSERTIONS = 291; // 259 + 30（2026-11-01 D57 本机取件码清单）+ 1（2026-11-02 D64~D67 QA §AE 与计数 343）+ 1（2026-11-03 D61/D62 QA §AF 与计数 350）
 
 const PART_FILE = 'pkg-customer/parts/privacy-text.js';
 const HELP_JS = 'pkg-customer/pages/help/index.js';
@@ -523,9 +523,12 @@ function register(h) {
     t.check(qaDoc.indexOf('## AD. v1.8 批 21 增补（D57 本机取件码清单') !== -1
       && qaDoc.indexOf('| AD1 |') !== -1 && qaDoc.indexOf('| AD6 |') !== -1,
     'QA 真机清单新增 §AD AD1~AD6（人（真机），agent 不代勾）');
-    t.check(/^> 维护规则：[\s\S]{0,160}当前 \*\*343\*\* 条/m.test(qaDoc)
-      && /→ \*\*343\*\*/.test(qaDoc),
-    'QA 附录 E 计数与取数命令真实输出同步为 343（330 + §AD 6 + §AE 7）');
+    t.check(/^> 维护规则：[\s\S]{0,160}当前 \*\*350\*\* 条/m.test(qaDoc)
+      && /→ \*\*350\*\*/.test(qaDoc),
+    'QA 附录 E 计数与取数命令真实输出同步为 350（330 + §AD 6 + §AE 7 + §AF 7）');
+    t.check(qaDoc.indexOf('## AF. v2.0 批 25 增补（D61 件级取件 / D62 多站点按件分组') !== -1
+      && qaDoc.indexOf('| AF1 |') !== -1 && qaDoc.indexOf('| AF7 |') !== -1,
+    'QA 真机清单新增 §AF AF1~AF7（D61/D62；人（真机+控制台），agent 不代勾）');
     t.check(qaDoc.indexOf('## AE. v1.9 批 24 增补（D64/D65/D66/D67') !== -1
       && qaDoc.indexOf('| AE1 |') !== -1 && qaDoc.indexOf('| AE7 |') !== -1,
     'QA 真机清单新增 §AE AE1~AE7（D64~D67；人（真机），agent 不代勾）');

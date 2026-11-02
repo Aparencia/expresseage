@@ -16,10 +16,12 @@
  *   I. 零金额扫描（7 文件）+ 行数闸（页面/纯件 ≤500、本套件 ≤1000）
  *   J. 修复批 T4：复制前自动拉全（P1-7）/ 批量失败重试条与取消不刷新（P1-8）/ 卸载与请求序号守卫（P2）
  *   K. 批 20 双阶段数据源（待取件 ACCEPTED / 待送达 PICKED 两条现成动作 payload；counts→chip 文案；默认阶段）
- *   L. 待取件站点分组（站点表 P1~P8 固定序、未识别站兜底排最后、组内四档动线、跨站点单只归一组、
- *      件数聚合、宿舍锚 dormKey+roomTag / D25 / 代客单 guest）
- *   M. 待取件空态与复制口径（单行/整组/全部：站点+取件码/运单尾号/柜号+宿舍锚；不含称呼/订单号/编号/手机尾号）
- *   N. 双阶段页面接线与只读（chip 切换、load 分派、上拉游标、空态文案切换、待取件块零写控件、行点击进详情）
+ *   L. 待取件站点分组（站点表 P1~P8 固定序、未识别站兜底排最后、组内四档动线、D62 按件站点分组
+ *      ——一单在每个件站点组各出现一次 + 「另 N 件在 Pn」、组内排序按本站件、汇总按订单去重）
+ *   M. 待取件空态与复制口径（单行/整组/全部：站点+本站件取件码/运单尾号/柜号+宿舍锚；不含称呼/订单号/编号/手机尾号）
+ *   N. 双阶段页面接线与只读（chip 切换、load 分派、上拉游标、空态文案切换、待取件块只有件级写控件、行点击进详情）
+ *   O. 批 25-B（D61）：待取件阶段件级取件/撤销（已取状态、独立按钮、只读隐藏、写请求 itemIndex+幂等键、
+ *      免二次确认、整单取完离开待取件由服务端状态收口）
  *
  * 纪律：纯件 + 静态接线断言；不 mock 全局 wx、不连网络；先合法基线再反例；样本非空；
  *       EXPECTED_ASSERTIONS 与实际断言数精确相等（少算/多算都判红）。
@@ -32,7 +34,7 @@ const fsutil = require('./lib/fsutil');
 const zeroMoney = require('./zero-money-scan');
 const project = require('./lib/project');
 
-const EXPECTED_ASSERTIONS = 200; // 实跑读数：node tools/selftest-pick-list.js（135 + 65：批 20 双阶段 K/L/M/N + I 新增 3 行数闸）
+const EXPECTED_ASSERTIONS = 215; // 实跑读数：node tools/selftest-pick-list.js（批 25-B D61/D62：L/M 改判 + O 组 16 条 + N9b）
 
 const PAGE_DIR = 'pkg-partner/pages/pick-list';
 const FILES = {
@@ -141,7 +143,8 @@ function floorFixtures() {
   ];
 }
 
-// 待取件夹具：单件视图（站点快照/取件码/运单尾号/柜号/码状态），字段形状对齐 _dto.buildParcelDto
+// 待取件夹具：单件视图（站点快照/取件码/运单尾号/柜号/码状态 + D61 件级已取/动作），
+// 字段形状对齐 _dto.buildParcelDto（A 侧冻结契约：picked/pickedAt(毫秒)/actions[]）
 function parcelFixture(stationId, stationName, options) {
   const opts = options || {};
   const codeStatus = opts.codeStatus || enums.CODE_STATUS.OK;
@@ -153,18 +156,24 @@ function parcelFixture(stationId, stationName, options) {
     trackingTail: opts.trackingTail || '',
     lockerNo: opts.lockerNo || '',
     codeStatus: codeStatus,
-    codeStatusText: codeStatus === enums.CODE_STATUS.NEED_CODE ? '需查明' : '正常'
+    codeStatusText: codeStatus === enums.CODE_STATUS.NEED_CODE ? '需查明' : '正常',
+    picked: opts.picked === true,
+    pickedAt: opts.pickedAt || 0,
+    actions: opts.actions || ['markPicked']
   };
 }
 
-// 待取件订单夹具（ACCEPTED）：默认本人宿舍 D4-522A + 一件 P4 已识别；dorm/delivery 传 null 覆盖代客单
+// 待取件订单夹具（ACCEPTED）：默认本人宿舍 D4-522A + 一件 P4 已识别；dorm/delivery 传 null 覆盖代客单；
+// D61：订单级 pickedCount/parcelCount/allPicked 由件字段聚合（与 A 侧 DTO 同口径）
 function acceptedFixture(orderNo, options) {
   const opts = options || {};
   const defaultDorm = { zone: 'D', buildingNo: 4, buildingText: 'D4', room: '522', dormKey: 'D4-522', roomTag: 'A' };
   const defaultDelivery = { zone: 'D', buildingNo: 4, buildingText: 'D4', room: '522', dormKey: 'D4-522' };
+  const parcels = opts.parcels || [parcelFixture('P4', '北部菜鸟')];
+  const pickedCount = parcels.filter((parcel) => parcel.picked === true).length;
   return {
     orderNo: orderNo,
-    status: enums.ORDER_STATUS.ACCEPTED,
+    status: opts.status || enums.ORDER_STATUS.ACCEPTED,
     delivery: opts.delivery === undefined ? defaultDelivery : opts.delivery,
     dorm: opts.dorm === undefined ? defaultDorm : opts.dorm,
     guest: opts.guest || null,
@@ -172,7 +181,10 @@ function acceptedFixture(orderNo, options) {
     customerNo: opts.customerNo || 'C202611010001',
     phoneTail: opts.phoneTail || '6678',
     service: { code: 'PICKUP_STD', name: '标准代取' },
-    parcels: opts.parcels || [parcelFixture('P4', '北部菜鸟')],
+    parcels: parcels,
+    pickedCount: pickedCount,
+    parcelCount: parcels.length,
+    allPicked: pickedCount > 0 && pickedCount >= parcels.length,
     actions: [{ key: 'pick', label: '标记已取件' }, { key: 'exception', label: '上报异常' }],
     version: 3,
     statusUpdatedAt: '2026-11-01T02:00:00.000Z',
@@ -582,18 +594,21 @@ function register(h) {
       return;
     }
     const groups = pickGroupsOf(pickFixtures());
-    t.eq(groups.length, 5, 'L1 8 单 → 5 个站点组（P1/P3/P4/P8 + 未识别站兜底）');
-    t.eq(pickTitles(groups), ['P1 西苑顺丰', 'P3 西苑一栋南面', 'P4 北部菜鸟', 'P8 东苑一栋邮政', '站点待同步'],
+    t.eq(groups.length, 6, 'L1 8 单 → 6 个站点组（P1/P3/P4/P6/P8 + 未识别站兜底；D62 按件站点分组）');
+    t.eq(pickTitles(groups), ['P1 西苑顺丰', 'P3 西苑一栋南面', 'P4 北部菜鸟', 'P6 南苑菜鸟', 'P8 东苑一栋邮政', '站点待同步'],
       'L2 组序 = 站点表 P1~P8 固定序，未识别站兜底组排最后');
     t.eq(groups[groups.length - 1].unknown, true, 'L3 兜底组 unknown=true（不静默丢单）');
     const p4 = groupOfKey(groups, 'P4');
-    t.eq([p4.count, p4.pieceCount], [4, 5], 'L4 站点组单数/件数聚合（跨站点单 2 件同组聚合）');
+    t.eq([p4.count, p4.pieceCount], [4, 4], 'L4 站点组单数/件数按本站件聚合（跨站单在 P4 只计本站 1 件）');
     t.eq(p4.rows.map((row) => row.orderNo), ['20261101-1009', '20261101-1007', '20261101-1005', '20261101-1004'],
-      'L5 组内四档动线序：需查明 → 快递柜 → 分段码 → 其他');
-    t.eq(p4.rows.filter((row) => row.orderNo === '20261101-1005')[0].pieces.map((piece) => piece.cross), [false, true],
-      'L6 跨站点单只归首件站点组，第二件标 cross=true（行内带站点）');
-    t.eq(pickOrdersOf(groups).filter((orderNo) => orderNo === '20261101-1005').length, 1,
-      'L7 跨站点订单不重复出现在多个站点组');
+      'L5 组内四档动线序：需查明 → 快递柜 → 分段码 → 其他（按本站件计算）');
+    const crossInP4 = p4.rows.filter((row) => row.orderNo === '20261101-1005')[0];
+    t.eq([crossInP4.pieces.length, crossInP4.pieces[0].stationId, crossInP4.otherPiecesText],
+      [1, 'P4', '另 1 件在 P6'], 'L6 行内只列本站件 + 标注「另 N 件在 Pn」（D62 改判）');
+    t.eq(pickOrdersOf(groups).filter((orderNo) => orderNo === '20261101-1005').length, 2,
+      'L7 跨站点单在每个件站点组各出现一次（P4 + P6 两行，不再只归首件组）');
+    t.eq([groupOfKey(groups, 'P6').rows[0].pieces.length, groupOfKey(groups, 'P6').rows[0].pieces[0].stationId],
+      [1, 'P6'], 'L7b P6 组只列该站在本站的件（尾号件归 P6）');
     const needRow = p4.rows.filter((row) => row.orderNo === '20261101-1009')[0];
     t.eq([needRow.needCode, needRow.pieces[0].text], [true, '需查明'], 'L8 需查明件给占位文案（不编假取件码）');
     t.eq(p4.rows.filter((row) => row.orderNo === '20261101-1007')[0].pieces[0].text, '8811 · 5号柜',
@@ -617,7 +632,8 @@ function register(h) {
       'L13 待取件行不落顾客称呼/头像/手机号（只保宿舍锚与件信息）');
     const summary = pickView.summaryOf(groups);
     t.eq([summary.total, summary.pieceTotal, summary.stationCount, summary.text],
-      [8, 9, 4, '共 8 单 9 件待取件 · 覆盖 4 站'], 'L14 汇总=总单数+总件数+覆盖站数（未识别站不计入站数）');
+      [8, 9, 5, '共 8 单 9 件待取件 · 覆盖 5 站'],
+      'L14 汇总按订单去重（跨站单不重复计单）+ 件数每件只落一站 + 覆盖站数 5');
     t.eq(pickView.summaryOf([]).text, '暂无待取件的单', 'L15 空清单汇总文案（不显示 0 站）');
     const more = pickView.summaryLineOf(summary, { sortValue: 1 });
     t.check(more.loadedText.indexOf('已加载 8 单') !== -1, 'L16 还有下一页时页头明示「已加载 N 单」');
@@ -648,15 +664,17 @@ function register(h) {
     t.check(rowText.indexOf('P4 北部菜鸟') === 0 && rowText.indexOf('D4-522A') !== -1
       && rowText.indexOf('8811 · 5号柜') !== -1, 'M1 单行复制含站点 + 宿舍锚 + 件（码·柜号）');
     t.eq(pickView.rowCopyText(needRow), 'P4 北部菜鸟 · D4-522A\n需查明', 'M2 需查明件单行复制保留占位（不编假码）');
-    t.check(pickView.rowCopyText(crossRow).indexOf('P6 南苑菜鸟 尾号4455') !== -1,
-      'M3 跨站点单的单行复制带第二站点（不缺落点）');
+    const crossCopy = pickView.rowCopyText(crossRow);
+    const crossP6Copy = pickView.rowCopyText(groupOfKey(groups, 'P6').rows[0]);
+    t.eq([crossCopy.indexOf('P6'), crossCopy.indexOf('207-3-1014') !== -1, crossP6Copy.indexOf('尾号4455') !== -1],
+      [-1, true, true], 'M3 单行复制只含本站件（D62）：P4 行不带 P6 件，P6 行复制落点不缺');
     const groupText = pickView.groupCopyText(p4);
-    t.check(groupText.indexOf('【取件清单】 P4 北部菜鸟 · 共 4 单 5 件') === 0, 'M4 整组复制组头含站点与单/件数');
+    t.check(groupText.indexOf('【取件清单】 P4 北部菜鸟 · 共 4 单 4 件') === 0, 'M4 整组复制组头含站点与本站单/件数');
     t.eq(groupText.split('\n').length, 5, 'M5 整组复制 = 组头 1 行 + 每单 1 行（4 单）');
     t.eq(pickView.groupCopyText(null), '', 'M6 空组不生成文案');
     const allText = pickView.allCopyText(groups);
-    t.check(allText.indexOf('【取件清单·待取件】 共 8 单 9 件 · 4 站') === 0, 'M7 全部复制组头含总单/总件/站数');
-    t.eq(['P1 西苑顺丰', 'P3 西苑一栋南面', 'P4 北部菜鸟', 'P8 东苑一栋邮政']
+    t.check(allText.indexOf('【取件清单·待取件】 共 8 单 9 件 · 5 站') === 0, 'M7 全部复制组头含总单/总件/站数');
+    t.eq(['P1 西苑顺丰', 'P3 西苑一栋南面', 'P4 北部菜鸟', 'P6 南苑菜鸟', 'P8 东苑一栋邮政']
       .filter((title) => allText.indexOf(title) === -1), [], 'M8 全部复制覆盖每个站点组（含站点名一行）');
     t.eq(['小王', '20261101-1009', 'C202611010001', '6678'].filter((token) => allText.indexOf(token) !== -1), [],
       'M9 复制文案不含称呼/订单号/顾客编号/手机尾号（L3 最小化）');
@@ -699,7 +717,9 @@ function register(h) {
     const pickBlock = wxml.slice(pickStart, wxml.indexOf('<block wx:else>', pickStart));
     t.eq(['已送达', 'onRowDeliver', 'onBatchDeliver', '批量送达', '多选', 'onToggleSelecting']
       .filter((token) => pickBlock.indexOf(token) !== -1), [],
-    'N9 待取件块零写控件（本批只读清单，写操作只在待送达阶段）');
+    'N9 待取件块零整单/批量写控件（写操作只在件级与待送达阶段）');
+    t.check(pickBlock.indexOf('catchtap="onPieceAction"') !== -1 && pickBlock.indexOf('!readonly && piece.action') !== -1,
+      'N9b 待取件块件级「已取件/撤销已取」控件 + 只读隐藏（D61）');
     t.check(pickBlock.indexOf('bindtap="onRowTap"') !== -1 && pickBlock.indexOf('wx:for="{{row.pieces}}"') !== -1,
       'N10 待取件行点击进订单详情，且逐件渲染（码/尾号/柜号）');
     t.check(wxml.indexOf('bindtap="onCopyAllPick"') !== -1 && wxml.indexOf('bindtap="onCopyGroupPick"') !== -1,
@@ -712,6 +732,62 @@ function register(h) {
       'N14 待取件分片复用 ≤20 行分片纯件');
     const title = (jsonOf(FILES.json) || {}).navigationBarTitleText;
     t.check(title === '取件清单' && wxml.indexOf('>取件清单<') !== -1, 'N15 导航标题与页内标题一致「取件清单」');
+  });
+
+  // ------------------------------------------------------------ O. 批 25-B D61 件级取件（待取件阶段）
+  h.section('O D61 待取件件级取件（已取状态/独立按钮/写请求形状/只读/服务端状态收口）', (t) => {
+    if (!pickView) {
+      t.check(false, 'O1 待取件纯件缺失');
+      return;
+    }
+    const pieceActions = safeRequire('pages/partner/workbench/parts/piece-actions');
+    const pickedAt = Date.parse('2026-11-02T01:40:00.000Z');
+    const order = acceptedFixture('20261101-2001', {
+      parcels: [
+        parcelFixture('P4', '北部菜鸟', { pickupCode: '7001', itemIndex: 0, picked: true, pickedAt: pickedAt, actions: ['unmarkPicked'] }),
+        parcelFixture('P4', '北部菜鸟', { pickupCode: '7002', itemIndex: 1, actions: ['markPicked'] }),
+        parcelFixture('P6', '南苑菜鸟', { pickupCode: '7003', itemIndex: 2, actions: ['markPicked'] })
+      ]
+    });
+    const groups = pickGroupsOf([order]);
+    const p4 = groupOfKey(groups, 'P4');
+    const p6 = groupOfKey(groups, 'P6');
+    t.eq([groups.length, p4.rows[0].pieces.length, p6.rows[0].pieces.length], [2, 2, 1],
+      'O1 D62 待取件同样按件站点分组：P4 两件 / P6 一件，各自只列本站件');
+    t.eq([p4.rows[0].pickedCountText, p4.rows[0].pieces[0].pickedText, p4.rows[0].pieces[1].pickedText],
+      ['已取 1/3 件', '已取', '待取'], 'O2 件行显示已取/待取 + 行摘要「已取 n/m 件」（整单视角）');
+    t.eq([p4.rows[0].pieces[0].pickedAtText, p4.rows[0].pieces[0].action.key, p4.rows[0].pieces[0].action.label],
+      ['09:40', 'unmarkPicked', '撤销已取'], 'O3 已取件带时间 + 独立「撤销已取」（只消费 parcel.actions）');
+    t.eq([p4.rows[0].pieces[1].action.key, p4.rows[0].pieces[1].action.label,
+      p6.rows[0].pieces[0].action.key], ['markPicked', '已取件', 'markPicked'],
+    'O4 未取件给独立「已取件」（跨站件在各自站组可分别取）');
+    t.eq([p4.rows[0].otherPiecesText, p6.rows[0].otherPiecesText], ['另 1 件在 P6', '另 2 件在 P4'],
+      'O5 待取件行同样标「另 N 件在 Pn」（复制只含本站件）');
+    t.eq([p4.count, p4.pieceCount, p4.countText], [1, 2, '1 单 · 2 件'],
+      'O6 组头保留单数并补件数（D62 组头计数口径）');
+    const write = pieceActions
+      ? pieceActions.writeOf('markPicked', p4.rows[0].pieces[1], order.orderNo, order.version, 'PID0000000000000000003')
+      : null;
+    t.eq(write && [write.method, write.payload.orderNo, write.payload.itemIndex, write.opts.expectedVersion,
+      typeof write.opts.clientRequestId], ['markPicked', '20261101-2001', 1, 3, 'string'],
+    'O7 件级写请求 = orderNo + itemIndex + expectedVersion + clientRequestId（幂等/乐观锁）');
+    const wxml = readText(FILES.wxml);
+    t.check(wxml.indexOf('catchtap="onPieceAction"') !== -1 && wxml.indexOf('!readonly && piece.action') !== -1
+      && wxml.indexOf('piece-text--picked') !== -1, 'O8 WXML 件级按钮/已取样式接线 + 只读隐藏');
+    const stageSrc = readText(FILES.stageFlows);
+    t.check(stageSrc.indexOf('piece-actions') !== -1 && stageSrc.indexOf("this.toastMsg(READONLY_COPY)") !== -1
+      && stageSrc.indexOf('client.createRequestId()') !== -1 && stageSrc.indexOf('orderApi[write.method]') !== -1,
+    'O9 待取件接线：只读先挡 → 纯件构造请求 → 经 orderApi 写 → 刷新');
+    t.eq(fsutil.stripComments(stageSrc).indexOf('wx.showModal') === -1, true,
+      'O10 件级取件/撤销免二次确认（不弹 wx.showModal，可撤销）');
+    t.eq(pickView.queryOf({}).status, enums.ORDER_STATUS.ACCEPTED,
+      'O11 待取件只查 ACCEPTED（整单取完服务端转 PICKED → 自动离开本阶段，客户端不本地过滤状态）');
+    const noAction = acceptedFixture('20261101-2002', {
+      parcels: [parcelFixture('P4', '北部菜鸟', { actions: [] })]
+    });
+    t.eq(pickGroupsOf([noAction])[0].rows[0].pieces[0].action, null,
+      'O12 服务端 actions 为空（终态/只读派生）→ 不渲染件按钮（可见性只认 DTO）');
+    t.notEmpty([order, groups, write], 'O 组样本非空');
   });
 }
 

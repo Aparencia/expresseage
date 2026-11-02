@@ -30,8 +30,9 @@ const store = require(path.join(ROOT, 'store/index.js'));
 const client = require(path.join(ROOT, 'api/client.js'));
 const orderApi = require(path.join(ROOT, 'api/modules/order.js'));
 const serverDto = require(path.join(ROOT, 'cloudfunctions/api/handlers/order/_dto.js'));
+const pieceActions = require(path.join(ROOT, 'pages/partner/workbench/parts/piece-actions.js'));
 
-const EXPECTED_ASSERTIONS = 191; // 190 + 1：TD-076 拆 parts 后「页面 ≤450 行」静态断言（G20b，拆前 500 行贴顶）
+const EXPECTED_ASSERTIONS = 191 + 15; // 191 + 批 25-B D61 件级取件/时间线人话 15 条（J 组）
 const STATUS = orderState.STATUS;
 const STATUS_LITERALS = enums.ORDER_STATUS_LIST.slice();
 const PAGE_JS = 'pkg-partner/pages/order-detail/index.js';
@@ -777,9 +778,82 @@ function register(h) {
     const wxml = textOf(PAGE_WXML);
     t.check(/appointOverdue/.test(wxml) && /appointText/.test(wxml),
       'I7 WXML 渲染预约时间 + 到点标红（不出现自动取消按钮）');
-    t.check(/buildDetail\(item, nowMs\)/.test(textOf(partsDir + '/view-model.js')),
-      'I8 视图每次刷新用当前时钟重算标红（nowMs 透传 buildDetail）');
+    t.check(/buildDetail\(item, nowMs/.test(textOf(partsDir + '/view-model.js'))
+      && /readonly: readonly/.test(textOf(partsDir + '/view-model.js')),
+    'I8 视图每次刷新用当前时钟重算标红（nowMs 透传 buildDetail；D61 只读同时透传）');
     t.notEmpty(latestAt, 'I 组样本非空');
+  });
+
+  // ---------------------------------------------------------------- J 批 25-B D61 件级取件 + 时间线人话
+  h.section('J. D61 件级取件（每件已取状态/独立按钮/只读）+ 件级事件人话（不裸英文）', (t) => {
+    const pickedAt = Date.parse('2026-10-22T01:30:00.000Z');
+    // 字段形状 = A 侧冻结契约：picked/pickedAt(毫秒)/actions[]
+    const dto = {
+      orderNo: '20261022-0031', status: STATUS.ACCEPTED, statusText: '已接单', version: 5,
+      source: enums.ORDER_SOURCE.CUSTOMER,
+      pickedCount: 1, parcelCount: 2, allPicked: false,
+      parcels: [
+        { itemIndex: 0, stationId: 'P4', stationName: '北部菜鸟驿站', pickupCode: '27-2-7016', codeStatus: 'OK',
+          picked: true, pickedAt: pickedAt, actions: ['unmarkPicked'] },
+        { itemIndex: 1, stationId: 'P6', stationName: '南苑菜鸟驿站', pickupCode: '109-2-3003', codeStatus: 'OK',
+          picked: false, pickedAt: 0, actions: ['markPicked'] }
+      ],
+      images: [], manualEntry: false, service: { code: 'PICKUP_STD', name: '标准代取' }
+    };
+    const detail = orderView.buildDetail(dto, NOW_MS);
+    t.eq([detail.parcels[0].picked, detail.parcels[0].pickedText, detail.parcels[0].pickedAtText],
+      [true, '已取件', '09:30'], 'J1 逐件展示「已取件 + 时间」（pickedAt 毫秒→HH:MM）');
+    t.eq([detail.pickedCount, detail.allPicked, detail.pickedSummaryText], [1, false, '已取 1/2 件'],
+      'J2 详情整单进度「已取 n/m 件」（部分取件不显示为全部取完）');
+    t.eq([detail.parcels[0].action.key, detail.parcels[0].action.label,
+      detail.parcels[1].action.key, detail.parcels[1].action.label],
+    ['unmarkPicked', '撤销已取', 'markPicked', '已取件'],
+    'J3 每件独立按钮只消费服务端 parcel.actions（已取→撤销已取；未取→已取件）');
+    const readonlyDetail = orderView.buildDetail(dto, NOW_MS, { readonly: true });
+    t.eq(readonlyDetail.parcels.map((parcel) => parcel.action), [null, null],
+      'J4 READONLY：件级写按钮在视图层即隐藏（不靠 wxml 临时判断）');
+    const readonlyView = viewModel.buildView(dto, [], { nowMs: NOW_MS, readonly: true });
+    const writableView = viewModel.buildView(dto, [], { nowMs: NOW_MS, readonly: false });
+    t.eq([writableView.order.parcels[0].action.key, readonlyView.order.parcels[0].action],
+      ['unmarkPicked', null], 'J5 buildView 把只读标志透传进逐件快照（页面零本地判据）');
+    const write = pieceActions.writeOf('markPicked', detail.parcels[1], dto.orderNo, dto.version, 'DID0000000000000000001');
+    t.eq([write.method, write.payload.orderNo, write.payload.itemIndex, write.opts.expectedVersion,
+      write.opts.clientRequestId], ['markPicked', '20261022-0031', 1, 5, 'DID0000000000000000001'],
+    'J6 详情件级写请求带 itemIndex + expectedVersion + clientRequestId');
+    t.eq([pieceActions.toastOf('markPicked', detail.parcels[1]), pieceActions.toastOf('unmarkPicked', detail.parcels[0])],
+      ['第 2 件已取件', '第 1 件已撤销已取'], 'J7 免二次确认成功文案带件号');
+    const wxml = textOf(PAGE_WXML);
+    t.check(wxml.indexOf('item.pickedText') !== -1 && wxml.indexOf('item.action') !== -1
+      && wxml.indexOf('bindtap="onPieceAction"') !== -1 && wxml.indexOf('!readonly') !== -1,
+    'J8 WXML 渲染每件已取状态 + 独立件按钮 + 只读隐藏');
+    const panelSrc = fsutil.stripComments(textOf(partsDir + '/panel-actions.js'));
+    const pieceActionBody = panelSrc.slice(panelSrc.indexOf('onPieceAction('), panelSrc.indexOf('openCorrectPanel('));
+    t.check(pieceActionBody.indexOf('pieceActions.writeOf(') !== -1
+      && pieceActionBody.indexOf('client.createRequestId()') !== -1
+      && pieceActionBody.indexOf('this.submitWrite(') !== -1
+      && pieceActionBody.indexOf('showModal') === -1,
+    'J9 详情件动作接线：纯件构造请求 → submitWrite → 免二次确认（不弹 wx.showModal）');
+    t.eq([eventView.EVENT_LABELS.PARCEL_PICKED, eventView.EVENT_LABELS.PARCEL_PICKED_REVERTED],
+      ['已取走一件', '撤销了一件已取件'], 'J10 件级事件有通用人话兜底（不裸英文上屏）');
+    const withNote = eventView.buildEvents([
+      { type: 'PARCEL_PICKED', note: '第2件', at: ISO, actorRole: enums.ROLES.PARTNER }
+    ]);
+    t.eq(withNote[0].label, '已取走第 2 件', 'J11 事件 note 带件号 → 「已取走第 2 件」（A 侧 note 形如「第2件」）');
+    const revertNote = eventView.buildEvents([
+      { type: 'PARCEL_PICKED_REVERTED', note: '第2件', at: ISO, actorRole: enums.ROLES.PARTNER }
+    ]);
+    t.eq(revertNote[0].label, '已撤销第 2 件的已取', 'J12 撤销事件带件号 → 人话（不是裸 PARCEL_PICKED_REVERTED）');
+    const emptyNote = eventView.buildEvents([
+      { type: 'PARCEL_PICKED', note: '', at: ISO, actorRole: enums.ROLES.PARTNER }
+    ]);
+    t.eq([emptyNote[0].label, emptyNote[0].label.indexOf('PARCEL_'), emptyNote[0].actor],
+      ['已取走一件', -1, '我'], 'J13 note 为空 → 通用人话（门禁级：绝不出现裸英文事件名）');
+    const revertEmpty = eventView.buildEvents([
+      { type: 'PARCEL_PICKED_REVERTED', at: ISO, actorRole: enums.ROLES.PARTNER }
+    ]);
+    t.check(revertEmpty[0].label === '撤销了一件已取件' && revertEmpty[0].label.indexOf('PARCEL_') === -1,
+      'J14 撤销事件无 note 同样有人话兜底');
+    t.notEmpty([detail.parcels, withNote], 'J 组样本非空');
   });
 }
 

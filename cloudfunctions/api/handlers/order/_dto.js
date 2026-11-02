@@ -347,13 +347,20 @@ function buildServiceDto(service) {
   };
 }
 
+// D61 件级取件聚合：pickedCount/parcelCount/allPicked 由逐件 picked 标记派生（不落库计数字段）。
+function pickSummaryFieldsOf(parcels) {
+  const list = Array.isArray(parcels) ? parcels : [];
+  const pickedCount = list.filter((parcel) => parcel.picked === true).length;
+  return { pickedCount, parcelCount: list.length, allPicked: list.length > 0 && pickedCount === list.length };
+}
+
 // 订单视图字段装配（buildOrderDto 的主体；拆出以控单函数行数，参数 parts 见调用处）
 function buildOrderFields(order, parts) {
   const side = parts.side;
   const parcels = parts.parcels;
   const images = parts.images;
   const delivery = parts.delivery;
-  return {
+  return Object.assign({
     orderNo: textOf(order.orderNo),
     status: parts.status,
     statusText: orderState.statusText(parts.status),
@@ -394,7 +401,7 @@ function buildOrderFields(order, parts) {
     completedAt: isoOf(order.completedAt),
     cancelledAt: isoOf(order.cancelledAt),
     deletedByCustomerAt: isoOf(order.deletedByCustomerAt)
-  };
+  }, pickSummaryFieldsOf(parcels));
 }
 
 /**
@@ -418,7 +425,7 @@ async function buildOrderDto(ctx, order, options) {
     counterpart,
     nowMs: time.toMs(ctx && ctx.now),
     status: textOf(order.status),
-    parcels: buildParcelDtos(order),
+    parcels: buildParcelDtos(order, side),
     images: buildImageDtos(order),
     delivery: deliveryOf(order)
   });

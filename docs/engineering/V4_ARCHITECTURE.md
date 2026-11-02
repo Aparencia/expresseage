@@ -42,6 +42,7 @@ cloudfunctions/*/shared/（由 shared/** 与 utils/ids.js、utils/room-tag.js、
 - **批 16 组件删减（S10 域说明）**：`components/customer-row/`、`components/form-field/`、`components/role-switch/`、`components/section-card/` 四个全局注册组件在全仓 WXML 零使用，批 16 删除目录并从 `app.json` 全局 `usingComponents` 移除（`app.json` 该次改动由 Lead 授权 S2 执行）。S10 写作用域（`components/**`、`custom-tab-bar/**`、`assets/**`）不变；后续新增全局组件仍须登记本节 §3.5 组件表 + ENGINEERING §5.7，并同时进 `app.json` 注册与门禁 #36 扫描范围。
 - 公共文件一旦冻结（`app.json`、`app.wxss`、`shared/**`、`api/**`、`store/**`）：需要改动先发 Lead，由单写者合并。
 - 新增文件必须落在自己的写作用域内；跨域引用只读或走 `require`，不得改他人文件。
+- **批 25 新增文件（D61 件级取件 / D62 多站点按件分组，均在既有作用域内，不新增作用域/全局组件/app.json 条目）**：S8 `cloudfunctions/api/handlers/order/_picked.js`（件级判定/聚合/写回归一纯件）；S4 `pages/partner/workbench/parts/{order-row,piece-actions,piece-flow}.js`、`pkg-partner/pages/pick-list/parts/*` 内件级视图（既有文件扩展）；S3 `pages/customer/orders/parts/pickup-tag.js`、`pkg-customer/pages/order-detail/parts/parcel-view.js`（扩展）；S2 判据辅助 `tools/lib/{workbench-picked-cases,order-customer-pickup-cases}.js`。**Lead 授权的一次跨域写**：S3 `pkg-customer/parts/status-view.js` 仅补 2 条事件人话映射（D61 事件上屏，其它逻辑零改动）。
 
 ## 3. 客户端冻结接口
 
@@ -210,10 +211,12 @@ const off = store.subscribe((snapshot) => { this.setData({ vm: snapshot }); });
 | `shared/gender.js` | 顾客性别枚举 + 「苑+楼栋」推断/归一/展示名（v1.1/D31；纯件，无 wx） |
 | `shared/validate.js` | 宿舍身份/尾号/文本上限/编号形态/邀请码形态校验 |
 | `shared/format.js` | 时间/编号展示/文本截断 |
-| `shared/order-view.js` | 订单视图模型：`bucketOf`（状态桶，生产唯一消费点 = `pages/partner/workbench/parts/group-view.js`）+ counts 六项键名/模板 + 状态文案查询；**四档动线排序生产实现 = `pages/partner/workbench/parts/group-view.js sortForRoute`（吃服务端 DTO、按整单最差件定档）；旧单件排序/文案簇生产 0 引用（`sortByPickupRoute` 等，其中 5 项登记 `tools/dead-export-baseline.json` 分类 `test-only`），单源收敛见 TD-082** |
+| `shared/order-view.js` | 订单视图模型：`bucketOf`（状态桶，生产消费点 = `pages/partner/workbench/parts/{group-view,day-view,order-row}.js`）+ counts 六项键名/模板 + 状态文案查询；**四档动线排序生产实现 = `pages/partner/workbench/parts/group-view.js sortRowsForRoute` + `parts/parcel-view.js tierOfPieces`（吃服务端 DTO；**D62 起按「本站件」定档**，跨站点单在每件所属站点组各出现一次）；旧单件排序/文案簇生产 0 引用（`sortByPickupRoute` 等，其中 5 项登记 `tools/dead-export-baseline.json` 分类 `test-only`），单源收敛见 TD-082** |
 | `utils/ids.js` | 编号归一/parse/display（**无生成、无 random**） |
 | `utils/room-tag.js` | `toTag/tagRank/formatDormTag/isValidTag/compareByDormTag`（大写 A…Z/AA…，禁字符串排序） |
 | `config/defaults.js`（同步为 `cloudfunctions/*/shared/defaults.js`） | 云端种子与配置校验的唯一默认值来源；`tools/sync-cloud-shared.js` 的第 17 个源（`shared/**` 14 件 + `ids.js` + `room-tag.js` + `defaults.js`），hash 门禁 `tools/check.js` #17 覆盖该副本 |
+
+**批 25 共享件变更（D61 件级取件，无新增共享文件）**：`shared/enums.js` 的 `ORDER_EVENTS` 增至 **19 种**（新增 `PARCEL_PICKED`/`PARCEL_PICKED_REVERTED`）；`shared/order-state.js` 的 `order.unmarkPicked` 允许起始状态增 `ACCEPTED`（仅逐件撤销；整单仍仅 `PICKED`），`order.markPicked` 保持 `ACCEPTED` 起。两文件均由 `node tools/sync-cloud-shared.js` 生成 `cloudfunctions/{api,cleanup}/shared/**` 副本（hash 门禁 #17 覆盖）；事件人话映射由客户端 S3 `pkg-customer/parts/status-view.js` 与 S4 `pkg-partner/pages/order-detail/parts/event-view.js` 各自补齐。
 
 ### 4.4 客户端与云端的编号/roomTag 分工
 

@@ -30,7 +30,10 @@ const EVENT_TEXT = {
   DELETED_BY_CUSTOMER: '顾客删除记录',
   GUEST_ORDER_CLAIMED: '代客单已认领',
   // v1.0（D23）：短间隔重复提交被服务端并入最近订单时写入该事件（订单动态给人话）
-  PARCELS_APPENDED: '追加了包裹'
+  PARCELS_APPENDED: '追加了包裹',
+  // D61 件级取件：payload 只带 itemIndex 且服务端裁剪事件时不下发，顾客端用通用人话（不显示第 N 件/内部编号）
+  PARCEL_PICKED: '兼职已取走一件',
+  PARCEL_PICKED_REVERTED: '兼职撤销了一件已取件'
 };
 EVENT_TEXT[STATUS.ACCEPTED] = state.statusText(STATUS.ACCEPTED);
 EVENT_TEXT[STATUS.PICKED] = state.statusText(STATUS.PICKED);

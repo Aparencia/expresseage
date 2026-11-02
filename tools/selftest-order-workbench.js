@@ -44,6 +44,7 @@ const loadView = require(path.join(ROOT, 'pages/partner/workbench/parts/load-vie
 const historyView = require(path.join(ROOT, 'pages/partner/workbench/parts/history-view.js'));
 const guideView = require(path.join(ROOT, 'pages/partner/workbench/parts/guide-view.js'));
 const parcelView = require(path.join(ROOT, 'pages/partner/workbench/parts/parcel-view.js'));
+const pieceActions = require(path.join(ROOT, 'pages/partner/workbench/parts/piece-actions.js'));
 const enums = require(path.join(ROOT, 'shared/enums.js'));
 const orderState = require(path.join(ROOT, 'shared/order-state.js'));
 const storage = require(path.join(ROOT, 'utils/storage.js'));
@@ -54,6 +55,8 @@ const dayCases = require(path.join(__dirname, 'lib', 'workbench-day-cases.js'));
 const orderCases = require(path.join(__dirname, 'lib', 'order-workbench-cases.js'));
 // TD-083 拆件：夹具/静态样本拆到 tools/lib/workbench-cases.js（控测试文件 ≤1000 行，门禁 #18）
 const cases = require(path.join(__dirname, 'lib', 'workbench-cases.js'));
+// 批 25-B（D61/D62）：件级取件 + 多站点分组用例表（拆 tools/lib，控测试文件 ≤1000 行，门禁 #18）
+const pickedCases = require(path.join(__dirname, 'lib', 'workbench-picked-cases.js'));
 const {
   STATUS, STATUS_LITERALS, PAGES, ISO, DOC_MS,
   actionsFor, dto, multiDto, manualDto, row, rowsOf, groupsOf, selectedNames, orderDoc, FAKE_DTO_CTX
@@ -61,8 +64,8 @@ const {
 // P1-5/P1-6：复制汇总纯件单源（主包 parts，工作台与统计页共用）；缺件时 optionalRequire 给逐条可定位红。
 const summaryCopy = optionalRequire('pages/partner/workbench/parts/summary-copy.js');
 
-const EXPECTED_ASSERTIONS = 235 + dayCases.EXPECTED_ASSERTIONS + 33 + 15 + orderCases.EXPECTED_ASSERTIONS; // A~M 实际断言总数（K 单窗口 33 / L 时刻配置 15 / M 今日流水与已送达汇总）
-
+const EXPECTED_ASSERTIONS = 235 + dayCases.EXPECTED_ASSERTIONS + 33 + 15 + orderCases.EXPECTED_ASSERTIONS
+  + pickedCases.EXPECTED_ASSERTIONS + 6; // A~N 实际断言总数（批 25-B：N 组用例表见 lib；G15~G20 真实 DTO 联调）
 function textOf(rel) {
   return fsutil.readText(path.join(ROOT, rel));
 }
@@ -601,6 +604,42 @@ function register(h) {
             'G12 批量撤销逐单调用共享同一 batchActionId（契约统一入口）');
           t.eq(undoResult.results.filter((item) => item.ok).length, 2, 'G13 批量撤销逐单结果齐全');
           t.notEmpty(realDtos, 'G14 真实 DTO 样本非空');
+          // D61 联调（A 侧真实 DTO）：件级 picked/pickedAt/actions 与订单级 pickedCount/parcelCount/allPicked
+          const pickedDoc = orderDoc(STATUS.ACCEPTED, {
+            parcels: [
+              {
+                stationId: 'P4', stationName: '北部菜鸟驿站', pickupCode: '27-2-7016', lockerNo: '',
+                trackingTail: '', codeStatus: enums.CODE_STATUS.OK, pickedAt: new Date(DOC_MS)
+              },
+              {
+                stationId: 'P6', stationName: '南苑菜鸟驿站', pickupCode: '109-2-3003', lockerNo: '',
+                trackingTail: '', codeStatus: enums.CODE_STATUS.OK, pickedAt: null
+              }
+            ]
+          });
+          return serverDto.buildOrderDto(FAKE_DTO_CTX, pickedDoc, { side: 'PARTNER' }).then((realPicked) => {
+            t.eq([realPicked.pickedCount, realPicked.parcelCount, realPicked.allPicked], [1, 2, false],
+              'G15 真实 DTO 订单级件级聚合 pickedCount/parcelCount/allPicked（部分取件不显示为全取）');
+            t.eq(realPicked.parcels.map((parcel) => [parcel.picked, parcel.actions[0]]),
+              [[true, 'unmarkPicked'], [false, 'markPicked']],
+            'G16 真实 DTO 每件 picked/actions 与冻结契约逐格一致（PARTNER 侧 ACCEPTED）');
+            t.check(realPicked.parcels[0].pickedAt > 0 && realPicked.parcels[1].pickedAt === 0,
+              'G17 真实 DTO 件级 pickedAt 为毫秒（未取=0）');
+            // 端侧纯件直接消费真实 DTO：D62 分组 / D61 件行动作 / 写请求 itemIndex
+            const realGroups = groupView.buildGroups([realPicked], DOC_MS);
+            const realP4 = realGroups.filter((group) => group.stationId === 'P4')[0];
+            const realP6 = realGroups.filter((group) => group.stationId === 'P6')[0];
+            t.eq([realGroups.length, realP4.rows[0].pieceRows.length, realP6.rows[0].pieceRows.length], [2, 1, 1],
+              'G18 真实 DTO → 端侧 D62 按件站点分组（P4/P6 各出现一次，行内只列本站件）');
+            t.eq([realP4.rows[0].pickedSummaryText, realP4.rows[0].pieceRows[0].action.key,
+              realP6.rows[0].pieceRows[0].action.key],
+            ['已取 1/2 件', 'unmarkPicked', 'markPicked'],
+            'G19 真实 DTO → 端侧件行「已取 n/m」与逐件动作（只消费服务端字段）');
+            const realWrite = pieceActions.writeOf('markPicked', realP6.rows[0].pieceRows[0], realPicked.orderNo,
+              realPicked.version, 'GID00000000000000000002');
+            t.eq([realWrite.method, realWrite.payload.itemIndex, realWrite.opts.expectedVersion],
+              ['markPicked', 1, realPicked.version], 'G20 真实 DTO 件行 → 写请求带 itemIndex（第 2 件）与 expectedVersion');
+          });
         });
       });
     });
@@ -611,8 +650,9 @@ function register(h) {
     const multi = multiDto();
     const pieces = parcelView.piecesOf(multi);
     t.eq(pieces.map((item) => item.indexText), ['第 1 件', '第 2 件', '第 3 件'], 'H01 逐件视图：parcels[] 1~10 件按序展开');
-    t.eq(parcelView.tierOf(multi), 1, 'H02 四档按整单最差件：任一需查明 → 整单进需查明档');
-    t.eq(parcelView.stationKeyOf(multi), 'P4', 'H03 分组键取首件站点（跨站点单只归一组）');
+    t.eq(parcelView.tierOfPieces(pieces), 1, 'H02 四档按整单最差件：任一需查明 → 整单进需查明档');
+    t.eq(parcelView.stationGroupsOf(multi).map((group) => group.stationId), ['P4', 'P6'],
+      'H03 D62 按件站点分区：3 件分属 P4/P6 两组（一单在两组各出现一次）');
     t.eq(parcelView.stationSummaryOf(pieces).text, 'P4 / P6', 'H04 站点聚合去重展示（P4 / P6）');
     t.eq([parcelView.countTextOf(pieces), parcelView.needCodeCountTextOf(pieces)],
       ['3 件', '1 件需查明'], 'H05 件数聚合 + 需查明聚合（按件）');
@@ -622,7 +662,8 @@ function register(h) {
       [3, '3 件', 'P4 / P6', '1 件需查明', ''], 'H07 行聚合字段（件数/站点/需查明/无截图）');
     t.eq([multiRow.codeText, multiRow.parcelRows.length, multiRow.stationId],
       ['27-2-7016', 3, 'P4'], 'H08 行首仍首件码；逐件明细下发给面板；首件站点分组');
-    t.eq(groupView.buildGroups([multi]).map((group) => group.stationId), ['P4'], 'H09 多站点订单只出现在首件站点组（不重复行）');
+    t.eq(groupView.buildGroups([multi]).map((group) => group.stationId), ['P4', 'P6'],
+      'H09 D62 多站点订单在每个件站点组各出现一次（行内只列本站件）');
     const normalRow = groupView.toRow(dto(STATUS.ACCEPTED));
     t.eq([parcelView.piecesOf(dto(STATUS.ACCEPTED)).length, normalRow.parcelCountText, normalRow.parcelRows],
       [1, '', null], 'H10 历史单包裹 DTO 兼容：视作 1 件、不出件数 chip、不灌 parcelRows');
@@ -899,6 +940,17 @@ function register(h) {
     filterView: filterView,
     textOf: textOf,
     PAGES: PAGES
+  }));
+
+  // ── N. 批 25-B（D61/D62）：件级取件 + 多站点按件分组（用例表 tools/lib/workbench-picked-cases.js）──
+  h.section('N D61 件级取件 / D62 多站点分组', (t) => pickedCases.pickedChecks(t, {
+    parcelView: parcelView,
+    groupView: groupView,
+    pieceActions: pieceActions,
+    rowActions: rowActions,
+    selectionFlow: selectionFlow,
+    batchView: batchView,
+    loadView: loadView
   }));
 }
 

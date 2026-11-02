@@ -20,6 +20,11 @@
  *   P. D57「我的取件码（本机）」+ D64「取件码一级入口（伪 tab）」：行/时间/汇总/上限提示纯件 +
  *      页面零上传/零 wx.cloud/零第三方 AI 外呼/READONLY 静态接线 + 主包迁移/底部栏单源/禁分享
  *      （宽口径断言在 tools/lib/pickup-local-cases.js，拆件守 #18）
+ *   Q. 批 25-C / D61 件级取件的顾客可见性：部分取件每件已取/待取+时间、摘要「已取 n/m 件」与提示、
+ *      进度条第 3 步仍由订单 status=PICKED 驱动、全取后推进、旧单派生/旧 DTO 兼容、
+ *      顾客侧 parcel.actions 恒空、列表行「已取 n/m 件」四态、件级事件通用人话、
+ *      展示条件收敛（列表标签终态不显示；详情件级状态行/摘要限履约状态集）
+ *      （宽口径断言在 tools/lib/order-customer-pickup-cases.js，拆件守 #18）
  *
  * 纪律：不 mock 全局 wx（api/client 用 setTransport 注入替身）；fake DTO/事件，不连真云；
  *       先合法基线再反例；样本非空；EXPECTED_ASSERTIONS 与实际断言数精确相等（少算/多算都判红）。
@@ -52,8 +57,10 @@ const precheck = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/
 const orderScopeReq = fsutil.tryRequire(path.join(ROOT, 'utils/order-scope.js'));
 const orderScope = orderScopeReq.value || {};
 
-const EXPECTED_ASSERTIONS = 335; // 实跑读数；批24-D64/D66：P 组扩 37（H 组 4 条并入并删除，+14 一级入口/文案断言）
 const caseLib = require('./lib/order-customer-cases');
+const pickupCases = require('./lib/order-customer-pickup-cases'); // 批25-C/D61：Q 组件级取件顾客可见性
+// 实跑读数；批24-D64/D66：P 组扩 37（H 组 4 条并入并删除，+14 一级入口/文案断言）；批25-C/D61：+Q 组
+const EXPECTED_ASSERTIONS = 335 + pickupCases.ASSERTIONS;
 const {
   STATUS, PAGES, ISO, NOW, DOC_MS, textOf, actionsFor, dto, event, orderDoc,
   FAKE_DTO_CTX
@@ -132,7 +139,7 @@ function register(h) {
     t.eq(enums.ORDER_EVENTS.filter(function filter(type) {
       const text = view.eventText({ type: type });
       return typeof text === 'string' && text.length > 0 && text !== type;
-    }), enums.ORDER_EVENTS, 'A17 16 种事件类型全部有人话映射（无裸英文事件名上屏）');
+    }), enums.ORDER_EVENTS, 'A17 19 种事件类型全部有人话映射（无裸英文事件名上屏）');
     const corrected = [{ type: 'ORDER_CORRECTED', at: ISO, note: '' }];
     t.eq([view.buildEvents(corrected, { codeFilled: true })[0].text,
       view.buildEvents(corrected, { codeFilled: false })[0].text],
@@ -900,6 +907,11 @@ function register(h) {
   // ---------------------------------------------------------------- P D57 本机取件码清单 + D64 取件码一级入口
   h.section('P. D57/D64 取件码：行/时间/汇总/上限纯件 + 本机零上传静态接线 + 伪 tab 一级入口迁移', (t) => {
     require('./lib/pickup-local-cases').registerP(t);
+  });
+
+  // ---------------------------------------------------------------- Q D61 件级取件顾客可见性（批 25-C）
+  h.section('Q. D61 件级取件顾客可见性：每件已取/待取+时间、部分取件摘要与提示、进度仍按订单 status、列表标签、件级事件人话、端云联调', (t) => {
+    return pickupCases.registerQ(t);
   });
 }
 

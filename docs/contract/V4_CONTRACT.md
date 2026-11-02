@@ -233,7 +233,7 @@
 - **代客单（D12）**：`source=PARTNER`、`customerId=''`、`customerOpenid=''`、`customerNo=''`、`guest{displayName,phoneTail,zone,buildingNo,room,dormKey}` 快照；**代客单不产生绑定**（顾客后续绑定必须本人发起）；guest 无真实微信资料 → 展示**默认头像** + "代客单"标签；MVP **不提供顾客认领**；P1 再做认领（`claimTokenHash/claimExpiresAt/claimedAt` 预留）。
 - `counters`：键族 `orderNo:YYYYMMDD`、`tag:{partnerId}:{dormKey}`、`rl:{scope}:{openid}:{window}`；不设 `tagSeq`。
 - **站点值域（MVP，D32 修订）**：站点 id 固定 v3 的 P1~P8（**不做自建站点**）；**正式名由开发者在后台 `config.stations` 修改**（名称 1~20 字、去重、缺省回退内置默认；进公开子集供选择器/识别/AI prompt 使用）；识别与手输按「精确名 → 去标点规范名 → 静态别名 → 关键词命中」归一，**唯一命中才采信，多解/无解不猜**（用户 2026-10-27：截图存在多种说法，用匹配命中方式）。订单存 `stationId + stationName` 快照。
-- `order_events.type` 至少包含：`ORDER_CREATED / ACCEPTED / REJECTED / PICKED / PICKED_REVERTED / DELIVERED / DELIVERED_REVERTED / COMPLETED / AUTO_COMPLETED / CANCELLED / TIMEOUT_CANCELLED / EXCEPTION_REPORTED / EXCEPTION_RESOLVED / ORDER_CORRECTED / PARCELS_APPENDED（v1.0 合并窗口追加包裹）/ DELETED_BY_CUSTOMER / GUEST_ORDER_CLAIMED(P1)`；`actorRole ∈ {CUSTOMER, PARTNER, ADMIN, SYSTEM}`。**不含任何支付/收款类事件**。
+- `order_events.type` 至少包含：`ORDER_CREATED / ACCEPTED / REJECTED / PICKED / PICKED_REVERTED / DELIVERED / DELIVERED_REVERTED / COMPLETED / AUTO_COMPLETED / CANCELLED / TIMEOUT_CANCELLED / EXCEPTION_REPORTED / EXCEPTION_RESOLVED / ORDER_CORRECTED / PARCELS_APPENDED（v1.0 合并窗口追加包裹）/ PARCEL_PICKED / PARCEL_PICKED_REVERTED（D61 件级取件/撤销，payload `{itemIndex}`）/ DELETED_BY_CUSTOMER / GUEST_ORDER_CLAIMED(P1)`；`actorRole ∈ {CUSTOMER, PARTNER, ADMIN, SYSTEM}`。**不含任何支付/收款类事件**。
 - **留痕时间线**：订单终态 → 保留 180 天 → 匿名化（去 openid/昵称/尾号/宿舍/截图引用，写 `anonymizedAt`）→ 再 30 天物理删除；顾客对 `COMPLETED` 单条"删除记录"→ 7 天后物理删除；截图在终态/取消后 7 天删除；注销=立即匿名化+删截图+30 天内物理删除+删 `partnerNote`。
 - **admin 审计**：`admin_audit.action` 至少含 `INVITE_CREATE / INVITE_REVOKE / PARTNER_SUSPEND / PARTNER_RESTORE / CONFIG_UPDATE / ORDER_ANOMALY_CANCEL / BOOTSTRAP`；**v0.8 增** `FAILURE_IMAGE_VIEW / FAILURE_FIX / FAILURE_IGNORE`（识别失败复核，§4.3）；**v0.9 增** `ACCOUNT_SWITCH_START / ACCOUNT_SWITCH_END / ACCOUNT_SWITCH_EXPIRED / TEST_ACCOUNT_CREATE / TEST_ACCOUNT_DELETE / TEST_DATA_PURGE`（`ACCOUNT_SWITCH_*` 的 `detail` 记 `viewMode/targetIsTest`；**旧 `VIEW_AS_*` 作废**）；MVP 不单独建 audit 页，审计区块并入 `pkg-admin/pages/overview/index`。
 - **限流落点**：统一用 `counters.rl:{scope}:{openid}:{window}`；scope 至少 `bind/activate/order/message/viewAs/avatarUpload`；窗口按滚动时间窗或自然日（D39：绑定相关=滚动 60 秒/5 次）；超限返回 `RATE_LIMITED`。**账号切换（含测试账号）20 次/日/开发者；头像上传 5 次/日/人。**
@@ -298,8 +298,8 @@
 | 状态 | 中文（顾客可见） | 进入条件 | 可执行动作（角色） |
 | :-- | :-- | :-- | :-- |
 | `SUBMITTED` | 待接单 | 顾客下单成功（或兼职代客下单） | 兼职：接单/拒单/补码；顾客：取消；系统：超时取消 |
-| `ACCEPTED` | 已接单 | 兼职接单 | 兼职：标记已取件/上报异常/补码；顾客：取消（未取件前） |
-| `PICKED` | 已取件·配送中 | 兼职在驿站取到实物 | 兼职：标记送达/上报异常；顾客：不可直接取消（走留言/异常） |
+| `ACCEPTED` | 已接单 | 兼职接单 | 兼职：标记已取件（可逐件，D61）/上报异常/补码；顾客：取消（未取件前） |
+| `PICKED` | 已取件·配送中 | 兼职在驿站取到实物（**全部件取完**自动进入，D61） | 兼职：标记送达/上报异常/撤销已取件（可逐件，D61）；顾客：不可直接取消（走留言/异常） |
 | `DELIVERED` | 已送达·待确认 | 兼职送达约定地点 | 顾客：确认送达；系统：每日日结批自动完成（D43） |
 | `COMPLETED` | 已完成 | 顾客确认/日结批自动完成 | 顾客：查看/删除记录/再次下单；双方：留言（只读归档） |
 | `CANCELLED` | 已取消 | 顾客取消/兼职拒单/超时/异常取消 | 双方：查看原因；顾客：再次下单 |
@@ -309,7 +309,7 @@
 - **超时**：`SUBMITTED` 超过 `config.orderTimeoutMinutes`（默认 120）未接单 → 系统自动 `CANCELLED`（原因"超时未接单"）。
 - **自动完成（D43，2026-11-01 用户拍板）**：`cleanup` 按 **UTC+8 日结批**完成送达单——cutoff =「该单 `deliveredAt` 所在 UTC+8 自然日的 `config.autoCompleteAt`（默认 `22:00`）」；`now ≥ cutoff` 的 `DELIVERED` 单即置 `COMPLETED`（actor=SYSTEM、逐单写 `AUTO_COMPLETED`、条件更新 + 唯一 requestKey 保幂等）。10 分钟触发器粒度 ⇒ 实际完成落该时刻~+10 分钟（默认 22:00~22:10）；**不额外保留顾客确认窗口，完成即只读归档**；22:00–24:00 送达的单在下一轮 10 分钟批内自动完成（不再下一轮 10 分钟批内自动完成）。**代客单（guest）无顾客确认路径**：同样由该日结批转 `COMPLETED`。旧的「小时数」自动完成键（逐单 24 小时）作废。
 - **非法流转**：云函数校验转移表，非法返回 `INVALID_TRANSITION`；所有写动作幂等（`clientRequestId`）。
-- **顾客可见进度条**：下单 → 已接单 → 已取件 → 已送达 → 已完成；异常/取消分支单独展示。进度文案必须来自服务端状态，不许前端"假装推进"。
+- **顾客可见进度条**：下单 → 已接单 → 已取件 → 已送达 → 已完成；**已取件以「全部件取完」为准（D61）**，部分取件时订单详情/列表显示「已取 N/M 件」；异常/取消分支单独展示。进度文案必须来自服务端状态，不许前端"假装推进"。
 - **列表动线排序（四档）**：组内按 `需查明(codeStatus=NEED_CODE)` → `快递柜(lockerNo 非空)` → `分段码(取件码含分隔符/字母)` → `其他`；同档按码数字升序、id 兜底。
 
 ### 5.1 补偿与纠正动作
@@ -317,12 +317,13 @@
 | 动作 | 允许状态 | 谁能做 | 语义与副作用 |
 | :-- | :-- | :-- | :-- |
 | `order.correct`（改码/改站点/改柜号/改运单尾号） | `SUBMITTED`/`ACCEPTED`/`EXCEPTION` 全字段；`PICKED` 仅柜号/运单尾号 | 该订单兼职 | **v1.0 按包裹序号 `itemIndex` 纠正单件**（缺省 0；越界 `VALIDATION_FAILED`）；**不改订单归属**（不可换顾客）：顾客归属错只能取消重下。记 `ORDER_CORRECTED`；批量改站点用同一 `batchActionId` 循环调用 |
-| `order.unmarkPicked`（撤销已取件） | `PICKED` | 该订单兼职 | `PICKED → ACCEPTED`，清 `pickedAt`；记 `PICKED_REVERTED`；顾客进度回退并提示 |
+| `order.unmarkPicked`（撤销已取件） | `ACCEPTED`（仅逐件，D61）/`PICKED` | 该订单兼职 | 逐件撤销（带 `itemIndex`）：清该件 `pickedAt`、记 `PARCEL_PICKED_REVERTED`；若订单原为 `PICKED` 则回 `ACCEPTED`（记 `PICKED_REVERTED`，清整单 `pickedAt`）；不带 `itemIndex`=整单回 `ACCEPTED`（兼容旧行为） |
 | `order.unmarkDelivered`（撤销已送达） | `DELIVERED` | 该订单兼职 | `DELIVERED → PICKED`，记 `DELIVERED_REVERTED`；顾客进度回退提示 |
 | `order.undo`（撤销条） | 由被撤销动作决定 | 该订单兼职 | 只在动作后 **5 秒**内、且订单无后续状态变化时允许；按 `batchActionId` 批量逐单校验，部分失败如实提示，成功部分回退 |
 | `order.resolveException`（异常恢复） | `EXCEPTION` | 该订单兼职 | 上报时记录 `exception.fromStatus`；恢复回 `fromStatus`（仅允许 `ACCEPTED`/`PICKED`/`DELIVERED`，否则回 `ACCEPTED`）；记 `EXCEPTION_RESOLVED` |
 | `order.cancel`（取消） | 见 §5 状态表 | 顾客/兼职/系统/admin | 记 `CANCELLED` 事件与原因；已取件后顾客不能单方取消（走异常/留言，兼职可取消并填原因）；admin 仅异常介入并审计 |
 
+- **件级取件与撤销（D61，2026-11-02 用户裁决 Q4=B/Q5/Q6）**：`order.markPicked` / `order.unmarkPicked` 接受可选 `itemIndex`（包裹下标 0~9，越界 `VALIDATION_FAILED`；缺省=整单全部件，保持批量/旧客户端兼容）。带 `itemIndex` 时：该件写 `parcels[itemIndex].pickedAt`（可带 `pickedByNo`）+ 记 `PARCEL_PICKED`/`PARCEL_PICKED_REVERTED`（payload `{itemIndex}`）；**订单 `PICKED` 由「全部件已取」聚合派生**——最后一次取件同时写订单级 `PICKED` 事件并置状态，部分取件只写件级事件、订单仍 `ACCEPTED`（DTO 下发 `pickedCount/parcelCount/allPicked` 与每件 `picked/pickedAt`）；撤销使不全取时订单回 `ACCEPTED`。**逐件取件/撤销不提供 5 秒撤销条**（UI 用每件的「撤销已取」按钮，未送达前可用）；送达/异常/取消/自动完成仍整单（`markDelivered` 仍要求订单 `PICKED`）；旧单无件级字段时按订单状态派生（`PICKED/DELIVERED/COMPLETED`→全部件已取、`ACCEPTED`→未取），无数据迁移。
 - **删除口径**：**订单不可硬删**。顾客可对 `COMPLETED` 订单做"删除记录"（`order.deleteRecord`：仅从自己列表隐藏 + 进入 7 天后物理删除队列，`orders.deletedByCustomerAt`）；兼职不可删除订单；admin 不可删除订单（只读+审计）。
 - **接单撤销**：`order.undo` **不覆盖 `ACCEPTED → SUBMITTED`**。误接单走 `order.cancel`（选原因并通知顾客）；`order.undo` 只覆盖 `order.markPicked`/`order.markDelivered`（分别回 `order.unmarkPicked`/`order.unmarkDelivered`）；**无任何收款动作/撤销**。
 - **批量动作**：**不设专用 batch 云函数**；客户端循环调用逐单动作，携带同一 `batchActionId`，服务端逐单返回，客户端汇总"成功 N / 失败 M"并如实上屏。

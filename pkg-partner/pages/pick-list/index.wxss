@@ -193,3 +193,47 @@
   color: #2B6DE5;
   margin-top: 8rpx;
 }
+
+/* D61/D62：件级取件行（每件已取状态 + 独立按钮；行内只列本站件） */
+.piece-line--pick {
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 4rpx 0;
+}
+
+.piece-text {
+  font-family: Menlo, Consolas, monospace;
+  font-size: 30rpx;
+  color: #1F2937;
+  margin-right: 12rpx;
+}
+
+.piece-text--picked {
+  color: #8A8F99;
+  text-decoration: line-through;
+}
+
+.piece-picked {
+  background: #E8F0FF;
+  color: #2B6DE5;
+  margin-right: 12rpx;
+}
+
+.picked-count-tag {
+  background: #E8F0FF;
+  color: #2B6DE5;
+  margin-left: 12rpx;
+}
+
+.piece-btn {
+  min-height: 56rpx;
+  line-height: 56rpx;
+  padding: 0 16rpx;
+  margin-left: 12rpx;
+  flex-shrink: 0;
+}
+
+.piece-other {
+  color: #8A6D00;
+  padding: 4rpx 0;
+}

@@ -39,6 +39,9 @@
           <view class="progress-label {{item.state}}">{{item.label}}</view>
         </view>
       </view>
+      <!-- D61 部分取件：摘要/提示只读 DTO pickedCount/parcelCount/allPicked（进度条第 3 步仍由订单 status 驱动） -->
+      <view class="pickup-summary" wx:if="{{pickupSummary}}">{{pickupSummary}}</view>
+      <view class="pickup-hint" wx:if="{{pickupPartialHint}}">{{pickupPartialHint}}</view>
       <view class="progress-branch {{progress.mode}}" wx:if="{{progress.branchText}}">
         <view class="small branch-label" wx:if="{{progress.branchLabel}}">{{progress.branchLabel}}</view>
         <view class="small">{{progress.branchText}}</view>
@@ -70,6 +73,14 @@
         <view class="row between line">
           <view class="muted">柜号 / 尾号</view>
           <view class="flex-1 right">{{item.lockerNo || '—'}} / {{item.trackingTail || '—'}}</view>
+        </view>
+        <!-- D61 件级取件（只读）：已取/待取 + 取件时间；顾客侧不提供任何按件操作按钮 -->
+        <view class="row between line" wx:if="{{item.hasPickState}}">
+          <view class="muted">取件状态</view>
+          <view class="flex-1 right">
+            <text class="{{item.picked ? 'parcel-picked' : 'parcel-waiting'}}">{{item.pickedText}}</text>
+            <text class="parcel-picked-at" wx:if="{{item.pickedAtText}}">{{item.pickedAtText}}</text>
+          </view>
         </view>
       </view>
       <view class="row between line">

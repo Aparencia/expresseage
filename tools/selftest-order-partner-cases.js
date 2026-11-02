@@ -26,7 +26,8 @@ const {
 } = enums;
 const { SUBMITTED, ACCEPTED, PICKED, DELIVERED, COMPLETED, CANCELLED, EXCEPTION } = ORDER_STATUS;
 
-const EXPECTED_ASSERTIONS = 128;
+// D61 件级取件（批 25-A）：订单 DTO 增 pickedCount/parcelCount/allPicked（每件 picked/pickedAt/actions 在 parcels[] 内）。
+const EXPECTED_ASSERTIONS = 170;
 const NOW = Date.parse('2026-10-22T10:00:00+08:00');
 const HOUR = 3600 * 1000;
 const DAY = 24 * HOUR;
@@ -43,11 +44,13 @@ const TEMP_URL = 'https://tmp.example/b6';
 // 契约逐字口径：补码事件 note 独立写字面量（不复用生产常量，避免同源恒真）
 const CODE_FILLED_NOTE = '兼职已补齐取件码';
 const COUNTS_KEYS = ['submitted', 'accepted', 'picked', 'delivered', 'exception', 'todayCompleted'];
-// listPartner 行 DTO 允许的顶层键（白名单：多一个=可能泄漏 raw 文档字段）
+// 列表/详情 DTO 允许的顶层键（白名单：多一个=可能泄漏 raw 文档字段）
 // v1.0 一单多包裹（D23/D24/D25）：新增 parcels/images/delivery/manualEntry；parcel/image 为历史单兼容键。
+// D61 件级取件：订单级增 pickedCount/parcelCount/allPicked（每件 picked/pickedAt/actions 在 parcels[] 内，不改顶层）。
 const DTO_ROW_KEYS = [
   'orderNo', 'status', 'statusText', 'bucket', 'progressIndex', 'needCode', 'failureHint', 'source',
-  'service', 'appoint', 'parcel', 'parcels', 'note', 'phoneTail', 'dorm', 'delivery', 'manualEntry',
+  'service', 'appoint', 'parcel', 'parcels', 'pickedCount', 'parcelCount', 'allPicked',
+  'note', 'phoneTail', 'dorm', 'delivery', 'manualEntry',
   'guest', 'exception', 'deliveryNote',
   'cancelReason', 'cancelReasonText', 'cancelledBy', 'cancelledByText', 'customerNo', 'partnerNo',
   'image', 'images', 'counterpart', 'actions', 'version', 'statusUpdatedAt', 'createdAt', 'updatedAt', 'acceptedAt',

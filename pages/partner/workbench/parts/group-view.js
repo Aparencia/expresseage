@@ -1,20 +1,15 @@
 // pages/partner/workbench/parts/group-view.js · 工作台渲染视图（服务端 DTO → 行/站点分组；四档动线排序在零件层）
 // 口径：CONTRACT §5.2「服务端给状态桶+站点过滤的分页数据，客户端零件层只做四档动线排序」；
-//       UX_PARTNER §4.2/§4.3/§4.11（行结构、四档、分片 setData）。
-// 数据：order.listPartner 的 list 项（order/_dto.buildOrderDto）——bucket/statusText/parcel/dorm/counterpart/needCode/
-//       actions[]（批6-A 行级动作，页面只消费不猜）/version；兼容 groups[] 旧形状（selftest-bind 在用）。
+//       D62（2026-11-02 裁决）：分组按**件的站点**——一单在其每件所属站点组各出现一次，组内只列本站件 +
+//       「另 N 件在 Pn」；组内四档/排序键按**本站件**计算；组头给单数（可加件数）；多选/批量仍按**订单**。
+// 数据：order.listPartner 的 list 项（order/_dto.buildOrderDto）；行模型见 parts/order-row.js。
 // 判定：行视图不含七状态判断；多选资格只看服务端 bucket（filter-view.canSelect 单一来源）。
 'use strict';
 
-const orderState = require('../../../../shared/order-state');
-const orderView = require('../../../../shared/order-view');
 const stations = require('../../../../shared/stations');
-const enums = require('../../../../shared/enums');
-const roomTag = require('../../../../utils/room-tag');
 const filterView = require('./filter-view');
-const rowActions = require('./row-actions');
+const orderRow = require('./order-row');
 const parcelView = require('./parcel-view');
-const dayView = require('./day-view');
 
 const FALLBACK_GROUP_NAME = '全部待处理';
 const UNKNOWN_STATION_RANK = 999;
@@ -23,172 +18,26 @@ function textOf(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-function pad2(value) {
-  return value < 10 ? '0' + value : String(value);
+function toRow(order, nowMs, scope) {
+  return orderRow.toRow(order, nowMs, scope);
 }
 
-function tailText(value) {
-  const tail = textOf(value);
-  return tail.length === 4 ? '尾号' + tail : '';
-}
-
-// 服务端时间是 ISO 字符串（toIso）；兼容毫秒数/Date 与旧字段
-function timeTextOf(value) {
-  if (!value) {
-    return '';
+// 组内排序：本站件档位 → 本站件码数字 → 订单号（防渲染抖动）
+function compareRowsForRoute(left, right) {
+  if (left.routeTier !== right.routeTier) {
+    return left.routeTier - right.routeTier;
   }
-  const ms = typeof value === 'number' ? value : Date.parse(value);
-  if (!ms || Number.isNaN(ms)) {
-    return '';
+  if (left.routeNumber !== right.routeNumber) {
+    return left.routeNumber - right.routeNumber;
   }
-  const date = new Date(ms);
-  return pad2(date.getMonth() + 1) + '-' + pad2(date.getDate()) + ' ' + pad2(date.getHours()) + ':' + pad2(date.getMinutes());
-}
-
-function anchorTextOf(dormKey, tag) {
-  const key = textOf(dormKey);
-  const suffix = textOf(tag);
-  if (!key) {
-    return suffix;
+  if (left.orderNo === right.orderNo) {
+    return 0;
   }
-  if (!suffix) {
-    return key;
-  }
-  return roomTag.formatDormTag(key, suffix) || key + suffix;
+  return left.orderNo < right.orderNo ? -1 : 1;
 }
 
-// 行级动作：只搬服务端 actions[]（{key,label}），不增不减；未知键交给 row-actions 注册表丢弃
-function actionsOf(item) {
-  const list = Array.isArray(item.actions) ? item.actions : [];
-  const out = [];
-  list.forEach((entry) => {
-    if (typeof entry === 'string' && entry) {
-      out.push({ key: entry, label: '' });
-    } else if (entry && typeof entry.key === 'string' && entry.key) {
-      out.push({ key: entry.key, label: textOf(entry.label) });
-    }
-  });
-  return out;
-}
-
-// 顾客锚+键（行第二行）：头像/昵称不在行内出现，锚 = dormKey+roomTag
-function identityOf(item) {
-  const dorm = item.dorm || {};
-  const guest = item.guest || item.guestSnapshot || {};
-  const counterpart = item.counterpart || {};
-  const name = textOf(counterpart.displayName) || textOf(guest.displayName) || textOf(item.customerDisplayName);
-  const dormKey = textOf(dorm.dormKey) || textOf(item.dormKey) || textOf(guest.dormKey);
-  const tag = textOf(dorm.roomTag) || textOf(item.roomTag) || textOf(guest.roomTag);
-  const anchor = anchorTextOf(dormKey, tag);
-  const keyText = [tailText(item.phoneTail || guest.phoneTail), name].filter(Boolean).join(' · ');
-  const parts = [];
-  if (anchor) {
-    parts.push(anchor);
-  }
-  if (keyText) {
-    parts.push(keyText);
-  }
-  return { anchor: anchor, keyText: keyText, anchorKeyText: parts.join(' · '), senderText: anchor && keyText ? '' : keyText };
-}
-
-// v1.0 包裹聚合（UX §4.16）：首件码留在行首，件数/站点聚合/无截图在行内；逐件明细仅多件单下发
-function parcelFieldsOf(item) {
-  const pieces = parcelView.piecesOf(item);
-  const primary = pieces[0] || parcelView.pieceOf({}, 0);
-  const stationSummary = parcelView.stationSummaryOf(pieces);
-  return {
-    pieces: pieces,
-    primary: primary,
-    pickupCode: primary.pickupCode || textOf(item.pickupCode),
-    trackingTail: primary.trackingTail || textOf(item.trackingTail),
-    stationSummaryText: stationSummary.text,
-    manualEntry: parcelView.manualEntryOf(item),
-    manualEntryText: parcelView.manualEntryTextOf(item),
-    parcelRows: pieces.length > 1 ? pieces : null
-  };
-}
-
-// 行字段表：页面/wxml 只消费这些稳定键（不直读服务端嵌套结构）。
-// createdMs = 下单时刻（已完结区归档锚，D45）；delayDaysText = 「顺延 N 天」标签（未完成桶跨日才非空，文案在 day-view）
-function rowFieldsOf(item, identity, parcels, nowMs) {
-  const primary = parcels.primary;
-  const exception = item.exception || {};
-  const status = textOf(item.status);
-  const bucket = textOf(item.bucket) || orderView.bucketOf(status);
-  return {
-    orderNo: textOf(item.orderNo),
-    status: status,
-    statusText: textOf(item.statusText) || orderState.statusText(status),
-    bucket: bucket,
-    tierText: parcelView.tierTextOf(parcelView.tierOf(item)),
-    codeText: parcels.pickupCode || (parcels.trackingTail ? '尾号' + parcels.trackingTail : '待补码'),
-    lockerText: primary.lockerNo,
-    pickupCode: parcels.pickupCode,
-    trackingTail: parcels.trackingTail,
-    anchorText: identity.anchor,
-    keyText: identity.keyText,
-    anchorKeyText: identity.anchorKeyText,
-    senderText: identity.senderText,
-    needCode: parcelView.needCodeOf(item),
-    isGuest: textOf(item.source) === enums.ORDER_SOURCE.PARTNER,
-    exceptionText: textOf(exception.text) || textOf(exception.codeText) || textOf(item.exceptionText),
-    reviewText: parcelView.reviewTextOf(parcels.pieces) || (item.failureHint === true ? '已反馈开发者复核' : ''),
-    cancelReasonText: textOf(item.cancelReasonText) || textOf(item.cancelReason),
-    deliveryNote: textOf(item.deliveryNote),
-    actions: actionsOf(item),
-    version: typeof item.version === 'number' ? item.version : 0,
-    createdMs: dayView.createdMsOf(item),
-    delayDaysText: dayView.delayDaysTextOf(item, nowMs),
-    timeText: timeTextOf(item.statusUpdatedAt) || timeTextOf(item.updatedAt) || textOf(item.updatedAtText),
-    selectable: filterView.canSelect({ orderNo: item.orderNo, bucket }),
-    selected: false,
-    stationId: primary.stationId,
-    stationName: primary.stationName,
-    parcelCount: parcels.pieces.length,
-    parcelCountText: parcelView.countTextOf(parcels.pieces),
-    stationSummaryText: parcels.stationSummaryText,
-    needCodeCountText: parcelView.needCodeCountTextOf(parcels.pieces),
-    manualEntry: parcels.manualEntry,
-    manualEntryText: parcels.manualEntryText,
-    parcelRows: parcels.parcelRows
-  };
-}
-
-// DTO 行（order/_dto.buildOrderDto）；raw 文档兜底只为旧 response 形状，页面不依赖未下发字段
-function toRow(order, nowMs) {
-  const item = order || {};
-  const row = rowFieldsOf(item, identityOf(item), parcelFieldsOf(item), nowMs);
-  // 行工具条也进行视图：服务端 actions 变化时随行级补丁一起更新（只消费 actions[]，不判状态）
-  row.toolbar = rowActions.buildToolbar(row, {});
-  return row;
-}
-
-// 四档动线排序：吃服务端过滤后的 list（v1.0 按整单最差件定档/排序键），同档按码数字→orderNo
-function sortForRoute(list) {
-  const source = Array.isArray(list) ? list : [];
-  return source
-    .map((order, index) => ({ order, index }))
-    .sort((left, right) => {
-      const tierDelta = parcelView.tierOf(left.order) - parcelView.tierOf(right.order);
-      if (tierDelta !== 0) {
-        return tierDelta;
-      }
-      const numberDelta = parcelView.routeNumberOf(left.order) - parcelView.routeNumberOf(right.order);
-      if (numberDelta !== 0) {
-        return numberDelta;
-      }
-      const leftNo = textOf(left.order && left.order.orderNo);
-      const rightNo = textOf(right.order && right.order.orderNo);
-      if (leftNo === rightNo) {
-        return left.index - right.index;
-      }
-      return leftNo < rightNo ? -1 : 1;
-    })
-    .map((entry) => entry.order);
-}
-
-function toRows(orders, nowMs) {
-  return sortForRoute(orders).map((order) => toRow(order, nowMs));
+function sortRowsForRoute(rows) {
+  return rows.slice().sort(compareRowsForRoute);
 }
 
 function stationRankOf(stationId) {
@@ -205,41 +54,66 @@ function stationRankOf(stationId) {
   return UNKNOWN_STATION_RANK;
 }
 
-function groupOf(stationId, stationName, orders, nowMs) {
+// 组视图：count=出现于本站的订单数（跨站单在每个站各计一次，与 D62 同口径）；
+// pieceCount=本站件数；countText 组头文案（单数为主，件数不同才补）
+function groupOf(stationId, stationName, entries, nowMs) {
+  const rows = sortRowsForRoute(entries.map((entry) => toRow(entry.order, nowMs, {
+    stationId: entry.stationId,
+    stationName: entry.stationName
+  })));
+  let pieceCount = 0;
+  rows.forEach((row) => {
+    pieceCount += row.pieceRows.length;
+  });
+  const id = textOf(stationId);
+  const count = rows.length;
   return {
-    key: textOf(stationId) || '__NONE__',
-    stationId: textOf(stationId),
+    key: id || '__NONE__',
+    stationId: id,
     stationName: textOf(stationName) || FALLBACK_GROUP_NAME,
-    count: orders.length,
-    rows: fillBucket(toRows(orders, nowMs))
+    count: count,
+    pieceCount: pieceCount,
+    countText: count + ' 单' + (pieceCount !== count ? ' · ' + pieceCount + ' 件' : ''),
+    rows: fillBucket(rows)
   };
 }
 
-// 服务端 list（DTO）按站点分区：站点取首件包裹（v1.0 跨站点单只归一组，行内聚合全部站点），
-// 顺序按 P1~P8 + 未指定站点兜底
+// 服务端 list（DTO）按**件站点**分区（D62）：每件落一个站点组，一单可出现在多个站点组；
+// 组序按 P1~P8 + 未指定站点兜底
 function buildGroupsFromList(list, nowMs) {
   const map = {};
   const keys = [];
-  list.forEach((order) => {
-    const stationId = parcelView.stationKeyOf(order);
-    const key = stationId || '__NONE__';
-    if (!map[key]) {
-      map[key] = { stationId: stationId, stationName: parcelView.primaryStationNameOf(order), orders: [] };
-      keys.push(key);
-    }
-    if (!map[key].stationName) {
-      map[key].stationName = parcelView.primaryStationNameOf(order);
-    }
-    map[key].orders.push(order);
+  (Array.isArray(list) ? list : []).forEach((order) => {
+    const item = order || {};
+    const stationGroups = parcelView.stationGroupsOf(item);
+    stationGroups.forEach((station) => {
+      const key = station.stationId || '__NONE__';
+      if (!map[key]) {
+        map[key] = { stationId: station.stationId, stationName: station.stationName, entries: [] };
+        keys.push(key);
+      }
+      if (!map[key].stationName) {
+        map[key].stationName = station.stationName;
+      }
+      map[key].entries.push({ order: item, stationId: station.stationId, stationName: map[key].stationName });
+    });
   });
   return keys
     .map((key) => map[key])
     .sort((left, right) => stationRankOf(left.stationId) - stationRankOf(right.stationId))
-    .map((group) => groupOf(group.stationId, group.stationName, group.orders, nowMs));
+    .map((group) => groupOf(group.stationId, group.stationName, group.entries, nowMs));
 }
 
+// 兼容旧 groups[] 形状（selftest-bind 等）：每个 group 视为站组，行承载整单件（不再二次按件拆）
 function buildGroupsFromGroups(groups, nowMs) {
-  return groups.map((group) => groupOf(group.stationId, group.stationName, Array.isArray(group.orders) ? group.orders : [], nowMs));
+  return (Array.isArray(groups) ? groups : []).map((group) => {
+    const orders = Array.isArray(group.orders) ? group.orders : [];
+    return groupOf(group.stationId, group.stationName, orders.map((order) => ({
+      order: order,
+      stationId: textOf(group.stationId),
+      stationName: textOf(group.stationName)
+    })), nowMs);
+  });
 }
 
 function toGroups(data, nowMs) {
@@ -262,8 +136,8 @@ function toGroups(data, nowMs) {
 // 行字段/工具条复用 toRow：活动行照常显示写操作；待确认（delivered 桶）/已完结（history 桶）行只读（D54）。
 const DAY_READONLY_BUCKETS = ['delivered', 'history'];
 
-function dayRowOf(order, nowMs) {
-  const row = toRow(order, nowMs);
+function dayRowOf(order, nowMs, readonly) {
+  const row = toRow(order, nowMs, readonly ? { stationId: undefined, readonly: true } : null);
   if (DAY_READONLY_BUCKETS.indexOf(row.bucket) < 0) {
     return row;
   }
@@ -272,18 +146,21 @@ function dayRowOf(order, nowMs) {
   });
 }
 
-function buildDayGroups(list, nowMs) {
+function buildDayGroups(list, nowMs, options) {
   const orders = Array.isArray(list) ? list : [];
   if (!orders.length) {
     return [];
   }
-  const rows = orders.map((order) => dayRowOf(order, nowMs));
+  const readonly = !!(options && options.readonly);
+  const rows = orders.map((order) => dayRowOf(order, nowMs, readonly));
   return [{
     key: '__TODAY__',
     stationId: '',
     stationName: '',
     day: true,
     count: rows.length,
+    pieceCount: rows.reduce((sum, row) => sum + row.pieceRows.length, 0),
+    countText: rows.length + ' 单',
     rows: rows
   }];
 }
@@ -306,6 +183,7 @@ function filterRows(groups, chip) {
     .filter((group) => group.rows.length > 0);
 }
 
+// 渲染行（同一订单在 D62 下可出现在多个站点组 —— 多选/批量必须按订单去重）
 function flattenRows(groups) {
   const out = [];
   (Array.isArray(groups) ? groups : []).forEach((group) => {
@@ -314,12 +192,26 @@ function flattenRows(groups) {
   return out;
 }
 
+function uniqueRows(rows) {
+  const seen = {};
+  const out = [];
+  (Array.isArray(rows) ? rows : []).forEach((row) => {
+    const key = row && (row.orderNo || row.orderNo === '' ? row.orderNo : '');
+    if (!key || seen[key]) {
+      return;
+    }
+    seen[key] = true;
+    out.push(row);
+  });
+  return out;
+}
+
 function countSelectable(groups) {
-  return flattenRows(groups).filter((row) => row.selectable).length;
+  return uniqueRows(flattenRows(groups).filter((row) => row.selectable)).length;
 }
 
 function selectedRows(groups) {
-  return flattenRows(groups).filter((row) => row.selected);
+  return uniqueRows(flattenRows(groups).filter((row) => row.selected));
 }
 
 function findRow(groups, orderNo) {
@@ -329,6 +221,25 @@ function findRow(groups, orderNo) {
     for (let r = 0; r < rows.length; r += 1) {
       if (rows[r].orderNo === orderNo) {
         return { groupIndex: g, rowIndex: r, row: rows[r], stationName: list[g].stationName };
+      }
+    }
+  }
+  return null;
+}
+
+// 件动作定位：D62 下同一订单的件分散在各自站点组，按 orderNo + itemIndex 找到所属行与该件视图
+function findPiece(groups, orderNo, itemIndex) {
+  const list = Array.isArray(groups) ? groups : [];
+  for (let g = 0; g < list.length; g += 1) {
+    const rows = list[g].rows || [];
+    for (let r = 0; r < rows.length; r += 1) {
+      const row = rows[r];
+      if (row.orderNo !== orderNo || !Array.isArray(row.pieceRows)) {
+        continue;
+      }
+      const piece = row.pieceRows.filter((item) => item.index === itemIndex)[0];
+      if (piece) {
+        return { groupIndex: g, rowIndex: r, row: row, piece: piece };
       }
     }
   }
@@ -358,7 +269,7 @@ function selectionMapOf(groups) {
   return map;
 }
 
-// 组结构签名：orderNo 序列（跨站移动/增删/排序变化都算结构变化 → 整表替换；纯字段变化才走行级补丁）
+// 组结构签名：站点+orderNo 序列（跨站移动/增删/排序变化都算结构变化 → 整表替换；纯字段变化才走行级补丁）
 function signatureOf(groups) {
   return (Array.isArray(groups) ? groups : [])
     .map((group) => (group.stationId || '') + ':' + (group.rows || []).map((row) => row.orderNo).join(','))
@@ -372,12 +283,14 @@ function diffRowPatches(oldGroups, newGroups) {
     return { structural: true, patches: patches };
   }
   const oldMap = {};
-  flattenRows(oldGroups).forEach((row) => {
-    oldMap[row.orderNo] = row;
+  (Array.isArray(oldGroups) ? oldGroups : []).forEach((group, groupIndex) => {
+    (group.rows || []).forEach((row, rowIndex) => {
+      oldMap[groupIndex + '#' + rowIndex] = row;
+    });
   });
   (Array.isArray(newGroups) ? newGroups : []).forEach((group, groupIndex) => {
     (group.rows || []).forEach((row, rowIndex) => {
-      const prev = oldMap[row.orderNo];
+      const prev = oldMap[groupIndex + '#' + rowIndex];
       if (!prev) {
         return;
       }
@@ -426,7 +339,7 @@ function structuralPatch(oldGroups, newGroups) {
   return { mode: Object.keys(patches).length ? 'groups' : 'none', patches: patches };
 }
 
-// 首次渲染分片（UX §4.11）：每片 ≤size 行；已加载顺序与分组不边，片内 group.key 加序号防 wx:key 冲突
+// 首次渲染分片（UX §4.11）：每片 ≤size 行；已加载顺序与分组不变，片内 group.key 加序号防 wx:key 冲突
 function splitByRows(groups, size) {
   const limit = size > 0 ? size : 20;
   const chunks = [];
@@ -442,6 +355,7 @@ function splitByRows(groups, size) {
         key: (group.stationId || '__NONE__') + '#' + chunks.length + '#' + index,
         stationId: group.stationId,
         stationName: group.stationName,
+        countText: group.countText,
         day: group.day === true,
         count: take.length,
         rows: take
@@ -463,16 +377,17 @@ function splitByRows(groups, size) {
 
 module.exports = {
   toRow,
-  toRows,
   toGroups,
   buildDayGroups,
-  sortForRoute,
+  sortRowsForRoute,
   buildGroups: buildGroupsFromList,
   filterRows,
   flattenRows,
+  uniqueRows,
   countSelectable,
   selectedRows,
   findRow,
+  findPiece,
   applySelection,
   selectionMapOf,
   signatureOf,

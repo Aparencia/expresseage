@@ -35,12 +35,17 @@ function toggleRow(rows, orderNo) {
     };
   }
   const map = groupView.selectionMapOf(rows);
+  let hint = '';
   if (map[orderNo]) {
     delete map[orderNo];
   } else {
     map[orderNo] = true;
+    // D62：跨站单选中时提示整单语义（批量动作仍按订单，作用于该单全部件）
+    if (found.row.otherPiecesText) {
+      hint = '该单在其他站点还有件，整单操作将作用于全部件';
+    }
   }
-  return { ok: true, message: '', state: stateOf(rows, map) };
+  return { ok: true, message: '', hint: hint, state: stateOf(rows, map) };
 }
 
 function selectAll(rows) {

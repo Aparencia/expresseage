@@ -1,10 +1,12 @@
 // pages/partner/workbench/parts/parcel-view.js · v1.0 一单多包裹纯件（零 wx、零页面状态）
-// 口径：CONTRACT §5/§5.1/§5.2（`parcels[]` 1~10 件、`order.correct` 按 `itemIndex`、`manualEntry` 无截图手填）；
-//       UX_PARTNER §4.3/§4.16（行聚合=件数/站点聚合/需查明聚合/无截图标识；四档按整单最差件；分组按首件站点）。
-// 兼容：历史 DTO 只有 `parcel{}`（视作 1 件），消费方不用写"有没有 parcels"的分支判据。
+// 口径：CONTRACT §5/§5.1/§5.2（D61 件级取件：每件 `picked/pickedAt/actions`、整单 `pickedCount/parcelCount/allPicked`）、
+//       UX_PARTNER §4.3/§4.16（D62 按**件的站点**分组：一单在每个件站点组各出现一次，组内只列本站件 +
+//       「另 N 件在 Pn」；四档动线排序按**本站件**计算）。
+// 兼容：历史 DTO 只有 `parcel{}`（视作 1 件）；无件级 `picked` 字段的旧夹具视作未取（真值以服务端为准）。
 'use strict';
 
 const enums = require('../../../../shared/enums');
+const format = require('../../../../shared/format');
 
 const TIER_TEXT = { 1: '需查明', 2: '快递柜', 3: '分段码', 4: '其他' };
 const STATION_SUMMARY_MAX = 2;
@@ -32,9 +34,31 @@ function codeTextOf(piece) {
   return tail ? '尾号' + tail : '待补码';
 }
 
+// 服务端 parcel.actions 契约 string[]（{key} 对象也容忍）：只留非空键，去重保序
+function actionKeysOf(raw) {
+  const keys = [];
+  listOf(raw && raw.actions).forEach((entry) => {
+    const key = typeof entry === 'string' ? entry : textOf(entry && entry.key);
+    if (key && keys.indexOf(key) < 0) {
+      keys.push(key);
+    }
+  });
+  return keys;
+}
+
+// pickedAt：服务端契约毫秒 number（未取=0）；兼容 ISO 串/Date 夹具
+function msOfPickedAt(value) {
+  if (typeof value === 'number') {
+    return isFinite(value) && value > 0 ? value : 0;
+  }
+  return format.formatTime(value) ? Date.parse(value) || 0 : 0;
+}
+
 function pieceOfRaw(raw, index) {
   const row = raw || {};
   const codeStatus = textOf(row.codeStatus);
+  const picked = row.picked === true;
+  const pickedAt = msOfPickedAt(row.pickedAt);
   return {
     index: index,
     indexText: indexTextOf(index),
@@ -49,7 +73,12 @@ function pieceOfRaw(raw, index) {
     codeStatus: codeStatus,
     codeStatusText: textOf(row.codeStatusText) || textOf(enums.CODE_STATUS_TEXT[codeStatus]),
     needCode: codeStatus === enums.CODE_STATUS.NEED_CODE,
-    failureId: textOf(row.failureId)
+    failureId: textOf(row.failureId),
+    picked: picked,
+    pickedText: picked ? '已取' : '待取',
+    pickedAt: pickedAt,
+    pickedAtText: picked ? format.formatTime(pickedAt) : '',
+    actions: actionKeysOf(row)
   };
 }
 
@@ -72,7 +101,7 @@ function pieceOf(order, itemIndex) {
   return list[index] || list[0];
 }
 
-// 四档：1 需查明 → 2 快递柜 → 3 分段码 → 4 其他（整单取最差件，与 CONTRACT §5 组内四档同序）
+// 四档：1 需查明 → 2 快递柜 → 3 分段码 → 4 其他（D62 组内按本站件计算）
 function tierOfPiece(piece) {
   const item = piece || {};
   if (item.codeStatus === enums.CODE_STATUS.NEED_CODE) {
@@ -87,8 +116,9 @@ function tierOfPiece(piece) {
   return 4;
 }
 
-function worstPieceOf(order) {
-  const list = piecesOf(order);
+// 组内排序锚：取本站件里档位最差的件（同档取首个），排序键=该件码内数字
+function worstOfPieces(pieces) {
+  const list = listOf(pieces);
   let worst = list[0] || pieceOfRaw({}, 0);
   list.forEach((piece) => {
     if (tierOfPiece(piece) < tierOfPiece(worst)) {
@@ -98,42 +128,64 @@ function worstPieceOf(order) {
   return worst;
 }
 
-function tierOf(order) {
-  return tierOfPiece(worstPieceOf(order));
+function tierOfPieces(pieces) {
+  return tierOfPiece(worstOfPieces(pieces));
+}
+
+function routeNumberOfPieces(pieces) {
+  const code = textOf(worstOfPieces(pieces).pickupCode).replace(/[^0-9]/g, '');
+  return code === '' ? Number.MAX_SAFE_INTEGER : Number(code);
 }
 
 function tierTextOf(tier) {
   return TIER_TEXT[tier] || '';
 }
 
-// 同档排序键：取整单最差件的码内数字（无数字排最后）
-function routeNumberOf(order) {
-  const code = textOf(worstPieceOf(order).pickupCode).replace(/[^0-9]/g, '');
-  return code === '' ? Number.MAX_SAFE_INTEGER : Number(code);
-}
-
-// 分组键：首件站点（首个有站点的件），跨站点订单只归一组（UX §4.3）
-function stationKeyOf(order) {
-  const list = piecesOf(order);
-  for (let index = 0; index < list.length; index += 1) {
-    if (list[index].stationId) {
-      return list[index].stationId;
+// D62：按件的站点分区——每件恰好落一个站点组（未识别站点=空串键，由调用方归「站点未知」）
+function stationGroupsOf(order) {
+  const map = {};
+  const keys = [];
+  piecesOf(order).forEach((piece) => {
+    const key = piece.stationId;
+    if (!map[key]) {
+      map[key] = { stationId: key, stationName: piece.stationName, pieces: [] };
+      keys.push(key);
     }
-  }
-  return '';
-}
-
-function primaryStationNameOf(order) {
-  const list = piecesOf(order);
-  for (let index = 0; index < list.length; index += 1) {
-    if (list[index].stationId) {
-      return list[index].stationName;
+    if (!map[key].stationName) {
+      map[key].stationName = piece.stationName;
     }
-  }
-  return textOf(list[0] && list[0].stationName);
+    map[key].pieces.push(piece);
+  });
+  return keys.map((key) => map[key]);
 }
 
-// 站点聚合：去重后的站点 ID（缺 ID 用名称）；≤2 全列，>2 折叠
+function piecesForStationOf(order, stationId) {
+  const groups = stationGroupsOf(order);
+  const target = textOf(stationId);
+  const hit = groups.filter((group) => group.stationId === target)[0];
+  return hit ? hit.pieces : [];
+}
+
+// 「另 N 件在 Pn」：本站组之外的件数 + 站点列表（多站用 / 连接；未识别站给「站点未知」）
+function otherPiecesTextOf(order, stationId) {
+  const target = textOf(stationId);
+  const others = stationGroupsOf(order).filter((group) => group.stationId !== target);
+  let count = 0;
+  const names = [];
+  others.forEach((group) => {
+    count += group.pieces.length;
+    const name = group.stationId || FALLBACK_STATION_TEXT;
+    if (names.indexOf(name) < 0) {
+      names.push(name);
+    }
+  });
+  if (!count) {
+    return '';
+  }
+  return '另 ' + count + ' 件在 ' + names.join(' / ');
+}
+
+// 站点聚合：去重后的站点 ID（缺 ID 用名称）；≤2 全列，>2 折叠（行摘要=整单视角）
 function stationSummaryOf(pieces) {
   const list = listOf(pieces);
   const keys = [];
@@ -182,13 +234,36 @@ function manualEntryTextOf(order) {
   return manualEntryOf(order) ? '无截图·手填' : '';
 }
 
-// 需查明聚合（整单任一需查明）；历史 DTO 的 needCode 兼容兜底
+// 需查明聚合（整单任一需查明，D62 行摘要=整单视角）；历史 DTO 的 needCode 兼容兜底
 function needCodeOf(order) {
   const item = order || {};
   if (item.needCode === true) {
     return true;
   }
   return piecesOf(item).some((piece) => piece.needCode);
+}
+
+// D61 整单取件进度：优先服务端聚合字段（pickedCount/parcelCount/allPicked），夹具/旧 DTO 按件字段兜底
+function pickedFieldsOf(order) {
+  const item = order || {};
+  const pieces = piecesOf(item);
+  const parcelCount = typeof item.parcelCount === 'number' && item.parcelCount > 0
+    ? item.parcelCount
+    : pieces.length;
+  const derived = pieces.filter((piece) => piece.picked).length;
+  const rawCount = typeof item.pickedCount === 'number' && isFinite(item.pickedCount)
+    ? item.pickedCount
+    : derived;
+  const pickedCount = Math.max(0, Math.min(parcelCount, rawCount));
+  const allPicked = typeof item.allPicked === 'boolean'
+    ? item.allPicked
+    : (parcelCount > 0 && pickedCount >= parcelCount);
+  return {
+    pickedCount: pickedCount,
+    parcelCount: parcelCount,
+    allPicked: allPicked,
+    pickedCountText: parcelCount > 1 ? '已取 ' + pickedCount + '/' + parcelCount + ' 件' : ''
+  };
 }
 
 module.exports = {
@@ -198,18 +273,20 @@ module.exports = {
   pieceOf,
   indexTextOf,
   codeTextOf,
+  actionKeysOf,
   tierOfPiece,
-  worstPieceOf,
-  tierOf,
+  tierOfPieces,
+  routeNumberOfPieces,
   tierTextOf,
-  routeNumberOf,
-  stationKeyOf,
-  primaryStationNameOf,
+  stationGroupsOf,
+  piecesForStationOf,
+  otherPiecesTextOf,
   stationSummaryOf,
   countTextOf,
   needCodeCountTextOf,
   reviewTextOf,
   manualEntryOf,
   manualEntryTextOf,
-  needCodeOf
+  needCodeOf,
+  pickedFieldsOf
 };

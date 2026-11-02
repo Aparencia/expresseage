@@ -8,6 +8,7 @@ const orderApi = require('../../../api/modules/order');
 const route = require('../../../config/route');
 const ordersView = require('../parts/orders-view');
 const tickerPatch = require('./parts/ticker-patch');
+const pickupTag = require('./parts/pickup-tag');
 const share = require('../../../utils/share/handlers');
 
 const DETAIL_PAGE = '/pkg-customer/pages/order-detail/index';
@@ -117,10 +118,14 @@ Page({
     if (!reset && this.data.cursor) payload.cursor = this.data.cursor;
     return orderApi.listCustomer(payload).then((data) => {
       const counts = (data && data.counts) || {};
-      const rows = ordersView.visibleRows((data && data.list) || []).map((order) => ordersView.rowView(order, {
-        nowMs: this.nowMs(),
-        config: this.config()
-      }));
+      // D61：部分取件订单行给「已取 n/m 件」标签（判据单源 parts/pickup-tag，只读 DTO 进度字段）
+      const rows = ordersView.visibleRows((data && data.list) || []).map((order) => Object.assign(
+        ordersView.rowView(order, {
+          nowMs: this.nowMs(),
+          config: this.config()
+        }),
+        { pickupTag: pickupTag.tagOf(order) }
+      ));
       const list = reset ? rows : this.data.list.concat(rows);
       this.clearLoadingTimer();
       this.setData({

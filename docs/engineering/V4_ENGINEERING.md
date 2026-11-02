@@ -790,7 +790,7 @@ expressage_college_v4/
 ## 8. 门禁与检查
 ### 8.1 `check.ps1`（收工仪式）
 - `$STEPS` = **4 步**（以 `check.ps1` 的 `$steps` 数组为唯一来源）：`node tools/check.js` → `node tools/check-docs.js --batch $Batch` → `node tools/zero-money-scan.js` → `node tools/selftest.js`；每步除退出码外**必须命中该步汇总行正则**（check.js「通过 N 项；失败 0 项」/ check-docs「check-docs（--batch N）：通过 N 项；失败 0 项」/ 零金额「零金额扫描：0 命中（白名单 N 项）」/ selftest「selftest：运行 N 套；失败 0 套；SKIP 0 套」+「结果：PASS」）。任一步非 0 **或汇总行缺失/不符** ⇒ exit 1，"完成"不成立；全过 ⇒ exit 0 + 粘贴真实输出（"没有汇总输出 = 读数作废"，也禁止用 SKIP/空集把退出码骗成 0）。
-- **判据/套件条数已钉住（TD-085，2026-11-01 审查修复批）**：`check.ps1` 的 `$EXPECTED` 常量声明 `CheckCriteria=36`、`DocCriteria=12`、`SelfTestSuites=36`，与四步汇总行捕获的实际条数逐项比对，不符即 exit 1，并在 FAIL 行写出「期望/实际」；判据列表少一条、check-docs 少一条、selftest 少注册一套都不再能全绿。**故意增删判据/套件必须同批**改 `$EXPECTED` + 本文件 §8.2 条数（当前 36）与 §8.3（当前 12）+ 留「先红后绿」证据（删一条判据 → `check.ps1` exit 1 且 FAIL 行给出期望/实际；还原后 0）。零金额白名单条数是白名单自身长度，随白名单增删联动，不钉常量。
+- **判据/套件条数已钉住（TD-085，2026-11-01 审查修复批；批 24 起 39 条）**：`check.ps1` 的 `$EXPECTED` 常量声明 `CheckCriteria=39`、`DocCriteria=12`、`SelfTestSuites=36`，与四步汇总行捕获的实际条数逐项比对，不符即 exit 1，并在 FAIL 行写出「期望/实际」；判据列表少一条、check-docs 少一条、selftest 少注册一套都不再能全绿。**故意增删判据/套件必须同批**改 `$EXPECTED` + 本文件 §8.2 条数（当前 39）与 §8.3（当前 12）+ 留「先红后绿」证据（删一条判据 → `check.ps1` exit 1 且 FAIL 行给出期望/实际；还原后 0）。零金额白名单条数是白名单自身长度，随白名单增删联动，不钉常量。
 - `check.ps1`/`gate.ps1`/`doctor.ps1` 必须 UTF-8 BOM；被小程序编译的 js/wxml/wxss/json **必须无 BOM**（两向判据都要有，v3 只做了 .ps1 一向）。
 - 设计阶段（批 0）：`node tools/check-docs.js --batch 0` 单跑（豁免"批 1 才建立"的文件，§8.3 #1）+ **人工按 §7.6 词表跑一次零金额扫描并留输出**（工具在批 1 建立，批 0 由人执行）；实施阶段四步全跑，目标总耗时 <5s。
 ### 8.2 `tools/check.js` 判据（v4，逐条）

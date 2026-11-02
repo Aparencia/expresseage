@@ -251,6 +251,10 @@ function splitChunks(groups, size) {
       chunks.push({
         key: group.key + '#' + index,
         title: index === 0 ? group.title : group.title + '（续）',
+        // 待取件阶段（D62）组头需要单/件数与站点键；待送达阶段忽略这些附加键（形状向后兼容）
+        stationId: group.stationId,
+        countText: group.countText,
+        pieceCount: group.pieceCount,
         count: take.length,
         rows: take
       });

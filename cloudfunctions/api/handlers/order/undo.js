@@ -8,6 +8,7 @@ const orderState = require('../../shared/order-state');
 const time = require('../../lib/time');
 const { errors } = require('../../lib/errors');
 const common = require('./_common');
+const pickedState = require('./_picked');
 
 const UNDOABLE_EVENTS = {
   PICKED: { status: enums.ORDER_STATUS.PICKED, clearField: 'pickedAt' },
@@ -46,6 +47,12 @@ module.exports = async function orderUndo(ctx, payload) {
     build(input) {
       const set = {};
       set[input.checked.clearField] = null;
+      // D61：撤销整单取件必须同时清件级 pickedAt/pickedByNo，否则 PICKED→ACCEPTED 后 DTO 仍报「已取 N 件」
+      // （与 unmarkPicked 同口径；旧单无件级字段时按订单状态派生后显式清空）。
+      if (input.order.status === enums.ORDER_STATUS.PICKED) {
+        const parcels = pickedState.materializeOf(input.order, input.nowDate);
+        Object.assign(set, pickedState.patchOf(input.order, pickedState.applyAll(parcels, null, null)));
+      }
       // 撤销送达=回到 PICKED：deliveryNote 属送达步骤的副产物，与 unmarkDelivered 同口径清空，
       // 否则「已取件」状态会残留上一轮送达备注（DTO 会把过期备注当当前值下发）。
       if (input.order.status === enums.ORDER_STATUS.DELIVERED) {

@@ -99,6 +99,9 @@ function plan(key, rows, options) {
     };
   }
   const pieceCount = rowActions.batchPiecesOf(queue).length;
+  // D62：批量仍按订单——选中跨站单时确认框明示作用域=整单全部件
+  const crossStationCount = queue.filter((row) => row.otherPiecesText).length;
+  const baseText = fillAutoCompleteAt(fillCounts(meta.confirmText, queue.length, pieceCount), opts.config);
   return {
     ok: true,
     key,
@@ -108,9 +111,12 @@ function plan(key, rows, options) {
     panel: !!meta.panel,
     queue: queue,
     pieceCount: pieceCount,
+    crossStationCount: crossStationCount,
     skipped: skipped,
     batchActionId: meta.batch ? (opts.batchActionId || '') : '',
-    confirmText: fillAutoCompleteAt(fillCounts(meta.confirmText, queue.length, pieceCount), opts.config)
+    confirmText: crossStationCount
+      ? baseText + '\n其中 ' + crossStationCount + ' 单在其他站点还有件，整单动作将作用于全部件。'
+      : baseText
   };
 }
 

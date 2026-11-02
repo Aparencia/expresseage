@@ -445,6 +445,8 @@ const base = {
     const result = selectionFlow.toggleRow(this.data.groups, event.currentTarget.dataset.orderNo);
     if (!result.ok) {
       this.toastMsg(result.message);
+    } else if (result.hint) {
+      this.toastMsg(result.hint);
     }
     this.applySelection(result.state);
   },
@@ -491,5 +493,7 @@ const base = {
 
 // 维护模式挂钩以「页面方法」形态并入 base（不改 workbench 既有入口合并方式，F21 口径保持）
 Object.assign(base, require('./parts/maintenance-hook'));
+// 件级取件接线（D61）：逐件「已取件/撤销已取」→ itemIndex 写请求；页面只做事件转发
+Object.assign(base, require('./parts/piece-flow'));
 
 Page(Object.assign(base, require('./parts/page-actions')));

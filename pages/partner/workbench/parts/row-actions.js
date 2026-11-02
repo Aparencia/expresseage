@@ -339,12 +339,20 @@ function buildWrite(key, row, values, batchActionId) {
 }
 
 // 单件确认框（只对需要二次确认的动作返回；浮层型动作由浮层自述）
+// D61：多件单的订单级「已取件/撤销已取件」作用于全部件 → 文案按整单件数说真话（不写「1 件」）
 function confirmTextOf(key, row) {
   const def = ACTIONS[key];
   if (!def || !def.confirmText || !row) {
     return '';
   }
-  return def.confirmText.replace('1 ', '1 ');
+  const count = typeof row.parcelCount === 'number' ? row.parcelCount : 1;
+  if (count > 1 && key === 'pick') {
+    return '将本单 ' + count + ' 件一起标记为已取件，顾客会看到「已取件·配送中」。';
+  }
+  if (count > 1 && key === 'undoPick') {
+    return '将本单 ' + count + ' 件一起退回「已接单」，顾客会看到进度回退。';
+  }
+  return def.confirmText;
 }
 
 // 行内补码成功文案（UX §4.4 逐字）

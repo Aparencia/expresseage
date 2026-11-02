@@ -114,7 +114,7 @@
         <view class="small">按状态更新时间倒序</view>
       </view>
       <view wx:else class="row between station-head">
-        <view class="strong">{{group.stationName}}（{{group.count}}）</view>
+        <view class="strong">{{group.stationName}}（{{group.countText || group.count}}）</view>
         <view wx:if="{{selecting}}" class="mini-btn btn btn-ghost" data-station-id="{{group.stationId}}" bindtap="onSelectStation">全选本站</view>
       </view>
 
@@ -131,12 +131,13 @@
         <view class="flex-1 line-main">
           <view class="row line-title">
             <status-pill status="{{row.status}}" />
-            <view class="code-text">{{row.codeText}}</view>
+            <text class="small order-no-text">{{row.orderNo}}</text>
             <!-- D45/M1：跨日未送达行标签（文案单源 parts/day-view.js；当日单/待确认/已完结不显示） -->
             <view wx:if="{{row.delayDaysText}}" class="tag delay-tag">{{row.delayDaysText}}</view>
-            <view wx:if="{{row.lockerText}}" class="small code-locker">{{row.lockerText}}</view>
             <view wx:if="{{row.isGuest}}" class="tag guest-tag">代客单</view>
             <view wx:if="{{row.parcelCountText}}" class="tag parcel-tag">{{row.parcelCountText}}</view>
+            <!-- D61：整单取件进度摘要「已取 n/m 件」（多件单才显示） -->
+            <view wx:if="{{row.pickedSummaryText}}" class="tag picked-summary-tag">{{row.pickedSummaryText}}</view>
             <view wx:if="{{row.stationSummaryText}}" class="small station-summary">{{row.stationSummaryText}}</view>
             <view wx:if="{{row.manualEntryText}}" class="tag manual-tag">{{row.manualEntryText}}</view>
           </view>
@@ -151,6 +152,7 @@
             <view wx:if="{{row.needCodeCountText}}" class="parcel-need-tag">{{row.needCodeCountText}}</view>
             <view wx:if="{{row.reviewText}}" class="review-tag">{{row.reviewText}}</view>
           </view>
+
           <view wx:if="{{!selecting && !readonly}}" class="row row-tools">
             <view
               wx:for="{{row.toolbar.primary}}"
@@ -173,6 +175,41 @@
             <view class="tool-btn tool-detail" data-order-no="{{row.orderNo}}" catchtap="onRowTap">详情</view>
           </view>
           <view wx:if="{{readonly}}" class="line-readonly">只读视角：行工具已隐藏，可查看详情</view>
+
+          <!-- D61/D62：订单摘要行（含工具条）之下，缩进逐件行（单件单不缩进、不显示「第 1 件」）；
+               件行只列本站件，动作只消费服务端 parcel.actions（已取件 / 撤销已取，逐件免二次确认） -->
+          <view class="piece-list {{row.pieceIndent ? 'piece-list--indent' : ''}}">
+            <view
+              wx:for="{{row.pieceRows}}"
+              wx:key="key"
+              wx:for-item="piece"
+              class="piece-row {{piece.picked ? 'piece-row--picked' : ''}}"
+            >
+              <view class="flex-1 piece-main">
+                <view class="row piece-top">
+                  <text wx:if="{{piece.showIndex}}" class="piece-index">{{piece.indexText}}</text>
+                  <text
+                    class="piece-code {{piece.needCode ? 'piece-code--need' : ''}}"
+                    data-code="{{piece.pickupCode}}"
+                    catchtap="onCopyPieceCode"
+                  >{{piece.codeText}}</text>
+                  <text wx:if="{{piece.showStation && piece.stationText}}" class="small piece-station">{{piece.stationText}}</text>
+                  <text wx:if="{{piece.lockerText}}" class="small piece-locker">柜 {{piece.lockerText}}</text>
+                  <text wx:if="{{piece.needCode}}" class="tag piece-need">需查明</text>
+                  <text wx:if="{{piece.picked}}" class="tag piece-picked">{{piece.pickedText}}{{piece.pickedAtText ? ' ' + piece.pickedAtText : ''}}</text>
+                </view>
+              </view>
+              <view
+                wx:if="{{!readonly && piece.action}}"
+                class="mini-btn btn piece-btn {{piece.picked ? 'btn-ghost' : 'btn-primary'}}"
+                data-order-no="{{row.orderNo}}"
+                data-item-index="{{piece.index}}"
+                data-key="{{piece.action.key}}"
+                catchtap="onPieceAction"
+              >{{piece.action.label}}</view>
+            </view>
+            <view wx:if="{{row.otherPiecesText}}" class="small piece-other">{{row.otherPiecesText}}</view>
+          </view>
 
           <view wx:if="{{panel && panel.orderNo === row.orderNo}}" class="panel-card" catchtap="noop">
             <view class="panel-title">{{panel.title}}</view>

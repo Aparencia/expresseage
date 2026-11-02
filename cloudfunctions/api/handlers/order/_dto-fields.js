@@ -6,6 +6,7 @@
 const enums = require('../../shared/enums');
 const mask = require('../../db/dto/mask');
 const store = require('./_store');
+const pickedState = require('./_picked');
 const { recognitionSourceLabel } = require('../../lib/ai/parse');
 
 function textOf(value) {
@@ -17,8 +18,11 @@ function numberOrZero(value) {
 }
 
 // 单件包裹视图（v1.0 parcels[] 的元素，itemIndex=包裹序号；历史单 parcel{} 也走同一归一）
-function buildParcelDto(parcel, index) {
+// D61 件级取件：picked/pickedAt（毫秒，未取=0）+ actions[]（仅 PARTNER 侧，固定契约矩阵）。
+function buildParcelDto(parcel, index, context) {
   const source = parcel && typeof parcel === 'object' ? parcel : {};
+  const order = context && context.order;
+  const picked = order ? pickedState.isPickedOf(order, source) : false;
   const codeStatus = source.codeStatus === enums.CODE_STATUS.NEED_CODE
     ? enums.CODE_STATUS.NEED_CODE
     : enums.CODE_STATUS.OK;
@@ -34,7 +38,10 @@ function buildParcelDto(parcel, index) {
     codeStatusText: enums.CODE_STATUS_TEXT[codeStatus],
     recognitionSource,
     recognitionSourceLabel: recognitionSourceLabel(recognitionSource),
-    confidence: textOf(source.confidence)
+    confidence: textOf(source.confidence),
+    picked,
+    pickedAt: order ? pickedState.pickedAtMsOf(order, source) : 0,
+    actions: order ? pickedState.actionsOf(order, context.side, picked) : []
   };
   if (typeof source.failureId === 'string' && source.failureId) {
     dto.failureHint = true;
@@ -42,8 +49,8 @@ function buildParcelDto(parcel, index) {
   return dto;
 }
 
-function buildParcelDtos(order) {
-  return store.orderParcelsOf(order).map((parcel, index) => buildParcelDto(parcel, index));
+function buildParcelDtos(order, side) {
+  return store.orderParcelsOf(order).map((parcel, index) => buildParcelDto(parcel, index, { order, side }));
 }
 
 // 单张截图可见性（批 5 契约 B）：status=CLEANED 已按隐私策略清理（cleanup 写该张图片 cleanedAt）、

@@ -38,10 +38,12 @@ const ACTION_RULES = {
     from: [STATUS.SUBMITTED], to: STATUS.CANCELLED, event: 'REJECTED', roles: [enums.ROLES.PARTNER], changesStatus: true
   },
   'order.markPicked': {
+    // D61：可带 itemIndex 逐件取件（部分取件不改订单状态，由 handler 显式传 toStatus=fromStatus）
     from: [STATUS.ACCEPTED], to: STATUS.PICKED, event: 'PICKED', roles: [enums.ROLES.PARTNER], changesStatus: true
   },
   'order.unmarkPicked': {
-    from: [STATUS.PICKED], to: STATUS.ACCEPTED, event: 'PICKED_REVERTED', roles: [enums.ROLES.PARTNER], changesStatus: true
+    // D61：PICKED 整单撤销；ACCEPTED 仅允许逐件撤销（handler 校验 itemIndex 与件级状态）
+    from: [STATUS.PICKED, STATUS.ACCEPTED], to: STATUS.ACCEPTED, event: 'PICKED_REVERTED', roles: [enums.ROLES.PARTNER], changesStatus: true
   },
   'order.markDelivered': {
     from: [STATUS.PICKED], to: STATUS.DELIVERED, event: 'DELIVERED', roles: [enums.ROLES.PARTNER], changesStatus: true

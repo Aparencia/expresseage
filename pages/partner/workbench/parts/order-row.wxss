@@ -172,3 +172,98 @@
   font-size: 22rpx;
   color: #999999;
 }
+
+/* D61/D62：件级取件行（缩进 32rpx + 左侧竖线；单件单不缩进、不显示「第 n 件」） */
+.order-no-text {
+  margin: 0 12rpx;
+  color: #999999;
+}
+
+.picked-summary-tag {
+  background: #E8F0FF;
+  color: #2B6DE5;
+}
+
+.piece-list {
+  margin-top: 8rpx;
+}
+
+.piece-list--indent {
+  padding-left: 32rpx;
+  border-left: 4rpx solid #E5E8EC;
+  margin-left: 8rpx;
+}
+
+.piece-row {
+  display: flex;
+  align-items: center;
+  padding: 8rpx 0;
+  min-height: 72rpx;
+}
+
+.piece-row--picked .piece-code {
+  color: #8A8F99;
+  text-decoration: line-through;
+}
+
+.piece-main {
+  min-width: 0;
+}
+
+.piece-top {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.piece-index {
+  font-size: 22rpx;
+  color: #999999;
+  margin-right: 12rpx;
+}
+
+/* 取件码：大字等宽，可点复制 */
+.piece-code {
+  font-family: Menlo, Consolas, monospace;
+  font-size: 34rpx;
+  font-weight: 600;
+  letter-spacing: 2rpx;
+  color: #1F2937;
+  margin-right: 12rpx;
+}
+
+.piece-code--need {
+  color: #8A6D00;
+}
+
+.piece-station {
+  color: #666666;
+  margin-right: 12rpx;
+}
+
+.piece-locker {
+  color: #666666;
+  margin-right: 12rpx;
+}
+
+.piece-need {
+  background: #FFF4CE;
+  color: #8A6D00;
+}
+
+.piece-picked {
+  background: #E8F0FF;
+  color: #2B6DE5;
+}
+
+.piece-btn {
+  min-height: 60rpx;
+  line-height: 60rpx;
+  padding: 0 18rpx;
+  margin-left: 12rpx;
+  flex-shrink: 0;
+}
+
+.piece-other {
+  padding: 4rpx 0 8rpx;
+  color: #8A6D00;
+}

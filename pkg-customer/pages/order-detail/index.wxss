@@ -104,6 +104,37 @@
   margin-bottom: 4rpx;
 }
 
+/* D61 部分取件：摘要「已取 n/m 件」+「全部取完后进入已取件」提示（只读 DTO 进度字段） */
+.pickup-summary {
+  margin-top: 16rpx;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: var(--v4-customer);
+}
+
+.pickup-hint {
+  margin-top: 4rpx;
+  font-size: 22rpx;
+  color: var(--v4-text-3);
+  line-height: 1.5;
+}
+
+/* D61 件级取件（只读）：每件「已取件/待取件 + 取件时间」 */
+.parcel-picked {
+  color: var(--v4-brand);
+  font-weight: 600;
+}
+
+.parcel-waiting {
+  color: var(--v4-text-3);
+}
+
+.parcel-picked-at {
+  margin-left: 12rpx;
+  font-size: 22rpx;
+  color: var(--v4-text-3);
+}
+
 .order-section .line {
   min-height: 72rpx;
 }

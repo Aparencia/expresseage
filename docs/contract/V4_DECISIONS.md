@@ -662,7 +662,7 @@ C中的隐私合规中的C1 见上文
 **真机项**：无。
 
 ### D61 · 件级取件（Q4=B/Q5/Q6；修订 D23 一半）
-**裁决**：`parcels[].pickedAt`（可选 `pickedByNo`）；`order.markPicked`/`order.unmarkPicked` 增可选 `itemIndex`（缺省=全部件，保持整单批量兼容）；新增 `PARCEL_PICKED/PARCEL_PICKED_REVERTED` 事件（payload `itemIndex`）；订单 `PICKED` 由「全部件已取」聚合派生（部分取件订单仍 `ACCEPTED`，DTO 增 `pickedCount/totalCount`）；送达/异常/取消/自动完成仍整单；未送达前可逐件「撤销已取」（不沿用 5 秒撤销条）；顾客详情逐件展示；旧单兼容（`PICKED/DELIVERED/COMPLETED`→全部件已取、`ACCEPTED`→未取，无数据迁移）；兼职端缩进逐件展示，每码独立显示并各有独立「已取件/撤销已取」入口（Q6 文案、逐件免二次确认）。
+**裁决**：`parcels[].pickedAt`（可选 `pickedByNo`）；`order.markPicked`/`order.unmarkPicked` 增可选 `itemIndex`（缺省=全部件，保持整单批量兼容）；新增 `PARCEL_PICKED/PARCEL_PICKED_REVERTED` 事件（payload `itemIndex`）；订单 `PICKED` 由「全部件已取」聚合派生（部分取件订单仍 `ACCEPTED`，DTO 增 `pickedCount/parcelCount/allPicked`，以 CONTRACT §5.1 冻结名为准）；送达/异常/取消/自动完成仍整单；未送达前可逐件「撤销已取」（不沿用 5 秒撤销条）；顾客详情逐件展示；旧单兼容（`PICKED/DELIVERED/COMPLETED`→全部件已取、`ACCEPTED`→未取，无数据迁移）；兼职端缩进逐件展示，每码独立显示并各有独立「已取件/撤销已取」入口（Q6 文案、逐件免二次确认）。
 **被否**：仅本机勾选（换设备丢失、进度不真实）；仅视觉逐件（不满足「独立取件」）。
 **代价/落点**：`shared/{order-state,enums}`、`order/{markPicked,unmarkPicked,_common,_dto,_dto-fields,listPartner}`、工作台/清单/详情页、顾客详情/列表、动作矩阵、判据；CONTRACT §4/§5/§5.1/§5.3、DATA_MODEL §2.5/§8.4、UX 两册、QA。
 **真机项**：多件单逐件取件/撤销/进度（用户）。

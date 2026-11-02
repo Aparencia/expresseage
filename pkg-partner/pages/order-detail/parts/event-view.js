@@ -22,6 +22,9 @@ const EVENT_LABELS = {
   EXCEPTION_RESOLVED: '异常已解除',
   ORDER_CORRECTED: '更正取件信息',
   PARCELS_APPENDED: '并入新包裹',
+  // D61（2026-11-02）：件级取件两种事件——note 里有件号就带上，没有就用通用人话（绝不裸英文上屏）
+  PARCEL_PICKED: '已取走一件',
+  PARCEL_PICKED_REVERTED: '撤销了一件已取件',
   DELETED_BY_CUSTOMER: '顾客删除记录',
   TIMEOUT_CANCELLED: '超时未接单，系统取消',
   AUTO_COMPLETED: '系统自动完成',
@@ -41,10 +44,27 @@ const ACTOR_TEXT = {
   [enums.CANCELLED_BY.ADMIN]: '开发者'
 };
 
+// D61：服务端件级事件 note 形如「第2件」（A 侧约定）或空；有件号就进人话，没有就给通用句（不裸英文）
+function pieceNoOf(note) {
+  const hit = /第\s*(\d+)\s*件/.exec(textOf(note));
+  return hit ? hit[1] : '';
+}
+
+function parcelEventLabelOf(type, note) {
+  const no = pieceNoOf(note);
+  if (type === 'PARCEL_PICKED') {
+    return no ? '已取走第 ' + no + ' 件' : EVENT_LABELS.PARCEL_PICKED;
+  }
+  return no ? '已撤销第 ' + no + ' 件的已取' : EVENT_LABELS.PARCEL_PICKED_REVERTED;
+}
+
 function labelOf(event) {
   const type = textOf(event.type);
-  const base = EVENT_LABELS[type] || type;
   const note = textOf(event.note);
+  if (type === 'PARCEL_PICKED' || type === 'PARCEL_PICKED_REVERTED') {
+    return parcelEventLabelOf(type, note);
+  }
+  const base = EVENT_LABELS[type] || type;
   if (!note || base === note) {
     return base;
   }

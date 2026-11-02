@@ -14,8 +14,11 @@
  * G. reportException/resolveException：fromStatus/OTHER 必填/长度/恢复口径/越权。
  * H. 越权/终态/CLOSED·SUSPENDED 六动作矩阵/isTest 隔离/服务端动作矩阵合法/静态纪律（db.collection、
  *    零金额扫描、事件 requestKey 唯一）。
+ * I. D61 件级取件（批 25-A）：逐件取件聚合（部分不改状态、最后一件转 PICKED）/逐件撤销（PICKED→ACCEPTED
+ *    与部分撤销）/DTO pickedCount/parcelCount/allPicked + 每件 picked/pickedAt/actions 矩阵/旧单派生/
+ *    事件 PARCEL_PICKED/PARCEL_PICKED_REVERTED payload/形态与状态负向闸/整单路径与 undo 件级清理。
  *
- * 夹具/期望值在 ./selftest-order-partner-cases.js；A 段用例表在 ./lib/order-partner-cases.js（三文件都受门禁 #18 行数上限约束）。
+ * 夹具/期望值在 ./selftest-order-partner-cases.js；A/I 段用例表在 ./lib/order-partner-cases.js（三文件都受门禁 #18 行数上限约束）。
  * 纪律：fake DB + 真实 handler/api，不 mock 全局 wx、不连真实网络；先合法基线再反例，样本非空；
  *      EXPECTED_ASSERTIONS 与实际断言数精确相等（少算/多算都判红）。
  * 限流（order.correct 20 次/日/订单等）属 middleware 计数，按 task-68 口径不在本套件测真限流逻辑。
@@ -48,6 +51,14 @@ const {
 async function sectionA(h) {
   h.section('A. order.listPartner：counts 六项/视图/counts 稳定/keyword/翻页/行内 actions/隔离', async (t) => {
     await partnerCases.listPartnerChecks(t);
+  });
+}
+
+// ---------------------------------------------------------------- I. D61 件级取件
+// （I 段用例表同文件外移：件级取件/撤销聚合、DTO pickedCount/parcelCount/allPicked、旧单派生、负向闸）
+async function sectionI(h) {
+  h.section('I. D61 件级取件：逐件取/撤销聚合/DTO 字段/旧单派生/事件 payload/负向闸', async (t) => {
+    await partnerCases.parcelPickChecks(t);
   });
 }
 
@@ -799,6 +810,7 @@ function register(h) {
   sectionF(h);
   sectionG(h);
   sectionH(h);
+  sectionI(h);
 }
 
 module.exports = { register, EXPECTED_ASSERTIONS };

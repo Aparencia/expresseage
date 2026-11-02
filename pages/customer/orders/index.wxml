@@ -37,6 +37,8 @@
     <view wx:for="{{list}}" wx:key="orderNo" class="list-item">
       <view data-order-no="{{item.orderNo}}" bindtap="onOrderTap">
         <order-row order="{{item}}" />
+        <!-- D61 部分取件：行内「已取 n/m 件」标签（只读 DTO 进度字段，标签判据单源 parts/pickup-tag） -->
+        <view class="pickup-tag" wx:if="{{item.pickupTag}}">{{item.pickupTag}}</view>
       </view>
       <button
         class="btn btn-ghost btn-small reorder-btn"

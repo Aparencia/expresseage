@@ -26,7 +26,7 @@ const statusView = require(path.join(ROOT, 'pkg-customer/parts/status-view.js'))
 const createModel = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/model.js'));
 const appointUtil = require(path.join(ROOT, 'shared/appoint.js'));
 
-const EXPECTED_ASSERTIONS = 355; // 354 + 1：D51 送达自动完成提示新口径（该时刻前当天完成/该时刻后下一轮，无旧顺延文案）；同步 `node tools/selftest-state.js` 读数 // 344 + 10：D47 预约 LATEST 枚举/文案/选项/边界/载荷/摘要/指纹/拦截
+const EXPECTED_ASSERTIONS = 361; // 355 + 6：D61 件级取件状态规则（unmarkPicked 起点 PICKED/ACCEPTED、逐件撤销同状态目标、件级事件 2 种登记） // 354 + 1：D51 送达自动完成提示新口径（该时刻前当天完成/该时刻后下一轮，无旧顺延文案）；同步 `node tools/selftest-state.js` 读数 // 344 + 10：D47 预约 LATEST 枚举/文案/选项/边界/载荷/摘要/指纹/拦截
 
 const STATUS = state.STATUS;
 const ALL_ROLES = ['CUSTOMER', 'PARTNER', 'SYSTEM', 'ADMIN'];
@@ -95,10 +95,10 @@ function sectionActionRules(h) {
       && rules[a].roles.every((role) => ALL_ROLES.indexOf(role) !== -1)), '§5.1 每个动作角色非空且合法');
     t.check(actionNames.filter((a) => a !== 'order.undo')
       .every((a) => enums.ORDER_EVENTS.indexOf(rules[a].event) !== -1),
-    '§5.1 事件类型都在 16 种枚举内（undo 事件按 UNDO_TARGETS 动态解析）');
+    '§5.1 事件类型都在 19 种枚举内（undo 事件按 UNDO_TARGETS 动态解析）');
     t.check(Object.keys(state.UNDO_TARGETS).every(
       (from) => enums.ORDER_EVENTS.indexOf(state.UNDO_TARGETS[from].event) !== -1),
-    '§5.1 undo 实际落库事件在 16 种枚举内');
+    '§5.1 undo 实际落库事件在 19 种枚举内');
     t.eq(enums.ORDER_EVENTS.length, enums.ORDER_EVENT_COUNT, '§5.1 事件枚举条数与登记一致');
 
     t.eq(rules['order.accept'].roles, ['PARTNER'], '§5.1 接单仅兼职');
@@ -117,6 +117,20 @@ function sectionActionRules(h) {
     t.check(rules['order.undo'].changesStatus === true, '§5.1 undo 会改状态');
     t.check(['order.markPicked', 'order.markDelivered'].every(
       (a) => !!state.UNDO_TARGETS[state.nextStatus(a, rules[a].from[0])]), '§5.1 undo 目标覆盖两类动作');
+
+    // D61 件级取件（CONTRACT §5.1）：markPicked 仍仅 ACCEPTED 起始（逐件聚合）；unmarkPicked 起点
+    // 增 ACCEPTED（仅逐件，handler 再校验 itemIndex/件级状态）；逐件撤销目标=同状态（statusUpdatedAt 仍更新）。
+    t.eq(rules['order.unmarkPicked'].from.slice().sort(), ['ACCEPTED', 'PICKED'],
+      '§5.1/D61 unmarkPicked 起点 = PICKED（整单）+ ACCEPTED（逐件）');
+    t.check(state.canAct('order.unmarkPicked', STATUS.PICKED, 'PARTNER'), '§5.1/D61 已取件可整单撤销已取件');
+    t.check(state.canAct('order.unmarkPicked', STATUS.ACCEPTED, 'PARTNER'),
+      '§5.1/D61 已接单可逐件撤销已取件（件级起点）');
+    t.check(!state.canAct('order.unmarkPicked', STATUS.SUBMITTED, 'PARTNER'),
+      '§5.1/D61 待接单不可撤销已取件');
+    t.eq(state.nextStatus('order.unmarkPicked', STATUS.ACCEPTED), STATUS.ACCEPTED,
+      '§5.1/D61 逐件撤销目标=同状态 ACCEPTED（状态不变但 statusUpdatedAt 仍更新）');
+    t.check(['PARCEL_PICKED', 'PARCEL_PICKED_REVERTED'].every((type) => enums.ORDER_EVENTS.indexOf(type) >= 0)
+      && enums.ORDER_EVENT_COUNT === 19, '§5.1/D61 件级事件 2 种已登记且事件总数=19');
 
     t.check(state.canAct('order.accept', STATUS.SUBMITTED, 'PARTNER'), '§5.1 兼职可接待接单');
     t.check(!state.canAct('order.accept', STATUS.SUBMITTED, 'CUSTOMER'), '§5.1 顾客不可接单');

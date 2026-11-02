@@ -31,7 +31,7 @@ function buildView(order, events, options) {
   const nowMs = nowMsOf(opts);
   // D43：送达文案按公开配置 config.autoCompleteAt（调用方注入 store 里的 configPublic；缺则纯件回退出厂默认）
   const config = opts.config || null;
-  const detail = orderView.buildDetail(item, nowMs);
+  const detail = orderView.buildDetail(item, nowMs, { readonly: readonly });
   const actions = hideBlockedActions(item, actionsPart.buildVisibleActions(item, { readonly: readonly }));
   const voucher = voucherPart.buildVoucher(item, events);
   // 只读视角不出现撤销条（UX §4.7/§6.3：写操作全置灰/隐藏）

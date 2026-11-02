@@ -4,12 +4,32 @@
 'use strict';
 
 const orderApi = require('../../../../api/modules/order');
+const client = require('../../../../api/client');
+const pieceActions = require('../../../../pages/partner/workbench/parts/piece-actions');
 const correctPanel = require('./correct-panel');
 const deliveryPanel = require('./delivery-panel');
 const exceptionPanel = require('./exception-panel');
 const reasonPanel = require('./reason-panel');
 
 module.exports = {
+  // ---------- 件级取件（D61）：每件独立「已取件/撤销已取」，免二次确认；只消费服务端 parcel.actions ----------
+  onPieceAction(event) {
+    const dataset = (event && event.currentTarget && event.currentTarget.dataset) || {};
+    const order = this.data.order || {};
+    const index = Number(dataset.itemIndex);
+    const parcels = Array.isArray(order.parcels) ? order.parcels : [];
+    const piece = parcels.filter((item) => item.index === (isFinite(index) ? index : 0))[0];
+    if (!piece) {
+      return;
+    }
+    const write = pieceActions.writeOf(String(dataset.key || ''), piece, order.orderNo, order.version,
+      client.createRequestId());
+    if (!write) {
+      return;
+    }
+    this.submitWrite(() => orderApi[write.method](write.payload, write.opts),
+      pieceActions.toastOf(write.key, piece));
+  },
   // ---------- 补码/改站点面板（v1.0 一单多包裹：逐件 itemIndex 纠正，订单级动作不变） ----------
   openCorrectPanel(itemIndex) {
     const panel = this.data.correctPanel || {};

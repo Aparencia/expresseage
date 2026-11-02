@@ -3,8 +3,13 @@
 // 边界：页面方法（与 index.js 合并为 Page 配置）；不判断状态机、不直连 wx 之外的服务端动作。
 'use strict';
 
+const orderApi = require('../../../../api/modules/order');
+const client = require('../../../../api/client');
 const pickView = require('./pick-view');
 const view = require('./view-model');
+const pieceActions = require('../../../../pages/partner/workbench/parts/piece-actions');
+
+const READONLY_COPY = '开发者只读视角不能操作';
 
 module.exports = {
   // ---------- 待取件：加载结果落状态（分页拼接 → 站点分组 → ≤20 行分片） ----------
@@ -51,6 +56,47 @@ module.exports = {
       copyLoading: false
     });
     this.refresh();
+  },
+
+  // ---------- 待取件：件级取件/撤销（D61，免二次确认；只消费服务端 parcel.actions） ----------
+  onPieceAction(event) {
+    const dataset = (event && event.currentTarget && event.currentTarget.dataset) || {};
+    const orderNo = String(dataset.orderNo || '');
+    const itemIndex = Number(dataset.itemIndex);
+    if (this.data.readonly) {
+      this.toastMsg(READONLY_COPY);
+      return;
+    }
+    if (this.data.tab !== pickView.TAB_PICK || this._pieceBusy || this._unloaded) {
+      return;
+    }
+    const hit = pickView.findPiece(this._pickGroups, orderNo, isFinite(itemIndex) ? itemIndex : 0);
+    const order = this.orderOf(orderNo);
+    if (!hit || !order) {
+      this.toastMsg('订单已不在当前清单，刷新后再看');
+      return;
+    }
+    const write = pieceActions.writeOf(String(dataset.key || ''), hit.piece, orderNo, order.version,
+      client.createRequestId());
+    if (!write) {
+      return;
+    }
+    this._pieceBusy = true;
+    orderApi[write.method](write.payload, write.opts).then(() => {
+      this._pieceBusy = false;
+      if (this._unloaded) {
+        return;
+      }
+      this.toastMsg(this.writeHint(pieceActions.toastOf(write.key, hit.piece)));
+      this.refresh();
+    }).catch((err) => {
+      this._pieceBusy = false;
+      if (this._unloaded) {
+        return;
+      }
+      this.toastMsg((err && err.message) || '操作没成功，请刷新后重试');
+      this.refresh();
+    });
   },
 
   // ---------- 复制（待取件）：单行 / 整组 / 全部；全部先自动拉全剩余分页，失败不复制半量 ----------
@@ -137,13 +183,18 @@ module.exports = {
     });
   },
 
-  // 行/组复制定位：WXML 传行首订单号（组头按钮取首行号），在已加载分组里找命中行与所在站组
+  // 行/组复制定位：WXML 传行首订单号 + 所在站点组 id（D62 跨站单在多个站组出现，必须按组定位），
+  // 在已加载分组里找命中行与所在站组
   findPickHit(event) {
     const current = event && event.currentTarget ? event.currentTarget : {};
     const dataset = current.dataset || {};
     const orderNo = String(dataset.orderNo || '');
+    const stationId = dataset.stationId === undefined ? null : String(dataset.stationId);
     const groups = Array.isArray(this._pickGroups) ? this._pickGroups : [];
     for (let g = 0; g < groups.length; g += 1) {
+      if (stationId !== null && groups[g].stationId !== stationId) {
+        continue;
+      }
       const rows = groups[g].rows || [];
       for (let r = 0; r < rows.length; r += 1) {
         if (rows[r].orderNo === orderNo) {

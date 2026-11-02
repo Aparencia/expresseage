@@ -1,16 +1,16 @@
 // pkg-partner/pages/pick-list/parts/pick-view.js · 「待取件」阶段纯件（站点分组/行/复制文案/汇总；零 wx）
-// 口径：CONTRACT §13-D46 修订（批 20：取件清单双阶段）、UX_PARTNER §3.11；数据源 order.listPartner
-//       工作台视图 + 已接单状态（现成动作、零服务端改动）；按取件站点 P1~P8 分组（站点表唯一源 shared/stations），
-//       组内四档动线排序（需查明 → 快递柜 → 分段码 → 其他，复用工作台 parcel-view 纯件）；
-//       分页/分片 ≤20 行；复制文案含站点/取件码/运单尾号/柜号/宿舍锚（兼职本人核对用），
-//       不含顾客称呼、订单号、顾客编号、手机尾号、头像等其余 L3。
-// 纪律：本文件零 wx、零七状态字面量（状态只经 shared/enums 取值）；页面只消费这里产出的稳定字段。
+// 口径：CONTRACT §5/§5.1（D61 件级取件）、UX_PARTNER §3.11/§4.3（D62：按**件的站点**分组——一单在每个
+//       件站点组各出现一次、行内只列本站件 + 「另 N 件在 Pn」、组内四档按本站件算；待取件阶段每件独立
+//       「已取件/撤销已取」并显示已取状态；已全取的订单因服务端状态变 PICKED 自动离开本阶段）。
+//       复制文案只含本站件（站点/码/尾号/柜号/宿舍锚），不含称呼/订单号/顾客编号/手机尾号。
+// 纪律：本文件零 wx、零七状态字面量（状态只经 shared/enums 取值）；动作只消费服务端 parcel.actions。
 'use strict';
 
 const enums = require('../../../../shared/enums');
 const stations = require('../../../../shared/stations');
 const roomTag = require('../../../../utils/room-tag');
 const parcelView = require('../../../../pages/partner/workbench/parts/parcel-view');
+const pieceActions = require('../../../../pages/partner/workbench/parts/piece-actions');
 
 const TAB_PICK = 'pickup';
 const TAB_DELIVER = 'deliver';
@@ -26,6 +26,10 @@ const UNKNOWN_STATION_RANK = 999;
 
 function textOf(value) {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function listOf(value) {
+  return Array.isArray(value) ? value : [];
 }
 
 function tabOf(value) {
@@ -71,7 +75,7 @@ function anchorTextOf(order) {
   return roomTag.formatDormTag(dormKey, tag) || dormKey;
 }
 
-// 单件视图：取件码/运单尾号 + 柜号；需查明件给「需查明」占位（不显示假码）；跨站点件带站点前缀
+// 单件视图（D61）：码/尾号 + 柜号 + 需查明占位 + 已取状态 + 件动作（只消费服务端 parcel.actions）
 function pieceViewOf(piece, groupStationId) {
   const item = piece || {};
   const stationId = textOf(item.stationId);
@@ -83,31 +87,46 @@ function pieceViewOf(piece, groupStationId) {
   return {
     key: String(typeof item.index === 'number' ? item.index : 0) + '#' + stationId,
     index: typeof item.index === 'number' ? item.index : 0,
+    indexText: textOf(item.indexText) || '第 1 件',
     cross: cross,
+    showStation: cross,
     stationId: stationId,
     stationName: stationName,
     needCode: item.needCode === true,
+    lockerNo: textOf(item.lockerNo),
+    pickupCode: textOf(item.pickupCode),
+    codeStatus: textOf(item.codeStatus),
+    picked: item.picked === true,
+    pickedText: item.picked === true ? '已取' : '待取',
+    pickedAtText: textOf(item.pickedAtText),
+    codeText: codeText,
     text: text,
-    copyText: cross && prefix ? prefix + ' ' + text : text
+    copyText: cross && prefix ? prefix + ' ' + text : text,
+    action: pieceActions.viewOf(item, false)
   };
 }
 
-// 单行（一单）：宿舍锚 + 每件（码/尾号 · 柜号）；跨站点件在件行内带站点，不缺落点
-function rowOf(order, stationId, stationTitle) {
-  const pieces = parcelView.piecesOf(order).map((piece) => pieceViewOf(piece, stationId));
+// 单行（一单）：宿舍锚 + 本站件（码/尾号 · 柜号）+ 已取进度 + 「另 N 件在 Pn」
+function rowOf(order, station) {
+  const stationId = textOf(station.stationId);
+  const rawPieces = parcelView.piecesForStationOf(order, stationId);
+  const pieces = rawPieces.map((piece) => pieceViewOf(piece, stationId));
   const parcelCount = pieces.length;
+  const picked = parcelView.pickedFieldsOf(order);
   return {
     key: textOf(order.orderNo),
     orderNo: textOf(order.orderNo),
     stationId: stationId,
-    stationTitle: stationTitle,
+    stationTitle: textOf(station.title),
     anchorText: anchorTextOf(order),
     parcelCount: parcelCount,
     parcelCountText: parcelCount > 1 ? '共 ' + parcelCount + ' 件' : '1 件',
     needCode: pieces.some((piece) => piece.needCode),
+    pickedCountText: picked.pickedCountText,
+    otherPiecesText: parcelView.otherPiecesTextOf(order, stationId),
     pieces: pieces,
-    tier: parcelView.tierOf(order),
-    routeNumber: parcelView.routeNumberOf(order)
+    tier: parcelView.tierOfPieces(rawPieces),
+    routeNumber: parcelView.routeNumberOfPieces(rawPieces)
   };
 }
 
@@ -135,7 +154,7 @@ function stationRankOf(stationId) {
   return UNKNOWN_STATION_RANK;
 }
 
-// 组内序：四档动线（需查明→快递柜→分段码→其他）→ 码内数字升序 → 订单号稳定序
+// 组内序：四档动线（需查明→快递柜→分段码→其他）→ 码内数字升序 → 订单号稳定序（D62 按本站件算）
 function compareRows(left, right) {
   if (left.tier !== right.tier) {
     return left.tier - right.tier;
@@ -160,25 +179,26 @@ function compareGroups(left, right) {
   return left.key < right.key ? -1 : 1;
 }
 
-// 订单列表 → 站点分组（首件站点定组，跨站点单只归一组、件行内带站点；D46 同工作台口径）
+// 订单列表 → 件站点分组（D62）：一单在每个件站点组各出现一次，行内只列本站件
 function buildGroups(orders) {
-  const list = Array.isArray(orders) ? orders : [];
+  const list = listOf(orders);
   const map = {};
   const keys = [];
   list.forEach((order) => {
     if (!order || !textOf(order.orderNo)) {
       return;
     }
-    const stationId = parcelView.stationKeyOf(order);
-    const key = stationId || UNKNOWN_GROUP_KEY;
-    if (!map[key]) {
-      map[key] = { stationId: stationId, stationName: '', orders: [] };
-      keys.push(key);
-    }
-    if (!map[key].stationName) {
-      map[key].stationName = parcelView.primaryStationNameOf(order);
-    }
-    map[key].orders.push(order);
+    parcelView.stationGroupsOf(order).forEach((station) => {
+      const key = station.stationId || UNKNOWN_GROUP_KEY;
+      if (!map[key]) {
+        map[key] = { stationId: station.stationId, stationName: '', orders: [] };
+        keys.push(key);
+      }
+      if (!map[key].stationName) {
+        map[key].stationName = station.stationName;
+      }
+      map[key].orders.push(order);
+    });
   });
   return keys
     .map((key) => groupOf(key, map[key]))
@@ -187,13 +207,15 @@ function buildGroups(orders) {
 
 function groupOf(key, bucket) {
   const title = stationTitleOf(bucket.stationId, bucket.stationName);
+  const station = { stationId: bucket.stationId, title: title };
   const rows = bucket.orders
-    .map((order) => rowOf(order, bucket.stationId, title))
+    .map((order) => rowOf(order, station))
     .sort(compareRows);
   let pieceCount = 0;
   rows.forEach((row) => {
     pieceCount += row.parcelCount;
   });
+  const count = rows.length;
   return {
     key: key,
     stationId: bucket.stationId,
@@ -201,21 +223,28 @@ function groupOf(key, bucket) {
     unknown: key === UNKNOWN_GROUP_KEY,
     rank: stationRankOf(bucket.stationId),
     title: title,
-    count: rows.length,
+    count: count,
     pieceCount: pieceCount,
+    countText: count + ' 单' + (pieceCount !== count ? ' · ' + pieceCount + ' 件' : ''),
     rows: rows
   };
 }
 
-// 汇总：总单数 + 总件数 + 覆盖站数（文案在纯件，页面不拼业务判据）
+// 汇总：按订单去重（D62 跨站单在多组出现，不能重复计单）；件数按每件只落一组累加
 function summaryOf(groups) {
   const list = Array.isArray(groups) ? groups : [];
+  const orderSeen = {};
   let total = 0;
   let pieceTotal = 0;
   const stationKeys = {};
   list.forEach((group) => {
-    total += Number(group && group.count) || 0;
     pieceTotal += Number(group && group.pieceCount) || 0;
+    (group && group.rows ? group.rows : []).forEach((row) => {
+      if (row.orderNo && !orderSeen[row.orderNo]) {
+        orderSeen[row.orderNo] = true;
+        total += 1;
+      }
+    });
     if (group && !group.unknown && group.count) {
       stationKeys[group.key] = true;
     }
@@ -243,13 +272,16 @@ function summaryLineOf(summary, nextCursor) {
   };
 }
 
-// 行文案（组/全部复制共用一行式）：宿舍锚 + 每件（码/尾号 · 柜号，跨站件带站点）
+// 行文案（组/全部复制共用一行式）：宿舍锚 + 本站件（码/尾号 · 柜号；已取件标注）
 function rowLineOf(row) {
   const anchor = row.anchorText || '宿舍待同步';
-  return anchor + ' ' + row.pieces.map((piece) => piece.copyText).join(' / ');
+  const pieces = (Array.isArray(row.pieces) ? row.pieces : []).map((piece) => (
+    row.pickedCountText && piece.picked ? piece.copyText + '（已取）' : piece.copyText
+  ));
+  return anchor + ' ' + pieces.join(' / ');
 }
 
-// 单行复制（这一单）：站点 · 宿舍锚 + 每件一行（跨站件行首带站点）
+// 单行复制（这一单）：站点 · 宿舍锚 + 本站件一行
 function rowCopyText(row) {
   if (!row || !Array.isArray(row.pieces) || !row.pieces.length) {
     return '';
@@ -257,7 +289,7 @@ function rowCopyText(row) {
   const head = (row.stationTitle || '站点待同步') + ' · ' + (row.anchorText || '宿舍待同步')
     + (row.parcelCount > 1 ? '（' + row.parcelCount + ' 件）' : '');
   const lines = [head];
-  row.pieces.forEach((piece) => lines.push(piece.copyText));
+  row.pieces.forEach((piece) => lines.push(piece.picked ? piece.copyText + '（已取）' : piece.copyText));
   return lines.join('\n');
 }
 
@@ -309,6 +341,25 @@ function copyPlanOf(groups, nextCursor, pagesLoaded) {
   return { ok: true, needMore: false, capped: false, text: text, message: '' };
 }
 
+// 件动作定位（D61）：返回所属站点组/行/件视图（写请求只需 orderNo/itemIndex/version）
+function findPiece(groups, orderNo, itemIndex) {
+  const list = Array.isArray(groups) ? groups : [];
+  for (let g = 0; g < list.length; g += 1) {
+    const rows = list[g].rows || [];
+    for (let r = 0; r < rows.length; r += 1) {
+      const row = rows[r];
+      if (row.orderNo !== orderNo) {
+        continue;
+      }
+      const piece = (row.pieces || []).filter((item) => item.index === itemIndex)[0];
+      if (piece) {
+        return { group: list[g], row: row, piece: piece };
+      }
+    }
+  }
+  return null;
+}
+
 module.exports = {
   TAB_PICK: TAB_PICK,
   TAB_DELIVER: TAB_DELIVER,
@@ -323,5 +374,6 @@ module.exports = {
   rowCopyText: rowCopyText,
   groupCopyText: groupCopyText,
   allCopyText: allCopyText,
-  copyPlanOf: copyPlanOf
+  copyPlanOf: copyPlanOf,
+  findPiece: findPiece
 };

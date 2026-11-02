@@ -48,8 +48,8 @@
         <view class="row between floor-head">
           <view class="strong floor-title">{{chunk.title}}</view>
           <view class="row">
-            <view class="small">{{chunk.count}} 单</view>
-            <view class="mini-btn btn btn-ghost copy-group-btn" data-order-no="{{chunk.rows[0].orderNo}}" bindtap="onCopyGroupPick">复制本组</view>
+            <view class="small">{{chunk.countText || chunk.count + ' 单'}}</view>
+            <view class="mini-btn btn btn-ghost copy-group-btn" data-order-no="{{chunk.rows[0].orderNo}}" data-station-id="{{chunk.stationId}}" bindtap="onCopyGroupPick">复制本组</view>
           </view>
         </view>
         <view
@@ -64,13 +64,27 @@
             <view class="row line-top">
               <view class="strong room-text">{{row.anchorText || '宿舍待同步'}}</view>
               <view wx:if="{{row.parcelCount > 1}}" class="small parcel-count">{{row.parcelCountText}}</view>
+              <!-- D61：整单取件进度（多件单才显示） -->
+              <view wx:if="{{row.pickedCountText}}" class="tag picked-count-tag">{{row.pickedCountText}}</view>
               <view wx:if="{{row.needCode}}" class="tag room-tag">需查明</view>
             </view>
-            <view wx:for="{{row.pieces}}" wx:key="key" wx:for-item="piece" class="small piece-line">
-              <text wx:if="{{piece.cross}}" class="piece-station">{{piece.stationId || piece.stationName}}</text>{{piece.text}}
+            <!-- D61/D62：行内只列本站件，每件显示已取状态并给独立「已取件/撤销已取」按钮 -->
+            <view wx:for="{{row.pieces}}" wx:key="key" wx:for-item="piece" class="row piece-line piece-line--pick">
+              <text wx:if="{{piece.showStation}}" class="piece-station">{{piece.stationId || piece.stationName}}</text>
+              <text class="piece-text {{piece.picked ? 'piece-text--picked' : ''}}">{{piece.text}}</text>
+              <text wx:if="{{piece.picked}}" class="tag piece-picked">{{piece.pickedText}}{{piece.pickedAtText ? ' ' + piece.pickedAtText : ''}}</text>
+              <view
+                wx:if="{{!readonly && piece.action}}"
+                class="mini-btn btn piece-btn {{piece.picked ? 'btn-ghost' : 'btn-primary'}}"
+                data-order-no="{{row.orderNo}}"
+                data-item-index="{{piece.index}}"
+                data-key="{{piece.action.key}}"
+                catchtap="onPieceAction"
+              >{{piece.action.label}}</view>
             </view>
+            <view wx:if="{{row.otherPiecesText}}" class="small piece-other">{{row.otherPiecesText}}</view>
           </view>
-          <view class="mini-btn btn btn-ghost copy-row-btn" data-order-no="{{row.orderNo}}" catchtap="onCopyRowPick">复制</view>
+          <view class="mini-btn btn btn-ghost copy-row-btn" data-order-no="{{row.orderNo}}" data-station-id="{{row.stationId}}" catchtap="onCopyRowPick">复制</view>
         </view>
       </view>
     </block>

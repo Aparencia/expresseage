@@ -43,6 +43,18 @@
   display: flex;
 }
 
+/* D61 部分取件：行内「已取 n/m 件」小标签（只读展示，不参与点击热区以外的判据） */
+.pickup-tag {
+  display: inline-block;
+  margin: 0 0 16rpx;
+  padding: 4rpx 16rpx;
+  border-radius: 999rpx;
+  background: #EAF4EF;
+  color: var(--v4-brand);
+  font-size: 22rpx;
+  line-height: 1.6;
+}
+
 .btn-small {
   min-height: 64rpx;
   font-size: 26rpx;

@@ -6,9 +6,29 @@
 const enums = require('../../../../shared/enums');
 const zones = require('../../../../shared/zones');
 const appointUtil = require('../../../../shared/appoint');
+const state = require('../../../../shared/order-state');
+const format = require('../../../parts/format');
 
 function textOf(value) {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function countOf(value) {
+  return typeof value === 'number' && isFinite(value) ? Math.floor(value) : null;
+}
+
+// D61 件级取件顾客可见的订单状态集（UX_CUSTOMER §3.8）：已进入履约的订单才展示每件「已取件/待取件」
+// 与「已取 n/m 件」摘要；SUBMITTED（兼职还没接，逐件「待取件」是噪音）与 CANCELLED（终态已无履约意义）不展示。
+const PICKUP_VISIBLE_STATUSES = [
+  state.STATUS.ACCEPTED,
+  state.STATUS.PICKED,
+  state.STATUS.DELIVERED,
+  state.STATUS.COMPLETED,
+  state.STATUS.EXCEPTION
+];
+
+function pickupVisible(status) {
+  return PICKUP_VISIBLE_STATUSES.indexOf(status) !== -1;
 }
 
 function parcelsOf(order) {
@@ -33,9 +53,23 @@ function codeTextOf(parcel) {
   return '—';
 }
 
-/** 多包裹行：每件站点/取件码/柜号/尾号 + 缺码提示（服务端 parcels[] 顺序即提交顺序） */
+// D61 件级取件：每件只读 DTO 的 picked/pickedAt（旧单由服务端按订单状态派生，客户端不自行推导、不设操作按钮）
+function pickStateOf(parcel) {
+  const value = parcel || {};
+  const picked = value.picked === true;
+  return {
+    hasPickState: typeof value.picked === 'boolean',
+    picked: picked,
+    pickedText: picked ? '已取件' : '待取件',
+    pickedAtText: picked ? format.formatDateTime(value.pickedAt) : ''
+  };
+}
+
+/** 多包裹行：每件站点/取件码/柜号/尾号 + 缺码提示 + 件级取件状态/时间（服务端 parcels[] 顺序即提交顺序） */
 function parcelsView(order) {
+  const visible = pickupVisible(order && order.status);
   return parcelsOf(order).map(function map(parcel, index) {
+    const pick = pickStateOf(parcel);
     return {
       no: index + 1,
       stationName: textOf(parcel.stationName) || '未识别',
@@ -44,9 +78,38 @@ function parcelsView(order) {
       lockerNo: textOf(parcel.lockerNo),
       trackingTail: textOf(parcel.trackingTail),
       needCode: parcel.codeStatus === enums.CODE_STATUS.NEED_CODE,
+      // 展示条件先收敛到状态集：SUBMITTED/CANCELLED 不出件级「已取件/待取件」行
+      hasPickState: visible && pick.hasPickState,
+      picked: pick.picked,
+      pickedText: pick.pickedText,
+      pickedAtText: pick.pickedAtText,
       count: parcelsOf(order).length
     };
   });
+}
+
+/**
+ * D61 部分取件进度（订单摘要/进度区）：只读 DTO pickedCount/parcelCount/allPicked，不读件级明细也不推导动作。
+ * 0 件已取 / 全部取完不显示 n/m（与订单状态「已取件」重复）；状态集同件级状态行（§3.8）；
+ * 「全部取完后进入已取件」提示只在订单仍已接单时给。
+ */
+function pickupView(order) {
+  const item = order || {};
+  const parcelCount = countOf(item.parcelCount);
+  const pickedCount = countOf(item.pickedCount);
+  const partial = pickupVisible(item.status)
+    && parcelCount !== null && pickedCount !== null
+    && pickedCount > 0 && pickedCount < parcelCount && item.allPicked !== true;
+  const summaryText = partial ? '已取 ' + pickedCount + '/' + parcelCount + ' 件' : '';
+  return {
+    pickedCount: pickedCount,
+    parcelCount: parcelCount,
+    allPicked: item.allPicked === true,
+    summaryText: summaryText,
+    partialHint: partial && item.status === state.STATUS.ACCEPTED
+      ? summaryText + '，全部取完后进入已取件'
+      : ''
+  };
 }
 
 function addressTextOf(address) {
@@ -169,15 +232,18 @@ function appointView(order, nowMs) {
   };
 }
 
-/** 页面可直接 Object.assign 的扩展字段（含 image，覆盖旧单图 imageView） */
+/** 页面可直接 Object.assign 的扩展字段（含 image，覆盖旧单图 imageView；D61 部分取件进度） */
 function pageExtras(order, config, nowMs) {
   const parcels = parcelsView(order);
   const delivery = deliveryView(order);
   const service = serviceView(order, config);
   const appoint = appointView(order, nowMs);
+  const pickup = pickupView(order);
   return {
     parcels: parcels,
     parcelCount: parcels.length,
+    pickupSummary: pickup.summaryText,
+    pickupPartialHint: pickup.partialHint,
     pickupCodeText: parcels.length === 1 ? parcels[0].codeText : '',
     deliveryText: delivery.text,
     deliveryRecipient: delivery.recipientName,

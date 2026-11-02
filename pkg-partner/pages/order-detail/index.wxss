@@ -215,3 +215,28 @@
 .appoint-overdue {
   color: var(--v4-danger, #E54545);
 }
+
+/* D61：逐件已取状态与独立按钮（已取件 / 撤销已取） */
+.picked-summary-tag {
+  background: #E8F0FF;
+  color: #2B6DE5;
+}
+
+.tag-picked {
+  background: #E8F0FF;
+  color: #2B6DE5;
+}
+
+.tag-pending {
+  background: #F0F2F5;
+  color: #666666;
+}
+
+.parcel-ops {
+  flex-wrap: wrap;
+  margin-top: 8rpx;
+}
+
+.piece-action-btn {
+  margin-right: 16rpx;
+}
