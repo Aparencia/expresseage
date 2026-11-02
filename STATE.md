@@ -5,7 +5,7 @@
 > 更新时机：每批开工/收口、用户裁决变化、风险新增或关闭、HEAD 变化需回读。
 > 本文只记**状态、待办与下一步**，不重复设计口径（口径看 CONTRACT，工程规则看 ENGINEERING，接口看 ARCHITECTURE）。
 
-**快照时间：2026-11-03（HEAD `82c397c` 批 23 收口的前驱 + 批 24 工作树已收口，本批提交哈希见 §19.5）：check.js 39/39 条、check-docs 12/12 条、selftest 36 套 0 失败、零金额 0 命中（白名单 108 项）；`gate.ps1 -Anchor 82c397c` 红 0/黄 0（108 件/体量 1963≤3200×1.5）；批 16~23 内容见 §2）
+**快照时间：2026-11-03（HEAD `1e6cfcb` 批 24 用户 11 条新需求第一批 D64~D67 工程侧收口；本批证据提交见 §19.5）：check.js 39/39 条、check-docs 12/12 条、selftest 36 套 0 失败、零金额 0 命中（白名单 108 项）；`gate.ps1 -Anchor 82c397c` 红 0/黄 0（104 件/体量 2651≤3200×1.5）；批 16~23 内容见 §2）
 > 临时总体说明（全局汇总，非状态源）：[`docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md`](docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md)（版本与取数快照由 Lead 统一维护；状态仍以本文件为准、口径以 CONTRACT 为准）。
 
 ## 1. 一句话状态
@@ -1115,12 +1115,12 @@ $ node tools/zero-money-scan.js
 零金额扫描：0 命中（白名单 108 项）
 
 $ powershell -File gate.ps1 -Anchor 82c397c -ScopeFiles "app.json,app.wxss,check.ps1,CHANGELOG.md,STATE.md,custom-tab-bar/,components/,assets/,pages/,pkg-customer/,pkg-partner/,pkg-admin/,cloudfunctions/,tools/,docs/" -Estimate 3200
-[PASS] 锚点可解析：82c397c
-[PASS] 变更集 108 件（锚点..HEAD + 工作区）
-[PASS] 范围前缀匹配（15 个前缀，108 件变更）
+[PASS] 锚点可解析：82c397c（HEAD=1e6cfcb）
+[PASS] 变更集 104 件（锚点..HEAD + 工作区）
+[PASS] 范围前缀匹配（15 个前缀，104 件变更）
 [PASS] 行数检查完成（全文本口径，UTF-8）
 [PASS] 无 lockfile/package.json 变更
-[PASS] 体量 1963 行 ≤ 预估 3200 × 1.5 = 4800
+[PASS] 体量 2651 行 ≤ 预估 3200 × 1.5 = 4800
 [PASS] 提交信息格式合规
 gate.ps1：红色 0 项；黄色 0 项（退出码 0）
 ```
@@ -1140,5 +1140,5 @@ gate.ps1：红色 0 项；黄色 0 项（退出码 0）
 
 ### 19.5 提交
 
-- 代码/文档提交与证据提交哈希：见本批证据提交说明（Lead 收口时回填）；工作树干净、未 push、未 tag/提审/发布。
+- 代码/文档提交 `1e6cfcb`（feat，104 件：+1164/−1544 与 23 个新文件，含页面迁移/门禁/筛选器/文档回写）+ 本证据提交（STATE 仅回填本节哈希与快照读数）；同一锚点复跑 gate 仍为红色 0/黄色 0（104 件/2651 行≤4800）；工作树干净、未 push、未 tag/提审/发布。
 
