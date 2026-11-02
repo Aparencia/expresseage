@@ -5,7 +5,7 @@
 > 更新时机：每批开工/收口、用户裁决变化、风险新增或关闭、HEAD 变化需回读。
 > 本文只记**状态、待办与下一步**，不重复设计口径（口径看 CONTRACT，工程规则看 ENGINEERING，接口看 ARCHITECTURE）。
 
-**快照时间：2026-11-03（HEAD `470250a` 批 26/27 修复提交 + 本收口证据提交）：check.js 39/39 条、check-docs 12/12 条、selftest **38 套** 0 失败、零金额 0 命中（白名单 108 项）；`check.ps1` 4 步退出码 0、`gate.ps1 -Anchor c140bf6` 红 0/黄 0（67 项/体量 2512≤3600）；批 26/27 另跑独立审查 3 组（P0×1/P1×10/P2 若干全部修复）与变异电池 M25~M37 **13/13 全部被对应套件捕获**；批 16~25 内容见 §2）
+**快照时间：2026-11-03（HEAD `7146d86` 批 26/27 收口证据提交 + 本次推送回填提交）：check.js 39/39 条、check-docs 12/12 条、selftest **38 套** 0 失败、零金额 0 命中（白名单 108 项）；`check.ps1` 4 步退出码 0、`gate.ps1 -Anchor c140bf6` 红 0/黄 0（68 件/体量 2512≤3600）；批 24~27 已推送远端 `origin/main`（`9526e37..7146d86`，23 提交）；批 26/27 另跑独立审查 3 组（P0×1/P1×10/P2 若干全部修复）与变异电池 M25~M37 **13/13 全部被对应套件捕获**；证据见 §19~§21，批 16~25 内容见 §2）
 > 临时总体说明（全局汇总，非状态源）：[`docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md`](docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md)（版本与取数快照由 Lead 统一维护；状态仍以本文件为准、口径以 CONTRACT 为准）。
 
 ## 1. 一句话状态
@@ -1199,3 +1199,52 @@ gate.ps1：红色 0 项；黄色 0 项（退出码 0）
 
 - 代码/文档提交 `c76c443`（feat，65 件：+3373/−492，含 8 个新文件：`handlers/order/_picked.js`、工作台 `parts/{order-row,piece-actions,piece-flow}.js`、顾客 `pages/customer/orders/parts/pickup-tag.js`、判据辅助 `tools/lib/{workbench-picked-cases,order-customer-pickup-cases}.js`、批 26/27 接口草案）+ 本证据提交（STATE 仅回填本节哈希与快照读数）；同一锚点复跑 gate 为红色 0/黄色 0（65 件/体量 3373≤4800）；工作树干净、未 push、未 tag/提审/发布。
 
+
+## 21. 批 26/27 用户 11 条新需求第三/四批（D58/D59/D63）收口证据（2026-11-03）
+
+### 21.1 交付范围
+
+- **D58 转派全栈**：`order.{requestTransfer,acceptTransfer,declineTransfer,cancelTransfer}` 4 个写动作 + `_transfer.js` 纯件（仅「已接单、一件都没取」可发起；目标须为在岗兼职；10 分钟未确认自动失效；拒收/撤回/超时均回到原归属）；`shared/enums.js` 事件 19→24 种（+5 `TRANSFER_*`，`MESSAGE_HIDDEN_EVENT_TYPES` 拉黑 4 个中间态，消息中心只留「已由…接手履约」）；`shared/actions.js` +8 条（order 4 写 / partner 3 写 1 读）；`shared/order-state.js` +4 条 `{from:['ACCEPTED'],to:'SAME'}`（状态引擎零改动）；`config/defaults.js` +4 键（`transferTtlMinutes=10`/`transferRate{3,20}`/`teamMaxMembers=5`/`subInviteRate{3,20}`，不入公开子集/后台白名单）；兼职端工作台「待接收转派（N）」、订单详情转派入口与目标视图、顾客端时间线/消息中心只出现接手编号（不展示头像/昵称，绑定关系不变）；admin 只读投影与匿名化清编号。
+- **D59 兼职子队员**：`invitation_codes.kind/issuerPartnerId` + `partners.parentPartnerId/teamJoinedAt`（无新增集合）；`partner.{createSubInvites,revokeSubInvite(批次级),listSubMembers,removeSubMember}` + `_team.js`（一次性子码 1~5 个、24 小时/72 小时/7 天有效、备注可选、名额默认 5 人；事务内名额复核 + `quota.reserved`；批次作废跨队隔离；限流桶首建并发整事务重试；级联悬挂上级清理）；`activate/getPublic/bind/create/order/_create/setPartnerStatus` 守卫（顾客不可绑子队员、子队员不可代客下单、主兼职移除后对方停用、级联停用）；客户端第 33 页 `pkg-partner/pages/team/**`（成员/发子码/按批次作废/移除/名额；子队员只看队伍摘要）与服务配置入口。
+- **D63 顾客邀请顾客**：`utils/share` 入参 +`boundPartnerNo`、`TITLES.BIND_CUSTOMER`、`pages/profile` 顾客绑定卡装配、`pages/role` 落地提示；分享卡只带兼职编号、不含邀请者身份、**不记录邀请关系**（零服务端/零数据模型变更）。
+- **冻结层/工程**：`api/modules/{order,partner}.js` 各 +4 动作、SUITES 36→38、`check.ps1 SelfTestSuites=38`、新增 3 索引（`idx_transfer_target`/`idx_issuer`/`idx_parent`，只能用户在控制台创建，RUNBOOK §3.5/§18，退化方案已写明）、admin 邀请码 `kind/issuerPartnerNo` 列与留痕 8 键。
+- **文档回写**：CONTRACT §1.1/§4/§4.2/§5/§5.1/§5.3/§7/§8/§9/§10/§11.2/§13；DATA_MODEL（字段/事件/config/索引×3/查询/契约/匿名化/级联/负向 #47~#55/§13.1e）；ARCHITECTURE §2/§3.2；ENGINEERING §4.2/§7.5/§8.1；UX_PARTNER/UX_CUSTOMER/UX_DEVELOPER；QA §AG1~§AG12；RUNBOOK §18；privacy v1.10 候选（**待用户终审，`privacyVersion` 未改**）；TECH_DEBT TD-090/TD-091。
+
+### 21.2 门禁真实输出
+
+```text
+$ powershell -File check.ps1
+PASS  check.js 代码/配置门禁（39 条）
+PASS  check-docs.js 设计文档门禁（--batch 1）
+PASS  zero-money-scan.js 零金额扫描（源码+页面+文档）
+PASS  selftest.js 全部断言 suite（EXPECTED_ASSERTIONS 闸）
+selftest：运行 38 套；失败 0 套；SKIP 0 套（无）；完整性 0 项；非聚合辅助文件 4 件（已声明）
+check.ps1：全部通过（4 步，退出码 0）
+```
+
+- `gate.ps1 -Anchor c140bf6`：红 0/黄 0（68 件/体量 2512≤3600）；修复提交同锚点复跑为红 0/黄 0（67 项/体量 551≤3600）；功能提交自身为红 0/黄 0（132 项/体量 6036≤6300）。
+- 零金额扫描 0 命中（白名单 108 项）；`node tools/sync-cloud-shared.js --check`：已一致 36 件，hash 对帐 OK（18 件 × 2 套）。
+- `node tools/lib/dead-code.js`：47 个页面/组件目录、死函数候选 0 个；#35 问题 0 项、#36 问题 0 项。
+
+### 21.3 关键测试读数（真实输出）
+
+- `selftest.js` 38 套 0 失败（`selftest` 汇总输出见 21.2）；本批新增/改动套件：`selftest-transfer` 140/140、`selftest-team` 124/124；断言合计以 `node tools/selftest.js` 汇总输出为准（不写死）。
+- 判据有牙（独立审查后补/改断言）：transfer 111→140、team 104→124、admin-pages 216、order-customer 376、partner-pages 342；`selftest-performance` E16 改独立期望源、`selftest-state` 去动作豁免、`selftest-privacy-text` §AG 实体断言、`check-rules-cloud` write 双向比对。
+
+### 21.4 独立审查与变异电池（2026-11-03）
+
+- 独立审查 3 组（只读）：①服务端 **P0×1**——`order.get` 对转派后新履约人的动作矩阵与顾客身份遮蔽解耦（`maskCustomer` 独立、`transferTarget` 仅限非 owner 的 PENDING 目标；修复原「新履约人看到空动作条」）；②服务端/一致性 P1×4——重放分支前鉴权与 actor 校验、PENDING 期间部分取件确认闸、`listPartner` 列表行遮蔽、过期/动作写/离开 ACCEPTED 钩子改事务内 version CAS、`expectedVersion` 接入、限流逐字段回落、admin 留痕 8 键；D59 一致性——名额 TOCTOU 事务内复核、`quota.reserved`、批次作废跨队隔离、限流桶首建并发、级联悬挂上级清理、`removeSubMember` 限流与 ≤40 单定向取消；③客户端——时间线裸英文、红点口径、一次性码离页清除、不可用态、目标视图入口、区块对齐；另文档 9 条 P1 回写。
+- 变异电池 **M25~M37 13/13 全部被对应套件捕获**（在修复提交的独立 worktree 内逐条注入 → 首红 → SHA256 逐字节复原，主工作树零污染）。
+
+### 21.5 待用户（真机/控制台，agent 不代勾）
+
+- QA §AG1~§AG12 真机点检：转派全流程（发起/待接收/确认/拒收/撤回/超时/再次转派）、顾客仅编号可见与时间线文案、子队员邀请码/激活/名额/移除/停用、顾客绑定卡转发与零邀请关系、隐私与后台留痕。
+- 控制台创建 3 个索引（RUNBOOK §3.5/§18）并重部署 `api`（含 `sync-cloud-shared` 副本；无新增集合/触发器/云函数单元）。
+- 隐私文本 v1.10 终审（CONTRACT §11.2、`docs/privacy/**` 均标「待用户终审」；`privacyVersion` 未改）。
+
+### 21.6 提交与推送
+
+- 功能提交 `c140bf6`（feat，132 件：批 26/27 全栈 + 同批文档回写）。
+- 审查修复提交 `470250a`（fix，P0×1/P1×10 + 判据补强 + 文档 P1 回写）。
+- 收口证据提交 `7146d86`（chore，STATE/CHANGELOG 回填）。
+- 推送远端：`origin/main` `9526e37..7146d86`（23 提交，含上述三个提交；本节回填提交随后同渠道推送，远端 HEAD 以 `git ls-remote origin refs/heads/main` 回读为准）；工作树干净、未 tag/提审/发布。
