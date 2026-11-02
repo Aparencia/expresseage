@@ -268,8 +268,10 @@ function register(h) {
     t.check(activateJs.indexOf('setLastRole') !== -1, 'activate 成功进入兼职身份后写 lastRole（生产调用点 5）');
     t.check(!/wx\.(get|set|remove)StorageSync/.test(pageJs),
       '页面不直接摸平台 storage API（只经 utils/storage 唯一写口，门禁 #15 的判据侧）');
-    t.check(/typeof this\.getTabBar === 'function'/.test(profileJs) && /selected:\s*2/.test(profileJs),
-      '「我的」tab 页 onShow 同步 tabBar 选中态 index=2（防切角色/会话后高亮错格；其余 tab 页由顾客端 UI 任务处理）');
+    t.check(/typeof this\.getTabBar === 'function'/.test(profileJs)
+      && /pagePath === 'pages\/profile\/index'/.test(profileJs) && /selected:\s*profileIndex/.test(profileJs)
+      && /profileIndex\s*:\s*2/.test(profileJs),
+    '「我的」tab 页 onShow 按当前角色 tabs 解析自身格位并同步选中态（D64：顾客 4 格 index=3 / 兼职 3 格 index=2，防切角色/会话后高亮错格）');
     t.check(!/privacyVersion/.test(launchJs),
       'launch 不在页面里比较隐私版本（状态机只在 utils/privacy-policy 纯件）');
     t.check(/decideEntryRoute\(|decideLaunchRoute\(/.test(launchJs),

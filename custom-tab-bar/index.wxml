@@ -1,15 +1,2 @@
-<view class="tab-bar">
-  <view
-    wx:for="{{tabs}}"
-    wx:key="pagePath"
-    class="tab-item"
-    data-index="{{index}}"
-    bindtap="onTap"
-  >
-    <view class="tab-icon-wrap">
-      <image class="tab-icon" src="{{selected === index ? item.activeIcon : item.icon}}" mode="aspectFit" />
-      <text wx:if="{{item.badgeKey && badges[item.badgeKey]}}" class="tab-badge">{{badges[item.badgeKey]}}</text>
-    </view>
-    <text class="tab-text {{selected === index ? 'tab-text-active' : ''}}">{{item.text}}</text>
-  </view>
-</view>
+<!-- custom-tab-bar/index.wxml · 薄包装：视觉单源 components/tab-bar-view（D64） -->
+<tab-bar-view tabs="{{tabs}}" selected="{{selected}}" badges="{{badges}}" bind:tabtap="onTap" />

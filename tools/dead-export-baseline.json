@@ -519,6 +519,20 @@
       "reason": "test-only",
       "evidence": "tools/selftest-profile.js:196",
       "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
+    },
+    {
+      "file": "utils/storage.js",
+      "symbol": "getPickupChecks",
+      "reason": "test-only",
+      "evidence": "tools/selftest-profile.js:181",
+      "note": "D64 后旧取件清单页删除导致生产端转死；仍被 selftest-profile 引用，先登记 test-only，清理须先移测试断言"
+    },
+    {
+      "file": "utils/storage.js",
+      "symbol": "setPickupCheck",
+      "reason": "test-only",
+      "evidence": "tools/selftest-profile.js:181",
+      "note": "D64 后旧取件清单页删除导致生产端转死；仍被 selftest-profile 引用，先登记 test-only，清理须先移测试断言"
     }
   ],
   "pageDeadFunctions": []

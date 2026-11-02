@@ -3,6 +3,8 @@
 // 批20-C（首屏流式）：骨架 6 张灰占位 → 结果首片 ≤10 行立即 setData、其余按帧追加；
 //   onShow 刷新保留旧列表 + 行级 diff（只改变动行），同 bindingId+avatarFileId 沿用旧头像 URL；
 //   请求在途底部「更新中…」小字。装配与补丁计算全在 parts/list-model.js（页面只接线）。
+// D67（批 24）：已筛选器 chips（全部/资料未完善/按苑/按楼栋/有备注）+ 苑/楼栋二级选择；筛选态存页面 data、
+//   onShow 不丢；变化即重置 cursor 走首屏加载；空态与「筛选后无结果」文案由 parts/filter-model.js 分流。
 const partnerApi = require('../../../api/modules/partner');
 const store = require('../../../store/index');
 const modeGuard = require('../../../api/mode-guard');
@@ -36,7 +38,18 @@ Page({
     staleText: '',
     lastSuccessText: '',
     footerText: '',
-    hasMore: false
+    hasMore: false,
+    // D67 筛选器（选中态存页面 data，onShow 刷新不丢；默认全部）
+    filterChips: [],
+    filterMode: 'all',
+    filterZone: '',
+    filterBuildingNo: 0,
+    filterDesc: '',
+    filterActive: false,
+    showZonePicker: false,
+    showBuildingPicker: false,
+    zoneOptions: [],
+    buildingOptions: []
   },
 
   onLoad() {
@@ -183,6 +196,39 @@ Page({
     this.load(true);
   },
 
+  // D67：筛选选中态变化 → 纯件算新态 → 重置 cursor 走首屏加载（沿用 D54 骨架/分片/行级 diff）
+  onFilterTap(event) {
+    const key = (event.currentTarget.dataset && event.currentTarget.dataset.filter) || 'all';
+    this.applyFilter(listModel.applyFilterChip(this.state, key));
+  },
+
+  onZoneTap(event) {
+    const zone = (event.currentTarget.dataset && event.currentTarget.dataset.zone) || '';
+    this.applyFilter(listModel.selectFilterZone(this.state, zone));
+  },
+
+  onBuildingTap(event) {
+    const buildingNo = Number(event.currentTarget.dataset && event.currentTarget.dataset.buildingNo);
+    this.applyFilter(listModel.selectFilterBuilding(this.state, buildingNo));
+  },
+
+  onClearFilters() {
+    this.applyFilter(listModel.clearFilters(this.state));
+  },
+
+  // 选中态变了但请求参数没变（如刚点「按苑」还没选苑）时只更新 chips，不重拉、不闪骨架。
+  applyFilter(next) {
+    if (!next || next === this.state) {
+      return;
+    }
+    const needsReload = listModel.querySignatureOf(this.state) !== listModel.querySignatureOf(next);
+    this.state = next;
+    this.render(this.data.rows);
+    if (needsReload) {
+      this.load(true);
+    }
+  },
+
   onRetry() {
     this.load(true);
   },
@@ -199,7 +245,12 @@ Page({
   },
 
   onEmptyAction() {
-    if (this.data.keyword) {
+    const kind = listModel.emptyActionKindOf(this.state);
+    if (kind === 'clearFilter') {
+      this.onClearFilters();
+      return;
+    }
+    if (kind === 'clearSearch') {
       this.onClearSearch();
       return;
     }

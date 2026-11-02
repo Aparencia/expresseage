@@ -1,4 +1,4 @@
-// pkg-customer/pages/pickup-list/parts/local-view.js · 「我的取件码（本机）」纯视图映射（零 wx）
+// pages/customer/pickcodes/parts/local-view.js · 「我的取件码（本机）」纯视图映射（零 wx；D64 迁主包）
 // D57：本机清单只存顾客本人设备（唯一写口 utils/storage.js 的 pickcodes 键），
 // 不上传/不进服务端/兼职与后台不可见。本件只做 行/汇总/上限提示 的纯映射；
 // 文案常量由页面 setData 注入 wxml（本文件不硬编码重复副本，门禁 #35 只留生产消费的导出）。

@@ -1,3 +1,4 @@
 {
-  "navigationBarTitleText": "顾客"
+  "navigationBarTitleText": "顾客",
+  "enablePullDownRefresh": true
 }

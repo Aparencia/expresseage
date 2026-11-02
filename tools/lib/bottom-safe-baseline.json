@@ -1,0 +1,35 @@
+{
+  "scope": "D65 门禁 #38 存量基线：position:fixed + bottom:0 但无 safe-area 底垫的规则逐条登记。只允许「全屏居中遮罩」一类（内容 flex 居中、贴底无内容/动作，无需安全区底垫）；禁止目录级豁免；条目失效（规则已修复或改名）判红，须同步删除该条。",
+  "entries": [
+    {
+      "file": "components/maintenance-mask/index.wxss",
+      "selector": ".mm-mask",
+      "reason": "fullscreen-overlay-centered",
+      "note": "维护公告全屏遮罩，公告卡片 flex 居中，底部无内容/动作"
+    },
+    {
+      "file": "pages/customer/home/index.wxss",
+      "selector": ".guide-mask",
+      "reason": "fullscreen-overlay-centered",
+      "note": "顾客首页首用引导全屏遮罩，引导框居中（A 域文件，D65 只登记不改样式）"
+    },
+    {
+      "file": "pages/partner/workbench/parts/overlay.wxss",
+      "selector": ".guide-mask",
+      "reason": "fullscreen-overlay-centered",
+      "note": "工作台首用引导全屏遮罩，引导框居中，底部无内容/动作"
+    },
+    {
+      "file": "pages/profile/index.wxss",
+      "selector": ".mask",
+      "reason": "fullscreen-overlay-centered",
+      "note": "解绑确认对话框全屏遮罩，对话框居中（A 域文件，D65 只登记不改样式）"
+    },
+    {
+      "file": "pkg-admin/pages/recognition-review/index.wxss",
+      "selector": ".mask",
+      "reason": "fullscreen-overlay-centered",
+      "note": "复核原图全屏遮罩，图片面板居中且自身滚底，底部无固定动作"
+    }
+  ]
+}

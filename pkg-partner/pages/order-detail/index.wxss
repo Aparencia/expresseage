@@ -1,8 +1,4 @@
 /* pkg-partner/pages/order-detail/index.wxss · 订单详情局部样式 */
-.detail-body {
-  padding-bottom: 200rpx;
-}
-
 .head-card {
   padding-bottom: 16rpx;
 }
@@ -75,27 +71,18 @@
   border-bottom: 1rpx solid #EEEEEE;
 }
 
-.action-bar {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  display: flex;
-  padding: 16rpx 24rpx calc(16rpx + env(safe-area-inset-bottom));
-  background: #FFFFFF;
-  box-shadow: 0 -2rpx 12rpx rgba(0, 0, 0, 0.06);
-}
-
+/* D65：操作条固定底盘/env 底垫由 components/bottom-bar 统一提供，本文件只保留条内按钮布局 */
 .action-btn {
   flex: 1;
   margin: 0 8rpx;
 }
 
+/* 撤销条：token 组合定位；操作条同时存在时上抬一档，不互相遮挡 */
 .undo-bar {
   position: fixed;
   left: 24rpx;
   right: 24rpx;
-  bottom: 180rpx;
+  bottom: calc(24rpx + var(--v4-safe-b));
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -106,10 +93,11 @@
   font-size: 26rpx;
 }
 
-.bottom-safe {
-  height: 120rpx;
+.undo-bar-above-actions {
+  bottom: calc(var(--v4-inset-bar) + 16rpx);
 }
 
+/* 面板遮罩：全屏遮罩把 safe-area 让给底部面板（面板自身只留内容内边距，避免双层安全区叠加） */
 .panel-mask {
   position: fixed;
   left: 0;
@@ -120,12 +108,13 @@
   display: flex;
   align-items: flex-end;
   z-index: 20;
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 .panel {
   width: 100%;
   box-sizing: border-box;
-  padding: 24rpx 24rpx calc(24rpx + env(safe-area-inset-bottom));
+  padding: 24rpx;
   background: #FFFFFF;
   border-radius: 24rpx 24rpx 0 0;
 }

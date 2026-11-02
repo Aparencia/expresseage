@@ -1,24 +1,22 @@
-// pkg-customer/pages/pickup-list/index.js · 顾客取件清单（独立入口，D26）
-// 两个区：
-//   ①「我的取件码（本机）」D57——顾客自建清单，只存这台手机（utils/storage.pickcodes 单写口），
-//     零上传/零外呼（截图识别=端侧 OCR）；不强制建单/绑定，兼职与后台（含只读视角）不可见；
-//   ② 本人进行中订单的「快递站点 + 取件码」（按订单分组、可复制；勾选「我已取到」只写本机）。
+// pages/customer/pickcodes/index.js · 顾客「取件码」（D64 一级入口 = 伪 tab）
+// D64：由 pkg-customer/pages/pickup-list 迁入主包并改名；**只显示顾客自建「我的取件码（本机）」**（D57）：
+//   写入：手动粘贴 / 端侧识别截图 / 「我已取到」本机标记；删除：单条 / 一键清空（二次确认）；另可复制。
+//   不显示订单（D26 订单区已删；订单详情仍逐件显示站点+取件码）；本页不提供分享/转发。
+// 底部 4 格由共用视觉组件 components/tab-bar-view 页面内自绘（真 tab 走 wx.switchTab）。
+// 本机边界（D57）：只存这台手机（utils/storage 单写口）、零上传/零外呼；READONLY 只渲染说明卡且拒写。
 'use strict';
 
 const store = require('../../../store/index');
-const orderApi = require('../../../api/modules/order');
 const configApi = require('../../../api/modules/config');
 const storage = require('../../../utils/storage');
 const localCodes = require('../../../utils/recognize/local-codes');
 const route = require('../../../config/route');
-const view = require('./parts/pickup-view');
 const localView = require('./parts/local-view');
 const localOcr = require('./parts/local-ocr');
-const share = require('../../../utils/share/handlers');
+const tabsData = require('../../../components/tab-bar-view/tabs');
 
-const DETAIL_PAGE = '/pkg-customer/pages/order-detail/index';
-const PAGE_SIZE = 100;
-const MAX_PAGES = 3;
+// D64：顾客 4 格中「取件码」为第 3 格（0 首页 / 1 订单 / 2 取件码 / 3 我的）
+const TAB_INDEX = 2;
 
 function emptyLocalSummary() {
   return { total: 0, checked: 0, pending: 0 };
@@ -26,11 +24,6 @@ function emptyLocalSummary() {
 
 Page({
   data: {
-    loading: true,
-    error: '',
-    rows: [],
-    groups: [],
-    summary: { total: 0, checked: 0, needCode: 0 },
     readonly: false,
     // D57 本机取件码清单（只读自本机 storage；READONLY 会话不渲染本机区、拒绝写入）
     localRows: [],
@@ -44,20 +37,25 @@ Page({
     localTip: localView.TIP_TEXT,
     localReadonlyHint: localView.READONLY_HINT,
     localEmptyText: localView.EMPTY_TEXT,
-    localNoMatchText: localView.NO_MATCH_TEXT
+    localNoMatchText: localView.NO_MATCH_TEXT,
+    // D64 伪 tab：自绘底部栏 4 格（数据单源 components/tab-bar-view/tabs.js）
+    tabs: tabsData.CUSTOMER_TABS,
+    tabSelected: TAB_INDEX,
+    badges: {}
   },
 
   onShow() {
     if (!this.guard()) return;
     const snapshot = store.snapshot();
     const readonly = !!(snapshot.viewContext && snapshot.viewContext.viewMode === 'READONLY');
-    this.setData({ readonly: readonly });
+    this.setData({ readonly: readonly, badges: snapshot.badges || {} });
     this.loadLocal(readonly);
-    this.refresh();
   },
 
+  // 本机数据即显：下拉刷新只重读本机清单（无网络请求，页面零订单区）
   onPullDownRefresh() {
-    this.refresh().then(function done() { wx.stopPullDownRefresh(); });
+    this.loadLocal(this.data.readonly === true);
+    wx.stopPullDownRefresh();
   },
 
   guard() {
@@ -76,121 +74,12 @@ Page({
     return true;
   },
 
-  refresh() {
-    this.setData({ loading: true, error: '' });
-    return this.loadAll().then((orders) => {
-      this.applyOrders(orders);
-    }).catch((err) => {
-      this.setData({ loading: false, error: (err && err.message) || '取件清单加载失败，请重试' });
-      return false;
-    });
-  },
-
-  // 进行中订单（服务端 status=IN_PROGRESS 不分页桶），逐页取到没有下一页为止（上限 3 页防失控）
-  async loadAll() {
-    const orders = [];
-    let cursor = null;
-    for (let page = 0; page < MAX_PAGES; page += 1) {
-      const payload = { status: 'IN_PROGRESS', limit: PAGE_SIZE };
-      if (cursor) payload.cursor = cursor;
-      const data = await orderApi.listCustomer(payload);
-      const list = (data && data.list) || [];
-      list.forEach(function push(order) { orders.push(order); });
-      cursor = (data && data.nextCursor) || null;
-      if (!cursor || list.length === 0) break;
-    }
-    return orders;
-  },
-
-  applyOrders(orders) {
-    const checks = storage.getPickupChecks() || {};
-    const rows = view.rowsOf(orders, checks);
-    const groups = view.groupByOrder(rows);
-    this.setData({
-      loading: false,
-      error: '',
-      rows: rows,
-      groups: groups,
-      summary: view.summaryOf(rows)
-    });
-    return true;
-  },
-
-  // 本机勾选：只存标记，不碰订单（D26）
-  writeCheck(key, checked) {
-    storage.setPickupCheck(key, checked === true);
-  },
-
-  onToggleCheck(event) {
-    const key = String(event.currentTarget.dataset.key || '');
-    const row = (this.data.rows || []).filter(function match(item) { return item.key === key; })[0];
-    if (!row) return;
-    const next = !row.checked;
-    this.writeCheck(key, next);
-    this.applyOrdersFromRows(view.toggleRow(this.data.rows, key));
-  },
-
-  onToggleGroup(event) {
-    const orderNo = String(event.currentTarget.dataset.orderNo || '');
-    const group = (this.data.groups || []).filter(function match(item) { return item.orderNo === orderNo; })[0];
-    if (!group) return;
-    const next = !group.allChecked;
-    group.rows.forEach((row) => this.writeCheck(row.key, next));
-    this.applyOrdersFromRows(view.toggleGroup(this.data.rows, orderNo, next));
-  },
-
-  applyOrdersFromRows(rows) {
-    const groups = view.groupByOrder(rows);
-    this.setData({ rows: rows, groups: groups, summary: view.summaryOf(rows) });
-  },
-
-  onCopyCode(event) {
-    const row = this.findRow(event);
-    if (!row) return;
-    if (!row.hasCode) {
-      wx.showToast({ title: row.codeText, icon: 'none' });
-      return;
-    }
-    this.copyText(row.codeText, '取件码已复制');
-  },
-
-  onCopyLine(event) {
-    const row = this.findRow(event);
-    if (!row) return;
-    this.copyText(view.copyTextOf(row), '站点与取件码已复制');
-  },
-
-  onCopyAll() {
-    const text = view.copyAllTextOf(this.data.groups);
-    if (!text) {
-      wx.showToast({ title: '当前没有可复制的取件信息', icon: 'none' });
-      return;
-    }
-    this.copyText(text, '取件清单已复制');
-  },
-
-  copyText(text, tip) {
-    wx.setClipboardData({
-      data: text,
-      success() {
-        wx.showToast({ title: tip || '已复制', icon: 'none' });
-      }
-    });
-  },
-
-  findRow(event) {
-    const key = String((event && event.currentTarget && event.currentTarget.dataset && event.currentTarget.dataset.key) || '');
-    return (this.data.rows || []).filter(function match(item) { return item.key === key; })[0] || null;
-  },
-
-  onOrderTap(event) {
-    const orderNo = String(event.currentTarget.dataset.orderNo || '');
-    if (!orderNo) return;
-    wx.navigateTo({ url: DETAIL_PAGE + '?orderNo=' + encodeURIComponent(orderNo) });
-  },
-
-  onRetry() {
-    this.refresh();
+  // ── D64 伪 tab 底部栏：点真 tab 页走 switchTab；点当前格无动作 ──────────────────
+  onTabTap(event) {
+    const detail = (event && event.detail) || {};
+    const tab = detail.tab || (this.data.tabs || [])[detail.index] || null;
+    if (!tab || !tab.pagePath || tab.pagePath === 'pages/customer/pickcodes/index') return;
+    wx.switchTab({ url: '/' + tab.pagePath });
   },
 
   // ── D57 我的取件码（本机）：只读本机 storage，READONLY 不渲染、拒绝写 ──────────
@@ -284,6 +173,15 @@ Page({
     return (this.data.localRows || []).filter(function match(row) { return row.code === code; })[0] || null;
   },
 
+  copyText(text, tip) {
+    wx.setClipboardData({
+      data: text,
+      success() {
+        wx.showToast({ title: tip || '已复制', icon: 'none' });
+      }
+    });
+  },
+
   onToggleLocalCheck(event) {
     if (!this.canWriteLocal()) return;
     const code = String(event.currentTarget.dataset.code || '');
@@ -331,9 +229,5 @@ Page({
         wx.showToast({ title: '已清空本机取件码', icon: 'none' });
       }
     });
-  },
-
-  onShareAppMessage() {
-    return share.appMessage();
   }
 });

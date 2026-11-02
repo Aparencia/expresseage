@@ -1,9 +1,11 @@
 // pages/partner/customers/parts/list-model.js · 客户列表页状态装配（纯件：零 wx、零请求）
 // 口径：docs/ux/V4_UX_PARTNER.md §3.5（服务端 keyword 搜索 + 游标分页；客户端不本地过滤/不二次排序）
 //      docs/data/V4_DATA_MODEL.md §7.4 listBindings：服务端已排序+过滤+分页，返回 {list,nextCursor}
+// D67（批 24）：筛选选中态/查询参数/空态文案在 parts/filter-model.js（纯件）；本文件只把筛选并入查询与快照。
 'use strict';
 
 const view = require('../../../../utils/customer-view');
+const filterModel = require('./filter-model');
 
 const PAGE_LIMIT = view.PAGE_LIMIT;
 
@@ -35,6 +37,7 @@ function createState(options) {
   return {
     rows: [],
     keyword: view.normalizeKeyword(opts.keyword),
+    filters: filterModel.createFilters(),
     nextCursor: '',
     loading: true,
     loadingMore: false,
@@ -61,9 +64,50 @@ function applyKeyword(state, keyword) {
   });
 }
 
+// D67：筛选选中态变化 = 服务端重新筛（与关键词同套路）；选中态本身在 filter-model，本文件只管状态机。
+// 只有「生效的查询参数」变化时才清空旧行/游标并置 loading（如刚点「按苑」还没选苑时只更新 UI，不闪骨架）。
+function applyFilterState(state, nextFilters) {
+  if (filterModel.sameFilters(state.filters, nextFilters)) {
+    return state;
+  }
+  const next = Object.assign({}, state, { filters: nextFilters });
+  if (querySignatureOf(state) === querySignatureOf(next)) {
+    return next;
+  }
+  return Object.assign(next, {
+    rows: [],
+    nextCursor: '',
+    error: '',
+    newRows: [],
+    loading: true
+  });
+}
+
+// chips 单选：点选中项/「全部」= 取消筛选（选中态可清除）。
+function applyFilterChip(state, key) {
+  return applyFilterState(state, filterModel.applyChip(state.filters, key));
+}
+
+// 二级苑选择：再点已选苑 = 取消（按苑回全部；按楼栋保留楼栋）。
+function selectFilterZone(state, zone) {
+  return applyFilterState(state, filterModel.selectZone(state.filters, zone));
+}
+
+// 二级楼栋选择：再点已选栋 = 取消楼栋筛选。
+function selectFilterBuilding(state, buildingNo) {
+  return applyFilterState(state, filterModel.selectBuilding(state.filters, buildingNo));
+}
+
+function clearFilters(state) {
+  return applyFilterState(state, filterModel.createFilters());
+}
+
 // 首屏/下拉刷新/搜索：重新从第一页拉（服务端已按 dormKey→roomTag 排好，不客户端排序）
 function refreshQuery(state) {
-  return { keyword: state.keyword, limit: PAGE_LIMIT };
+  return Object.assign(
+    { keyword: state.keyword, limit: PAGE_LIMIT },
+    filterModel.queryOf(state.filters)
+  );
 }
 
 // 触底加载下一页；无游标时返回 null（页面不再发无意义请求）
@@ -72,7 +116,15 @@ function nextQuery(state) {
   if (!cursor) {
     return null;
   }
-  return { keyword: state.keyword, limit: PAGE_LIMIT, cursor: cursor };
+  return Object.assign(
+    { keyword: state.keyword, limit: PAGE_LIMIT, cursor: cursor },
+    filterModel.queryOf(state.filters)
+  );
+}
+
+// 有效查询签名：用于判断「筛选选中态变了但请求参数没变」（如进入按苑尚未选苑），避免无谓重拉/骨架闪烁。
+function querySignatureOf(state) {
+  return JSON.stringify(refreshQuery(state));
 }
 
 // 首屏/刷新响应：整页替换；与旧行对比得出"顾客新绑定"提示（顾客发起才能新增）
@@ -246,6 +298,7 @@ function viewPlanOf(state, options) {
 }
 
 // 页面快照 → setData：状态机字段 + 只读/会话下的入口显隐（§6.3：READONLY 隐藏代客下单入口、会话内隐藏分享）
+// D67：筛选 chips/二级选择/说明行/空态文案并入同一快照（空态三套文案分离：筛选无结果 / 搜索无结果 / 真没绑定）。
 function buildSnapshot(state, options) {
   const opts = options || {};
   const listState = view.listStateOf({
@@ -257,7 +310,8 @@ function buildSnapshot(state, options) {
     lastSuccessAt: state.lastSuccessAt,
     nextCursor: state.nextCursor
   });
-  return Object.assign({}, listState, {
+  const empty = filterModel.emptyStateOf(state.filters, state.keyword);
+  return Object.assign({}, listState, filterModel.uiOf(state.filters), {
     rows: state.rows,
     keyword: state.keyword,
     bannerText: view.buildBannerText(state.newRows),
@@ -267,8 +321,15 @@ function buildSnapshot(state, options) {
     session: opts.session === true,
     showCreateEntry: opts.readonly !== true,
     showShare: opts.session !== true,
-    lastSuccessAt: state.lastSuccessAt
+    lastSuccessAt: state.lastSuccessAt,
+    emptyText: empty.text,
+    emptyActionText: empty.actionText
   });
+}
+
+// 空态动作语义（页面 onEmptyAction 按此分流：清筛选 / 清搜索 / 分享引导）。
+function emptyActionKindOf(state) {
+  return filterModel.emptyStateOf(state.filters, state.keyword).actionKind;
 }
 
 module.exports = {
@@ -276,6 +337,12 @@ module.exports = {
   STREAM_CHUNK_ROWS,
   createState,
   applyKeyword,
+  applyFilterState,
+  applyFilterChip,
+  selectFilterZone,
+  selectFilterBuilding,
+  clearFilters,
+  querySignatureOf,
   refreshQuery,
   nextQuery,
   applyResponse,
@@ -285,6 +352,7 @@ module.exports = {
   beginLoad,
   dismissBanner,
   buildSnapshot,
+  emptyActionKindOf,
   chunkPlanOf,
   appendPlanOf,
   appendRowPatches,

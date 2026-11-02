@@ -1,5 +1,7 @@
-<!-- pages/partner/customers/index.wxml · 客户列表（只列已被顾客绑定的顾客；无任何添加/绑定/导入入口） -->
-<view class="page-body">
+<!-- pages/partner/customers/index.wxml · 客户列表（只列已被顾客绑定的顾客；无任何添加/绑定/导入入口）
+     D67：一行横滚筛选 chips + 苑/楼栋二级选择 + 筛选说明；筛选空态与真空态文案由 parts/filter-model 分流。
+     D65：本页是兼职端 tab 页，根节点叠加 page-body--tab 补足自定义 tabBar 高度。 -->
+<view class="page-body page-body--tab">
   <switch-bar />
   <view class="row between head">
     <view class="title">{{headingText}}</view>
@@ -12,6 +14,48 @@
   <view wx:if="{{bannerText}}" class="card banner-card row between" bindtap="onDismissBanner">
     <view class="strong banner-text">{{bannerText}}</view>
     <view class="muted">关闭</view>
+  </view>
+
+  <!-- D67 筛选器：一行横滚 chips（全部/资料未完善/按苑/按楼栋/有备注；不带计数） -->
+  <scroll-view wx:if="{{filterChips.length}}" class="filter-scroll" scroll-x>
+    <view class="row filter-row">
+      <view
+        wx:for="{{filterChips}}"
+        wx:key="key"
+        class="chip {{item.active ? 'chip-active' : ''}}"
+        data-filter="{{item.key}}"
+        bindtap="onFilterTap"
+      >{{item.label}}</view>
+    </view>
+  </scroll-view>
+
+  <!-- D67 二级选择：按苑=只选苑；按楼栋=先选苑（可空）再选栋 -->
+  <scroll-view wx:if="{{showZonePicker}}" class="filter-scroll" scroll-x>
+    <view class="row filter-row">
+      <view
+        wx:for="{{zoneOptions}}"
+        wx:key="value"
+        class="chip {{item.active ? 'chip-active' : ''}}"
+        data-zone="{{item.value}}"
+        bindtap="onZoneTap"
+      >{{item.label}}</view>
+    </view>
+  </scroll-view>
+  <scroll-view wx:if="{{showBuildingPicker}}" class="filter-scroll" scroll-x>
+    <view class="row filter-row">
+      <view
+        wx:for="{{buildingOptions}}"
+        wx:key="value"
+        class="chip {{item.active ? 'chip-active' : ''}}"
+        data-building-no="{{item.value}}"
+        bindtap="onBuildingTap"
+      >{{item.label}}</view>
+    </view>
+  </scroll-view>
+
+  <view wx:if="{{filterDesc}}" class="row between filter-desc">
+    <text class="small">{{filterDesc}}</text>
+    <text wx:if="{{filterActive}}" class="filter-clear" bindtap="onClearFilters">重置</text>
   </view>
 
   <view class="card search-card">

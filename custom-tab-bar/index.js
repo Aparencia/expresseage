@@ -1,21 +1,12 @@
-// custom-tab-bar/index.js · 自定义 tabBar（按角色渲染 3 格；切换会话按目标角色渲染）
-// 选中态：tab 页 onShow 会显式 getTabBar().setData({selected:n})（每页一份实例）；
+// custom-tab-bar/index.js · 自定义 tabBar 薄包装（视觉由 components/tab-bar-view 共用，D64）
+// 顾客 4 格（首页/订单/取件码/我的；取件码为伪 tab，不在 app.json tabBar.list）与兼职 3 格。
+// 选中态：tab 页 onShow 显式 getTabBar().setData({selected:n})（每页一份实例）；
 // 本组件自身只做兜底推导 + 判等，避免每次 store 通知都重渲染 tabBar（PERFORMANCE §2.4 B10）。
+// 跳转：真 tab 用 wx.switchTab；伪 tab（pseudoTab=true）不在 tabBar.list，用 wx.reLaunch 进入。
 const store = require('../store/index');
+const tabsData = require('../components/tab-bar-view/tabs');
 
-const CUSTOMER_TABS = [
-  { pagePath: 'pages/customer/home/index', text: '首页', icon: '/assets/tabbar/customer-home.png', activeIcon: '/assets/tabbar/customer-home-active.png' },
-  { pagePath: 'pages/customer/orders/index', text: '订单', icon: '/assets/tabbar/customer-orders.png', activeIcon: '/assets/tabbar/customer-orders-active.png', badgeKey: 'ordersOngoing' },
-  { pagePath: 'pages/profile/index', text: '我的', icon: '/assets/tabbar/profile.png', activeIcon: '/assets/tabbar/profile-active.png', badgeKey: 'messages' }
-];
-
-const PARTNER_TABS = [
-  { pagePath: 'pages/partner/workbench/index', text: '工作台', icon: '/assets/tabbar/partner-workbench.png', activeIcon: '/assets/tabbar/partner-workbench-active.png', badgeKey: 'workbenchPending' },
-  { pagePath: 'pages/partner/customers/index', text: '客户', icon: '/assets/tabbar/partner-customers.png', activeIcon: '/assets/tabbar/partner-customers-active.png' },
-  { pagePath: 'pages/profile/index', text: '我的', icon: '/assets/tabbar/profile.png', activeIcon: '/assets/tabbar/profile-active.png', badgeKey: 'messages' }
-];
-
-const BADGE_KEYS = ['workbenchPending', 'messages', 'ordersOngoing'];
+const TAB_KEYS = ['workbenchPending', 'messages', 'ordersOngoing'];
 
 function roleOf(viewContext, activeRole) {
   if (viewContext && viewContext.role) {
@@ -36,7 +27,7 @@ function currentPath() {
 function sameBadges(left, right) {
   const a = left || {};
   const b = right || {};
-  return BADGE_KEYS.every(function eq(key) {
+  return TAB_KEYS.every(function eq(key) {
     return (a[key] || 0) === (b[key] || 0);
   });
 }
@@ -90,7 +81,7 @@ Component({
       const activeRole = store.get('activeRole');
       const badges = store.get('badges') || {};
       const role = roleOf(viewContext, activeRole);
-      const tabs = role === 'PARTNER' ? PARTNER_TABS : CUSTOMER_TABS;
+      const tabs = role === 'PARTNER' ? tabsData.PARTNER_TABS : tabsData.CUSTOMER_TABS;
       const path = currentPath();
       let selected = tabs.findIndex((tab) => tab.pagePath === path);
       if (selected < 0) {
@@ -112,9 +103,15 @@ Component({
     },
 
     onTap(event) {
-      const index = Number(event.currentTarget.dataset.index);
-      const tab = this.data.tabs[index];
-      if (!tab || tab.pagePath === currentPath()) {
+      const detail = (event && event.detail) || {};
+      const index = Number(detail.index);
+      const tab = detail.tab || (this.data.tabs || [])[index] || null;
+      if (!tab || !tab.pagePath || tab.pagePath === currentPath()) {
+        return;
+      }
+      if (tab.pseudoTab === true) {
+        // D64：伪 tab 不在 tabBar.list，switchTab 会失败 → reLaunch 进主包页
+        wx.reLaunch({ url: '/' + tab.pagePath });
         return;
       }
       wx.switchTab({ url: '/' + tab.pagePath });

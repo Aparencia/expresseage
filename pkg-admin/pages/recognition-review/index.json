@@ -1,3 +1,4 @@
 {
-  "navigationBarTitleText": "识别失败复核"
+  "navigationBarTitleText": "识别失败复核",
+  "enablePullDownRefresh": true
 }

@@ -23,6 +23,47 @@
   padding: 8rpx 24rpx;
 }
 
+/* D67 筛选器：横滚 chips（全部/资料未完善/按苑/按楼栋/有备注）+ 苑/楼栋二级选择 */
+.filter-scroll {
+  white-space: nowrap;
+  margin-bottom: 8rpx;
+}
+
+.filter-row {
+  display: inline-flex;
+}
+
+.chip {
+  min-height: 64rpx;
+  line-height: 64rpx;
+  padding: 0 24rpx;
+  border-radius: 32rpx;
+  background: #FFFFFF;
+  color: #666666;
+  font-size: 26rpx;
+  margin: 0 16rpx 8rpx 0;
+}
+
+.chip-active {
+  background: var(--v4-partner);
+  color: #FFFFFF;
+}
+
+.filter-desc {
+  padding: 0 8rpx 16rpx;
+  align-items: center;
+}
+
+.filter-desc .small {
+  color: #8A6D00;
+}
+
+.filter-clear {
+  font-size: 24rpx;
+  color: var(--v4-partner);
+  padding: 8rpx 0 8rpx 24rpx;
+}
+
 .stale-card {
   background: #FFF4CE;
 }

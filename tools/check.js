@@ -1,6 +1,6 @@
 'use strict';
 /**
- * tools/check.js — v4 代码/配置门禁（ENGINEERING §8.2 的 36 条判据逐条实现）。
+ * tools/check.js — v4 代码/配置门禁（ENGINEERING §8.2 的 39 条判据逐条实现）。
  * 口径：docs/engineering/V4_ENGINEERING.md v0.9 §8.2；失败含义见同表。汇总行必须存在（没有汇总输出 = 读数作废）。
  *
  * 与 check-docs 的分工（文件头登记差异，§8.2 #18）：
@@ -75,7 +75,7 @@ check(2, 'JS 语法', '客户端 + shared/api/store/utils + tools + cloudfunctio
 });
 
 // ---------------------------------------------------------------- #03
-check(3, '页面四件套', '主包 7 + 分包 25（顾客 6 / 兼职 8 / 开发者 11）', () => {
+check(3, '页面四件套', '主包 8 + 分包 24（顾客 5 / 兼职 8 / 开发者 11）', () => {
   const bad = [];
   for (const page of P.ALL_PAGES) {
     for (const ext of P.PAGE_EXTS) {
@@ -359,13 +359,17 @@ check(34, '打包忽略清单', '根目录每个目录 ∈ 源码白名单 或 p
 // ---------------------------------------------------------------- #35/#36
 check(35, '未引用导出扫描', '生产 0 引用且文件内不自用的导出必须逐条登记 tools/dead-export-baseline.json（history/test-only/contract-slot + 理由）；新增即红、基线失效即红', () => require('./lib/dead-code').runDeadExports());
 check(36, '页面死函数扫描', '页面/组件目录内定义但 JS/WXML 均无引用的函数必须登记基线（平台生命周期/框架保留键豁免）；新增即红、页面死函数清理后基线项自动作废', () => require('./lib/dead-code').runPageDeadFunctions());
+// ---------------------------------------------------------------- #37/#38/#39（实现：tools/lib/check-layout.js；D65 底部安全区/滚动三闸）
+check(37, 'D65 tab 页根安全区类', 'tab 页（app.json tabBar.list 5 页 + 伪 tab 页 pages/customer/pickcodes/index）根 class 含 page-body--tab；伪 tab 页未创建时跳过', require('./lib/check-layout').tabPageRootTabClass);
+check(38, 'D65 固定底条安全区', 'wxss 中 position:fixed 且 bottom:0 的规则必须含 env(safe-area-inset-bottom) 或 var(--v4-*)；全屏居中遮罩逐条基线（tools/lib/bottom-safe-baseline.json），基线失效/空集判红', require('./lib/check-layout').fixedBottomSafeArea);
+check(39, 'D65 下拉刷新开关对齐', '页面 js 有 onPullDownRefresh ⇔ json enablePullDownRefresh:true（双向判红；剥注释后扫描）', require('./lib/check-layout').pullDownRefreshAligned);
 // ---------------------------------------------------------------- 输出
 const opts = process.argv.slice(2);
 const failOnly = opts.includes('--fail-only');
 let pass = 0;
 let failed = 0;
 let skipped = 0;
-console.log('== tools/check.js · v4 门禁（ENGINEERING §8.2 · 36 条）==');
+console.log('== tools/check.js · v4 门禁（ENGINEERING §8.2 · 39 条）==');
 for (const r of results) {
   const id = '#' + String(r.no).padStart(2, '0');
   if (r.pass) {

@@ -1,3 +1,4 @@
 {
-  "navigationBarTitleText": "兼职"
+  "navigationBarTitleText": "兼职",
+  "enablePullDownRefresh": true
 }

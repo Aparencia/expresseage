@@ -438,7 +438,8 @@ function register(h) {
       'H7 tools/lib/project.js pkg-partner 追加 pick-list（页数口径联动）');
     const sec7 = fsutil.section(readText(CONTRACT), /^##\s*7\./) || '';
     t.eq(sec7.indexOf(pickPath) !== -1, true, 'H8 CONTRACT §7 页面地图含第 32 页（check-docs #2 双向一致）');
-    t.eq(sec7.indexOf('pkg-customer/pages/pickup-list/index') !== -1, true, 'H9 CONTRACT §7 既有页面未被删（无回归）');
+    t.eq(sec7.indexOf('pages/customer/pickcodes/index') !== -1, true,
+      'H9 CONTRACT §7 既有页面未被删（D64：取件码页迁主包在册，无回归）');
     const arch = readText(ARCH);
     t.eq(arch.indexOf('32 个页面') !== -1, true, 'H10 ARCHITECTURE 页面数 31→32');
     t.eq(arch.indexOf('`pkg-partner` 8 页') !== -1, true, 'H11 ARCHITECTURE 分包页数 pkg-partner 7→8');

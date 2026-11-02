@@ -98,6 +98,8 @@ const FILES = {
   profileWxml: 'pages/profile/index.wxml',
   tabJs: 'custom-tab-bar/index.js',
   tabWxml: 'custom-tab-bar/index.wxml',
+  tabData: 'components/tab-bar-view/tabs.js',
+  tabViewWxml: 'components/tab-bar-view/index.wxml',
   appJson: 'app.json'
 };
 
@@ -347,11 +349,11 @@ function register(h) {
       'D5 我的页红点读 store.badges.messages（同源）');
     t.eq(profileVm.buildVm({ badges: {} }).messagesBadge, 0, 'D6 无未读时我的页红点为 0');
 
-    const tabJs = textOf(FILES.tabJs);
+    const tabJs = textOf(FILES.tabData);
     const profileBadges = tabJs.match(/pagePath: 'pages\/profile\/index'[^\n]*badgeKey: 'messages'/g) || [];
     t.eq(profileBadges.length, 2, 'D7 两角色「我的」tab 均带 badgeKey=messages（我的格未读红点）');
-    t.check(/item\.badgeKey\s*&&\s*badges\[item\.badgeKey\]/.test(textOf(FILES.tabWxml)),
-      'D8 custom-tab-bar wxml 按 badgeKey 渲染红点（订阅 store 自动刷新）');
+    t.check(/item\.badgeKey\s*&&\s*badges\[item\.badgeKey\]/.test(textOf(FILES.tabViewWxml)),
+      'D8 共用底部栏组件按 badgeKey 渲染红点（订阅 store 自动刷新；D64 视觉抽到 components/tab-bar-view）');
 
     const profileWxml = textOf(FILES.profileWxml);
     t.eq((profileWxml.match(/wx:if="\{\{messagesBadge\}\}" class="red-dot"/g) || []).length, 2,
@@ -362,7 +364,7 @@ function register(h) {
     t.check(/badgePatchOf/.test(textOf(FILES.partnerPage)), 'D12 兼职消息页红点补丁走纯件（不手写覆盖）');
 
     // A 批 P1-5：顾客「订单」格数量角标 ordersOngoing（数量角标不清零，与红点语义区分）
-    const ordersTabBadge = textOf(FILES.tabJs)
+    const ordersTabBadge = textOf(FILES.tabData)
       .match(/pagePath: 'pages\/customer\/orders\/index'[^\n]*badgeKey: 'ordersOngoing'/g) || [];
     t.eq(ordersTabBadge.length, 1, 'D13 顾客「订单」tab 按 badgeKey=ordersOngoing 渲染数量角标（P1-5）');
     t.check(/renderPlan\.refreshPlanOf\(/.test(textOf(FILES.home))

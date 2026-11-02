@@ -1,3 +1,4 @@
 {
-  "navigationBarTitleText": "全局配置"
+  "navigationBarTitleText": "全局配置",
+  "enablePullDownRefresh": true
 }

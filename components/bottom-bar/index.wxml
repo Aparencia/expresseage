@@ -1,0 +1,7 @@
+<!-- components/bottom-bar/index.wxml · D65 全局底部固定条（批量条/操作条复用）
+     内容由 slot 提供；组件自带 env(safe-area-inset-bottom) 底垫 + 可测高占位（流水位，替代页面自造 static 垫高）。
+     用法：外层 bottom-bar 标签本身不写样式类，动作区包一个 view 放进 slot。 -->
+<view class="bb-placeholder" style="height: {{placeholderHeight}}px;"></view>
+<view class="bb-bar">
+  <slot />
+</view>

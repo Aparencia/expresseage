@@ -1,4 +1,4 @@
-// pkg-customer/pages/pickup-list/parts/local-ocr.js · 本机清单「识别截图」页面零件（允许 wx）
+// pages/customer/pickcodes/parts/local-ocr.js · 本机清单「识别截图」页面零件（允许 wx；D64 迁主包）
 // D57：本机清单的截图识别是**端侧能力**——只做 wx.chooseMedia 选图 + VKSession 端侧 OCR：
 //   零 wx.cloud、零 api/upload（不上传截图）、零 api/modules/ai（不外呼第三方 AI）、零本机存储写入。
 // 平台适配单源在 utils/ocr/wx-platform.js（与顾客下单页 ocr-flow 共用）；纯逻辑单源在 utils/ocr。

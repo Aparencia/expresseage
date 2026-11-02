@@ -3,7 +3,7 @@
 
   <view class="role-hero">
     <view class="title">校园快递代取</view>
-    <view class="subtitle">上传取件码截图，请兼职帮你取件送到宿舍。</view>
+    <view class="subtitle">下单后请兼职代取，送到宿舍。</view>
   </view>
 
   <view class="card" wx:if="{{singlePage}}">

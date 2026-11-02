@@ -165,20 +165,7 @@
   padding: 24rpx 0 32rpx;
 }
 
-.bottom-safe {
-  height: 160rpx;
-}
-
-.batch-bar {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: #FFFFFF;
-  box-shadow: 0 -2rpx 12rpx rgba(0, 0, 0, 0.08);
-  padding: 20rpx 24rpx 32rpx;
-}
-
+/* D65：批量条固定底盘/env 底垫由 components/bottom-bar 统一提供，本文件只保留条内布局 */
 .batch-head {
   margin-bottom: 16rpx;
 }

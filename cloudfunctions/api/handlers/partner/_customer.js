@@ -1,30 +1,31 @@
 // handlers/partner/_customer.js · 兼职客户域公共件（批 7：listBindings/getCustomer/stats/unbind/saveNote 共用）
 // 口径：DATA_MODEL §7.4 +「批 7 兼职客户与运营（只增不改语义）」、§4.5（dormKey 自然序）、§5.2/§5.3；UX_PARTNER §3.5~§3.8。
 // 纪律：所有订单查询都带 partnerId 归属 + 测试数据隔离谓词；本文件不感知「视角分支」，身份由中间件解析。
+// D67（批 24）：客户列表链（分页/关键词/筛选/排序/游标）已拆到同目录 `_customer-list.js`（本文件 497/500 贴边，
+//   先拆件再加筛选入参）；本文件保留身份/订单计数/行 DTO/头像签发/时间窗等客户域公共件，并 re-export 列表链以便既有调用方。
 'use strict';
 
 const { COLLECTIONS } = require('../../shared/collections');
 const enums = require('../../shared/enums');
-const zones = require('../../shared/zones');
 const time = require('../../lib/time');
 const { errors } = require('../../lib/errors');
 const identity = require('../user/_common');
 const bindCommon = require('../bind/_common');
 const avatarUrl = require('../../lib/avatar-url');
+const customerList = require('./_customer-list');
 
-// 分页：limit 缺省 20、最大 50（DATA_MODEL §7.4）；客户列表一次扫描 ≤100 条（§5.2）。
-const DEFAULT_PAGE_SIZE = 20;
-const MAX_PAGE_SIZE = 50;
+// ── 客户列表链（D67 拆件）：由 _customer-list.js 提供，这里 re-export 保持既有调用方/套件路径不变 ──
+const textOf = customerList.textOf;
+
+// 客户列表一次扫描 ≤100 条（§5.2）；单状态订单扫描上限（§5.3）。
 const MAX_BINDINGS = 100;
 // 单状态订单扫描上限：防止全表扫描（§5.3）；档位与 order.listPartner 的 300 条扫描窗一致。
 const MAX_ORDER_SCAN = 300;
-const KEYWORD_MAX_CHARS = 40;
 const DAY_MS = time.DAY_MS;
 // 自然日/周/月时区口径：lib/time 固定 UTC+8（serverTime 派生），与 orderNo 日期部分同源。
 const TZ_OFFSET_MS = time.TZ_OFFSET_MS;
 const SERIES_DAYS = 7;
 const RECENT_LIMIT = 10;
-const KEYWORD_SEPARATOR = /[\s-]/g;
 const WEEK_START_DAY = 6; // 周一起：UTC 0=周日，偏移 (day+6)%7
 
 function scopeOf(ctx) {
@@ -38,10 +39,6 @@ function nowMsOf(ctx) {
 // 测试数据隔离（DATA_MODEL §6.6）：真实会话只看 isTest=false；TEST_WRITE 会话只看 isTest=true。
 function isTestScope(ctx) {
   return scopeOf(ctx).testWrite;
-}
-
-function textOf(value) {
-  return typeof value === 'string' ? value.trim() : '';
 }
 
 // 时间归一：null/undefined/''/非法一律归 0（「没有这个时间」不能变成当前真实时钟）。
@@ -70,29 +67,6 @@ function sameId(left, right) {
     return false;
   }
   return String(left) === String(right);
-}
-
-function parseLimit(payload) {
-  const raw = Number(payload && payload.limit);
-  if (!Number.isFinite(raw) || raw <= 0) {
-    return DEFAULT_PAGE_SIZE;
-  }
-  return Math.min(Math.floor(raw), MAX_PAGE_SIZE);
-}
-
-// 搜索词：空=不过滤；超长/非串拒绝（静默忽略会让「搜了但没筛」变成全量返回）。
-function readKeyword(value) {
-  if (value === undefined || value === null || value === '') {
-    return '';
-  }
-  if (typeof value !== 'string') {
-    throw errors.validation('keyword', '搜索词不正确，请重新输入');
-  }
-  const text = value.trim();
-  if (text.length > KEYWORD_MAX_CHARS) {
-    throw errors.validation('keyword', '搜索词过长，请缩短后重试');
-  }
-  return text;
 }
 
 // 时间范围入参：接受 epoch 毫秒或 ISO 字符串；非法值不静默降级为「无限制」。
@@ -168,7 +142,7 @@ async function activeCountsOfPage(ctx, partnerId, customerIds) {
   return counts;
 }
 
-// ── 客户档案行 / 关键词匹配（DATA_MODEL §7.4：昵称/楼栋/宿舍/roomTag/尾号四位/customerNo）──
+// ── 客户档案行（DATA_MODEL §7.4：昵称/楼栋/宿舍/roomTag/尾号四位/customerNo）────────────
 function customerRowOf(binding, customer, activeOrderCount) {
   return bindCommon.partnerBindingRow(binding, customer, activeOrderCount);
 }
@@ -188,91 +162,6 @@ async function signRowsAvatarUrls(ctx, rows) {
     }
   });
   return list;
-}
-
-function matchKeyword(row, keyword) {
-  if (!keyword) {
-    return true;
-  }
-  const word = keyword.toLowerCase();
-  const compact = word.replace(KEYWORD_SEPARATOR, '');
-  const fields = [row.displayName, row.dormKey, row.roomTag, row.buildingText, row.phoneTail];
-  for (let i = 0; i < fields.length; i += 1) {
-    if (textOf(fields[i]).toLowerCase().indexOf(word) >= 0) {
-      return true;
-    }
-  }
-  // 编号按「去空格/连字符」比较：页面展示 C-XXXX-XXXX，库内是 CXXXXXXXX。
-  const customerNo = textOf(row.customerNo).toLowerCase();
-  return customerNo !== '' && compact !== '' && customerNo.indexOf(compact) >= 0;
-}
-
-// ── 客户列表游标：只编码排序锚（dormKey 自然序 + allocSeq=绑定顺序），不含任何 openid ────
-function parseBindingCursor(value) {
-  if (value === undefined || value === null || value === '') {
-    return null;
-  }
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw errors.validation('cursor', '分页游标不正确，请刷新页面后重试');
-  }
-  const raw = value.dormKey; const dormKey = typeof raw === 'string' ? raw.trim() : '';
-  const allocSeq = Number(value.allocSeq);
-  // 批20-C：允许空 dormKey 游标（「资料未完善」桶，空置底后尾页可达）；非空锚仍须字符串，脏游标照旧拒绝。
-  if ((raw !== undefined && raw !== null && typeof raw !== 'string') || !Number.isFinite(allocSeq) || allocSeq < 0) {
-    throw errors.validation('cursor', '分页游标不正确，请刷新页面后重试');
-  }
-  return { dormKey: dormKey, allocSeq: allocSeq };
-}
-
-function allocSeqOf(binding) {
-  const seq = Number(binding && binding.allocSeq);
-  return Number.isFinite(seq) && seq >= 0 ? seq : 0;
-}
-
-function entryKey(entry) {
-  return { dormKey: entry.row.dormKey || '', allocSeq: entry.allocSeq };
-}
-
-// 批20-C：空 dormKey（资料未完善）恒置底；桶 = [非空 0, 空 1]，桶内 zones.compareDormKey，再按 allocSeq。
-function compareBindingEntries(left, right) {
-  const a = entryKey(left); const b = entryKey(right);
-  const bucketA = a.dormKey ? 0 : 1; const bucketB = b.dormKey ? 0 : 1;
-  if (bucketA !== bucketB) {
-    return bucketA - bucketB;
-  }
-  if (bucketA === 0) {
-    const delta = zones.compareDormKey(a.dormKey, b.dormKey);
-    if (delta !== 0) {
-      return delta;
-    }
-  }
-  return left.allocSeq - right.allocSeq;
-}
-
-// 游标判定与 compareBindingEntries 同一全序（空桶后置）：空桶游标后只返回更晚空行，非空行视为已翻过
-// → 空置底后分页不重不漏（旧实现空行不产游标，尾部页会丢）。
-function isAfterBindingCursor(entry, cursor) {
-  if (!cursor) {
-    return true;
-  }
-  const key = entryKey(entry);
-  const bucketA = key.dormKey ? 0 : 1; const bucketB = cursor.dormKey ? 0 : 1;
-  if (bucketA !== bucketB) {
-    return bucketA > bucketB;
-  }
-  if (bucketA === 0) {
-    const delta = zones.compareDormKey(key.dormKey, cursor.dormKey);
-    if (delta !== 0) {
-      return delta > 0;
-    }
-  }
-  return key.allocSeq > cursor.allocSeq;
-}
-
-// 行游标：空 dormKey 行同样产游标（{dormKey:'', allocSeq}），否则空置底后下一页不可达。
-function bindingCursorOf(entry) {
-  const key = entryKey(entry);
-  return { dormKey: key.dormKey, allocSeq: key.allocSeq };
 }
 
 // ── 订单行（getCustomer 历史订单；只回展示所需字段，不含取件码/宿舍/尾号/openid）─────────
@@ -449,8 +338,19 @@ function inWindow(valueMs, startMs, endMs) {
 }
 
 module.exports = {
-  DEFAULT_PAGE_SIZE,
-  MAX_PAGE_SIZE,
+  // 列表链（D67 拆件到 _customer-list.js；此处 re-export 保持既有调用方路径不变）
+  DEFAULT_PAGE_SIZE: customerList.DEFAULT_PAGE_SIZE,
+  MAX_PAGE_SIZE: customerList.MAX_PAGE_SIZE,
+  parseLimit: customerList.parseLimit,
+  readKeyword: customerList.readKeyword,
+  readFilters: customerList.readFilters,
+  matchFilters: customerList.matchFilters,
+  matchKeyword: customerList.matchKeyword,
+  parseBindingCursor: customerList.parseBindingCursor,
+  allocSeqOf: customerList.allocSeqOf,
+  compareBindingEntries: customerList.compareBindingEntries,
+  isAfterBindingCursor: customerList.isAfterBindingCursor,
+  bindingCursorOf: customerList.bindingCursorOf,
   MAX_BINDINGS,
   MAX_ORDER_SCAN,
   SERIES_DAYS,
@@ -463,20 +363,12 @@ module.exports = {
   msOf,
   isoOf,
   sameId,
-  parseLimit,
-  readKeyword,
   parseTimeBound,
   requireOwnedBinding,
   countActiveOrders,
   activeCountsOfPage,
   customerRowOf,
   signRowsAvatarUrls,
-  matchKeyword,
-  parseBindingCursor,
-  allocSeqOf,
-  compareBindingEntries,
-  isAfterBindingCursor,
-  bindingCursorOf,
   orderRowOf,
   orderAnchorMs,
   statusUpdatedMs,

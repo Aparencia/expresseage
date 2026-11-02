@@ -1,3 +1,4 @@
 {
-  "navigationBarTitleText": "后台消息"
+  "navigationBarTitleText": "后台消息",
+  "enablePullDownRefresh": true
 }

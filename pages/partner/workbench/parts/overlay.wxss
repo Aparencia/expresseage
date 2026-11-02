@@ -88,21 +88,8 @@
   color: #2B6DE5;
 }
 
-.bottom-safe {
-  height: 120rpx;
-}
-
-/* 批量操作条 */
-.batch-bar {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  padding: 12rpx 24rpx calc(12rpx + env(safe-area-inset-bottom));
-  background: #FFFFFF;
-  box-shadow: 0 -2rpx 12rpx rgba(0, 0, 0, 0.06);
-}
-
+/* D65：批量操作条的固定底盘与 safe-area 底垫由 components/bottom-bar 提供，
+   本文件只保留条内内容布局类（不再自造 static 垫高） */
 .batch-head {
   flex-wrap: wrap;
   padding-bottom: 8rpx;
@@ -118,12 +105,12 @@
   margin: 0 8rpx 8rpx 0;
 }
 
-/* 撤销条：浮在 tabBar 上方，不遮挡底部操作 */
+/* 撤销条：浮在 tabBar 上方（token 组合，不写死 160rpx）；批量条同时出现时再上抬一档 */
 .undo-bar {
   position: fixed;
   left: 24rpx;
   right: 24rpx;
-  bottom: 160rpx;
+  bottom: calc(var(--v4-inset-tab) + 16rpx);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -132,6 +119,10 @@
   background: #1A1A1A;
   color: #FFFFFF;
   font-size: 26rpx;
+}
+
+.undo-bar-above-batch {
+  bottom: calc(var(--v4-inset-bar) + 32rpx);
 }
 
 .undo-btn {

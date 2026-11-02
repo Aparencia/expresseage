@@ -36,7 +36,7 @@ const partnerMessagePoll = require(path.join(ROOT, 'pkg-partner/pages/order-deta
 const cloudActions = require(path.join(ROOT, 'cloudfunctions/api/shared/actions.js'));
 const { createApi } = require(path.join(ROOT, 'cloudfunctions/api/app.js'));
 
-const EXPECTED_ASSERTIONS = 143; // 实际断言总数（110 + 33：P0-2 去重 12 + P0-4 首页/隐藏页 21）；少算/多算都判红
+const EXPECTED_ASSERTIONS = 145; // 实际断言总数（110 + 33：P0-2 去重 12 + P0-4 首页/隐藏页 21；批24-D64 底部栏抽取 +2）；少算/多算都判红
 const NOW = Date.parse('2026-10-22T12:00:00+08:00');
 const ROLES = { CUSTOMER: 'CUSTOMER', PARTNER: 'PARTNER' };
 const USER_STATUS = { ACTIVE: 'ACTIVE' };
@@ -430,6 +430,16 @@ function register(h) {
       return src.indexOf('getTabBar()') >= 0 && /setData\(\{\s*selected:\s*[01]/.test(src);
     });
     t.eq(synced.length, 4, 'J8 4 个 tab 页 onShow 均显式同步 tabBar 选中格（per-page 单一来源，页面隐藏时零空转）');
+    // D64：底部栏视觉抽为共用组件后，custom-tab-bar 只保留状态/跳转（不再自绘 icon 循环），
+    // 视觉组件零 store/零 wx → 不新增订阅与平台调用，热路径与抽取前等价。
+    const tabView = textOf('components/tab-bar-view/index.js');
+    t.check(textOf('custom-tab-bar/index.wxml').indexOf('<tab-bar-view') >= 0
+      && tabBar.indexOf('tab-bar-view/tabs') >= 0
+      && tabView.indexOf('store/index') === -1 && tabView.indexOf('wx.') === -1,
+    'J10 D64 底部栏视觉抽为 components/tab-bar-view：custom-tab-bar 只做状态/跳转薄包装，视觉组件零 store/零 wx');
+    t.check(tabBar.indexOf('pseudoTab === true') >= 0 && tabBar.indexOf('wx.reLaunch') >= 0
+      && tabBar.indexOf('wx.switchTab') >= 0,
+    'J11 D64 伪 tab 跳转分支：取件码页不在 tabBar.list 走 reLaunch（真 tab 仍 switchTab），不产生失败切换');
     t.notEmpty([home, ordersPage, tabBar], 'J9 J 组样本非空');
   });
 

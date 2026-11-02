@@ -1,15 +1,20 @@
 /* pages/launch/index.wxss · 启动页（品牌区 + 隐私同意闸 + 加载骨架 + 错误重试）
    规则：token 与通用类在 app.wxss；本页只写页面私有类（门禁 #9）。 */
 
+/* D65：启动页不再用 100vh 居中裁切——内容超高（小屏/系统大字号/隐私闸全文）时
+   纵向可滚动且顶部不裁切：flex 子项 margin:auto 居中，溢出时自动贴顶。
+   这保证隐私闸「同意并继续/不同意」与错误重试按钮在任意屏高都可达。 */
 .launch-page {
   min-height: 100vh;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
+  padding: 48rpx 24rpx calc(48rpx + var(--v4-safe-b));
 }
 
 .launch-box {
   width: 100%;
+  margin: auto 0;
   display: flex;
   flex-direction: column;
   align-items: center;

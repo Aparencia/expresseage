@@ -16,6 +16,9 @@
  *   F. 批 T2 门禁 #36 语法级引用判定：扫描范围 = ALL_PAGES 全量页面目录（含 depth-2 主包页）+ 组件目录；
  *      合成用例覆盖「跨目录无关同名属性不算引用 / 同目录 this.NAME / WXML 绑定 / 解构 require 跨目录 /
  *      depth-2 纳入扫描 / 测试引用只在 require 该目录时生效 / 页面死函数基线结构」。
+ *   G. 批 24/D65 门禁 #37~#39 扫描器本体：tab 页根 `page-body--tab`（伪 tab 页缺失时记 absent 跳过）、
+ *      fixed+bottom:0 必带 env/全局 token（逐条基线先绿、基线失效首红、非贴屏底不计入）、
+ *      onPullDownRefresh ⇔ enablePullDownRefresh 双向（剥注释；有 handler 无开关/有开关无 handler 各一红）。
  *
  * 纪律：不 mock wx、不连云端、不写任何数据（dry-run）；期望值全部来自权威文档/注册表，不抄现状。
  * 取数：node tools/selftest-tools.js | Select-Object -Last 2
@@ -30,7 +33,7 @@ const PROJECT = require('./lib/project');
 const { ALL_COLLECTIONS } = require(path.join(__dirname, '..', 'shared/collections.js'));
 
 const ROOT = path.resolve(__dirname, '..');
-const EXPECTED_ASSERTIONS = 35; // 实跑读数：node tools/selftest-tools.js（10 原有 + 14 批 16 + 11 批 T2 #36 语法级引用/覆盖/基线结构）
+const EXPECTED_ASSERTIONS = 50; // 实跑读数：node tools/selftest-tools.js（10 原有 + 14 批 16 + 11 批 T2 #36 + 15 批 24/D65 #37~#39 三闸）
 
 function read(rel) {
   return fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -235,6 +238,61 @@ function register(h) {
     t.eq(pageEntries.filter((e) => !e || typeof e.file !== 'string' || !e.file || typeof e.function !== 'string'
       || !e.function || !deadCode.REASONS.has(e.reason) || typeof e.evidence !== 'string'), [],
     '#36 页面死函数基线每项含 file+function+合法 reason+evidence（缺失/理由非法判红）');
+  });
+
+  // 批 24/D65：门禁 #37/#38/#39 扫描器本体（合成合法基线先绿 + 反例首红；判据自身可测，防空集/空转全绿）
+  h.section('§8.2 #37/#38/#39 D65 底部安全区三闸（tab 根类/固定底条/下拉开关）', (t) => {
+    const layout = require('./lib/check-layout');
+
+    const rootOk = layout.scanTabPageRoots([
+      { page: 'pages/a/index', wxml: '<!-- 注释 -->\n<view class="page-body page-body--tab">\n</view>\n' }
+    ]);
+    t.eq(rootOk.bad, [], '#37 tab 页根 class 含 page-body--tab → 通过（注释先剥）');
+    const rootBad = layout.scanTabPageRoots([{ page: 'pages/a/index', wxml: '<view class="page-body">\n</view>\n' }]);
+    t.eq(rootBad.bad.length, 1, '#37 根 class 缺 page-body--tab → 判红');
+    const rootAbsent = layout.scanTabPageRoots([{ page: 'pages/customer/pickcodes/index', wxml: null }]);
+    t.eq(rootAbsent.absent, ['pages/customer/pickcodes/index'], '#37 伪 tab 页未创建时记 absent 跳过（不误红）');
+
+    const badBar = layout.scanFixedBottomSafe({ 'pkg/x.wxss': '.bar {\n  position: fixed;\n  bottom: 0;\n  color: #000;\n}\n' }, []);
+    t.eq(badBar.offenders, ['pkg/x.wxss::.bar'], '#38 fixed+bottom:0 无安全区底垫 → 判红');
+    const okBar = layout.scanFixedBottomSafe({ 'pkg/x.wxss': '.bar {\n  position: fixed;\n  bottom: 0;\n  padding-bottom: env(safe-area-inset-bottom);\n}\n' }, []);
+    t.eq(okBar.offenders, [], '#38 同一规则含 env(safe-area-inset-bottom) → 通过');
+    const tokenBar = layout.scanFixedBottomSafe({ 'pkg/x.wxss': '.bar {\n  position: fixed;\n  bottom: 0;\n  padding-bottom: var(--v4-inset-bar);\n}\n' }, []);
+    t.eq(tokenBar.offenders, [], '#38 显式使用全局 token（var(--v4-*)）→ 通过');
+    const masked = layout.scanFixedBottomSafe(
+      { 'pkg/mask.wxss': '.m {\n  position: fixed;\n  top: 0;\n  bottom: 0;\n}\n' },
+      [{ file: 'pkg/mask.wxss', selector: '.m', key: 'pkg/mask.wxss::.m' }]
+    );
+    t.eq([masked.offenders, masked.stale], [[], []], '#38 全屏居中遮罩逐条基线登记 → 通过且不算基线失效');
+    const stale = layout.scanFixedBottomSafe(
+      { 'pkg/x.wxss': '.bar { position: fixed; bottom: 0; padding-bottom: env(safe-area-inset-bottom); }\n' },
+      [{ file: 'pkg/x.wxss', selector: '.bar', key: 'pkg/x.wxss::.bar' }]
+    );
+    t.eq(stale.stale, ['pkg/x.wxss::.bar'], '#38 基线条目已修复/改名 → 基线失效判红');
+    const nonZero = layout.scanFixedBottomSafe({ 'pkg/x.wxss': '.undo { position: fixed; bottom: 160rpx; }\n' }, []);
+    t.eq(nonZero.fixedBottomRules, 0, '#38 非贴屏底（bottom:160rpx）不计入本判据');
+
+    const realBaseline = JSON.parse(read('tools/lib/bottom-safe-baseline.json'));
+    const realCheck = layout.validateBaseline(realBaseline);
+    t.eq(realCheck.problems, [], '#38 实仓基线结构合法（file+selector+reason 枚举，无重复）');
+    t.check(realCheck.entries.length > 0, '#38 实仓基线非空（只逐条登记全屏遮罩，禁止目录豁免）');
+
+    const pdClean = layout.scanPullDown([
+      { page: 'pages/a/index', js: 'Page({\n  onPullDownRefresh() {}\n});\n', json: { enablePullDownRefresh: true } }
+    ]);
+    t.eq(pdClean.issues, [], '#39 handler 与 json 开关一致 → 通过');
+    const pdNoFlag = layout.scanPullDown([
+      { page: 'pages/a/index', js: 'Page({\n  onPullDownRefresh() {}\n});\n', json: {} }
+    ]);
+    t.eq(pdNoFlag.issues.length, 1, '#39 有 handler 未开开关 → 判红（下拉无响应）');
+    const pdNoHandler = layout.scanPullDown([
+      { page: 'pages/a/index', js: 'Page({\n  data: {}\n});\n', json: { enablePullDownRefresh: true } }
+    ]);
+    t.eq(pdNoHandler.issues.length, 1, '#39 开了开关无 handler → 判红（下拉空转）');
+    const pdComment = layout.scanPullDown([
+      { page: 'pages/a/index', js: 'Page({\n  // onPullDownRefresh() {}\n  data: {}\n});\n', json: {} }
+    ]);
+    t.eq([pdComment.handlers, pdComment.issues], [0, []], '#39 注释里的 onPullDownRefresh 不算 handler（剥注释后判定）');
   });
 }
 

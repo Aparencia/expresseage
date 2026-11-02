@@ -1,5 +1,5 @@
 <!-- pkg-partner/pages/order-detail/index.wxml · 兼职订单详情（动作可见性来自服务端 order.actions；面板数据全部来自 parts 视图件） -->
-<view class="page-body detail-body">
+<view class="page-body">
   <switch-bar />
   <view wx:if="{{loading}}" class="empty-text">加载中…</view>
   <view wx:elif="{{error}}" class="card">
@@ -148,10 +148,9 @@
       </view>
     </view>
 
-    <view class="bottom-safe"></view>
-
-    <!-- 底部操作条：只渲染服务端 order.actions[]；READONLY 全部置灰（点击只 toast、不发请求） -->
-    <view wx:if="{{actions.length}}" class="action-bar">
+    <!-- D65：操作条走底部条组件（自带 env 安全区底垫 + 可测高占位，替代页面 static 垫高）；
+         只渲染服务端 order.actions[]；READONLY 全部置灰（点击只 toast、不发请求） -->
+    <bottom-bar wx:if="{{actions.length}}">
       <view
         wx:for="{{actions}}"
         wx:key="key"
@@ -160,10 +159,10 @@
         data-key="{{item.key}}"
         bindtap="onActionTap"
       >{{item.label}}</view>
-    </view>
+    </bottom-bar>
 
     <!-- 撤销条：仅服务端 actions 给出 undoPick/undoDeliver 时出现，5 秒倒计时 -->
-    <view wx:if="{{undoBar.visible}}" class="undo-bar">
+    <view wx:if="{{undoBar.visible}}" class="undo-bar {{actions.length ? 'undo-bar-above-actions' : ''}}">
       <text>{{undoBar.label}} · 可撤销 {{undoBar.remaining}}s</text>
       <view class="btn btn-ghost mini-btn" bindtap="onUndoTap">{{undoBar.undoLabel}}</view>
     </view>

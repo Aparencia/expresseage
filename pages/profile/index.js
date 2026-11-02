@@ -81,9 +81,11 @@ Page({
     if (!this.guard()) {
       return;
     }
-    // 「我的」是第 3 个 tab（index=2）：进入页面主动同步 tabBar 选中态，避免切角色/切换会话后高亮错格。
+    // D64：顾客 4 格中「我的」是第 4 格（index=3）、兼职 3 格中第 3 格（index=2）：按当前角色 tabs 解析自身格位后同步。
     if (typeof this.getTabBar === 'function' && this.getTabBar()) {
-      this.getTabBar().setData({ selected: 2 });
+      const tabBar = this.getTabBar();
+      const profileIndex = ((tabBar.data && tabBar.data.tabs) || []).findIndex((tab) => tab.pagePath === 'pages/profile/index');
+      tabBar.setData({ selected: profileIndex >= 0 ? profileIndex : 2 });
     }
     this.refresh();
     this.maybeOpenEditForm();

@@ -173,6 +173,7 @@ const MY_FILES = [
   'pages/partner/customers/index.js',
   'pages/partner/customers/index.wxml',
   'pages/partner/customers/parts/list-model.js',
+  'pages/partner/customers/parts/filter-model.js',
   'pkg-partner/pages/customer-detail/index.js',
   'pkg-partner/pages/customer-detail/index.wxml',
   'pkg-partner/pages/customer-detail/parts/detail-view.js',

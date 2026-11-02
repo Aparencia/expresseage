@@ -1,26 +1,47 @@
 'use strict';
 /**
- * tools/lib/pickup-local-cases.js — selftest-order-customer 的 D57「我的取件码（本机）」用例集（拆分子文件）。
+ * tools/lib/pickup-local-cases.js — selftest-order-customer 的 D57「我的取件码（本机）」+ D64「取件码一级入口」用例集（拆分子文件）。
  *
- * 为什么拆：门禁 #18「tools 单文件 ≤1000 行」——selftest-order-customer.js 已 981/1000（TD-088 贴边），
+ * 为什么拆：门禁 #18「tools 单文件 ≤1000 行」——selftest-order-customer.js 已满闸（TD-088 贴边），
  *   主套件只保留 §P 一行接线；宽口径纯件断言与页面/零件静态扫描放本文件。
  * 口径：D57（CONTRACT §5.6 v1.8 / §13）——本机清单只存顾客本人设备（`ex_college_v4.pickcodes`，
  *   utils/storage 单写口），零上传 / 零 wx.cloud / 零第三方 AI 外呼（端侧 OCR）、单测不 mock wx；
  *   兼职与后台（含只读视角）不可见；READONLY 不渲染且拒绝写；上限 50；清空需二次确认。
+ *   D64（CONTRACT §7/§13，2026-11-02）——页面迁主包为 `pages/customer/pickcodes/index`（伪 tab，
+ *   app.json tabBar.list 仍 5 项）；只显示本机取件码、**删除 D26 订单区**；首页入口卡删除；本页禁分享；
+ *   底部栏视觉抽为 `components/tab-bar-view`（custom-tab-bar 薄包装 + 页面内自绘 4 格）。
  */
 const path = require('path');
+const fs = require('fs');
 const fsutil = require('./fsutil');
 
 const ROOT = path.resolve(__dirname, '../..');
 const textOf = function textOf(rel) { return fsutil.readText(path.join(ROOT, rel)); };
+const jsonOf = function jsonOf(rel) {
+  try {
+    return JSON.parse(textOf(rel));
+  } catch (err) {
+    return null;
+  }
+};
 
-const localView = require(path.join(ROOT, 'pkg-customer/pages/pickup-list/parts/local-view.js'));
-const localOcr = require(path.join(ROOT, 'pkg-customer/pages/pickup-list/parts/local-ocr.js'));
+const localView = require(path.join(ROOT, 'pages/customer/pickcodes/parts/local-view.js'));
+const localOcr = require(path.join(ROOT, 'pages/customer/pickcodes/parts/local-ocr.js'));
 const ocr = require(path.join(ROOT, 'utils/ocr/index.js'));
+const project = require('./project');
+const sharePages = require('./share-pages');
 
-const PAGE_JS = 'pkg-customer/pages/pickup-list/index.js';
-const PAGE_WXML = 'pkg-customer/pages/pickup-list/index.wxml';
-const LOCAL_OCR = 'pkg-customer/pages/pickup-list/parts/local-ocr.js';
+const PAGE_JS = 'pages/customer/pickcodes/index.js';
+const PAGE_WXML = 'pages/customer/pickcodes/index.wxml';
+const PAGE_JSON = 'pages/customer/pickcodes/index.json';
+const PAGE_WXSS = 'pages/customer/pickcodes/index.wxss';
+const LOCAL_OCR = 'pages/customer/pickcodes/parts/local-ocr.js';
+const TAB_DATA = 'components/tab-bar-view/tabs.js';
+const TAB_VIEW_WXML = 'components/tab-bar-view/index.wxml';
+const TAB_VIEW_WXSS = 'components/tab-bar-view/index.wxss';
+const CUSTOM_TAB_BAR = 'custom-tab-bar/index.js';
+const ICON = 'assets/tabbar/customer-pickcodes.png';
+const ICON_ACTIVE = 'assets/tabbar/customer-pickcodes-active.png';
 
 /** 本机清单硬边界扫描：上传/云调用/第三方 AI/平台存储直连 一律 0 命中（剥注释后判） */
 function leakHits(code) {
@@ -45,6 +66,17 @@ function missingHandlers(wxml, pageSrc) {
   return names.filter(function absent(name) {
     return !new RegExp('\\b' + name + '\\s*\\(').test(pageSrc);
   });
+}
+
+/** PNG 头：签名 + 宽高（D64 图标必须自制 81×81，与既有 tabbar 图标一致） */
+function pngSize(rel) {
+  const buf = fs.readFileSync(path.join(ROOT, rel));
+  return {
+    signatureOk: buf.slice(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
+    width: buf.readUInt32BE(16),
+    height: buf.readUInt32BE(20),
+    bytes: buf.length
+  };
 }
 
 function registerP(t) {
@@ -129,6 +161,84 @@ function registerP(t) {
     && /localView\.TIP_TEXT/.test(pageSrc) && /localView\.READONLY_HINT/.test(pageSrc)
     && /localView\.EMPTY_TEXT/.test(pageSrc) && /this\.data\.localNoMatchText/.test(pageSrc),
   'P23 文案常量由页面 setData 注入 wxml 消费；纯辅助函数不导出（门禁 #35：新增导出必须有生产调用）');
+
+  // ── D64：页面迁主包 + 伪 tab + 删 D26 订单区 + 共用底部栏 + 禁分享 ──────────
+  const FOUR = [PAGE_JS, PAGE_JSON, PAGE_WXML, PAGE_WXSS];
+  t.eq(FOUR.filter(function empty(rel) { return !textOf(rel); }), [],
+    'P24 D64 新页四件套齐全且非空（主包 pages/customer/pickcodes）');
+  const pageJson = jsonOf(PAGE_JSON) || {};
+  t.eq([pageJson.navigationBarTitleText, pageJson.enablePullDownRefresh], ['我的取件码', true],
+    'P25 D64 页标题「我的取件码」+ enablePullDownRefresh（原页有 onPullDownRefresh，D65 开关对齐）');
+  t.check(/^<view class="page-body page-body--tab"/.test(wxml.trim()) && /<switch-bar\s*\/>/.test(wxml),
+    'P26 D64 伪 tab 页根节点 page-body page-body--tab（D65 底部安全区）+ 顶部 switch-bar');
+  const ORDER_REGION = ['orderApi', 'listCustomer', 'pickupChecks', '复制全部', '本单全部勾选',
+    '需查明', 'groupByOrder', '进行中订单'];
+  t.eq(ORDER_REGION.filter(function present(token) {
+    return pageSrc.indexOf(token) >= 0 || wxml.indexOf(token) >= 0;
+  }), [], 'P27 D64 已删 D26 订单区：页面零订单接口 / 本机勾选 / 复制全部 / 需查明 / 按订单分组残留');
+  t.check(!/onShareAppMessage|onShareTimeline/.test(pageSrc)
+    && sharePages.APP_MESSAGE.every(function notShared(rel) { return rel.indexOf('pickcodes') === -1; }),
+  'P28 D64 本页不提供分享/转发（无分享钩子、不在 D36 好友转发清单）');
+  const appJson = jsonOf('app.json') || {};
+  const mainPages = appJson.pages || [];
+  const pkgCustomer = (appJson.subPackages || []).filter(function byRoot(sub) {
+    return sub && sub.root === 'pkg-customer';
+  })[0] || {};
+  const subPages = (appJson.subPackages || []).reduce(function flat(list, sub) {
+    return list.concat((sub && sub.pages) || []);
+  }, []);
+  t.eq([mainPages.indexOf('pages/customer/pickcodes/index') >= 0,
+    (pkgCustomer.pages || []).indexOf('pages/pickup-list/index') === -1,
+    mainPages.length + subPages.length, ((appJson.tabBar || {}).list || []).length],
+  [true, true, 32, 5],
+  'P29 app.json：主包新增取件码页 / 分包移除 pickup-list / 总页数仍 32 / tabBar.list 仍 5 项');
+  t.eq([project.MAIN_PAGES.indexOf('pages/customer/pickcodes/index') >= 0,
+    project.SUBPACKAGES['pkg-customer'].indexOf('pages/pickup-list/index') === -1,
+    project.ALL_PAGES.length],
+  [true, true, 32], 'P30 tools/lib/project.js 镜像同步（主包新增 / 分包移除 / ALL_PAGES 仍 32）');
+  const tabsData = require(path.join(ROOT, TAB_DATA));
+  const customerTabs = tabsData.CUSTOMER_TABS || [];
+  t.eq([customerTabs.length, customerTabs.map(function text(tab) { return tab.text; }),
+    customerTabs[2] && customerTabs[2].pseudoTab, customerTabs[3] && customerTabs[3].pagePath,
+    (tabsData.PARTNER_TABS || []).length],
+  [4, ['首页', '订单', '取件码', '我的'], true, 'pages/profile/index', 3],
+  'P31 底部栏数据单源：顾客 4 格（首页/订单/取件码/我的，取件码=伪 tab 第 3 格）+ 兼职 3 格');
+  const barSrc = textOf(CUSTOM_TAB_BAR);
+  t.check(barSrc.indexOf('tab-bar-view/tabs') >= 0 && barSrc.indexOf('CUSTOMER_TABS') >= 0
+    && textOf('custom-tab-bar/index.wxml').indexOf('<tab-bar-view') >= 0,
+  'P32 custom-tab-bar 与伪 tab 页共用同一份 tabs 数据 + 视觉组件（custom-tab-bar 只是薄包装）');
+  t.check(/pseudoTab === true/.test(barSrc) && /wx\.reLaunch\(\{ url: '\/' \+ tab\.pagePath \}\)/.test(barSrc)
+    && /wx\.switchTab\(\{ url: '\/' \+ tab\.pagePath \}\)/.test(barSrc),
+  'P33 custom-tab-bar 跳转：伪 tab（不在 tabBar.list）用 reLaunch、真 tab 用 switchTab（D64 平台约束）');
+  t.check(/<tab-bar-view/.test(wxml) && /bind:tabtap="onTabTap"/.test(wxml)
+    && /wx\.switchTab\(\{ url: '\/' \+ tab\.pagePath \}\)/.test(pageSrc)
+    && /tabSelected: TAB_INDEX/.test(pageSrc),
+  'P34 伪 tab 页自绘共用底部栏且选中态=第 3 格，跳真 tab 走 wx.switchTab');
+  const tabViewWxml = textOf(TAB_VIEW_WXML);
+  const tabViewWxss = textOf(TAB_VIEW_WXSS);
+  t.check(tabViewWxml.indexOf('tab-text-active') >= 0 && tabViewWxml.indexOf('item.badgeKey') >= 0
+    && /position: fixed/.test(tabViewWxss) && /env\(safe-area-inset-bottom\)/.test(tabViewWxss),
+  'P35 共用底部栏视觉：选中态/角标渲染 + fixed 底栏带 safe-area（D65）');
+  const normalIcon = pngSize(ICON);
+  const activeIcon = pngSize(ICON_ACTIVE);
+  t.eq([normalIcon.signatureOk, normalIcon.width, normalIcon.height,
+    activeIcon.signatureOk, activeIcon.width, activeIcon.height,
+    normalIcon.bytes > 100 && activeIcon.bytes > 100,
+    customerTabs[2] && customerTabs[2].icon, customerTabs[2] && customerTabs[2].activeIcon],
+  [true, 81, 81, true, 81, 81, true, '/' + ICON, '/' + ICON_ACTIVE],
+  'P36 D64 自制取件码 tabbar 图标：普通/选中均 81×81 PNG 且由数据单源引用');
+  const homeWxml = textOf('pages/customer/home/index.wxml');
+  const homeSrc = textOf('pages/customer/home/index.js');
+  t.check(homeWxml.indexOf('pickup-entry') === -1 && homeWxml.indexOf('bindtap="onPickupListTap"') === -1
+    && homeSrc.indexOf('PICKUP_LIST_PAGE') === -1 && homeSrc.indexOf('onPickupListTap') === -1
+    && /^<view class="page-body page-body--tab"/.test(homeWxml.trim()),
+  'P37 D64 首页原「取件清单」入口卡已删（卡片/处理器/路由常量零残留）+ 首页 tab 页根 class 含 page-body--tab');
+  t.eq([homeWxml.indexOf('还没有进行中的订单，点「下单」上传取件码或手填。') >= 0,
+    homeWxml.indexOf("'下单'") >= 0 && homeWxml.indexOf('上传取件码截图下单') === -1],
+  [true, true], 'P38 D66 首页空态与主 CTA 文案统一为「下单」表述（去掉「上传截图」前置）');
+  t.check(textOf('pages/role/index.wxml').indexOf('下单后请兼职代取，送到宿舍。') >= 0
+    && textOf('pkg-customer/pages/help/index.js').indexOf('顾客下单，兼职接单、取件、送达') >= 0,
+  'P39 D66 角色页副标题 + 帮助页首段同步「下单」表述（功能/链路不变）');
 }
 
-module.exports = { leakHits, missingHandlers, registerP };
+module.exports = { leakHits, missingHandlers, pngSize, registerP };

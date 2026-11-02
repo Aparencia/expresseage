@@ -4,6 +4,7 @@
     "pages/role/index",
     "pages/customer/home/index",
     "pages/customer/orders/index",
+    "pages/customer/pickcodes/index",
     "pages/partner/workbench/index",
     "pages/partner/customers/index",
     "pages/profile/index"
@@ -15,7 +16,6 @@
         "pages/bind/index",
         "pages/order-create/index",
         "pages/order-detail/index",
-        "pages/pickup-list/index",
         "pages/messages/index",
         "pages/help/index"
       ]
@@ -107,7 +107,9 @@
     "order-row": "/components/order-row/index",
     "image-picker": "/components/image-picker/index",
     "code-editor": "/components/code-editor/index",
-    "empty-state": "/components/empty-state/index"
+    "empty-state": "/components/empty-state/index",
+    "bottom-bar": "/components/bottom-bar/index",
+    "tab-bar-view": "/components/tab-bar-view/index"
   },
   "style": "v2",
   "componentFramework": "glass-easel",

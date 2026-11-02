@@ -1,9 +1,6 @@
 /* pages/profile/index.wxss · 我的（顾客/兼职共用）页面级样式
-   规则：token 与通用类在 app.wxss；本页只写页面私有类（门禁 #9）。 */
-
-.profile-page {
-  padding-bottom: 48rpx;
-}
+   规则：token 与通用类在 app.wxss；本页只写页面私有类（门禁 #9）。
+   D65：底部安全区由根节点 page-body--tab 统一补足（100rpx+safe），本页不再自造 padding-bottom。 */
 
 /* ── 头像 + 昵称 ─────────────────────────────────────────── */
 .head-card {

@@ -1,6 +1,8 @@
 // tools/lib/share-pages.js · 分享接线清单（门禁 #33 与 tools/selftest-share.js 的唯一单源）
-// 口径（CONTRACT §8/§11、D36）：
-//   - APP_MESSAGE：顾客/兼职业务页全部支持「转发给朋友」（卡片在中性纯件里构造，页面零自拼）；
+// 口径（CONTRACT §8/§11、D36、D64）：
+//   - APP_MESSAGE：顾客/兼职业务页支持「转发给朋友」（卡片在中性纯件里构造，页面零自拼）；
+//     **D64 例外**：顾客「取件码」页（`pages/customer/pickcodes/index`）是本机 L3 明文页，不提供分享/转发，
+//     故不在本清单（新增业务页仍必须接入本清单，漏接即红）；
 //   - TIMELINE：仅 3 个「朋友圈单页模式可自洽」的页面（role=身份/邀请、home=顾客首页、help=静态帮助），
 //     其它数据页打开在单页模式下无登录态/无云资源会空白，故不挂朋友圈；
 //   - ADMIN_PAGES：后台 11 页零分享入口（治理数据不外传，selftest-admin-pages §N 同口径）。
@@ -16,7 +18,6 @@ const APP_MESSAGE = [
   'pkg-customer/pages/bind/index.js',
   'pkg-customer/pages/order-create/index.js',
   'pkg-customer/pages/order-detail/index.js',
-  'pkg-customer/pages/pickup-list/index.js',
   'pkg-customer/pages/messages/index.js',
   'pkg-customer/pages/help/index.js',
   'pkg-partner/pages/activate/index.js',

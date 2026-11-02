@@ -23,7 +23,6 @@ const BIND_PAGE = '/pkg-customer/pages/bind/index';
 const CREATE_PAGE = '/pkg-customer/pages/order-create/index';
 const DETAIL_PAGE = '/pkg-customer/pages/order-detail/index';
 const MESSAGES_PAGE = '/pkg-customer/pages/messages/index';
-const PICKUP_LIST_PAGE = '/pkg-customer/pages/pickup-list/index';
 const CONFIG_TTL_MS = 60 * 1000;
 // P0-11：首屏请求 ≥300ms 才置「加载」态（快网不闪、不产生多余 setData），对齐 UX_CUSTOMER §0.3
 const LOADING_DELAY_MS = 300;
@@ -416,11 +415,6 @@ Page({
 
   onMessagesTap() {
     wx.navigateTo({ url: MESSAGES_PAGE });
-  },
-
-  // D26：取件清单独立入口（独立页面，不做 tab；只读页面，维护期也可查看）
-  onPickupListTap() {
-    wx.navigateTo({ url: PICKUP_LIST_PAGE });
   },
 
   onProfileTap() {

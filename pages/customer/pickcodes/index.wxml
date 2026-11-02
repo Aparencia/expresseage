@@ -1,0 +1,51 @@
+<view class="page-body page-body--tab">
+  <switch-bar />
+
+  <!-- D64：本页是顾客「取件码」一级入口（伪 tab），只显示顾客自建的本机取件码（D57），不显示订单 -->
+  <view class="card local-card" wx:if="{{!readonly}}">
+    <view class="row between">
+      <view class="section-title">我的取件码（本机）</view>
+      <view class="small muted">{{localSummary.total}}/{{localMax}} 条</view>
+    </view>
+    <view class="local-tip">{{localTip}}</view>
+    <view class="row local-actions">
+      <button class="btn btn-small" bindtap="onRecognizeLocal" disabled="{{localBusy}}">识别截图</button>
+      <button class="btn btn-ghost btn-small" bindtap="onToggleLocalInput" disabled="{{localBusy}}">{{localInputOpen ? '收起手动输入' : '手动粘贴'}}</button>
+      <view class="small link-text local-clear" wx:if="{{localSummary.total}}" bindtap="onClearLocal">清空</view>
+    </view>
+    <view class="local-progress small muted" wx:if="{{localBusy}}">{{localProgress}}</view>
+    <view class="local-input" wx:if="{{localInputOpen}}">
+      <textarea class="local-textarea" value="{{localInput}}" placeholder="粘贴取件码，一行一个；站点认不出也能只存码" maxlength="2000" bindinput="onLocalInput" auto-height />
+      <view class="row between local-input-actions">
+        <view class="small muted">只存本机，不上传</view>
+        <button class="btn btn-small" bindtap="onSubmitLocalInput">存到本机</button>
+      </view>
+    </view>
+    <view class="row between local-summary" wx:if="{{localSummary.total}}">
+      <view class="small muted">共 {{localSummary.total}} 条 · 已取到 {{localSummary.checked}} 条</view>
+      <view class="small muted" wx:if="{{localSummary.pending}}">未取到 {{localSummary.pending}} 条</view>
+    </view>
+    <view class="empty-text" wx:if="{{!localSummary.total && !localBusy}}">{{localEmptyText}}</view>
+    <view class="row between local-row" wx:for="{{localRows}}" wx:key="code">
+      <view class="row check-row" data-code="{{item.code}}" bindtap="onToggleLocalCheck">
+        <view class="check-box {{item.checked ? 'checked' : ''}}"></view>
+        <view class="col local-meta">
+          <view class="strong local-code">{{item.code}}</view>
+          <view class="small muted">{{item.stationText}} · {{item.checkedText}}{{item.timeText ? ' · ' + item.timeText : ''}}</view>
+        </view>
+      </view>
+      <view class="row local-row-actions">
+        <view class="small link-text" data-code="{{item.code}}" bindtap="onCopyLocalCode">复制</view>
+        <view class="small link-text" data-code="{{item.code}}" bindtap="onDeleteLocalCode">删除</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="card" wx:if="{{readonly}}">
+    <view class="section-title">我的取件码（本机）</view>
+    <view class="muted small">{{localReadonlyHint}}</view>
+  </view>
+
+  <!-- D64 伪 tab：页面内自绘共用底部栏（视觉单源 components/tab-bar-view；真 tab 走 wx.switchTab） -->
+  <tab-bar-view tabs="{{tabs}}" selected="{{tabSelected}}" badges="{{badges}}" bind:tabtap="onTabTap" />
+</view>

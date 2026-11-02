@@ -13,12 +13,13 @@
  *   G. 端到端 fake transport：首拉成功→轮询失败退避→恢复成功（旧数据保留 + 最近更新时刻）、
  *      actions 完全由服务端 DTO 驱动、写动作 expectedVersion 透传、CONFLICT 人话、截图错误人话；
  *      首屏即已补码（needCode=false）→ 提示/时间线直接上屏（task-67，端云 note 同字面量联调）
- *   H. 取件清单（D26）占位词：无码件「码未填」/「需查明（兼职正在查码）」语义不重复
+ *   H. （D64 后已并入 P 组）取件码一级入口：伪 tab / 删 D26 订单区 / 首页入口卡删除 / 禁分享
  *   I. 截图区 v1.0：images[]{index,status,hasImage,cleaned} 三态/多图下标/历史单兼容/零存储句柄
  *   K. 顾客端 UI 修复（兼职卡/服务范围/服务类型/头像兜底/tab 居中/tabBar 选中态）
  *   L. C 批单点欠账收口（TD-068 服务范围预检单源 / TD-070「其他代办」码常量单源 / TD-064 死导出清除）
- *   P. 批21-D57「我的取件码（本机）」：行/时间/汇总/上限提示纯件 + 页面零上传/零 wx.cloud/
- *      零第三方 AI 外呼/READONLY 静态接线（宽口径断言在 tools/lib/pickup-local-cases.js，拆件守 #18）
+ *   P. D57「我的取件码（本机）」+ D64「取件码一级入口（伪 tab）」：行/时间/汇总/上限提示纯件 +
+ *      页面零上传/零 wx.cloud/零第三方 AI 外呼/READONLY 静态接线 + 主包迁移/底部栏单源/禁分享
+ *      （宽口径断言在 tools/lib/pickup-local-cases.js，拆件守 #18）
  *
  * 纪律：不 mock 全局 wx（api/client 用 setTransport 注入替身）；fake DTO/事件，不连真云；
  *       先合法基线再反例；样本非空；EXPECTED_ASSERTIONS 与实际断言数精确相等（少算/多算都判红）。
@@ -39,7 +40,6 @@ const homeView = require(path.join(ROOT, 'pages/customer/home/parts/home-view.js
 const guideView = require(path.join(ROOT, 'pages/customer/home/parts/guide-view.js'));
 const storage = require(path.join(ROOT, 'utils/storage.js'));
 const reorder = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/reorder.js'));
-const pickupView = require(path.join(ROOT, 'pkg-customer/pages/pickup-list/parts/pickup-view.js'));
 const parcelView = require(path.join(ROOT, 'pkg-customer/pages/order-detail/parts/parcel-view.js'));
 const orderState = require(path.join(ROOT, 'shared/order-state.js'));
 const enums = require(path.join(ROOT, 'shared/enums.js'));
@@ -52,7 +52,7 @@ const precheck = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/
 const orderScopeReq = fsutil.tryRequire(path.join(ROOT, 'utils/order-scope.js'));
 const orderScope = orderScopeReq.value || {};
 
-const EXPECTED_ASSERTIONS = 323; // 300 + 23：P 组批21-D57 本机取件码清单（纯件/页面零上传静态接线）
+const EXPECTED_ASSERTIONS = 335; // 实跑读数；批24-D64/D66：P 组扩 37（H 组 4 条并入并删除，+14 一级入口/文案断言）
 const caseLib = require('./lib/order-customer-cases');
 const {
   STATUS, PAGES, ISO, NOW, DOC_MS, textOf, actionsFor, dto, event, orderDoc,
@@ -508,18 +508,7 @@ function register(h) {
     }
   });
 
-  // ---------------------------------------------------------------- H 取件清单（D26）占位词
-  h.section('H. 取件清单（D26）：无码件占位「码未填」/ 需查明语义不重复', (t) => {
-    t.eq(pickupView.codeTextOf({ codeStatus: enums.CODE_STATUS.NEED_CODE, pickupCode: '', trackingTail: '12345' }),
-      '需查明（兼职正在查码）', 'H1 NEED_CODE 件显示「需查明（兼职正在查码）」（语义独立，不被占位词覆盖）');
-    t.eq(pickupView.codeTextOf({ codeStatus: enums.CODE_STATUS.OK, pickupCode: '', trackingTail: '' }),
-      '码未填', 'H2 无码件占位词=「码未填」（UX §3.10 定稿口径，不用近义占位词）');
-    const pickupSource = textOf(PAGES.pickup) + textOf(PAGES.pickupWxml) + textOf(PAGES.pickupView);
-    t.check(!/待补充|待补码/.test(pickupSource) && /\{\{row\.codeText\}\}/.test(textOf(PAGES.pickupWxml)),
-      'H3 取件清单源码零近义占位词残留，行码值统一由 row.codeText 渲染');
-    t.notEmpty(PAGES.pickup, 'H 组样本非空');
-  });
-
+  // ---------------------------------------------------------------- H 已并入 P 组（D64：取件码升一级入口）
   // ---------------------------------------------------------------- I 截图区 v1.0 images[] DTO
   h.section('I. 截图区 v1.0：images[]{index,status,hasImage,cleaned} 三态/多图下标/历史单兼容/零存储句柄', (t) => {
     const multi = parcelView.imagesView({
@@ -568,8 +557,8 @@ function register(h) {
       'J2 订单列表同源更新 ordersOngoing（onShow/下拉刷新，不新增轮询）');
     t.check(!/ordersOngoing:\s*0/.test(home) && !/ordersOngoing:\s*0/.test(orders),
       'J3 页面无「进列表/点击清零」写法（数量角标与红点语义区分）');
-    t.check(/badgeKey: 'ordersOngoing'/.test(textOf('custom-tab-bar/index.js')),
-      'J4 顾客「订单」格由 tabbar 按 badgeKey 渲染数量角标（冻结件接线生效）');
+    t.check(/badgeKey: 'ordersOngoing'/.test(textOf('components/tab-bar-view/tabs.js')),
+      'J4 顾客「订单」格由 tabbar 按 badgeKey 渲染数量角标（D64 视觉/数据单源 components/tab-bar-view）');
 
     // P1-6 服务范围 + CTA 预检
     t.eq(homeView.scopeTextOf({ zones: ['东苑', '西苑'] }), '东苑 / 西苑', 'J5 服务范围文案=苑列表');
@@ -605,7 +594,7 @@ function register(h) {
     t.eq([guideView.GUIDE_KEY, guideView.total()], ['CUSTOMER_HOME_V1', 3],
       'J13 引导键=白名单 CUSTOMER_HOME_V1、共三步');
     t.eq([guideView.stateOf(0).title, guideView.stateOf(1).title, guideView.stateOf(2).title],
-      ['先绑定兼职', '截图下单', '在「订单」看进度'], 'J14 三步=绑定/下单/看进度');
+      ['先绑定兼职', '下单', '在「订单」看进度'], 'J14 三步=绑定/下单/看进度（D66：第 2 步标题改「下单」）');
     t.eq([
       guideView.stateOf(0).primaryText, guideView.stateOf(1).primaryText, guideView.stateOf(2).primaryText
     ], ['下一步', '下一步', '完成'], 'J15 按钮：前两步「下一步」、最后一步「完成」');
@@ -908,8 +897,8 @@ function register(h) {
     t.notEmpty([ordersWxml, homeWxml, ordersWxss, homeWxss], 'O 组样本非空');
   });
 
-  // ---------------------------------------------------------------- P 批21 D57 本机取件码清单
-  h.section('P. D57 本机取件码清单：行/时间/汇总/上限纯件 + 页面零上传零外呼静态接线', (t) => {
+  // ---------------------------------------------------------------- P D57 本机取件码清单 + D64 取件码一级入口
+  h.section('P. D57/D64 取件码：行/时间/汇总/上限纯件 + 本机零上传静态接线 + 伪 tab 一级入口迁移', (t) => {
     require('./lib/pickup-local-cases').registerP(t);
   });
 }

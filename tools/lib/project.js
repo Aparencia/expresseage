@@ -12,6 +12,8 @@ const MAIN_PAGES = [
   'pages/role/index',
   'pages/customer/home/index',
   'pages/customer/orders/index',
+  // D64：顾客「取件码」一级入口（伪 tab，迁主包；app.json tabBar.list 仍 5 项）
+  'pages/customer/pickcodes/index',
   'pages/partner/workbench/index',
   'pages/partner/customers/index',
   'pages/profile/index',
@@ -22,7 +24,6 @@ const SUBPACKAGES = {
     'pages/bind/index',
     'pages/order-create/index',
     'pages/order-detail/index',
-    'pages/pickup-list/index',
     'pages/messages/index',
     'pages/help/index',
   ],
@@ -71,7 +72,11 @@ const TAB_LIST = [
   'pages/profile/index',
 ];
 
-/** 每角色 3 格（自定义 tabBar 渲染口径）。 */
+/**
+ * 每角色真实 tabBar 可解析页（app.json tabBar.list 内的格；顾客 3 / 兼职 3）。
+ * D64：顾客第 4 格「取件码」是伪 tab（`pages/customer/pickcodes/index` 不在 tabBar.list，
+ * 页面内自绘 components/tab-bar-view 并 reLaunch 进入），故不登记在本表；本表只收真实 tab 页。
+ */
 const TAB_PAGES_BY_ROLE = {
   CUSTOMER: ['pages/customer/home/index', 'pages/customer/orders/index', 'pages/profile/index'],
   PARTNER: ['pages/partner/workbench/index', 'pages/partner/customers/index', 'pages/profile/index'],

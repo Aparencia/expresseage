@@ -40,10 +40,12 @@ const codeInput = require(path.join(ROOT, 'pkg-partner/pages/activate/parts/code
 // 226 + 17：T5-A 收口（TD-083 结果块配置化 3 条 + TD-084 逐件兜底/幂等粒度/超限/请求时校时 14 条）
 // 243 + P 组批20-C 首屏流式/占位/排序置底/底部安全区（36 条，拆到 tools/lib/partner-pages-cases.js）
 const cases = require(path.join(__dirname, 'lib', 'partner-pages-cases.js'));
-const EXPECTED_ASSERTIONS = 243 + cases.PERF_EXPECTED_ASSERTIONS;
-
 // TD-083/T5-A 拆件：夹具/静态扫描样本拆到 tools/lib/partner-pages-cases.js（控测试文件 ≤950 行，门禁 #18；
 // tools/lib 不参与 tools/selftest.js 注册完整性闸，先例 tools/lib/workbench-cases.js）。
+// 批 24/D67：客户页筛选器段（A2）断言数独立记账，不改 cases.PERF_EXPECTED_ASSERTIONS。
+const D67_PAGE_ASSERTIONS = 12;
+const EXPECTED_ASSERTIONS = 243 + cases.PERF_EXPECTED_ASSERTIONS + D67_PAGE_ASSERTIONS;
+
 const {
   CONFIG, PARTNER, NOW, DAY, ROW_1, ROW_2, STATUS_LITERALS, bindingRow, orderRow,
   customerOrders, profileData, withStation, parcelOf, ticketFile,
@@ -106,6 +108,50 @@ function register(h) {
     t.eq(listModel.buildSnapshot(listModel.applyResponse(first, { list: [ROW_1], nextCursor: '' }), {}).headingText, '客户（1）',
       'A24 无更多页时才显示已加载总数');
     t.notEmpty(first.rows, 'A 组样本非空（防止空集全绿）');
+  });
+  h.section('A2. D67 客户页筛选器：chips/苑栋二级选择/重置 cursor/空态文案分离（§3.5）', (t) => {
+    const customersPage = textOfRel('pages/partner/customers/index.js');
+    const customersWxml = textOfRel('pages/partner/customers/index.wxml');
+    const state = listModel.createState();
+    t.eq([state.filters, listModel.refreshQuery(state)],
+      [{ mode: 'all', zone: '', buildingNo: 0 }, { keyword: '', limit: 20 }],
+      'A2.1 初始「全部」无筛选：请求仍只有 {keyword,limit}（D67 默认零条件）');
+    t.eq([listModel.refreshQuery(listModel.applyFilterChip(state, 'incomplete')),
+      listModel.refreshQuery(listModel.applyFilterChip(state, 'note'))],
+    [{ keyword: '', limit: 20, profileIncomplete: true }, { keyword: '', limit: 20, hasNote: true }],
+    'A2.2 「资料未完善/有备注」→ 请求只带 true 布尔筛选参数（不反筛）');
+    const zoneD = listModel.selectFilterZone(listModel.applyFilterChip(state, 'zone'), 'D');
+    const building = listModel.selectFilterBuilding(listModel.selectFilterZone(listModel.applyFilterChip(state, 'building'), 'D'), 4);
+    t.eq([listModel.refreshQuery(zoneD), listModel.refreshQuery(building)],
+      [{ keyword: '', limit: 20, zone: 'D' }, { keyword: '', limit: 20, zone: 'D', buildingNo: 4 }],
+      'A2.3 按苑/按楼栋二级选择 → 请求带 zone / zone+buildingNo（服务端 AND）');
+    t.eq([listModel.buildSnapshot(zoneD, {}).filterDesc, listModel.buildSnapshot(building, {}).filterDesc],
+      ['只看东苑', '只看东苑 4 栋'], 'A2.4 筛选说明行人话（苑名取 shared/zones 单源）');
+    t.eq(listModel.buildSnapshot(building, {}).filterChips.map((chip) => chip.label).join(','),
+      '全部,资料未完善,按苑,按楼栋,有备注', 'A2.5 五枚 chips 顺序固定且不带计数（D67：chips 零计数）');
+    t.eq([listModel.applyFilterChip(zoneD, 'zone').filters, listModel.applyFilterChip(listModel.applyFilterChip(state, 'incomplete'), 'incomplete').filters],
+    [{ mode: 'all', zone: '', buildingNo: 0 }, { mode: 'all', zone: '', buildingNo: 0 }],
+    'A2.6 再点已选 chip = 取消筛选回「全部」（选中态可清除）');
+    const withRows = listModel.applyResponse(state, { list: [ROW_1], nextCursor: 'cur-1' }, { nowMs: NOW });
+    const zoneNoPick = listModel.applyFilterChip(withRows, 'zone');
+    t.eq([zoneNoPick.rows.length, zoneNoPick.nextCursor], [1, 'cur-1'],
+      'A2.7 刚进「按苑」未选苑：查询未变 → 不清空已加载行/游标（不闪骨架）');
+    const filtered = listModel.applyFilterChip(withRows, 'note');
+    t.eq([filtered.rows, filtered.nextCursor, filtered.loading], [[], '', true],
+      'A2.8 生效筛选变化：清空旧行+游标并置 loading → 首屏重新流式加载（D54 骨架/分片/行级 diff 不变）');
+    t.eq([filtered.filters, listModel.nextQuery(Object.assign({}, filtered, { nextCursor: 'c1' }))], [{ mode: 'note', zone: '', buildingNo: 0 }, { keyword: '', limit: 20, cursor: 'c1', hasNote: true }],
+      'A2.9 触底翻页带同一套筛选参数（游标分页与筛选同链，不丢筛选）');
+    const emptySnap = listModel.buildSnapshot(filtered, {});
+    t.eq([emptySnap.emptyText, emptySnap.emptyActionText, listModel.emptyActionKindOf(filtered)], ['没有符合筛选条件的顾客', '清除筛选', 'clearFilter'],
+      'A2.10 筛选空态与真空态文案分离（筛选后无结果给「清除筛选」）');
+    t.check(customersWxml.indexOf('page-body page-body--tab') >= 0 && customersWxml.indexOf('onFilterTap') >= 0
+      && customersWxml.indexOf('onZoneTap') >= 0 && customersWxml.indexOf('onBuildingTap') >= 0
+      && customersWxml.indexOf('onClearFilters') >= 0 && textOfRel('pages/partner/customers/index.wxss').indexOf('.chip-active') >= 0,
+    'A2.11 WXML：根节点 page-body--tab（D65）+ chips/苑/栋/重置接线；WXSS 有选中态样式');
+    t.check(customersPage.indexOf('onFilterTap(') >= 0 && customersPage.indexOf('emptyActionKindOf') >= 0
+      && (customersPage.match(/listModel\.createState\(\)/g) || []).length === 1
+      && (customersPage.match(/filterChips:\s*\[\]/g) || []).length === 1,
+    'A2.12 页面接线：筛选态只在 onLoad 初始化（onShow 重拉不丢）；空态动作按 emptyActionKindOf 分流');
   });
   // ------------------------------------------------------------------ B 顾客详情
   h.section('B. 顾客详情：档案+解绑资格/自然日分组/更早游标（§3.6；订单单一来源 listPartner view=customer）', (t) => {

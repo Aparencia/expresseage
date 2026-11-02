@@ -17,6 +17,9 @@
  *    history/customer 视图不返回 summary（既有形状不变）。纯件聚合与 handler 端到端都断言。
  *    P1-6（修复批 T3）：任一状态 find 触达扫描上限（行数 >= scanLimit）→ summary.truncated=true 如实标注
  *    （合法基线/恰好触达/未触达三档对照；触顶也不额外扫描；history 形状不变）。
+ * Q6 D67（批 24）：客户页筛选器（zone/buildingNo/profileIncomplete/hasNote）叠加游标分页——期望值由测试侧
+ *    按「苑固定序→栋号数值→宿舍号→allocSeq」独立推导（不抄 handler）；过滤后 nextCursor 从过滤后页尾行取，
+ *    分页不重不漏；非法筛选入参静默归一；筛选不改变行 DTO 白名单/游标形状。
  * TD-044（关键词部分匹配受扫描窗限制）：本批不做——无索引的模糊匹配需要全量扫描或 DAO 暴露 RegExp/OR
  *   （跨域且会引入不可控扫描量），按任务要求如实回报而非硬做；完整订单号精确查询的越窗兜底仍由既有实现承担。
  *
@@ -40,14 +43,14 @@ const summaryPure = loadSummaryPure();
 
 const {
   NOW, HOUR, DAY, TODAY_START, MONTH_START,
-  C1, C2, P1, PID1, P2, B1, B3,
+  C1, C2, P1, PID1, P2, B1, B2, B3, B4, B5,
   SUBMITTED, ACCEPTED, PICKED, DELIVERED, COMPLETED, CANCELLED, EXCEPTION,
-  apiOf, world, orderDoc, bindingDoc, customerDoc, pickRow,
+  apiOf, world, orderDoc, bindingDoc, customerDoc, pickRow, BINDING_ROW_KEYS,
 } = cases;
 
 const MINUTE = 60 * 1000;
-// 23（Q1~Q4）+ 27（Q5 D48 summary，含 P1-6 truncated）= 50；少算/多算都判红。
-const EXPECTED_ASSERTIONS = 50;
+// 23（Q1~Q4）+ 27（Q5 D48 summary，含 P1-6 truncated）+ 12（Q6 D67 筛选器，批 24）= 62；少算/多算都判红。
+const EXPECTED_ASSERTIONS = 62;
 
 function pad4(value) {
   return String(value).padStart(4, '0');
@@ -589,6 +592,146 @@ async function sectionQ5(t) {
     [true, 6, 5], 'Q5.26 触顶路径也零额外查询（仍 6 count + 5 find，不因 truncated 再扫一遍）');
 }
 
+// ================================================================ Q6 D67 客户页筛选器 × 游标分页
+// 期望值由测试侧独立推导（苑固定序→栋号→宿舍号→allocSeq），不抄 handler 实现；26 条样本含 1 条空 dormKey。
+const Q6_ZONE_ORDER = ['D', 'X', 'N', 'B', 'C'];
+
+function q6SortKey(row) {
+  if (!row.dormKey) {
+    return { bucket: 1, zone: 0, building: 0, room: 0 };
+  }
+  const parts = row.dormKey.split('-');
+  return {
+    bucket: 0,
+    zone: Q6_ZONE_ORDER.indexOf(parts[0].charAt(0)),
+    building: Number(parts[0].slice(1)),
+    room: Number(parts[1])
+  };
+}
+
+function q6Compare(left, right) {
+  const a = q6SortKey(left); const b = q6SortKey(right);
+  if (a.bucket !== b.bucket) {
+    return a.bucket - b.bucket;
+  }
+  if (a.bucket === 0) {
+    if (a.zone !== b.zone) {
+      return a.zone - b.zone;
+    }
+    if (a.building !== b.building) {
+      return a.building - b.building;
+    }
+    if (a.room !== b.room) {
+      return a.room - b.room;
+    }
+  }
+  return left.allocSeq - right.allocSeq;
+}
+
+function q6Expected(seeded, predicate) {
+  return seeded.filter(predicate).slice().sort(q6Compare).map((item) => item.bindingId);
+}
+
+function q6World() {
+  const db = world();
+  // world() 的 5 条既有 ACTIVE 绑定也纳入期望集（D4-522 两条/同宿舍 allocSeq、D4-1002、D10-1001、X2-301），
+  // 这样「排序/筛选/分页」的期望值覆盖真实混合场景，而不是只覆盖本段新增样本。
+  const seeded = [
+    { bindingId: B1, dormKey: 'D4-522', allocSeq: 1, zone: 'D', buildingNo: 4, partnerNote: '' },
+    { bindingId: B2, dormKey: 'D4-522', allocSeq: 2, zone: 'D', buildingNo: 4, partnerNote: '' },
+    { bindingId: B3, dormKey: 'D4-1002', allocSeq: 1, zone: 'D', buildingNo: 4, partnerNote: '' },
+    { bindingId: B4, dormKey: 'D10-1001', allocSeq: 1, zone: 'D', buildingNo: 10, partnerNote: '' },
+    { bindingId: B5, dormKey: 'X2-301', allocSeq: 1, zone: 'X', buildingNo: 2, partnerNote: '' }
+  ];
+  const customers = [];
+  const bindings = [];
+  for (let i = 0; i < 25; i += 1) {
+    const zone = Q6_ZONE_ORDER[i % 5];
+    const buildingNo = 1 + (i % 3);
+    const room = String(100 + i);
+    const dormKey = zone + buildingNo + '-' + room;
+    const customerId = 'openid-q6-c' + pad3(i);
+    const bindingId = 'bind-q6-' + pad3(i);
+    const partnerNote = i % 7 === 0 ? '备注' + pad3(i) : '';
+    seeded.push({ bindingId, dormKey, allocSeq: 1, zone, buildingNo, partnerNote });
+    customers.push(customerDoc(customerId, 'CQ6' + pad4(i), {
+      displayName: '筛客' + pad3(i), phoneTail: '8' + pad3(i), zone, buildingNo, room, dormKey
+    }));
+    bindings.push(bindingDoc(customerId, PID1, bindingId,
+      partnerNote ? { dormKey, partnerNote } : { dormKey }));
+  }
+  // 资料未完善行：空 dormKey（空桶恒置底；筛 profileIncomplete 唯一命中）
+  seeded.push({ bindingId: 'bind-q6-empty', dormKey: '', allocSeq: 1, zone: '', buildingNo: 0, partnerNote: '' });
+  customers.push(customerDoc('openid-q6-empty', 'CQ6EMPTY1', {
+    displayName: '空资料', zone: '', buildingNo: 0, room: '', dormKey: ''
+  }));
+  const emptyBinding = bindingDoc('openid-q6-empty', PID1, 'bind-q6-empty', { tagKey: PID1 + ':q6-empty' });
+  emptyBinding.dormSnapshot = { zone: '', buildingNo: 0, room: '', dormKey: '', buildingText: '' };
+  bindings.push(emptyBinding);
+  db.seed('customers', customers);
+  db.seed('bindings', bindings);
+  return { db, seeded };
+}
+
+async function sectionQ6(t) {
+  const { db, seeded } = q6World();
+  const pApi = apiOf(db, P1);
+  const idsOf = async (payload) => (await pApi.call('partner.listBindings', Object.assign({ limit: 50 }, payload)))
+    .data.list.map((row) => row.bindingId);
+  const allIds = q6Expected(seeded, () => true);
+  const list = await pApi.call('partner.listBindings', { limit: 50 });
+  t.eq(list.data.list.map((row) => row.bindingId), allIds,
+    'Q6.1 ' + allIds.length + ' 条绑定无筛选时=「苑固定序→栋号数值→宿舍号→allocSeq」全序（空 dormKey 恒置底）');
+  const zoneD = q6Expected(seeded, (row) => row.zone === 'D');
+  t.eq(await idsOf({ zone: 'D' }), zoneD,
+    'Q6.2 D67 zone=D 过滤：命中行顺序仍按全序（过滤不重排、不破坏排序锚）');
+  const expectedSizes = [];
+  for (let left = zoneD.length; left > 0; left -= 2) {
+    expectedSizes.push(Math.min(2, left));
+  }
+  const pages = [];
+  let cursor = null;
+  let firstCursor = null;
+  for (let guard = 0; guard < 10; guard += 1) {
+    const page = await pApi.call('partner.listBindings', { zone: 'D', limit: 2, cursor });
+    pages.push(page.data.list.map((row) => row.bindingId));
+    if (!firstCursor) {
+      firstCursor = page.data.nextCursor;
+    }
+    cursor = page.data.nextCursor;
+    if (!cursor) {
+      break;
+    }
+  }
+  t.eq([pages.map((ids) => ids.length), [].concat(...pages), cursor],
+    [expectedSizes, zoneD, null],
+    'Q6.3 筛选后游标分页 2 行一页取尽：过滤后判定 nextCursor，不重不漏、末页 null');
+  const building2 = q6Expected(seeded, (row) => row.buildingNo === 2);
+  t.eq(await idsOf({ buildingNo: 2 }), building2,
+    'Q6.4 buildingNo=2 跨苑命中（同一楼栋号在各苑均可命中）');
+  const x2 = q6Expected(seeded, (row) => row.zone === 'X' && row.buildingNo === 2);
+  t.eq(await idsOf({ zone: 'X', buildingNo: 2 }), x2,
+    'Q6.5 zone+buildingNo 为 AND 交集（互不放宽）');
+  t.eq(await idsOf({ profileIncomplete: true }), ['bind-q6-empty'],
+    'Q6.6 profileIncomplete=true 只回 dormKey 空行（空桶行同样可被筛出，不只置底）');
+  const noteIds = q6Expected(seeded, (row) => row.partnerNote !== '');
+  t.eq(await idsOf({ hasNote: true }), noteIds,
+    'Q6.7 hasNote=true 只回 partnerNote 非空行（顺序同全序）');
+  const keywordZone = q6Expected(seeded, (row) => row.zone === 'D' && row.dormKey.indexOf('D1') >= 0);
+  t.eq(await idsOf({ keyword: 'D1', zone: 'D' }), keywordZone,
+    'Q6.8 keyword 与 D67 筛选同链（keyword→筛选→游标）：组合后为交集');
+  t.eq([await idsOf({ zone: 'Z9' }), await idsOf({ buildingNo: 99 })], [allIds, allIds],
+    'Q6.9 非法筛选入参静默归一为不筛（不报错、不返回空列表）');
+  t.eq(Object.keys(pickRow(list.data.list, 'bind-q6-000')).sort(),
+    BINDING_ROW_KEYS.filter((key) => key !== 'avatarFileId' && key !== 'avatarUrl').sort(),
+    'Q6.10 筛选不改变行 DTO 白名单（无筛选参数/内部键泄漏到行）');
+  const contradiction = await pApi.call('partner.listBindings', { profileIncomplete: true, zone: 'D' });
+  t.eq([contradiction.data.list, contradiction.data.nextCursor], [[], null],
+    'Q6.11 矛盾筛选组合→空列表+null 游标（AND 语义不互相兜底成全量）');
+  t.eq(Object.keys(firstCursor).sort(), ['allocSeq', 'dormKey'],
+    'Q6.12 筛选下 nextCursor 仍只编码排序锚（dormKey+allocSeq，不含 openid/筛选参数）');
+}
+
 // 段内自带独立 fake DB 世界与「合法基线 → 反例」结构；段之间互不依赖。
 function register(h) {
   h.section('§Q 查询窗口簇：TD-040/043/050 精确计数与全量分页（先红后绿取证据）', async (t) => {
@@ -598,6 +741,7 @@ function register(h) {
     await sectionQ3b(t);
     await sectionQ4(t);
     await sectionQ5(t);
+    await sectionQ6(t);
   });
 }
 

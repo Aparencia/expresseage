@@ -1,0 +1,19 @@
+/* components/bottom-bar/index.wxss · D65 底部固定条（唯一允许的「固定底条」样式单源）
+   规则：底条固定 bottom:0 必须自带 env(safe-area-inset-bottom)（门禁 #38）；页面不再自造底盘数值。 */
+.bb-placeholder {
+  /* 兜底占位：--v4-inset-bar(160rpx+safe)+24rpx 覆盖常见批量条/操作条高度，
+     实测更高时由内联 height 覆盖（不写死第二套数值）。var 自带同名兜底，防 token 未定义时占位塌陷。 */
+  min-height: calc(var(--v4-inset-bar, calc(160rpx + env(safe-area-inset-bottom))) + 24rpx);
+}
+
+.bb-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 600;
+  box-sizing: border-box;
+  padding: 12rpx 24rpx calc(12rpx + env(safe-area-inset-bottom));
+  background: #FFFFFF;
+  box-shadow: 0 -2rpx 12rpx rgba(0, 0, 0, 0.06);
+}

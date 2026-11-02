@@ -44,12 +44,14 @@
   color: var(--v4-brand);
 }
 
+/* D65：底部弹层全屏遮罩把 safe-area 让给面板（面板自身只留 24rpx 内容内边距） */
 .mask {
   position: fixed;
   left: 0;
   top: 0;
   right: 0;
   bottom: 0;
+  padding-bottom: env(safe-area-inset-bottom);
   background: rgba(0, 0, 0, 0.45);
   z-index: 20;
   display: flex;

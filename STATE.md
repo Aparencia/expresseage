@@ -5,7 +5,7 @@
 > 更新时机：每批开工/收口、用户裁决变化、风险新增或关闭、HEAD 变化需回读。
 > 本文只记**状态、待办与下一步**，不重复设计口径（口径看 CONTRACT，工程规则看 ENGINEERING，接口看 ARCHITECTURE）。
 
-**快照时间：2026-11-01（HEAD `a7c3127` **批 20 用户反馈批（D51~D57 登记，D51~D56 实现）**（代码 `a7c3127`；证据见 §15；`gate.ps1 -Anchor 91813e9` 红 0/黄 0：79 文件/体量 3082≤3600）：check.js 36/36 条、check-docs 12/12 条、selftest 36 套 0 失败、零金额 0 命中（白名单 108 项）；批 16~19 内容见 §2）
+**快照时间：2026-11-03（HEAD `82c397c` 批 23 收口的前驱 + 批 24 工作树已收口，本批提交哈希见 §19.5）：check.js 39/39 条、check-docs 12/12 条、selftest 36 套 0 失败、零金额 0 命中（白名单 108 项）；`gate.ps1 -Anchor 82c397c` 红 0/黄 0（108 件/体量 1963≤3200×1.5）；批 16~23 内容见 §2）
 > 临时总体说明（全局汇总，非状态源）：[`docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md`](docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md)（版本与取数快照由 Lead 统一维护；状态仍以本文件为准、口径以 CONTRACT 为准）。
 
 ## 1. 一句话状态
@@ -29,6 +29,8 @@
 
 **2026-11-01 批 19 欠账收尾批工程侧完成并收口（HEAD `49f4f12`）**：TD-084 代客下单识别逐件兜底（同图多件各一次、`failureId` 按件派生不共键）、合并超 10 件「请分单」显式提示、预约校验改请求时 `serverNow`；TD-083 剩余 2 处自动完成文案全部跟随 `config.autoCompleteAt`（工作台批量送达 + 代客单结果块）；TD-076 `order-detail/index.js` 500→327（拆 `parts/page-timers|panel-actions`）；TD-085 `check.ps1` 增 `$EXPECTED` 钉 36/12/36 条（首红：删 #34 判据后 `check.js` 35/35 仍绿、`check.ps1` exit 1；SHA256 还原复绿）；拆件留余量（`check.js` 999→386、`dead-code.js` 986→86、4 套测试→815~899、性能套件 E 段第 20 条 改读实现模块）；关闭 TD-076/083/084/085、登记 TD-086（测试文件 backlog）。`check.ps1` 4 步退出码 0（读数见 §14）；真机项 QA §AB 待用户。
 **2026-11-01 批 20 用户反馈批工程侧完成并收口（HEAD `a7c3127`）**：D51 日结改 22:00（22:00–24:00 送达下一轮 10 分钟批内完成、不再顺延次日）、D52 工作台「全部」=今日订单流水（已完结只放昨日及更早）、D53 复制汇总=今日已送达（按送达时间/排除取消/只到苑栋）、D54 客户页首屏流式骨架+空资料置底+底部安全区、D55 兼职取件清单双阶段（待取件按站点/待送达按楼层）、D56 开发者后台订单/消息列表显示脱敏称呼；D57（顾客端多取件码上传+取件清单展示）登记为待确认理解；`check.ps1` 4 步退出码 0、`gate.ps1` 红 0/黄 0；文档回写 CONTRACT D51~D57 / DECISIONS / DATA_MODEL §15 / UX §15 / QA §AC / RUNBOOK §16 / ENGINEERING §15 / TECH_DEBT TD-087·TD-088；**真机项 QA §AC1~AC6 与部署/上传/AI 开启均待用户执行**。
+
+**2026-11-02 用户 11 条新需求裁决登记 → 2026-11-03 批 24 工程侧完成并收口（D64~D67）**：用户对《用户新需求理解、扩展与补全（2026-11-02）》Q1~Q11 逐条答复（Q1=A 任意兼职；Q2=B 顾客不绑子队员；Q3~Q6、Q8~Q11=采用推荐；Q7=不记录），CONTRACT §13 登记 **D58~D67**（D58 转派/目标确认接收、D59 主兼职发子邀请码开子账号、D60 快递来源研究结论=维持现状不做、D61 件级取件+订单状态聚合、D62 多站点按件分组、D63 顾客邀请顾客不记录关系、D64 取件码伪 tab 一级入口、D65 全局底部安全区修复、D66 首页下单文案、D67 兼职客户页筛选器），DECISIONS D58~D67 留痕，`tools/check-docs.js` D_MAX 57→67。**批 24（D64~D67）已收口**：`check.ps1` 4 步退出码 0（check.js 39/39 含 D65 三闸、check-docs 12/12、零金额 0、selftest 36 套 0 失败）、`gate.ps1` 红 0/黄 0（证据 §19）；真机项 QA §AE1~AE7/§L1/§AD2~§AD4 待用户点检。后续排期：**批 25（D61/D62）→ 批 26（D58/D59）→ 批 27（D63）**；每批先口径后代码。
 
 ## 2. 批次台账
 
@@ -58,6 +60,7 @@
 | 批 20 | 用户反馈批（D51~D57 登记；D51~D56 实现） | **工程侧完成并收口（2026-11-01，HEAD `a7c3127`）** | D51 日结 22:00+尾窗送达即完成、D52 工作台「全部」=今日订单流水、D53 汇总=今日已送达、D54 客户页流式/骨架/空资料置底/底部安全区、D55 兼职取件清单双阶段、D56 后台列表称呼（脱敏）、D57 登记待确认；`check.ps1` 4 步 0、`gate.ps1` 0/0（79 文件/3082 行≤3600）；证据见 §15 |
 | 批 22 | 提审材料包（文档 + 真实截图 + 示意图） | **已交付（2026-11-01）** | `docs/delivery/review/`：6 份说明文档 + `images/screenshots/` 25 张真实页面截图（微信开发者工具自动化 + 测试账号，2 倍放大）+ `images/diagrams/` 4 张示意图；审核文案/隐私对照/类目说明/操作步骤齐备，真实值留 `{{…}}` 占位由用户填写；未改代码与云函数；门禁读数与证据见 §17 |
 | 批 23 | 提审材料册合订本（6 份说明文档 + 29 张图片 → PDF/DOCX + 生成脚本） | **已交付（2026-11-02）** | `docs/delivery/review/提审材料册（合订本）.pdf/.docx`（封面/使用说明/目录 + 六部分 + 29 张图页，占位值留划线空白）；`tools/build_booklet.py` 可重出；`.gitattributes` 增 docx/pdf binary；`00` 增 §1.3；`check.ps1` 4 步 0、check 36/36、check-docs 12/12、零金额 0 命中（白名单 108 项）、selftest 36 套 0 失败；证据见 §18 |
+| 批 24 | 用户 11 条新需求第一批（D58~D67 登记 + D64~D67 实现） | **工程侧完成并收口（2026-11-03）** | D64 顾客取件码升一级入口（伪 tab、删 D26 订单区、改名、首页入口卡删除、禁分享）、D66 首页「下单」文案、D65 全局底部安全区修复 + 3 条机械门禁（check.js 36→39、check.ps1 钉 39）、D67 客户页筛选器（服务端四维 + 客户端 chips）；D58~D63 已登记待批 25/26/27；`check.ps1` 4 步 0、check 39/39、check-docs 12/12、零金额 0（白名单 108 项）、selftest 36 套 0 失败；`gate.ps1` 红 0/黄 0（108 件/1963 行≤4800）；真机项 QA §AE1~AE7/§L1/§AD2~§AD4 待用户；证据见 §19 |
 
 ## 3. 批 1 并行交付快照（全部收口）
 
@@ -1084,4 +1087,58 @@ gate.ps1：红色 0 项；黄色 0 项（退出码 0）
 ```
 
 - 提交：`4075679`（docs，6 文件 +785/−0：合订本 PDF/DOCX + 生成脚本 + `00` §1.3 + CHANGELOG + `.gitattributes`）+ 本证据提交（STATE 仅追加本节）；同一锚点复跑 gate 仍为红色 0/黄色 0（变更 7 件；体量以实际输出为准）；工作树干净、未 push、未 tag/提审/发布。
+
+---
+
+## 19. 批 24 用户 11 条新需求第一批（D64~D67）收口证据（2026-11-03）
+
+### 19.1 交付范围
+
+- **D64 顾客取件码一级入口**：页面 `pkg-customer/pages/pickup-list` → 主包 `pages/customer/pickcodes`（伪 tab，视觉第 3 格/共 4 格；`app.json` tabBar.list 仍 5 项、页数仍 32）；只保留 D57 本机取件码（写入/删除/复制/已取标记），删除 D26 订单区；首页入口卡删除、本页禁分享；新增 `components/tab-bar-view/**`（`custom-tab-bar` 改薄包装、顾客 4 格）+ `assets/tabbar/customer-pickcodes*.png`（自制 81×81）。
+- **D66 首页下单文案**：主 CTA「下单」+ 空态/首用引导第 2 步/角色页副标题/帮助页首段统一；下单页标题不改。
+- **D65 全局底部安全区**：`app.wxss` token `--v4-tabbar-h/--v4-safe-b/--v4-inset-tab/--v4-inset-bar` + `.page-body--tab/--bar`；`components/bottom-bar/**`（安全区底垫 + 测高占位，工作台/取件清单批量条、兼职订单详情操作条复用）；`pages/launch` 小屏可滚动；10 个 pkg-admin 页补下拉开关；`tools/check.js` 36→39（#37/#38/#39，`tools/lib/check-layout.js` + `bottom-safe-baseline.json` 5 条全屏遮罩基线）、`check.ps1 $EXPECTED.CheckCriteria=39`。
+- **D67 客户页筛选器**：`partner.listBindings` 增 `zone/buildingNo/profileIncomplete/hasNote`（拆 `_customer-list.js`，`_customer.js` 497→389，无新索引）；客户端 chips（全部/资料未完善/按苑/按楼栋/有备注）+ 苑栋二级选择 + 三套空态 + 筛选态保持；「有进行中订单」一期不做。
+- **口径登记**：CONTRACT §13 D58~D67 + §7 页面地图/§8 分享页清单、DECISIONS D58~D67、`tools/check-docs.js D_MAX 57→67`、ARCHITECTURE §3.4/§3.5/§6、ENGINEERING §2.1/§5.2/§5.7/§8.2/§8.3、DATA_MODEL §2.5/§7.4/§16、UX_CUSTOMER/UX_PARTNER、QA（+§AE 7 条、总计 343）、review 提审材料、CHANGELOG。
+
+### 19.2 门禁真实输出
+
+```text
+$ powershell -File check.ps1
+PASS  check.js 代码/配置门禁（39 条）
+PASS  check-docs.js 设计文档门禁（--batch 1）
+PASS  zero-money-scan.js 零金额扫描（源码+页面+文档）
+PASS  selftest.js 全部断言 suite（EXPECTED_ASSERTIONS 闸）
+selftest：运行 36 套；失败 0 套；SKIP 0 套（无）；完整性 0 项；非聚合辅助文件 4 件（已声明）
+check.ps1：全部通过（4 步，退出码 0）
+
+$ node tools/zero-money-scan.js
+零金额扫描：0 命中（白名单 108 项）
+
+$ powershell -File gate.ps1 -Anchor 82c397c -ScopeFiles "app.json,app.wxss,check.ps1,CHANGELOG.md,STATE.md,custom-tab-bar/,components/,assets/,pages/,pkg-customer/,pkg-partner/,pkg-admin/,cloudfunctions/,tools/,docs/" -Estimate 3200
+[PASS] 锚点可解析：82c397c
+[PASS] 变更集 108 件（锚点..HEAD + 工作区）
+[PASS] 范围前缀匹配（15 个前缀，108 件变更）
+[PASS] 行数检查完成（全文本口径，UTF-8）
+[PASS] 无 lockfile/package.json 变更
+[PASS] 体量 1963 行 ≤ 预估 3200 × 1.5 = 4800
+[PASS] 提交信息格式合规
+gate.ps1：红色 0 项；黄色 0 项（退出码 0）
+```
+
+- 3 条新门禁均有「合法基线绿 → 临时反例首红 → 还原复绿」证据：#37 根 class 缺 `page-body--tab`（orders/customers 中间态）、#38 固定底条缺 `env(safe-area-inset-bottom)` 与基线失效、#39 下拉开关单向缺失（config 缺开关 / role 多开关）。
+
+### 19.3 关键测试读数（真实输出）
+
+- selftest 套件：order-customer 335/335、profile 192/192、performance 145/145、share 195/195、pick-list 200/200、core 202/202、message-pages 149/149、privacy-text 290/290、tools 50/50、partner-customers 137/137、query-window 62/62、partner-pages 294/294、order-workbench 347/347、order-detail-partner 191/191、admin-pages 196/196。
+- `node tools/lib/dead-code.js`：46 目录、死函数候选 0、#35 问题 0、#36 问题 0；`node tools/sync-cloud-shared.js --check` 副本一致（本批未改 shared）。
+
+### 19.4 待用户（真机/控制台，agent 不代勾）
+
+- QA §AE1~AE7：4 格底部栏切换手感/返回栈、取件码页写入删除与禁分享/READONLY、首页文案一致、三机型滚到底（iPhone home indicator/iPhone SE/Android 三键导航/大字号）、底部固定条不被遮挡、客户页筛选与空态、门禁人复核。
+- QA §L1、§AD2~§AD4 按 D64 改判重写（取件码页无订单区、只本机清单）。
+- **本批纯客户端 + 服务端筛选参数，无新集合/索引/云函数动作，无需重部署云函数**；需用户重新上传体验版后真机点检。
+
+### 19.5 提交
+
+- 代码/文档提交与证据提交哈希：见本批证据提交说明（Lead 收口时回填）；工作树干净、未 push、未 tag/提审/发布。
 

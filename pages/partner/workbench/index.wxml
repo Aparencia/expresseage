@@ -1,7 +1,7 @@
 <!-- pages/partner/workbench/index.wxml · 取件清单（工作台）
      视图数据全部来自 parts（分组/行/工具条/动作/面板/已完结分区）；行内动作只渲染服务端 actions[]。
      口径：UX_PARTNER §4.1~§4.15、§6（READONLY 隐藏写控件 / TEST_WRITE 可写但只写测试数据）。 -->
-<view class="page-body workbench-body">
+<view class="page-body page-body--tab">
   <switch-bar />
 
   <view class="head-row">
@@ -315,9 +315,8 @@
     <view wx:if="{{completed.moreText}}" class="more-btn" bindtap="onHistoryMore">{{completed.moreText}}</view>
   </view>
 
-  <view class="bottom-safe"></view>
-
-  <view wx:if="{{selecting}}" class="batch-bar">
+  <!-- D65：批量条走底部条组件（自带 env 安全区底垫 + 可测高占位，替代页面 static 垫高） -->
+  <bottom-bar wx:if="{{selecting}}">
     <view class="row between batch-head">
       <text class="small">{{selectionText}}</text>
       <view class="row">
@@ -336,9 +335,9 @@
         bindtap="onBatchTap"
       >{{action.label}}</view>
     </view>
-  </view>
+  </bottom-bar>
 
-  <view wx:if="{{undo.visible}}" class="undo-bar">
+  <view wx:if="{{undo.visible}}" class="undo-bar {{selecting ? 'undo-bar-above-batch' : ''}}">
     <text>{{undo.text}} · 可撤销 {{undo.remaining}}s</text>
     <view class="mini-btn btn btn-ghost undo-btn" catchtap="onUndoTap">撤销</view>
   </view>

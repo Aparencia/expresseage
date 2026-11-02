@@ -1,6 +1,7 @@
 # V4_ENGINEERING · v4 工程结构 / 环境 / 测试 / 门禁 / 部署设计
 
 > 版本：v1.0 草案（2026-10-22 批 10 回写：**D23~D26 C 批**一单多包裹/合并窗口/无截图手填/每单配送地址/顾客取件清单；**D28/D29 B 批**换绑一体化/状态事件未读红点/AI 低置信不写入；**性能 P0 采纳**（P0-1~P0-11）；**代码审查非重叠修复**（M-01/M-02 P1 等）；页面 32 页（批 17 D46 增 pick-list）、门禁 #32 单函数行数机械兜底、识别兜底记录粒度=包裹×截图；**v1.2 增补：D36 分享与朋友圈（19 页好友转发/3 页朋友圈/中性封面/会话禁分享）+ 门禁 #33 分享卡口中性 + `selftest-share` 182 断言**、**v1.3 增补（2026-10-31）：门禁判据补强——check.js #34 打包忽略清单（TD-071）、check-docs #11 总览读数可复算（TD-078）/ #12 台账结构 / #3·#5 加固（TD-079）**）｜维护：lead｜状态：**D1~D26、D28~D29 已裁决**（D27 定位方案待研究结论后裁决）；E5/E12 平台实测与 E11 用户确认仍待做
+> **v1.9 增补（2026-11-02，D58~D67）**：批 24 起实施；页面 32 页口径 = 主包 8（`pkg-customer/pages/pickup-list` 迁主包 `pages/customer/pickcodes`，D64）+ 分包 24（`pkg-customer` 5 / `pkg-partner` 8 / `pkg-admin` 11）；新增底部安全区 token 与 `.page-body--tab`/`--bar`（D65）；`tools/check.js` 判据 36→39（#37~#39 机械校验，D65），`check.ps1` 的 `$EXPECTED.CheckCriteria` 同步 39（selftest 套件数仍 36）；`custom-tab-bar` 按角色渲染顾客 4 格（含取件码伪 tab）/兼职 3 格（D64）。
 > 上游（冲突以它们为准）：`docs/contract/V4_CONTRACT.md` **v0.9**（唯一口径）、`docs/contract/V4_REBUILD_SPEC.md` §9.1/§10、`docs/data/V4_DATA_MODEL.md`（字段/索引/API 契约细节；**v0.9 字段增量以 CONTRACT §4.2 补充字段为准**，DATA_MODEL 回写后同版）、`docs/contract/V4_DECISIONS.md`、`docs/ux/V4_UX_CUSTOMER.md` / `V4_UX_PARTNER.md` / `V4_UX_DEVELOPER.md`。
 > 引用规则：口径用 CONTRACT `§/D#`；字段/索引/action 入参出参以 DATA_MODEL 为契约载体（残差由 `tools/check-docs.js` 双向兜底）；工程缺口标 `[E#]`（§13）；引用 v3 用"文件 + 函数名"（不写行号）；数字给取数命令。
 > 版本标注约定（v0.9 统一）：正文"（v0.5/v0.6/v0.7 定稿）"= 该口径在 CONTRACT v0.5/v0.6/v0.7 冻结、v0.9 未改；"（v0.8）"= 三次修订新增；"（v0.9）"= 四次修订新增/变更；本文自身版本 = v0.9。**UX 页面上的版本号一律运行时取**（App 版本取 `wx.getAccountInfoSync().miniProgram.version`，隐私版本取 `config.getPublic.privacyVersion`），文档与代码不写死。
@@ -46,7 +47,7 @@
 | :-- | :-- | :-- | :-- |
 | `AGENTS.md`（94 行宪法） | `AGENTS.md` | 改造 | 保留 DoD/范围四禁/回写/红线/代码硬标准；删 v3 本机数据红线，加"云开发/双角色/零金额/隐私承诺变更"；仍守 ≤200 行 |
 | `check.ps1` / `gate.ps1` / `doctor.ps1` | 同名三件 | 改造 | check STEPS 定型为 **4 步**（`tools/check.js` → `tools/check-docs.js` → `tools/zero-money-scan.js` → `tools/selftest.js`；selftest 各套由 `tools/selftest.js` 聚合、`EXPECTED_ASSERTIONS` 闸统一跑）+ UTF-8 BOM；gate 保留六项、行数统一全文本（修 TD-062）；doctor 新增 git 身份检查（v3 教训：未配身份提交静默失败） |
-| `tools/check.js`（11 条判据） | `tools/check.js` | 改造 | 按 v4 重列为 **36 条**（§8.2）：集合/action 注册表、客户端禁直连、shared+ids/room-tag 副本 hash、BOM 双向、**零金额扫描 #22**、**切换会话接入 #23**、**AI 外呼/白名单/必入队/原图审计 #24~#27**、**绑定方向 #28**、**头像昵称 #29**、**账号切换与测试数据隔离 #30**、**测试视觉 #31**、**单函数行数 #32**、**分享卡口中性 #33（v1.2/D36）**、**打包忽略清单 #34（TD-071）**、**未引用导出扫描 #35 / 页面死函数扫描 #36（批 16，TD-081）** |
+| `tools/check.js`（11 条判据） | `tools/check.js` | 改造 | 按 v4 重列为 **39 条**（§8.2）：集合/action 注册表、客户端禁直连、shared+ids/room-tag 副本 hash、BOM 双向、**零金额扫描 #22**、**切换会话接入 #23**、**AI 外呼/白名单/必入队/原图审计 #24~#27**、**绑定方向 #28**、**头像昵称 #29**、**账号切换与测试数据隔离 #30**、**测试视觉 #31**、**单函数行数 #32**、**分享卡口中性 #33（v1.2/D36）**、**打包忽略清单 #34（TD-071）**、**未引用导出扫描 #35 / 页面死函数扫描 #36（批 16，TD-081）**、**底部安全区三闸 #37~#39（D65，批 24）** |
 | `tools/selftest.js`（harness） | `tools/selftest.js` | 改造 | 保留"计数器 + EXPECTED_ASSERTIONS 完整性闸 + 崩溃也打印总数 + 分节 run({check,eq})"；断言按 v4 语义全部重写 |
 | `tools/selftest-parse.js`+`parse-fixtures.js`、`tools/selftest-*.js`（5 个波次件） | `selftest-recognize.js` + `fixtures/v3-parse.js` + core/state/recognize 三件 | 复制+改造 | v3 语料与 sha256 指纹照搬、输出改 DTO；历史源码字面量钉丢弃，按主题重写 |
 | `utils/stations.js`、`utils/buildings.js` | `shared/stations.js` + `shared/zones.js` + `utils/building-parse.js` | 复制+改造 | P1~P8 与别名归一原样；zone/buildingNo/room/dormKey 解析、zoneLabels 走 config（D8） |
@@ -87,15 +88,16 @@ expressage_college_v4/
 │   ├── upload.js  privacy.js  mode-guard.js
 │   └── modules/          # user/customer/partner/bind/order/message/upload/config/ai/admin.js
 ├── store/index.js        # 全局快照 + 订阅（roles/activeRole/me/binding/config/badges/viewContext 内存）
-├── pages/                # 主包 7 页（5 tab + launch/role；CONTRACT §7 逐字）
+├── pages/                # 主包 8 页（5 真实 tab + customer/pickcodes 伪 tab + launch/role；CONTRACT §7 逐字）
 │   ├── launch/index.*  role/index.*  customer/home/index.*  customer/orders/index.*
+│   ├── customer/pickcodes/index.*  # D64 顾客取件码（伪 tab；只显示自建本机取件码）
 │   ├── partner/workbench/index.*  partner/customers/index.*
 │   └── profile/index.*   # 我的（顾客/兼职共用；展示头像/昵称与对应编号）
-├── pkg-customer/pages/   # 6 页：bind / order-create / order-detail / messages / help / pickup-list（v1.0/D26）
+├── pkg-customer/pages/   # 5 页：bind / order-create / order-detail / messages / help（D64 起 pickup-list 迁主包）
 ├── pkg-partner/pages/    # 8 页：activate / order-detail / create-on-behalf / customer-detail / service-settings / stats / messages / pick-list（v1.4/D46）
 ├── pkg-admin/pages/      # 11 页（v0.9 用 account-switch 取代旧视角页）：overview / invite-codes / customers / customer-detail / partners / orders / order-detail / config / account-switch / messages / recognition-review
-├── custom-tab-bar/       # 必须在项目根目录（平台硬要求）；5 tab 按角色渲染 3 格（切换会话渲染目标角色）
-├── components/           # switch-bar（黄条 READONLY / 蓝条 TEST_WRITE + TEST 角标）/ avatar-view（默认头像兜底）/ id-text（编号）/ room-tag-text（大写标签）/ failure-image（复核原图）/ 跨页展示组件
+├── custom-tab-bar/       # 必须在项目根目录（平台硬要求）；真实 tab 顾客 4 格（含取件码伪 tab）/兼职 3 格（切换会话渲染目标角色），视觉复用 components/tab-bar-view
+├── components/           # switch-bar（黄条 READONLY / 蓝条 TEST_WRITE + TEST 角标）/ avatar-view（默认头像兜底）/ id-text（编号）/ room-tag-text（大写标签）/ failure-image（复核原图）/ tab-bar-view（D64 共用底部栏视觉）/ bottom-bar（D65 底部安全区条）/ 跨页展示组件
 ├── utils/                # ids.js / room-tag.js / order-scope.js（纯件）/ recognize/（4 件）/ ocr/（3 件）/ avatar.js / customer-view.js / order-edit.js /
 │                         # storage.js（唯一本地写口，不存 viewContext/L3）/ privacy-policy.js / building-parse.js
 ├── cloudfunctions/
@@ -553,7 +555,7 @@ expressage_college_v4/
 ### 5.2 自定义 tabBar 与页面守卫（v0.7）
 - 平台事实：`tabBar.list` 只允许 2~5 项；自定义组件必须在**项目根目录 `custom-tab-bar/`**。
 - 定稿：`app.json` 的 `tabBar.custom=true`，`list` **恰好 5 项**：`pages/customer/home/index`、`pages/customer/orders/index`、`pages/partner/workbench/index`、`pages/partner/customers/index`、`pages/profile/index`（双方共用）。
-- `custom-tab-bar` 组件按 store 渲染：无 `viewContext` 时按 `activeRole` 渲染顾客三格（首页/订单/我的）或兼职三格（工作台/客户/我的）；**有 `viewContext` 时按 `viewContext.role` 渲染目标角色三格（两模式同）**；工作台格显示待处理红点/数字。
+- `custom-tab-bar` 组件按 store 渲染：无 `viewContext` 时按 `activeRole` 渲染顾客四格（首页/订单/取件码/我的；取件码为 D64 伪 tab）或兼职三格（工作台/客户/我的）；**有 `viewContext` 时按 `viewContext.role` 渲染目标角色四格/三格（两模式同）**；工作台格显示待处理红点/数字；视觉复用 `components/tab-bar-view`，真实 tab 用 `wx.switchTab`、伪 tab 页用 `wx.reLaunch`。
 - **开发者无 tabBar**：全部页面在 `pkg-admin` 分包内，用页面内导航/返回栈；从切换会话退出也 `reLaunch` 回 account-switch。
 - 导航：同角色内切格用 `wx.switchTab`；跨角色/角色不匹配守卫用 `wx.reLaunch` 回本角色首页；进入/退出切换会话一律 `wx.reLaunch`（避免 tabBar 顶替与栈残留）；`pages/launch`、`pages/role` 不在 tabBar。
 - **列表与排序**：顾客进行中/已完成分列表按 `statusUpdatedAt desc`、`completedAt/cancelledAt desc` 由服务端返回；兼职工作台由服务端返回按"状态桶+站点"过滤的 list+counts（不保证档内顺序），**四档动线排序在客户端零件层由 `shared/order-view.sortByPickupRoute` 执行**（CONTRACT §5.2 为准；排序规则单源，页面不另写）。
@@ -604,7 +606,8 @@ expressage_college_v4/
 ### 5.7 组件清单
 | 组件 | 职责 | 约束 |
 | :-- | :-- | :-- |
-| `custom-tab-bar/`（根） | 5 tab 按角色渲染 3 格（切换会话渲染目标角色）+ 红点 | 只读 store；不调 api |
+| `custom-tab-bar/`（根；D64 视觉抽离） | 真实 tab 顾客 4 格（含取件码伪 tab）/兼职 3 格（切换会话渲染目标角色）+ 红点；视觉复用 `components/tab-bar-view` | 只读 store；不调 api；伪 tab 页用 `wx.reLaunch`、真实 tab 用 `wx.switchTab` |
+| `tab-bar-view`（D64） | 共用底部栏视觉（tabs/selected/badges 由使用方传入；tap 事件交使用方导航） | 零业务判据、零 api/store 直读（由 custom-tab-bar 与取件码伪 tab 页分别注入） |
 | `switch-bar`（v0.9，取代旧会话条） | 会话条：READONLY 黄条 / TEST_WRITE 蓝条（角色/编号/昵称/剩余时长/退出 + TEST 角标） | 只读 store；无 `viewContext` 渲染空；不得可关闭；两色只在自身 wxss |
 | `test-badge`（v0.9） | 右上角 `TEST` 角标 | 仅 `viewMode=TEST_WRITE` 渲染；`TEST` 字面量只允许出现在此组件 |
 | `avatar-view`（v0.9；v1.1 字号修正） | 头像圆形展示 + 默认头像兜底（首字色块）、加载失败不裂图 | 列表 64rpx/详情 96rpx/卡头 88rpx；fileID 来自 DTO；不缓存 fileID/临时 URL；默认头像首字字号按 `size × 0.42rpx` 等比下发（v1.1 修 13rpx 不可读） |
@@ -615,6 +618,7 @@ expressage_college_v4/
 | `order-row` | 工作台/订单列表行（锚+键、四档标记） | 数据来自 `order-view` 视图模型（生产消费 `bucketOf`） |
 | `image-picker` / `code-editor` | 相册/拍照/聊天选择 + 压缩；取件码/柜号/运单尾号行内编辑 | 只调 `api/upload` 与隐私层；校验走 `shared/validate` |
 | `empty-state` | 空态（文案 + 可选动作按钮） | 无业务判据；按钮用 `.empty-state .empty-state-btn` 覆盖原生宽度 |
+| `bottom-bar`（D65） | 底部固定操作条容器（slot 内容；自带 `env(safe-area-inset-bottom)` 底垫与可测高占位，供工作台批量条/取件清单批量条/订单详情操作条复用） | 只做布局与安全区；业务动作由页面决定；不得内含 api/store 直读 |
 
 - **零使用组件清理（批 16）**：`components/customer-row/`、`components/form-field/`、`components/role-switch/`、`components/section-card/` 四个组件在全仓 WXML 零使用（仅 `app.json` 全局注册），批 16 死代码专项删除目录 + `app.json` 全局 `usingComponents` 注册项（判据：全仓标签 grep 0 命中 + `node tools/check.js` #1/#9/#34 绿）。**新增全局组件必须同批在 `app.json` 注册并登记本节 + ARCHITECTURE §3.5，且要有页面实际使用**（无使用即被 #36 组件目录死函数扫描与基线纪律拦下）。
 
@@ -794,14 +798,14 @@ expressage_college_v4/
 | :-- | :-- | :-- | :-- |
 | 1 | JSON 可解析：app.json/sitemap/project.config + **全部页面 .json** | 配置写坏=白屏/静默失效 | v3 第 1 条扩展 |
 | 2 | JS 语法：客户端 + `shared/` + `api/` + `store/` + `utils/` + `tools/` + `cloudfunctions/**`（vm 编译） | 语法错误别等真机/部署 | v3 第 2 条扩展 |
-| 3 | 页面四件套：主包 **7 页** + 3 分包 **25 页**（顾客 6 / 兼职 8 / 开发者 11；CONTRACT §7 逐字路径，**v1.0 含 `account-switch`、`recognition-review`、`pkg-customer/pages/pickup-list/index`；v1.4/D46 含 `pkg-partner/pages/pick-list/index`**） | 声明了缺文件=白屏 | v3 第 3 条扩展（v1.0 页数） |
+| 3 | 页面四件套：主包 **8 页** + 3 分包 **24 页**（顾客 5 / 兼职 8 / 开发者 11；CONTRACT §7 逐字路径，**v1.0 含 `account-switch`、`recognition-review`；v1.4/D46 含 `pkg-partner/pages/pick-list/index`；v1.9/D64 `pkg-customer/pages/pickup-list/index` 迁主包 `pages/customer/pickcodes/index`**） | 声明了缺文件=白屏 | v3 第 3 条扩展（v1.0 页数） |
 | 4 | 反向登记：`pages/` 与各 `pkg-*/pages/` 下每个"js+同名 wxml"页面必须在 app.json 声明（`custom-tab-bar/` 组件不算页面） | 漏登记=navigateTo 静默失败 | v3 第 3b 条 |
 | 5 | 必需文件：README/AGENTS/STATE/CHANGELOG/check/gate/doctor/.gitignore/.tool-versions/.env.example/两云函数 package.json/设计文档（CONTRACT §12 清单，含 `V4_UX_DEVELOPER.md`） | 骨架缺失 | v3 第 4 条扩展 |
 | 6 | `.gitignore` 挡 `.env*`、`project.private.config.json`、`node_modules/`、`.dsh-code-index/` | 密钥/机器配置/缓存泄露 | v3 第 5 条扩展 |
 | 7 | PowerShell 脚本必须带 UTF-8 BOM | PS 5.1 解析崩 | v3 第 7 条 |
 | 8 | **编译产物不得带 BOM**：js/wxml/wxss/json 首三字节非 EF BB BF | 微信编译器报 unexpected \uFEFF | v3 缺（教训卡 2026-09-20） |
 | 9 | WXML class 在同页 WXSS 或 app.wxss 定义（含组件 4 件套） | 用了没定义=真机静默无样式 | v3 第 8 条扩展 |
-| 10 | tabBar↔pages：`list` 恰好 5 项、pagePath 均为主包页、`custom-tab-bar/` 在根目录、每角色 3 格可解析、**`pkg-admin` 页面不在 list 内** | 切格失败/自定义 tabBar 不渲染/后台误入 tab | v4 新增（CONTRACT §7） |
+| 10 | tabBar↔pages：`list` 恰好 5 项、pagePath 均为主包页、`custom-tab-bar/` 在根目录、**真实 tab 顾客 4 格/兼职 3 格可解析（D64 起取件码为伪 tab，不在 list）**、**`pkg-admin` 页面不在 list 内** | 切格失败/自定义 tabBar 不渲染/后台误入 tab | v4 新增（CONTRACT §7） |
 | 11 | 全局 `window.navigationStyle` 禁止（页面局部 json 才允许） | 全站失去系统导航（v1 踩过） | v3 第 9 条 |
 | 12 | 集合名注册表：`cloudfunctions/**` 的 `db.collection('…')` 字面量 ∈ `shared/collections.js`；客户端任何位置不得出现集合名字面量 | 集合写错/客户端直连 | v4 新增 |
 | 13 | action 注册表：`shared/actions.js` 覆盖 CONTRACT §5.3 全集并标 `visibility`（client/internal）与 `write`；internal = `admin.bootstrap`/`health.check`/`cleanup.*`；client 含 `bind.getCurrent`/`ai.parseParcel`/`admin.viewAsStart`/`admin.viewAsEnd`/复核四动作/**测试账号四动作**；`api/modules` 调用 ⊆ client 集；router 只开放 client；handler 与注册表双向相等；**router 静态注册表（P0-5，批 10 扩围）**：11 域覆盖全部 client/放行 internal 动作前缀、每域 `handlers/<domain>` 导出集 = 注册表集且逐个为函数、`cloudfunctions/api/app.js` 热路径必须走 `router.getHandler(`（首请求只加载首用域；运行期域级 fail-fast 保留） | 路由漏配/内部动作外泄/懒加载退回全量 | v4 新增（v0.9 全量；批 10 P0-5 扩围） |
@@ -814,7 +818,7 @@ expressage_college_v4/
 | 20 | 错误码注册表：代码引用的 code 与 `shared/error-codes.js` 双向相等，且**恰好 = CONTRACT v0.9 §5.3 的 13 码**（旧码 UNAUTHENTICATED/UNKNOWN_ACTION/INVALID_PARAM/VERSION_CONFLICT/CODE_EXPIRED/CODE_USED 等零残留；AI 兜底失败、账号切换/测试账号均不新增码）；`error-copy` 每码有文案 | 未知码上屏/裸英文报错 | v4 新增（v0.9 修） |
 | 21 | 页面层零判据（启发式）：`pages/`、`pkg-*/pages/` 的 .js 不出现 `wx.cloud.*`、不出现七状态字符串字面量、**不出现编号/roomTag 生成或 `random`** | 判据回流页面（TD-016 复发） | v4 新增（v0.9 扩） |
 | 22 | **零金额扫描**：源码 + 页面文案按 §7.6 词表扫描命中 0；白名单只认 `zero-money-allowlist.json` 精确项 | 费用语义回潮（用户硬口径） | v4 新增（v0.7） |
-| 23 | **切换会话接入（v0.9）**：主包 5 个 tab 页 + `pkg-customer` 6 页（v1.0 含 `pickup-list`）+ `pkg-partner` 8 页（v1.4 含 `pick-list`）的 wxml 必须引用 `switch-bar`（黄条/蓝条 + TEST 角标）；`pkg-admin` 页面不得引用 `switch-bar`/`test-badge`；`viewTicket` 字符串只允许出现在 `api/client.js` 与 `store/` | 会话条缺失/票据外泄/后台误判 | v4 新增（v0.9 扩；v1.0 页数） |
+| 23 | **切换会话接入（v0.9；D64 页数修订）**：主包 6 业务页（5 真实 tab + `pages/customer/pickcodes` 伪 tab；launch/role 不计）+ `pkg-customer` 5 页 + `pkg-partner` 8 页（v1.4 含 `pick-list`）的 wxml 必须引用 `switch-bar`（黄条/蓝条 + TEST 角标）；`pkg-admin` 页面不得引用 `switch-bar`/`test-badge`；`viewTicket` 字符串只允许出现在 `api/client.js` 与 `store/` | 会话条缺失/票据外泄/后台误判 | v4 新增（v0.9 扩；v1.0 页数） |
 | 24 | **客户端零 AI 外呼/零 Key**（v0.8）：客户端范围（`pages/`、`pkg-*/`、`api/`、`store/`、`utils/`、`components/`、`config/`、`shared/`）零命中 `DEEPSEEK_API_KEY`、`api.deepseek.com`、`deepseek`；`ai.parseParcel` 只经 `api/client.js`/`api/modules/`，页面不直接拼 action | Key 进小程序包/绕过服务端外呼 | v4 新增（v0.8，CONTRACT §12） |
 | 25 | **AI 外发白名单**（v0.8）：`https`/`fetch`/`api.deepseek.com` 只允许在 `cloudfunctions/api/lib/ai/deepseek.js`；外发请求体只能由 `buildAiPayload()` 构造且键集合 === `AI_PAYLOAD_KEYS`；`lib/ai/**` 零 `fileId`/`openid`/`orderId` 字面量 | 原图/身份/归属外泄 | v4 新增（v0.8） |
 | 26 | **失败必入队**（v0.8）：`handlers/ai/**` 每个 `recognized:false` 返回点都必须有 `recordFailure(`（失败分支数 ≤ 入队调用数，少一个即红）；`catch` 不得空吞直接 return；`shared/collections.js` 必须含 `recognition_failures` | 失败静默丢弃、无法复核 | v4 新增（v0.8） |
@@ -827,9 +831,12 @@ expressage_college_v4/
 | 33 | **分享卡口中性（v1.2/D36）**：实现 `tools/lib/check-share.js`（由 `check.js` #33 挂载）：①`tools/lib/share-pages.js` 清单内 19 个顾客/兼职业务页必须挂 `onShareAppMessage` 且接 `utils/share`（页面零自拼卡片）；②仅 role/home/help 三页挂 `onShareTimeline`；③`pkg-admin/**` 零分享/转发入口；④清单外页面私挂分享判红（新增页面必须同步清单）；⑤`utils/share/index.js` 零 `wx.`、零 L3 字段名（orderNo/pickupCode/dormKey/phoneTail/avatarFileId/displayName/viewTicket/openid）、必须使用固定中性封面；⑥页面层零 `assets/share/` 路径拼接；⑦`components/switch-bar` 必调 `syncSession`（会话禁分享 O3/M-33）、`app.js` 必识别单页模式 scene=1154 | 分享卡片泄漏 L3 / 切换会话仍可转发 / 新增页面漏接或私挂 | v1.2 新增（D36，2026-10-28 用户指令） |
 | 34 | **打包忽略清单（TD-071）**：实现 `tools/lib/check-pack-ignore.js`（由 `check.js` #34 挂载）：阅读 `project.config.json` 的 `packOptions.ignore`，根目录的每个目录必须 ∈ 小程序源码白名单（`api/assets/components/config/custom-tab-bar/pages/pkg-admin/pkg-customer/pkg-partner/shared/store/utils`）或 ∈ ignore 的 folder 项；`project.config.json` 缺失/不可解析/无 ignore 数组、根目录枚举为空均判红；ignore 指向不存在目录不算错 | 工具产物目录（如 `.dsh-code-index/`）漏配 ignore 会被打进主包、顶过上传上限（v3 教训） | 批 A（TD-071 关闭判据） |
 | 35 | **未引用导出扫描（TD-081）**：实现 `tools/lib/dead-code.js`（由 `check.js` #35 挂载）：扫描小程序生产源码（`pages/pkg-*/components/custom-tab-bar/api/store/utils/shared/config`）每个 CJS 导出符号，统计「全仓 .js 去注释后引用」——生成副本 `cloudfunctions/*/shared/**` 不计生产消费（同源由 #17 hash 对帐保证，避免副本自我引用掩盖死导出）；生产端 0 引用且文件内不自用的导出判为命中；命中必须逐条登记 `tools/dead-export-baseline.json`（含文件+符号+理由分类 `history/test-only/contract-slot` + 证据），未登记即红；基线项理由非法/重复登记/已出现生产引用判红；已删除或已移出导出的基线项自动作废（不阻塞清理）。**禁止整文件/整目录白名单**；生产端有新调用 = 绿（基线项须移除，不许腐烂） | 死导出复发（改代码后旧导出没人删）；测试专用导出无账 | 批 16（Q9 P-A，TD-081） |
-| 36 | **页面死函数扫描（TD-081；批 18 收紧）**：实现 `tools/lib/dead-code.js`（由 `check.js` #36 挂载）：扫描页面/组件目录 = `tools/lib/project.js` ALL_PAGES（32 页，含 depth-2 主包页 `pages/launch|profile|role`）+ `components/<name>`（12 个）= **44 个目录**（不写死目录数，由页面注册表派生）；函数定义 = 顶层 function + `Page({...})` 方法 + `Component({methods:{...}})` 方法。**引用判定为语法级、按目录可达性收敛（不再用裸 token 计数）**：同目录 `.NAME`/`this.NAME`/裸调用 `NAME(`/WXML 事件绑定 `="NAME"`/间接引用（回调、别名值位置），排除定义处（方法简写键/function 声明/导出键）；跨目录只认真实可达——require 目标归一化后落在定义目录内的 `alias.NAME`/解构裸调用/内联 `require(...).NAME`，组件另认 `selectComponent` 选择器→WXML 标签→`usingComponents` 解析；**测试引用只认 require 了该目录内文件的测试**（无关测试里的同名 token/源码字符串如 `pickerSrc.indexOf('clear()')` 不算，正是原假阴性来源）；无关对象同名属性（如 `pendingInvite.clear()`）不算引用。定义后 JS/WXML 均无引用 → 命中必须登记基线（`pageDeadFunctions` 数组），未登记即红；平台生命周期/框架保留键豁免；函数/文件删除后基线项自动作废。批 18 实测：41→44 目录、唯一新增真实命中 `components/image-picker/index.js clear()`（删除非基线）、4 个存量死函数清理后基线保持空集 | 页面事件处理器/零件函数改完没人删；通用名被同名 token 掩盖导致假阴性 | 批 16（Q9 P-A，TD-081）+ 批 18 收紧（2026-11-01 审查修复批） |
+| 36 | **页面死函数扫描（TD-081；批 18 收紧）**：实现 `tools/lib/dead-code.js`（由 `check.js` #36 挂载）：扫描页面/组件目录 = `tools/lib/project.js` ALL_PAGES（32 页，含 depth-2 主包页 `pages/launch|profile|role`）+ `components/<name>`（12 个；D64/D65 起新增 `components/tab-bar-view`、`components/bottom-bar`，由注册表派生）= **46 个目录**（不写死目录数，由页面注册表派生）；函数定义 = 顶层 function + `Page({...})` 方法 + `Component({methods:{...}})` 方法。**引用判定为语法级、按目录可达性收敛（不再用裸 token 计数）**：同目录 `.NAME`/`this.NAME`/裸调用 `NAME(`/WXML 事件绑定 `="NAME"`/间接引用（回调、别名值位置），排除定义处（方法简写键/function 声明/导出键）；跨目录只认真实可达——require 目标归一化后落在定义目录内的 `alias.NAME`/解构裸调用/内联 `require(...).NAME`，组件另认 `selectComponent` 选择器→WXML 标签→`usingComponents` 解析；**测试引用只认 require 了该目录内文件的测试**（无关测试里的同名 token/源码字符串如 `pickerSrc.indexOf('clear()')` 不算，正是原假阴性来源）；无关对象同名属性（如 `pendingInvite.clear()`）不算引用。定义后 JS/WXML 均无引用 → 命中必须登记基线（`pageDeadFunctions` 数组），未登记即红；平台生命周期/框架保留键豁免；函数/文件删除后基线项自动作废。批 18 实测：41→44 目录、唯一新增真实命中 `components/image-picker/index.js clear()`（删除非基线）、4 个存量死函数清理后基线保持空集 | 页面事件处理器/零件函数改完没人删；通用名被同名 token 掩盖导致假阴性 | 批 16（Q9 P-A，TD-081）+ 批 18 收紧（2026-11-01 审查修复批） |
+| 37 | **D65 tab 页底部安全区 class**：实现 `tools/lib/check-layout.js`（由 `check.js` #37 挂载）：真实 tab 页（app.json tabBar.list 内 5 页）+ 伪 tab 页 `pages/customer/pickcodes/index` 的根节点 class 必须含 `page-body--tab`（伪 tab 页不存在时跳过并记「待批 24-A 落地」）；合法基线全绿、反例首红 | tabBar 实占高度未计入页面底垫 → 下拉到底部最后一项被遮挡（真机普遍缺陷） | 批 24（D65） |
+| 38 | **D65 底部固定条 safe-area**：实现 `tools/lib/check-layout.js`（由 `check.js` #38 挂载）：扫描页面/组件 wxss 中 `position:fixed` 且 `bottom:0` 的规则，必须包含 `env(safe-area-inset-bottom)` 或显式引用全局 token/`bottom-bar` 组件；存量全屏遮罩类按 `tools/lib/bottom-safe-baseline.json` 逐条登记（file+selector+reason，禁止目录豁免）；新规则未带 env 即红 | 底部条贴 home indicator / 被裁切 | 批 24（D65） |
+| 39 | **D65 下拉刷新开关一致性**：实现 `tools/lib/check-layout.js`（由 `check.js` #39 挂载）：页面 `index.js` 定义 `onPullDownRefresh` ⇔ 同名 json `enablePullDownRefresh:true` 双向一致；任一侧缺失即红（含 pkg-admin 页） | 有 handler 无开关=下拉无响应；有开关无 handler=空白下拉 | 批 24（D65） |
 
-- **判据条数钉住（TD-085，2026-11-01 批 19）**：本表 36 条由 `check.ps1` `$EXPECTED.CheckCriteria=36` 钉住，check-docs 12 条由 `DocCriteria=12` 钉住，selftest 套件数由 `SelfTestSuites=36` 钉住；汇总行实际条数与常量不符 → `check.ps1` exit 1（FAIL 行写期望/实际）。**故意增删判据必须同批**改 `$EXPECTED`、本表条数、§8.3（12）与 `STATE.md` 台账，并留「先红后绿」证据：删一条判据时 `node tools/check.js` 仍会 35/35 绿（旧口径），而 `check.ps1` 必须 exit 1、`check-docs #11` 同时抓文档读数漂移；还原后 SHA256 一致 + 36/36 + 4 步 0。
+- **判据条数钉住（TD-085，2026-11-01 批 19；批 24 起 39 条）**：本表 39 条由 `check.ps1` `$EXPECTED.CheckCriteria=39` 钉住，check-docs 12 条由 `DocCriteria=12` 钉住，selftest 套件数由 `SelfTestSuites=36` 钉住；汇总行实际条数与常量不符 → `check.ps1` exit 1（FAIL 行写期望/实际）。**故意增删判据必须同批**改 `$EXPECTED`、本表条数、§8.3（12）与 `STATE.md` 台账，并留「先红后绿」证据：删一条判据时 `node tools/check.js` 仍会 38/38 绿（旧口径），而 `check.ps1` 必须 exit 1、`check-docs #11` 同时抓文档读数漂移；还原后 SHA256 一致 + 39/39 + 4 步 0。
 - **批 3 补充的行为/静态回归判据**（`tools/selftest-bind-cloud.js`，第 10 套；`check.js` 条数以 `node tools/check.js` 汇总输出为准（写作时 34 条；批 16 起 36 条））：A 方向守卫（顾客基线/PARTNER→`FORBIDDEN`/自绑→`FORBIDDEN`/真实×测试→`FORBIDDEN`）；B 编号归一并复用 `shared/error-copy.PREFIX_HINT` 三句同源提示（`data.field='partnerNo'`）；C roomTag 大写/顺序/隔离/旧号不复用/`tagKey` 唯一；D 换绑与换宿舍（旧 ACTIVE→RELEASED+新 binding）；E 解绑失联与通知；F `partner.getPublic`/`bind.getCurrent`/`listBindings` 头像昵称边界与 TEST_WRITE 路由级放行（READONLY 仍拒）；G 接单开关 `PARTNER_CLOSED` + **全仓 `cloudfunctions/**/*.js` 去注释后 `COLLECTIONS.<小写键>` 零命中**（批 3 P0 回归闸：`handlers/order/_create.js` 曾写 `COLLECTIONS.orders`，下单快乐路径全挂）；H 事务冲突重试边界（默认 3 次、只重试冲突、唯一索引冲突不重试）。
 - **批 9 补充的注销/数据删除端到端判据**（`tools/selftest-deletion.js`，register+`EXPECTED_ASSERTIONS` 聚合形态；`check.js` 条数以 `node tools/check.js` 汇总输出为准（写作时 34 条；批 16 起 36 条））：A `user.deleteAccount` handler（确认文本/进行中订单闸/事务释放绑定并清 `partnerNote`/DEACTIVATED/READONLY 与非顾客拒绝/隐私与维护闸/handler 幂等分支）；B `cleanup.accountDeletion` 阶段一（customers PII+头像文件、订单立即匿名化含 EXCEPTION、截图与留言/事件、识别失败 `uploaderOpenid/fileId` 清空并按引用计数删原图、票据、会话 `ACCOUNT_SWITCH_END(reason=TARGET_DELETED)` 幂等、历史 `bindings.partnerNote`）；C 阶段二（+30 天物理删 users/customers/bindings/票据+头像兜底、重跑 acted 收敛 0、批上限 100 可重入）；D 兼职 CLOSED（释放绑定+订单转异常、partners PII 匿名化+删头像文件+`invitation_codes.usedBy` 置空、识别失败匿名化、`getPublic` NOT_FOUND/`activate` CONFLICT/不可恢复）；E 修复回归与失败隔离；F 端侧注销静态判据。**先判据后修**：首跑 14 条缺陷红（partnerNote 漏清、CLOSED 匿名化/头像/邀请码/识别失败缺失、原图引用未回收）→ 修后全绿；3 组变异电池首红 + SHA256 逐字节还原复跑。
 - 汇总行必须存在（"通过 N 项；失败 M 项"）；**没有汇总输出 = 读数作废**，不许当红/绿用（v3 教训）。
@@ -840,7 +847,7 @@ expressage_college_v4/
 - **批 16 补充的死代码判据**（`tools/lib/dead-code.js`，`tools/check.js` #35/#36；判据数 34→36，条数以 `node tools/check.js` 汇总输出为准）：`tools/dead-export-baseline.json` 为存量基线（每条含 `file+symbol/function+reason(history|test-only|contract-slot)+evidence`，禁止整文件/整目录白名单）；#35 只认「生产端 0 引用且文件内不自用」的导出，仅测试引用的导出登记 `test-only` 不删；#36 覆盖页面与组件目录，平台生命周期/框架保留键豁免。**首红/还原取证要求**：合法基线全绿 → 注入一个新的未引用导出（或页面死函数）→ 对应判据单点首红（只该闸变红）→ 删除注入件 → 复绿；证据（首红输出 + 还原后汇总行）随批报告留档，注入件不得入库。判据自身由 `tools/selftest-tools.js` E 段锁定（导出提取/页面函数识别/生命周期豁免/基线结构/组件文案单源），不存在空集全绿。**批 18 收紧（2026-11-01 审查修复批）**：#36 目录覆盖改由 `ALL_PAGES` 派生（41→44，含 depth-2 主包页）、引用判定改语法级可达性（同目录属性/裸调用/WXML 绑定；跨目录 require/`selectComponent` 解析；测试引用须 require 定义目录），修复通用名假阴性（`image-picker.clear` 类）并清理 1 个页面死函数 + 4 个存量死函数（`deadExports` 基线 79→74、`pageDeadFunctions` 保持空集）；`selftest-tools` E 段 14→25 条断言，M23/M24 首红→还原复绿（`node tools/lib/dead-code.js` 44 目录/候选 0/#35 0/#36 0；`node tools/check.js` 36/36）。
 ### 8.3 `tools/check-docs.js`（设计阶段门禁）
 1. 文档地图列出的文件**按批次分阶段校验**：**批 0 豁免**"批 1 才建立"的 `AGENTS.md`、`STATE.md`、`CHANGELOG.md`、`docs/engineering/V4_ARCHITECTURE.md`、`docs/delivery/V4_RUNBOOK.md`、`docs/engineering/V4_FIXTURES.md`（六件批 1 收口时必须存在）；批 0 必须存在 = `docs/contract/V4_REBUILD_SPEC.md`、`docs/contract/V4_CONTRACT.md`、`docs/data/V4_DATA_MODEL.md`、三份 UX（含 **`docs/ux/V4_UX_DEVELOPER.md`**）、本文、`docs/contract/V4_DECISIONS.md`、`docs/delivery/V4_QA_CHECKLIST.md`、`docs/privacy/*`；**批 ≥1 不豁免**。批次由显式参数 `--batch N` 传入（**默认 1 = 严格不豁免**；批 0 必须显式传 `--batch 0`）。
-2. CONTRACT §7 页面路径全集 = app.json 声明（主包 7 + 分包 25 = 32 页；批 1 后生效，v1.0 含 `pickup-list`；v1.4/D46 增 `pick-list`）。
+2. CONTRACT §7 页面路径全集 = app.json 声明（主包 8 + 分包 24 = 32 页；批 1 后生效，v1.0 含 `pickup-list`→D64 迁主包 `pickcodes`；v1.4/D46 增 `pick-list`）。
 3. CONTRACT §5.3 action 表 = `shared/actions.js`（双向；`visibility=internal` 单列，不对客户端开放；**`admin.createInvites/revokeInvite/listInvites/listCustomers/getCustomer/listPartners/setPartnerStatus/listOrders/getOrder/listAudit/updateConfig/stats/viewAsStart/viewAsEnd/createTestAccount/listTestAccounts/deleteTestAccount/purgeTestData/listRecognitionFailures/getRecognitionFailure/fixRecognitionFailure/ignoreRecognitionFailure`、`ai.parseParcel` 全部在册**）；DATA_MODEL §7 的 action 名 ⊆ CONTRACT 表，**且 CONTRACT 的客户端动作（`cleanup.*` 除外）必须反向出现在 §7**；§7 章节标题缺失或动作 token 解析为空集直接判红（TD-079①）。
 4. CONTRACT §4 集合表 = `shared/collections.js`（**14 集合**，含 `invitation_codes`、`admin_view_sessions`、`recognition_failures`）；`shared/error-codes.js` **恰好等于** CONTRACT §5.3 的 13 码（双向，旧码零命中；AI 兜底失败不入码）。
 5. D#/E# 引用可解析：CONTRACT §13 的 **D1~D42 连续**；本文 §13 的工程缺口 **E1~E12 全部已定义且连续**；文内**方括号显式引用 `[E#]` 未在定义集内即判红**（`docs/archive/**` 历史快照与 QA §E / 提审材料 §5 的另一命名空间不在本判据内）。

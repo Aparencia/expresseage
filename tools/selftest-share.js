@@ -22,7 +22,7 @@ const { createHarness, installCrashGuard } = require('./selftest');
 const zeroMoney = require('./zero-money-scan');
 
 const ROOT = path.resolve(__dirname, '..');
-const EXPECTED_ASSERTIONS = 198; // 实跑读数：node tools/selftest-share.js（批 17 D46：第 32 页接入分享清单 +4）
+const EXPECTED_ASSERTIONS = 195; // 实跑读数：node tools/selftest-share.js（批24-D64：转发清单 20→19 页 -4 断言；新增取件码页禁分享 +1）
 
 const sharePages = require('./lib/share-pages');
 const share = require(path.join(ROOT, 'utils/share/index.js'));
@@ -206,17 +206,23 @@ function register(h) {
   });
 
   // ------------------------------------------------------------ D. 静态接线
-  h.section('D 静态接线（20 页好友转发 / 3 页朋友圈 / 后台零分享 / 单源构造）', (t) => {
+  h.section('D 静态接线（19 页好友转发 / 3 页朋友圈 / 后台零分享 / 单源构造）', (t) => {
     const appJs = readText('app.js');
     const switchBarJs = readText('components/switch-bar/index.js');
     const cardsJs = readText('utils/share/index.js');
     const handlersJs = readText('utils/share/handlers.js');
 
-    t.eq(sharePages.APP_MESSAGE.length, 20, '好友转发页面清单 20 页');
+    t.eq(sharePages.APP_MESSAGE.length, 19, '好友转发页面清单 19 页（D64：取件码本机 L3 页不参与分享）');
     t.eq(sharePages.TIMELINE.length, 3, '朋友圈页面清单 3 页（role/home/help）');
     t.eq(sharePages.ADMIN_PAGES.length, 11, '后台页面清单 11 页（零分享）');
-    const business = businessPageFiles().sort();
-    t.eq(business, sharePages.APP_MESSAGE.slice().sort(), 'app.json 业务页集合 = 好友转发清单（新增页面漏接即红）');
+    // D64：取件码页是本机 L3 明文页，明确禁分享——既不在清单、也不得私挂钩子（其余业务页仍双向对帐）
+    const NO_SHARE = ['pages/customer/pickcodes/index.js'];
+    const noShareSource = readText(NO_SHARE[0]);
+    t.check(noShareSource.indexOf('onShareAppMessage') === -1 && noShareSource.indexOf('onShareTimeline') === -1
+      && sharePages.APP_MESSAGE.indexOf(NO_SHARE[0]) === -1,
+    'D64 取件码页（本机 L3）不提供分享/转发：无分享钩子且不在好友转发清单');
+    const business = businessPageFiles().filter((rel) => NO_SHARE.indexOf(rel) === -1).sort();
+    t.eq(business, sharePages.APP_MESSAGE.slice().sort(), 'app.json 业务页集合（除禁分享页外）= 好友转发清单（新增页面漏接即红）');
 
     sharePages.APP_MESSAGE.forEach((rel) => {
       const source = readText(rel);

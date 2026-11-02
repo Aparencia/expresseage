@@ -23,10 +23,7 @@ const PAGES = {
   home: 'pages/customer/home/index.js',
   homePlan: 'pages/customer/home/parts/render-plan.js',
   homeWxml: 'pages/customer/home/index.wxml',
-  create: 'pkg-customer/pages/order-create/index.js',
-  pickup: 'pkg-customer/pages/pickup-list/index.js',
-  pickupWxml: 'pkg-customer/pages/pickup-list/index.wxml',
-  pickupView: 'pkg-customer/pages/pickup-list/parts/pickup-view.js'
+  create: 'pkg-customer/pages/order-create/index.js'
 };
 const ISO = '2026-10-22T12:00:00.000Z';
 const NOW = Date.parse('2026-10-22T12:00:03+08:00');

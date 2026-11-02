@@ -4,6 +4,8 @@
  *
  * A. partner.listBindings：响应形/服务端排序（dormKey 自然序 + 同宿舍 roomTag 大写序）/搜索六字段/
  *    游标分页与不透明游标/activeOrderCount 按顾客现算且测试隔离/已释放与他人绑定不出现在列表。
+ * A2. D67 客户页筛选器（批 24）：zone/buildingNo/profileIncomplete/hasNote 四维筛选 + AND 组合 +
+ *    非法入参静默归一 + 筛选后游标分页不重不漏 + 行 DTO 形状/测试隔离不变（服务端只增入参）。
  * B. partner.getCustomer：归属（他人/不存在→FORBIDDEN、已释放→INVALID_STATE）/档案行/订单只含白名单字段/
  *    statusUpdatedAt desc 游标分页/from-to 过滤/activeOrderCount 与 unbindEligibility 同源/openid 不入参不出参。
  * C. partner.stats：今日/本周（周一起）/本月三区间精确计数、completionRate 分母 0→null、
@@ -38,8 +40,13 @@ const {
   BINDING_ROW_KEYS, ORDER_ROW_KEYS, DTO_BANNED_KEYS,
   ROLES, PARTNER_STATUS, VIEW_MODE, SUBMITTED, ACCEPTED, PICKED, DELIVERED, COMPLETED, CANCELLED,
   EXCEPTION, ROOT, API, apiOf, handlerCtxOf, nextCrid, orderDoc, world, pickRow, rowsOf,
-  collectKeyPaths, errorInfoOf, expectCode, expectField, jsonOf, handlerFiles, relOf
+  collectKeyPaths, errorInfoOf, expectCode, expectField, jsonOf, handlerFiles, relOf,
+  bindingDoc, customerDoc
 } = cases;
+
+// D67（批 24）：A2 段断言数（新增段，独立常量；既有的 cases.EXPECTED_ASSERTIONS 不放宽）。
+const D67_A2_ASSERTIONS = 17;
+const TOTAL_ASSERTIONS = EXPECTED_ASSERTIONS + D67_A2_ASSERTIONS;
 
 const ACTIVE = 'ACTIVE';
 
@@ -181,6 +188,97 @@ async function sectionA(h) {
     t.eq([testList.list.length, testRow.activeOrderCount], [1, 1],
       'A29 TEST_WRITE 会话：只列测试绑定、activeOrderCount 只数 isTest 单（真实/污染单不混入）');
   });
+}
+
+// ================================================================ A2. D67 筛选器
+// 夹具：在 world() 五条 ACTIVE 绑定（D4-522/D4-1002/D10-1001/X2-301）之上补四类样本，让四个筛选维度
+// 各自有独立可命中行；X4-400 用来证明 buildingNo 可跨苑独立命中、并与 zone 做 AND 组合。
+const C_EMPTY = 'openid-d67-c-empty';
+const C_NOTE = 'openid-d67-c-note';
+const C_B7 = 'openid-d67-c-b7';
+const C_X4 = 'openid-d67-c-x4';
+const B_EMPTY = 'bind-d67-empty';
+const B_NOTE = 'bind-d67-note';
+const B_B7 = 'bind-d67-b7';
+const B_X4 = 'bind-d67-x4';
+
+function d67World() {
+  const db = world();
+  db.seed('customers', [
+    customerDoc(C_EMPTY, 'CD67EMPTY', {
+      displayName: '空资料', zone: '', buildingNo: 0, room: '', dormKey: '', profileCompleted: false
+    }),
+    customerDoc(C_NOTE, 'CD67NOTE1', { displayName: '有备注', zone: 'N', buildingNo: 1, room: '101', dormKey: 'N1-101' }),
+    customerDoc(C_B7, 'CD67B7001', { displayName: '北苑客户', zone: 'B', buildingNo: 7, room: '701', dormKey: 'B7-701' }),
+    customerDoc(C_X4, 'CD67X4001', { displayName: '西苑四栋', zone: 'X', buildingNo: 4, room: '400', dormKey: 'X4-400' })
+  ]);
+  // 资料未完善样本：绑定快照 dormKey 为空（现 bind.create 要求宿舍；历史/异常数据仍按「空置底」口径列出）
+  const emptyBinding = bindingDoc(C_EMPTY, PID1, B_EMPTY, { tagKey: PID1 + ':d67-empty' });
+  emptyBinding.dormSnapshot = { zone: '', buildingNo: 0, room: '', dormKey: '', buildingText: '' };
+  db.seed('bindings', [
+    emptyBinding,
+    bindingDoc(C_NOTE, PID1, B_NOTE, { dormKey: 'N1-101', partnerNote: '门口第二个柜子' }),
+    bindingDoc(C_B7, PID1, B_B7, { dormKey: 'B7-701' }),
+    bindingDoc(C_X4, PID1, B_X4, { dormKey: 'X4-400' })
+  ]);
+  return db;
+}
+
+async function sectionA2(h) {
+  h.section('§13 D67 A2. partner.listBindings 筛选器：zone/buildingNo/profileIncomplete/hasNote（keyword→筛选→游标）',
+    async (t) => {
+      const db = d67World();
+      const pApi = apiOf(db, P1);
+      const idsOf = async (payload) => (await pApi.call('partner.listBindings', payload))
+        .data.list.map((row) => row.bindingId);
+      const base = await pApi.call('partner.listBindings', {});
+      const baseIds = [B1, B2, B3, B4, B5, B_X4, B_NOTE, B_B7, B_EMPTY];
+      t.eq(sortedKeys(base.data), ['list', 'nextCursor'],
+        'A2.1 筛选链上线后响应顶层键仍恰为 list/nextCursor（只增入参、DTO/分页形状不变）');
+      t.eq(base.data.list.map((row) => row.bindingId), baseIds,
+        'A2.2 无筛选=全量 9 行（四类新样本进入；空 dormKey 仍恒置底）');
+      t.eq(await idsOf({ zone: 'D' }), [B1, B2, B3, B4], 'A2.3 zone=D 只回东苑四行');
+      t.eq([await idsOf({ zone: 'X' }), await idsOf({ zone: 'N' }), await idsOf({ zone: 'B' }), await idsOf({ zone: 'C' })],
+        [[B5, B_X4], [B_NOTE], [B_B7], []],
+        'A2.4 zone=X/N/B/C 逐苑精确（无 C 苑行=空列表，不回落全量）');
+      t.eq(await idsOf({ buildingNo: 4 }), [B1, B2, B3, B_X4],
+        'A2.5 buildingNo=4 跨苑命中（含 X4；单楼栋号不受苑限制）');
+      t.eq([await idsOf({ zone: 'X', buildingNo: 4 }), await idsOf({ zone: 'X', buildingNo: 2 })],
+        [[B_X4], [B5]], 'A2.6 zone+buildingNo AND 组合精确（互不放宽）');
+      t.eq(await idsOf({ profileIncomplete: true }), [B_EMPTY],
+        'A2.7 profileIncomplete=true 只回 dormKey 空的「资料未完善」行');
+      t.eq(await idsOf({ hasNote: true }), [B_NOTE],
+        'A2.8 hasNote=true 只回 partnerNote 非空的行');
+      const contradiction = await pApi.call('partner.listBindings', { profileIncomplete: true, zone: 'D' });
+      t.eq([contradiction.data.list, contradiction.data.nextCursor], [[], null],
+        'A2.9 矛盾组合（资料未完善 ∧ 有苑）→ 空列表+null 游标（AND 语义不互相兜底成全量）');
+      t.eq([await idsOf({ zone: 'Q' }), await idsOf({ buildingNo: 11 }), await idsOf({ buildingNo: 2.5 })],
+        [baseIds, baseIds, baseIds],
+        'A2.10 非法筛选入参静默归一为「不筛」（不报错、不返回空列表；与 parseLimit 同风格）');
+      t.eq(await idsOf({ zone: 'x' }), [B5, B_X4], 'A2.11 苑枚举归一：小写 x = X 苑（shared/zones 同源）');
+      t.eq(await idsOf({ keyword: 'D4', zone: 'D' }), [B1, B2, B3],
+        'A2.12 keyword 与 D67 筛选同链（keyword→筛选→游标），组合后交集正确');
+      const page1 = await pApi.call('partner.listBindings', { zone: 'D', limit: 2 });
+      const page2 = await pApi.call('partner.listBindings', { zone: 'D', limit: 2, cursor: page1.data.nextCursor });
+      t.eq([page1.data.list.map((row) => row.bindingId), page2.data.list.map((row) => row.bindingId),
+        page2.data.nextCursor], [[B1, B2], [B3, B4], null],
+      'A2.13 筛选后分页不重不漏（zone=D limit=2 → 两页取尽、末页 nextCursor=null）');
+      const x1 = await pApi.call('partner.listBindings', { zone: 'X', limit: 1 });
+      const x2 = await pApi.call('partner.listBindings', { zone: 'X', limit: 1, cursor: x1.data.nextCursor });
+      t.eq([x1.data.list.map((row) => row.bindingId), x2.data.list.map((row) => row.bindingId),
+        x2.data.nextCursor], [[B5], [B_X4], null],
+      'A2.14 nextCursor 取自「过滤后」页尾行（limit=1 逐页不跳行、不重复）');
+      t.eq(Object.keys(pickRow(page1.data.list, B1)).sort(), BINDING_ROW_KEYS.slice().sort(),
+        'A2.15 筛选不改变行 DTO（白名单键不变，无筛选参数泄漏到行）');
+      const testCtx = handlerCtxOf(db, TEST_P, {
+        role: ROLES.PARTNER, viewMode: VIEW_MODE.TEST_WRITE, isTestAccount: true
+      });
+      const testFiltered = await listBindings.handler(testCtx, { zone: 'D' });
+      t.eq(testFiltered.list.map((row) => row.bindingId), [BT],
+        'A2.16 TEST_WRITE+筛选：测试隔离不被筛选破坏（仍只看测试绑定）');
+      t.eq([await idsOf({ profileIncomplete: false }), await idsOf({ hasNote: false })], [baseIds, baseIds],
+        'A2.17 布尔筛选只认显式 true：false/缺省=不筛（旧客户端/手改参数不反筛）');
+    });
 }
 
 // ================================================================ B. getCustomer
@@ -629,8 +727,9 @@ async function sectionF(h) {
 
 // ---------------------------------------------------------------- 注册
 function register(h) {
-  h.setExpected(EXPECTED_ASSERTIONS);
+  h.setExpected(TOTAL_ASSERTIONS);
   sectionA(h);
+  sectionA2(h);
   sectionB(h);
   sectionC(h);
   sectionD(h);
@@ -638,7 +737,7 @@ function register(h) {
   sectionF(h);
 }
 
-module.exports = { register, EXPECTED_ASSERTIONS };
+module.exports = { register, EXPECTED_ASSERTIONS: TOTAL_ASSERTIONS };
 
 if (require.main === module) {
   const harness = createHarness({ name: 'selftest-partner-customers' });

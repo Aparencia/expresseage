@@ -118,9 +118,8 @@
   <view wx:if="{{loadingMore}}" class="small load-more">加载中…</view>
   <view wx:elif="{{tab === tabPick ? pickNextCursor : nextCursor}}" class="small load-more">上拉加载下一批</view>
 
-  <view class="bottom-safe"></view>
-
-  <view wx:if="{{selecting}}" class="batch-bar">
+  <!-- D65：批量条走底部条组件（自带 env 安全区底垫 + 可测高占位，替代页面 static 垫高） -->
+  <bottom-bar wx:if="{{selecting}}">
     <view wx:if="{{batchResult && batchResult.failedOrderNos.length}}" class="batch-fail" bindtap="onBatchRetry">
       <text class="small batch-fail-text">{{batchResult.failedOrderNos.length}} 单失败 · 重试失败单</text>
     </view>
@@ -136,5 +135,5 @@
       <view class="btn btn-primary batch-btn {{batchRunning ? 'btn-disabled' : ''}}" bindtap="onBatchDeliver">批量送达</view>
     </view>
     <view wx:if="{{testWrite}}" class="small batch-tip">测试账号会话：批量送达只写入测试数据</view>
-  </view>
+  </bottom-bar>
 </view>

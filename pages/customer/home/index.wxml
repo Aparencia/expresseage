@@ -1,4 +1,4 @@
-<view class="page-body">
+<view class="page-body page-body--tab">
   <switch-bar />
 
   <view class="card" wx:if="{{singlePage}}">
@@ -62,19 +62,9 @@
     <order-row order="{{orderRow}}" data-order-no="{{order.orderNo}}" bind:tap="onOrderTap" />
   </view>
 
-  <!-- D26：取件清单独立入口（本人进行中订单的站点+取件码，仅本机勾选） -->
-  <view class="card pickup-entry" bindtap="onPickupListTap">
-    <view class="row between">
-      <view class="col">
-        <view class="section-title">取件清单</view>
-        <view class="muted small">看站点和取件码，可复制；勾选只记在这台手机</view>
-      </view>
-      <view class="small link-text">查看</view>
-    </view>
-  </view>
-
+  <!-- D64：原「取件清单」入口卡删除（取件码升为底部一级入口「取件码」伪 tab） -->
   <view class="card order-empty-card" wx:if="{{!loading && !order && vm.binding}}">
-    <view class="muted order-empty-text">还没有进行中的订单，上传取件码截图就能下单。</view>
+    <view class="muted order-empty-text">还没有进行中的订单，点「下单」上传取件码或手填。</view>
   </view>
 
   <view class="card" wx:if="{{error}}">
@@ -83,7 +73,7 @@
   </view>
 
   <button class="btn btn-primary btn-block {{canOrder ? '' : 'btn-disabled'}}" bindtap="onOrderCreateTap">
-    {{canOrder ? '上传取件码截图下单' : orderDisabledReason}}
+    {{canOrder ? '下单' : orderDisabledReason}}
   </button>
 
   <view class="row home-links">

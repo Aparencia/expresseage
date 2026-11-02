@@ -1,4 +1,4 @@
-<view class="page-body profile-page">
+<view class="page-body page-body--tab">
   <switch-bar />
 
   <!-- 兼职停用/注销：专用全屏态，隐藏全部业务入口（UX_PARTNER §3.10） -->

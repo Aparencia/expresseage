@@ -17,6 +17,11 @@ page {
   --v4-bg: #F6F7F9;
   --v4-card: #FFFFFF;
   --v4-line: #EEEEEE;
+  /* 底部安全区与 tabBar 高度（D65）：所有页面底垫只允许用这三个 token 组合，禁止页面自造数值 */
+  --v4-tabbar-h: 100rpx;
+  --v4-safe-b: env(safe-area-inset-bottom);
+  --v4-inset-tab: calc(var(--v4-tabbar-h) + var(--v4-safe-b));
+  --v4-inset-bar: calc(160rpx + var(--v4-safe-b));
   background: var(--v4-bg);
   color: var(--v4-text);
   font-size: 30rpx;
@@ -29,6 +34,18 @@ page {
   min-height: 100vh;
   box-sizing: border-box;
   padding: 24rpx 24rpx calc(24rpx + env(safe-area-inset-bottom));
+}
+
+/* D65：tab 页（含伪 tab 页）根节点必须叠加本类，补足自定义 tabBar 实占高度（100rpx+safe），
+   修复「下拉到底部最后一项被 tabBar 压住」的系统性缺陷；门禁 #37 机械校验。 */
+.page-body--tab {
+  padding-bottom: calc(var(--v4-inset-tab) + 24rpx);
+}
+
+/* D65：**未使用 `components/bottom-bar` 组件**的「固定底条」页面用本类做静态兜底（160rpx 为底条常规高度上限）；
+   改用 bottom-bar 组件的页面由组件「实测条高占位」兜底，不要叠加本类（避免双层垫高）。 */
+.page-body--bar {
+  padding-bottom: calc(var(--v4-inset-bar) + 24rpx);
 }
 
 .card {
