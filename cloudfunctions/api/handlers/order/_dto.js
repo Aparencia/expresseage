@@ -2,26 +2,28 @@
 // v1.0 一单多包裹（D23/D24/D25）：parcels[]/images[]/delivery/manualEntry；历史单 parcel{}/image{} 只在本文件归一（不写库）。
 // 规则：不返回 _id/partnerId/openid/clientRequestId/requestKey/batchActionId/cloudPath；
 //       isTest/impersonatedBy 仅测试写会话可见；对方昵称头像只在「当前 ACTIVE 绑定」内现查，不落订单快照。
+// 拆件：对方资料/事件裁剪/admin 脱敏/时间片段在 _dto-party.js（门禁 #18 单文件 ≤500 行），本文件只做动作矩阵与字段装配。
 'use strict';
 
-const { COLLECTIONS } = require('../../shared/collections');
 const enums = require('../../shared/enums');
 const appointUtil = require('../../shared/appoint');
 const orderState = require('../../shared/order-state');
 const orderView = require('../../shared/order-view');
 const time = require('../../lib/time');
-const mask = require('../../db/dto/mask');
-const { counterpart: counterpartDto } = require('../../db/dto/full');
-const avatarUrl = require('../../lib/avatar-url');
+const transfer = require('./_transfer');
+const party = require('./_dto-party');
 const {
+  textOf,
+  numberOrZero,
+  msOf,
+  isoOf,
   buildParcelDto,
   buildParcelDtos,
   buildImageDto,
   buildImageDtos,
   deliveryOf,
   needCodeOf,
-  failureHintOf,
-  maskDeliveryDto
+  failureHintOf
 } = require('./_dto-fields');
 
 const ACTION_LABELS = Object.freeze({
@@ -38,103 +40,17 @@ const ACTION_LABELS = Object.freeze({
   confirm: '确认已收到',
   deleteRecord: '删除这条记录',
   reorder: '再次下单',
-  message: '留言'
+  message: '留言',
+  // D58（批 26）：转派四动作（供订单详情/待接收区渲染，页面零判据）
+  requestTransfer: '转派给其他兼职',
+  cancelTransfer: '撤回转派',
+  acceptTransfer: '确认接收',
+  declineTransfer: '拒收'
 });
-
-// 时间归一：只接受 number/Date/非空字符串；null/undefined/'' 一律视为「没有这个时间」。
-// 不能直接调 lib/time.toMs 兜底：它对非 number/Date 返回 Date.now()，会把「已清空的时间戳」序列化成
-// 当前真实时钟（撤销后 deliveredAt/pickedAt 变成看起来刚发生的时间），列表/详情出现假时间。
-function isoOf(value) {
-  const ms = msOf(value);
-  return ms > 0 ? new Date(ms).toISOString() : '';
-}
-
-function msOf(value) {
-  if (typeof value === 'number') {
-    return isFinite(value) && value > 0 ? value : 0;
-  }
-  if (value instanceof Date) {
-    const ms = value.getTime();
-    return isFinite(ms) && ms > 0 ? ms : 0;
-  }
-  if (typeof value === 'string' && value !== '') {
-    const ms = time.toMs(value);
-    return isFinite(ms) && ms > 0 ? ms : 0;
-  }
-  return 0;
-}
-
-function textOf(value) {
-  return typeof value === 'string' ? value : '';
-}
-
-function numberOrZero(value) {
-  return typeof value === 'number' && isFinite(value) ? value : 0;
-}
 
 function codeTextOf(code) {
   const hit = enums.EXCEPTION_CODES.filter((item) => item.code === code)[0];
   return hit ? hit.text : '';
-}
-
-function sameId(left, right) {
-  if (left === undefined || left === null || right === undefined || right === null) {
-    return false;
-  }
-  return String(left) === String(right);
-}
-
-async function loadPartnerById(ctx, partnerId) {
-  if (partnerId === undefined || partnerId === null || partnerId === '') {
-    return null;
-  }
-  return ctx.dao.get(COLLECTIONS.PARTNERS, partnerId);
-}
-
-async function loadActiveBinding(ctx, customerId) {
-  if (!customerId) {
-    return null;
-  }
-  return ctx.dao.findOne(COLLECTIONS.BINDINGS, {
-    where: { customerId, status: enums.BINDING_STATUS.ACTIVE }
-  });
-}
-
-// 对方公开资料：仅「当前 ACTIVE 绑定关系」内下发昵称与头像（解绑/停用/注销后不返回）
-// D42/task-20：兼职→顾客方向（兼职看绑定顾客）随 DTO 下发 5 分钟临时 URL（src 优先，avatarFileId 回退）；
-// 顾客→兼职方向继续由 bind.getCurrent/bootstrap 的 partnerAvatarUrl 承担，这里不重复外呼。
-async function resolveCounterpart(ctx, order, side) {
-  if (!order) {
-    return null;
-  }
-  if (side === 'CUSTOMER') {
-    const binding = await loadActiveBinding(ctx, order.customerId);
-    if (!binding || !sameId(binding.partnerId, order.partnerId)) {
-      return null;
-    }
-    const partner = await loadPartnerById(ctx, order.partnerId);
-    if (!partner || partner.status !== enums.PARTNER_STATUS.ACTIVE || partner.deletedAt) {
-      return null;
-    }
-    return counterpartDto({ displayName: textOf(partner.displayName), avatarFileId: partner.avatarFileId });
-  }
-  if (side === 'PARTNER' && order.customerId) {
-    const binding = await loadActiveBinding(ctx, order.customerId);
-    if (!binding || !sameId(binding.partnerId, order.partnerId)) {
-      return null;
-    }
-    const customer = await ctx.dao.get(COLLECTIONS.CUSTOMERS, order.customerId);
-    if (!customer) {
-      return null;
-    }
-    const fileId = textOf(customer.avatarFileId);
-    const urls = await avatarUrl.signAvatarUrls(ctx, [fileId]);
-    return counterpartDto(
-      { displayName: textOf(customer.displayName), avatarFileId: fileId },
-      { avatarUrl: fileId ? urls[fileId] : '' }
-    );
-  }
-  return null;
 }
 
 // v1.0 聚合字段（parcels[]/images[]/delivery/manualEntry）由 _dto-fields 提供，本文件只负责订单视图组装。
@@ -250,9 +166,36 @@ function buildCustomerActions(actions, order) {
   }
 }
 
-function buildActions(order, side, nowMs) {
+// D58（批 26）转派动作：目标视角给"确认接收/拒收"；履约人视角 PENDING 给"撤回"、否则给"转派"。
+// 一件已取（D61）不广告 requestTransfer（必然 INVALID_STATE）；终态/其它状态不广告（页面零判据）。
+function buildTransferActions(actions, order, options) {
+  const opts = options || {};
+  if (opts.transferTarget) {
+    if (transfer.isPending(order)) {
+      pushAction(actions, 'acceptTransfer');
+      pushAction(actions, 'declineTransfer');
+    }
+    return;
+  }
+  if (order.status !== enums.ORDER_STATUS.ACCEPTED || transfer.hasPickedAny(order)) {
+    return;
+  }
+  if (transfer.isPending(order)) {
+    pushAction(actions, 'cancelTransfer');
+    return;
+  }
+  pushAction(actions, 'requestTransfer');
+}
+
+function buildActions(order, side, nowMs, options) {
+  const opts = options || {};
   const actions = [];
   const status = order.status;
+  // 转派目标视角（PENDING 邀请的目标兼职）：只下发邀请卡动作，无履约人动作（越权入口为零）
+  if (opts.transferTarget) {
+    buildTransferActions(actions, order, opts);
+    return actions;
+  }
   if (side === 'PARTNER') {
     if (status === enums.ORDER_STATUS.SUBMITTED) {
       pushAction(actions, 'accept');
@@ -286,51 +229,12 @@ function buildActions(order, side, nowMs) {
       pushAction(actions, 'cancel');
     }
     // 兼职侧沿用现有键；终态（COMPLETED/CANCELLED）不再给 message（只读归档）
+    buildTransferActions(actions, order, opts);
     pushMessageIfOpen(actions, status);
   } else if (side === 'CUSTOMER') {
     buildCustomerActions(actions, order);
   }
   return actions;
-}
-
-// admin 真实会话：默认脱敏（不返回完整 L3、不展示头像、昵称脱敏；完整 L3 只经只读视角）
-// v1.0：多包裹逐件脱敏取件码；images[] 剔除 fileId（只留 status/hasImage/cleaned）；delivery 按宿舍/称呼脱敏。
-function applyAdminMask(dto, counterpart) {
-  const parcels = Array.isArray(dto.parcels) ? dto.parcels : [];
-  parcels.forEach((parcel) => {
-    parcel.pickupCode = mask.maskPickupCode(parcel.pickupCode);
-  });
-  dto.parcel = parcels[0] || buildParcelDto(null);
-  const images = Array.isArray(dto.images) ? dto.images : [];
-  dto.image = images[0] || buildImageDto(null);
-  dto.phoneTail = mask.maskPhoneTail(dto.phoneTail);
-  if (dto.dorm) {
-    dto.dorm = {
-      zone: dto.dorm.zone,
-      buildingNo: dto.dorm.buildingNo,
-      buildingText: mask.maskDorm(dto.dorm),
-      room: '',
-      dormKey: '',
-      roomTag: ''
-    };
-  }
-  if (dto.delivery) {
-    dto.delivery = maskDeliveryDto(dto.delivery);
-  }
-  if (dto.guest) {
-    dto.guest = {
-      displayName: mask.maskDisplayName(dto.guest.displayName),
-      phoneTail: mask.maskPhoneTail(dto.guest.phoneTail),
-      zone: dto.guest.zone,
-      buildingNo: dto.guest.buildingNo,
-      buildingText: mask.maskDorm(dto.guest),
-      room: '',
-      dormKey: ''
-    };
-  }
-  dto.counterpart = counterpart
-    ? { displayName: mask.maskDisplayName(counterpart.displayName) }
-    : null;
 }
 
 // D41（2026-10-28 用户拍板）：服务目录固定 5 类，原 PICKUP_DOOR（送寝上门）停用、不可新启用，
@@ -389,48 +293,54 @@ function buildOrderFields(order, parts) {
     cancelledByText: order.cancelledBy ? enums.CANCELLED_BY_LABELS[order.cancelledBy] || '' : '',
     customerNo: textOf(order.customerNo),
     partnerNo: textOf(order.partnerNo),
+    // D58：顾客据此看到"当前实际履约的是谁"（= orders.partnerNo 快照，只读派生，不落库）
+    fulfillmentPartnerNo: textOf(order.partnerNo),
     counterpart: parts.counterpart,
-    actions: parts.withActions ? buildActions(order, side, parts.nowMs) : [],
-    version: numberOrZero(order.version),
-    statusUpdatedAt: isoOf(order.statusUpdatedAt),
-    createdAt: isoOf(order.createdAt),
-    updatedAt: isoOf(order.updatedAt),
-    acceptedAt: isoOf(order.acceptedAt),
-    pickedAt: isoOf(order.pickedAt),
-    deliveredAt: isoOf(order.deliveredAt),
-    completedAt: isoOf(order.completedAt),
-    cancelledAt: isoOf(order.cancelledAt),
-    deletedByCustomerAt: isoOf(order.deletedByCustomerAt)
-  }, pickSummaryFieldsOf(parcels));
+    // D58：transfer 恒返回（无字段 ⇒ null，零迁移）；键集合由 _transfer.blockOf 按角色剪裁
+    transfer: parts.transferBlock,
+    actions: parts.withActions ? buildActions(order, side, parts.nowMs, { transferTarget: parts.transferTarget }) : [],
+    version: numberOrZero(order.version)
+  }, party.buildTimeFields(order), pickSummaryFieldsOf(parcels));
 }
 
 /**
  * 订单视图模型。
  * @param {object} ctx handler 上下文
  * @param {object} order orders 文档
- * @param {{side?: string, withCounterpart?: boolean, withActions?: boolean}} options
+ * @param {{side?: string, withCounterpart?: boolean, withActions?: boolean, transferTarget?: boolean}} options
  */
 async function buildOrderDto(ctx, order, options) {
   const opts = options || {};
   const side = opts.side || '';
   const withActions = opts.withActions !== false;
   const withCounterpart = opts.withCounterpart !== false;
+  const transferTarget = opts.transferTarget === true;
   const identity = (ctx && ctx.identity) || {};
-  const counterpart = withCounterpart && side !== 'ADMIN'
-    ? await resolveCounterpart(ctx, order, side)
+  const counterpart = withCounterpart && side !== 'ADMIN' && !transferTarget
+    ? await party.resolveCounterpart(ctx, order, side)
     : null;
+  // 转派块按角色剪裁：转派目标 = 双方白名单 7 键；顾客只含 ACCEPTED 后的 status/toPartnerNo；admin 5 键
+  const relation = transferTarget ? 'PARTNER' : side;
   const dto = buildOrderFields(order, {
     side,
     withActions,
     counterpart,
+    transferBlock: transfer.blockOf(order, relation),
+    transferTarget,
     nowMs: time.toMs(ctx && ctx.now),
     status: textOf(order.status),
     parcels: buildParcelDtos(order, side),
     images: buildImageDtos(order),
     delivery: deliveryOf(order)
   });
+  // 目标兼职视角（§1.4）：D58 明示不给顾客昵称/头像/客户编号；清键而非置空值（字符串级零泄漏断言）
+  if (transferTarget) {
+    delete dto.customerNo;
+    dto.counterpart = null;
+    dto.guest = null;
+  }
   if (side === 'ADMIN') {
-    applyAdminMask(dto, counterpart);
+    party.applyAdminMask(dto, counterpart);
     dto.actions = [];
   }
   if (identity.viewMode === enums.VIEW_MODE.TEST_WRITE) {
@@ -438,17 +348,6 @@ async function buildOrderDto(ctx, order, options) {
     dto.impersonatedBy = textOf(order.impersonatedBy);
   }
   return dto;
-}
-
-// 裁剪事件：type/at/actorRole/note（去 actorId/payload）
-function buildEventDtos(events) {
-  const list = Array.isArray(events) ? events : [];
-  return list.map((event) => ({
-    type: textOf(event.type),
-    at: isoOf(event.at),
-    actorRole: textOf(event.actorRole),
-    note: textOf(event.note)
-  }));
 }
 
 async function buildOrderDtos(ctx, orders, side, options) {
@@ -467,8 +366,7 @@ module.exports = {
   msOf,
   buildOrderDto,
   buildOrderDtos,
-  buildEventDtos,
+  buildEventDtos: party.buildEventDtos,
   buildParcelDto,
-  buildActions,
-  sameId
+  buildActions
 };

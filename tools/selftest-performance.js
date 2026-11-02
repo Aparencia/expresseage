@@ -258,7 +258,13 @@ function register(h) {
       cloudActions.ACTION_MAP[action].visibility === 'client' || router.INTERNAL_ALLOWED.indexOf(action) >= 0
     )).sort();
     t.eq(Object.keys(routes).sort(), expected, 'E15 getRouter 全量注册集 = client 动作 + admin.bootstrap/health.check');
-    t.eq(router.expectedActionsOf('order').length, 18, 'E16 order 域期望集 = 18 个已登记动作（静态度量；v1.0 移除 createBatch 后 19→18）');
+    // 数字不写死：order 域期望集直接从注册表动态取（数量随 shared/actions.js 变化，不维护 18/22 这类常量）
+    const orderDomainActions = Object.keys(cloudActions.ACTION_MAP).filter((action) => (
+      action.indexOf('order.') === 0 && (cloudActions.ACTION_MAP[action].visibility === 'client'
+        || router.INTERNAL_ALLOWED.indexOf(action) >= 0)
+    )).sort();
+    t.eq(router.expectedActionsOf('order'), orderDomainActions,
+      'E16 order 域期望集 = 注册表 order.* 动作逐一对齐（清单/数量动态取，不写死）');
     t.eq(router.expectedActionsOf('cleanup'), [], 'E17 cleanup 域不属 api 部署单元（期望集为空）');
     const appSrc = codeOf('cloudfunctions/api/app.js');
     t.check(appSrc.indexOf('router.getHandler(') >= 0, 'E18 请求热路径走 getHandler（首请求只加载首用域）');
@@ -302,9 +308,11 @@ function register(h) {
 
     const nextBadge = loadView.badgePatch({ submitted: 2 }, { workbenchPending: 2, messages: 1 });
     t.eq(nextBadge, { workbenchPending: 2, messages: 1 }, 'F8 角标计算幂等（输入不变 → 输出不变，判等有意义）');
-    const workbench = codeOf('pages/partner/workbench/index.js');
-    t.check(/syncBadge\(counts\)[\s\S]{0,280}next\.workbenchPending === current\.workbenchPending[\s\S]{0,120}next\.messages === current\.messages/.test(workbench),
-      'F9 workbench 角标先判等再 store.patch（无变化零通知）');
+    // 批 26（D58）：工作台加载/红点接线按门禁 #18 拆到 parts/load-flow（index.js 499→377 行），
+    // 判等逻辑逐字保留在 syncBadge，扫描目标随拆件改为 load-flow（防拆件时丢掉「先判等再 patch」）。
+    const loadFlow = codeOf('pages/partner/workbench/parts/load-flow.js');
+    t.check(/syncBadge\(counts, transferPending\)[\s\S]{0,320}next\.workbenchPending === current\.workbenchPending[\s\S]{0,120}next\.messages === current\.messages/.test(loadFlow),
+      'F9 workbench 角标先判等再 store.patch（无变化零通知；批 26 拆件后按 load-flow 扫描）');
 
     t.eq(client.SKEW_NOTIFY_MS, 1000, 'F10 校时阈值常量为 1s（|Δ|≤1000ms 不写不通知）');
     let notifies = 0;

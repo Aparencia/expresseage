@@ -1,0 +1,47 @@
+/* pages/partner/workbench/parts/transfer.wxss · D58 待接收转派区块（顶部入口；样式与行卡同一套视觉） */
+
+.transfer-card {
+  padding: 20rpx 24rpx 8rpx;
+  border: 1rpx solid #D8E3FA;
+}
+
+.transfer-head {
+  padding-bottom: 12rpx;
+}
+
+.transfer-line {
+  padding: 16rpx 0;
+  border-bottom: 1rpx solid #EEEEEE;
+}
+
+.transfer-line:last-child {
+  border-bottom: none;
+}
+
+.transfer-line-top,
+.transfer-line-foot {
+  align-items: center;
+}
+
+.transfer-from {
+  color: #2B6DE5;
+  font-weight: 600;
+}
+
+.transfer-remain {
+  background: #FFF3E6;
+  color: #C56A00;
+}
+
+.transfer-line-foot {
+  margin-top: 6rpx;
+}
+
+.transfer-meta {
+  color: #6B7280;
+}
+
+.transfer-hint {
+  padding: 8rpx 0 16rpx;
+  color: #8A9099;
+}

@@ -10,6 +10,7 @@ const validate = require('../../shared/validate');
 const { partnerPublic } = require('../../db/dto/full');
 const { errors } = require('../../lib/errors');
 const identity = require('../user/_common');
+const team = require('./_team');
 
 async function handler(ctx, payload) {
   const scope = identity.scopeOf(ctx);
@@ -21,6 +22,10 @@ async function handler(ctx, payload) {
   }
   const partner = await ctx.dao.findOne(COLLECTIONS.PARTNERS, { where: { partnerNo: codeResult.canonical } });
   if (!partner) {
+    throw errors.notFound('该兼职编号不存在，请核对后重试');
+  }
+  // D59：顾客只能绑定主兼职，不能绑定子队员（与 bind.create 同码同文案，不暴露存在性）。
+  if (team.parentPartnerIdOf(partner) !== '') {
     throw errors.notFound('该兼职编号不存在，请核对后重试');
   }
   const partnerUser = await identity.loadUser(ctx, partner.openid);

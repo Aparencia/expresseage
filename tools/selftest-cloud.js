@@ -712,8 +712,8 @@ function register(h) {
       ['_id', 'customerOpenid', 'partnerOpenid', 'customerId', 'partnerId', 'requestKey'],
       '§7.3 正控：fake-db raw order 文档确实含敏感键（扫描判据有牙，非空集）');
     t.check(partnerList.ok === true && !!partnerList.data && !('groups' in partnerList.data)
-      && Object.keys(partnerList.data).sort().join(',') === 'counts,list,nextCursor,summary',
-      '§7.3 order.listPartner 响应无 groups，顶层键恰为 list/nextCursor/counts/summary（summary 只增、无 raw 文档）');
+      && Object.keys(partnerList.data).sort().join(',') === 'counts,list,nextCursor,summary,transferPending',
+      '§7.3 order.listPartner 响应无 groups，顶层键恰为 list/nextCursor/counts/summary/transferPending（D58 角标、只增、无 raw 文档）');
     t.check(Array.isArray(partnerList.data.list) && partnerList.data.list.length > 0
       && partnerList.data.list.every((item) => !hasSensitiveKeyDeep(item, SENSITIVE_ORDER_KEYS)),
       '§7.3 order.listPartner 列表逐条递归不含 raw 文档敏感键（_id/openid/id/requestKey/cloudPath 等）');

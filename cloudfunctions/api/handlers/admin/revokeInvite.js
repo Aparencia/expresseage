@@ -18,6 +18,13 @@ const {
 const REVOCABLE_STATUSES = [enums.INVITATION_STATUS.UNUSED];
 const TERMINAL_INVALID_STATUSES = [enums.INVITATION_STATUS.USED, enums.INVITATION_STATUS.EXPIRED];
 
+// D59（Lead 裁决）：SUB 子码由发码主兼职在团队页作废，后台只读不可作废（DEV 行为零改动）。
+function assertAdminRevocable(invite) {
+  if (invite.kind === enums.INVITATION_KIND.SUB) {
+    throw errors.forbidden('子邀请码由主兼职管理，后台不可作废');
+  }
+}
+
 async function handler(ctx, payload) {
   const scope = await createAdminScope(ctx);
   requireClientRequestId(ctx);
@@ -34,6 +41,8 @@ async function handler(ctx, payload) {
   if (!invite) {
     throw errors.notFound('邀请码不存在');
   }
+  // D59（Lead 裁决）：SUB 子码后台只读（DEV 行为零改动）。
+  assertAdminRevocable(invite);
   if (invite.status === enums.INVITATION_STATUS.REVOKED) {
     return { codeTail: codeTailOf(code), status: 'REVOKED', duplicated: true };
   }

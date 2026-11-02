@@ -1,22 +1,19 @@
 // handlers/admin/setPartnerStatus.js · admin.setPartnerStatus（停用/恢复/注销；注销释放绑定并把进行中订单转异常）
-// 口径：CONTRACT §11.4、DATA_MODEL §2.3/§10.3/§10.4。批 D（2026-10-31，rev6 有界分批事务）关闭 TD-053/055/056/057：
-//  - TD-053：CLOSED 时 partners.openid 换唯一注销占位串 'CLOSED-<partners._id>'（原 openid 不留存；占位串随
-//    _id 唯一，避免 uk_openid 在第二个注销兼职处冲突），同一小事务给 users 写 closedPartnerNo/partnerClosedAt
-//    （schema 只增）作为「不可再激活」锚点（partner.activate 据此 CONFLICT）。
-//  - TD-055：云开发数据库事务有平台硬上限——单事务最多 100 个操作、执行时间 ≤30 秒（见 CloudBase 云开发
-//    数据库「事务」官方文档）。旧实现把「≤500 绑定 + 全量订单 + 失败记录 + 会话」
-//    塞进一个事务，真实环境几十单即超限 → 注销不可用；fake DB 无上限所以旧测试是假绿。现改**有界分批**：
-//    A 分批阶段：每页一个独立事务，页大小常量见下（单批 ops 预算 ≤100）；B 最终关键段：users 注销标记 +
-//    partners patch 同一 2 ops 小事务（唯一必须原子处）；C 幂等收敛：分批已提交而最终段/审计未完成时，
-//    同一请求重试按已提交状态补做（不 INVALID_TRANSITION）。云存储删文件与审计在事务外（失败仅告警，
-//    审计 requestKey 幂等重放）。部署前按云控制台实测单事务操作数/时长（归 TD-015 对照）。
-//  - TD-056：CLOSED 立即结束 targetId=partners._id 的有效会话（endedAt 落库；ACCOUNT_SWITCH_END 审计提交后写）。
+// 口径：CONTRACT §11.4、DATA_MODEL §2.3/§10.3/§10.4、D59 级联。批 D（2026-10-31，rev6 有界分批事务）关闭 TD-053/055/056/057：
+//  - TD-053：CLOSED 时 partners.openid 换唯一注销占位串 'CLOSED-<partners._id>'（原 openid 不留存），同一小事务
+//    给 users 写 closedPartnerNo/partnerClosedAt（schema 只增）作为「不可再激活」锚点（partner.activate 据此 CONFLICT）。
+//  - TD-055：云开发单事务硬上限 100 ops / 30 秒；旧实现全量塞一个事务 → 真实环境即超限（fake DB 假绿）。现为
+//    **有界分批**：A 分批阶段每页独立事务（页大小见下）；B 最终关键段 users 注销标记 + partners patch 同一 2 ops
+//    小事务；C 幂等收敛（分批已提交而最终段/审计未完成时同请求重试补做）。删文件与审计在事务外（失败仅告警）。
+//  - TD-056：CLOSED 立即结束 targetId=partners._id 的有效会话（ACCOUNT_SWITCH_END 审计提交后写）。
 //  - TD-057：进行中订单按活动状态分页全量转 EXCEPTION（每页 50 单≈100 ops；页数上限防死循环）。
+//  - D59：主兼职停用/注销级联同队子队员 + 取消该队 PENDING 转派（见 teamCascadeOf；恢复不级联）。
 'use strict';
 
 const { COLLECTIONS } = require('../../shared/collections');
 const { AUDIT_ACTIONS } = require('../../shared/audit-actions');
 const identity = require('../user/_common');
+const team = require('../partner/_team');
 const {
   enums,
   errors,
@@ -44,19 +41,13 @@ const MAX_SESSION_PAGES = 10; // 50×10=500 条，与旧实现单次上限等价
 const IMAGE_INDEX_SLOTS = 10; // DATA_MODEL §10.1：v1.0 截图逐张下标点查（跨单共享 fileId 引用计数）
 
 function parseStatus(value) {
-  if (enums.PARTNER_STATUS_LIST.indexOf(value) < 0) {
-    throw errors.validation('status', '兼职状态不正确');
-  }
+  if (enums.PARTNER_STATUS_LIST.indexOf(value) < 0) throw errors.validation('status', '兼职状态不正确');
   return value;
 }
 
 function assertTransition(from, to) {
-  if (from === to) {
-    return;
-  }
-  if (from === enums.PARTNER_STATUS.CLOSED) {
-    throw errors.invalidTransition('已注销的兼职不能恢复');
-  }
+  if (from === to) return;
+  if (from === enums.PARTNER_STATUS.CLOSED) throw errors.invalidTransition('已注销的兼职不能恢复');
   if (to === enums.PARTNER_STATUS.ACTIVE && from !== enums.PARTNER_STATUS.SUSPENDED) {
     throw errors.invalidTransition('当前状态不支持恢复');
   }
@@ -177,13 +168,10 @@ async function moveOrdersToException(scope, partner, reason) {
 
 // DATA_MODEL §2.8/§10.4：邀请码 usedBy 置空、保留 usedAt/batchId（审计可追溯；邀请码不重新生效）。单条写，独立事务。
 async function clearInvitationUsage(scope, partner) {
-  return scope.dao.transaction(async (trx) => {
-    const result = await trx.updateWhere(COLLECTIONS.INVITATION_CODES, { usedBy: partner._id }, {
-      usedBy: '',
-      updatedAt: scope.nowDate
-    });
-    return result.updated;
-  });
+  const result = await scope.dao.transaction((trx) => trx.updateWhere(
+    COLLECTIONS.INVITATION_CODES, { usedBy: partner._id }, { usedBy: '', updatedAt: scope.nowDate }
+  ));
+  return result.updated;
 }
 
 // §10.3：兼职 CLOSED 同口径清识别失败 uploaderOpenid/fileId（保留 sourceRole/时间供审计），
@@ -425,6 +413,8 @@ async function writeStatusAudit(scope, info) {
       reason: info.reason,
       affectedBindings: info.outcome.affectedBindings,
       affectedOrders: info.outcome.affectedOrders,
+      affectedMembers: Number(info.outcome.affectedMembers) || 0,
+      cancelledTransfers: Number(info.outcome.cancelledTransfers) || 0,
       requestId: info.clientRequestId
     },
     info.requestKey
@@ -445,6 +435,17 @@ async function replayOf(scope, replay) {
     affectedOrders: Number(replay.detail && replay.detail.affectedOrders) || 0,
     duplicated: true
   };
+}
+
+// D59（CONTRACT §13）：主兼职 SUSPENDED/CLOSED 时级联同队子队员（复用本文件既有最终段/注销分批事务，不写第二份治理实现；恢复不级联）。
+function teamCascadeOf(scope, partner, status, reason) {
+  if (status === enums.PARTNER_STATUS.ACTIVE) {
+    return Promise.resolve({ affectedMembers: 0, cancelledTransfers: 0 });
+  }
+  return team.cascadeSubMembers(scope, partner, status, reason, {
+    suspendMember: (member) => commitFinalSegment(scope, member, status, reason),
+    closeMember: (member) => governPartner(scope, member, member.status, enums.PARTNER_STATUS.CLOSED, reason)
+  });
 }
 
 async function handler(ctx, payload) {
@@ -472,6 +473,9 @@ async function handler(ctx, payload) {
   const from = partner.status;
   assertTransition(from, status);
   const outcome = await governPartner(scope, partner, from, status, reason);
+  const teamOutcome = await teamCascadeOf(scope, partner, status, reason);
+  outcome.affectedMembers = teamOutcome.affectedMembers;
+  outcome.cancelledTransfers = teamOutcome.cancelledTransfers;
   const action = status === enums.PARTNER_STATUS.ACTIVE
     ? AUDIT_ACTIONS.PARTNER_RESTORE
     : AUDIT_ACTIONS.PARTNER_SUSPEND;

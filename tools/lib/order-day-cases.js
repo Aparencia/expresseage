@@ -88,8 +88,9 @@ async function serverChecks(t) {
   t.eq(list.map(function no(row) { return row.orderNo; }),
     ['20261021-1001', '20261021-1002', '20261021-1003', '20261021-1004', '20261021-1005'],
     '§7.3 day 视图：只含今日有状态更新的 7 状态订单、statusUpdatedAt 倒序（昨日更新的 1006 不进今日流水）');
-  t.eq(Object.keys(day.data).sort().join(','), 'counts,list,nextCursor,summary',
-    '§7.3 day 视图顶层键与 workbench 一致：list/nextCursor/counts/summary');
+  // D58（批 26）：主视图顶层只增 transferPending 角标（服务端计数；counts/summary 形状不变）
+  t.eq(Object.keys(day.data).sort().join(','), 'counts,list,nextCursor,summary,transferPending',
+    '§7.3 day 视图顶层键与 workbench 一致：list/nextCursor/counts/summary/transferPending');
   t.eq(list.map(function strip(row) { return [row.orderNo, actionCount(row) > 0]; }), [
     ['20261021-1001', true],
     ['20261021-1002', false],
@@ -117,11 +118,11 @@ async function serverChecks(t) {
   t.check(bad.ok === false && bad.code === 'VALIDATION_FAILED',
     '§7.3 day 视图：非法 view 拒绝而非静默降级（不再接受未知视图）');
   const workbench = await api.call('order.listPartner', { view: 'workbench' });
-  t.check(Object.keys(workbench.data).sort().join(',') === 'counts,list,nextCursor,summary'
+  t.check(Object.keys(workbench.data).sort().join(',') === 'counts,list,nextCursor,summary,transferPending'
     && !('scope' in (workbench.data.summary || {}))
     && typeof (workbench.data.summary || {}).byStatus === 'object'
     && (workbench.data.summary || {}).byStatus !== null,
-  '§7.3 workbench 视图零变化：顶层 4 键、summary 仍旧 D48 形状（byStatus，无 scope）');
+  '§7.3 workbench 视图零变化：顶层 5 键（+transferPending 角标）、summary 仍旧 D48 形状（byStatus，无 scope）');
 }
 
 const SERVER_ASSERTIONS = 9;

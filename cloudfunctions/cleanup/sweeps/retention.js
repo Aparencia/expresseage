@@ -29,6 +29,21 @@ function anonymizedParcelsOf(order) {
   return Array.isArray(order.parcels) ? order.parcels.map(anonymizedParcelOf) : null;
 }
 
+// D58（批 26，Lead 2026-11-03 授权）：转派留痕匿名化——清双方编号快照与内部 id（引用类字段），
+// 保留 status/resolveReason 供审计计数；时间键与字段形状原样保留（不删整块、不做结构变更）。
+function anonymizedTransferOf(order) {
+  const block = order && order.transfer;
+  if (!block || typeof block !== 'object' || Array.isArray(block)) {
+    return null;
+  }
+  const next = Object.assign({}, block);
+  next.fromPartnerId = '';
+  next.fromPartnerNo = '';
+  next.toPartnerId = '';
+  next.toPartnerNo = '';
+  return next;
+}
+
 // 逐张清截图引用（images[*].fileId/failureId 清空；cloudPath 是存储路径同属引用，一并清掉）。
 // cleanedAt 已由截图清理链路写入时必须保留（api order.get 的 cleaned 判据）。
 function anonymizedImageOf(image) {
@@ -75,6 +90,10 @@ function anonymizedPatch(order, nowDate) {
     patch.images = order.images.map(anonymizedImageOf);
   } else {
     patch.image = { fileId: '', width: 0, height: 0, failureId: '', cleanedAt: image.cleanedAt || null };
+  }
+  const transfer = anonymizedTransferOf(order);
+  if (transfer) {
+    patch.transfer = transfer;
   }
   return patch;
 }

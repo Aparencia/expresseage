@@ -119,6 +119,14 @@
   line-height: 1.5;
 }
 
+/* D58 转派：新兼职接手后只读提示「由 P-XXX-XXX 接手履约」（只编号，不显示头像昵称） */
+.transfer-hint {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  color: var(--v4-text-2);
+  line-height: 1.5;
+}
+
 /* D61 件级取件（只读）：每件「已取件/待取件 + 取件时间」 */
 .parcel-picked {
   color: var(--v4-brand);

@@ -75,7 +75,7 @@ check(2, 'JS 语法', '客户端 + shared/api/store/utils + tools + cloudfunctio
 });
 
 // ---------------------------------------------------------------- #03
-check(3, '页面四件套', '主包 8 + 分包 24（顾客 5 / 兼职 8 / 开发者 11）', () => {
+check(3, '页面四件套', '主包 8 + 分包 25（顾客 5 / 兼职 9 / 开发者 11）', () => {
   const bad = [];
   for (const page of P.ALL_PAGES) {
     for (const ext of P.PAGE_EXTS) {

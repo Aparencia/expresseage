@@ -35,6 +35,11 @@ const CLIENT_RULES = defineRules('client', [
   ['partner.stats', false],
   ['partner.unbindCustomer', true],
   ['partner.saveCustomerNote', true],
+  // D59：兼职子队员（SUB 一次性邀请码由主兼职发；listSubMembers 为读）
+  ['partner.createSubInvites', true],
+  ['partner.revokeSubInvite', true],
+  ['partner.listSubMembers', false],
+  ['partner.removeSubMember', true],
   // bind（create 仅顾客可调；claimGuestOrder 为 P1 预留）
   ['bind.create', true],
   ['bind.release', true],
@@ -59,6 +64,11 @@ const CLIENT_RULES = defineRules('client', [
   ['order.undo', true],
   ['order.deleteRecord', true],
   ['order.imageUrl', false],
+  // D58：转派四动作（acceptTransfer 是唯一订单归属改写点；全部写动作）
+  ['order.requestTransfer', true],
+  ['order.acceptTransfer', true],
+  ['order.declineTransfer', true],
+  ['order.cancelTransfer', true],
   // message
   ['message.send', true],
   ['message.list', false],

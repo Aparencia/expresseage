@@ -321,7 +321,7 @@ async function sectionE(h) {
     const res = await pApi.call('order.listPartner', { view: 'customer', bindingId: BIND_C1 });
     t.eq(res.ok, true, 'E1 view=customer 合法基线返回成功');
     t.eq(Object.keys(res.data || {}).sort(), ['list', 'nextCursor'],
-      'E2 view=customer 响应顶层键恰为 list/nextCursor（不发 counts，§7.5）');
+      'E2 view=customer 响应顶层键恰为 list/nextCursor（不发 counts/角标，§7.5）');
     t.eq(res.data.list.map((row) => row.orderNo),
       ['20261022-1001', '20261022-1002', '20261022-1003', '20261022-1004', '20261022-1005'],
       'E3 只返回该绑定顾客在本兼职名下订单（statusUpdatedAt desc）');

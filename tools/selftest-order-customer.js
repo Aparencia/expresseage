@@ -25,6 +25,8 @@
  *      顾客侧 parcel.actions 恒空、列表行「已取 n/m 件」四态、件级事件通用人话、
  *      展示条件收敛（列表标签终态不显示；详情件级状态行/摘要限履约状态集）
  *      （宽口径断言在 tools/lib/order-customer-pickup-cases.js，拆件守 #18）
+ *   R. 批 26-D58 转派顾客可见性：只读「由 P-XXX 接手履约」提示、只显示编号（无昵称头像/客户编号）、
+ *      TRANSFER_ACCEPTED 时间线人话、4 个私有事件页面零特判、新增纯件零状态字面量
  *
  * 纪律：不 mock 全局 wx（api/client 用 setTransport 注入替身）；fake DTO/事件，不连真云；
  *       先合法基线再反例；样本非空；EXPECTED_ASSERTIONS 与实际断言数精确相等（少算/多算都判红）。
@@ -59,8 +61,8 @@ const orderScope = orderScopeReq.value || {};
 
 const caseLib = require('./lib/order-customer-cases');
 const pickupCases = require('./lib/order-customer-pickup-cases'); // 批25-C/D61：Q 组件级取件顾客可见性
-// 实跑读数；批24-D64/D66：P 组扩 37（H 组 4 条并入并删除，+14 一级入口/文案断言）；批25-C/D61：+Q 组
-const EXPECTED_ASSERTIONS = 335 + pickupCases.ASSERTIONS;
+// 实跑读数；批24-D64/D66：P 组扩 37（H 组 4 条并入并删除，+14 一级入口/文案断言）；批25-C/D61：+Q 组；批26-D58：+R 组 7
+const EXPECTED_ASSERTIONS = 335 + pickupCases.ASSERTIONS + 7;
 const {
   STATUS, PAGES, ISO, NOW, DOC_MS, textOf, actionsFor, dto, event, orderDoc,
   FAKE_DTO_CTX
@@ -139,7 +141,7 @@ function register(h) {
     t.eq(enums.ORDER_EVENTS.filter(function filter(type) {
       const text = view.eventText({ type: type });
       return typeof text === 'string' && text.length > 0 && text !== type;
-    }), enums.ORDER_EVENTS, 'A17 19 种事件类型全部有人话映射（无裸英文事件名上屏）');
+    }), enums.ORDER_EVENTS, 'A17 ' + enums.ORDER_EVENTS.length + ' 种事件类型全部有人话映射（无裸英文事件名上屏）');
     const corrected = [{ type: 'ORDER_CORRECTED', at: ISO, note: '' }];
     t.eq([view.buildEvents(corrected, { codeFilled: true })[0].text,
       view.buildEvents(corrected, { codeFilled: false })[0].text],
@@ -912,6 +914,53 @@ function register(h) {
   // ---------------------------------------------------------------- Q D61 件级取件顾客可见性（批 25-C）
   h.section('Q. D61 件级取件顾客可见性：每件已取/待取+时间、部分取件摘要与提示、进度仍按订单 status、列表标签、件级事件人话、端云联调', (t) => {
     return pickupCases.registerQ(t);
+  });
+
+  // ---------------------------------------------------------------- R D58 转派顾客可见性（批 26-W5）
+  h.section('R. D58 转派顾客可见性：只读「由 P-XXX 接手履约」、只显示编号、时间线人话、页面零判据', (t) => {
+    const detailWxml = textOf('pkg-customer/pages/order-detail/index.wxml');
+    const detailJs = textOf('pkg-customer/pages/order-detail/index.js');
+    const detailWxss = textOf('pkg-customer/pages/order-detail/index.wxss');
+    const transferView = require(path.join(ROOT, 'pkg-customer/pages/order-detail/parts/transfer-view.js'));
+    const accepted = Object.assign(dto(STATUS.ACCEPTED), {
+      fulfillmentPartnerNo: 'P-NEW-001', transfer: { status: enums.TRANSFER_STATUS.ACCEPTED, toPartnerNo: 'P-NEW-001' }
+    });
+    const pending = Object.assign(dto(STATUS.ACCEPTED), {
+      fulfillmentPartnerNo: 'P-OLD-001', transfer: { status: enums.TRANSFER_STATUS.PENDING, toPartnerNo: 'P-NEW-001' }
+    });
+    t.eq([transferView.pageExtras(accepted).transferHint, transferView.pageExtras(pending).transferHint,
+      transferView.pageExtras(dto(STATUS.ACCEPTED)).transferHint],
+    ['由 P-NEW-001 接手履约', '', ''],
+    'R1 正控：DTO 显示已接手时给「由 {编号} 接手履约」；待确认/旧 DTO（无 transfer）不出提示（不猜编号）');
+    const leak = Object.assign({}, accepted, {
+      transfer: Object.assign({ displayName: '小王', avatarUrl: 'https://x/a.jpg', customerNo: 'C-LEAK' }, accepted.transfer)
+    });
+    const leakHint = transferView.pageExtras(leak);
+    t.check(Object.keys(leakHint).length === 1 && leakHint.transferHint.indexOf('C-LEAK') < 0
+      && leakHint.transferHint.indexOf('小王') < 0 && leakHint.transferHint.indexOf('https') < 0,
+      'R2 顾客侧只显示编号：挂载昵称/头像/客户编号的 DTO 不进入提示（D19/D42 隐私边界）');
+    const byFulfillment = Object.assign({}, accepted, { transfer: Object.assign({}, accepted.transfer, { toPartnerNo: '' }) });
+    const byTransfer = Object.assign({}, accepted, { fulfillmentPartnerNo: '' });
+    t.eq([transferView.pageExtras(byFulfillment).transferHint, transferView.pageExtras(byTransfer).transferHint],
+      ['由 P-NEW-001 接手履约', '由 P-NEW-001 接手履约'],
+      'R2b 编号来源：优先 DTO.fulfillmentPartnerNo（当前履约编号快照），缺失时回退 transfer.toPartnerNo');
+    const events = transferView.eventsView([
+      { id: 'e1', type: 'TRANSFER_ACCEPTED', text: 'TRANSFER_ACCEPTED' },
+      { id: 'e2', type: 'ACCEPTED', text: '已接单' }
+    ], accepted);
+    const bare = transferView.eventsView([{ id: 'e3', type: 'TRANSFER_ACCEPTED', text: 'TRANSFER_ACCEPTED' }], {});
+    t.eq([events[0].text, events[1].text, bare[0].text, bare[0].text.indexOf('TRANSFER')],
+      ['由 P-NEW-001 接手履约', '已接单', '兼职已交接，后续由新兼职继续履约', -1],
+      'R3 时间线 TRANSFER_ACCEPTED 换顾客人话（有编号带编号；编号缺失退回通用人话，不出现英文事件名）；其余事件原样');
+    t.check(/wx:if="\{\{transferHint\}\}"/.test(detailWxml) && /\.transfer-hint\s*\{/.test(detailWxss)
+      && /parts\/transfer-view/.test(detailJs) && /transferView\.pageExtras\(payload\.order\)/.test(detailJs)
+      && /transferView\.eventsView\(payload\.events, payload\.order\)/.test(detailJs),
+    'R4 详情页接线：状态卡渲染提示（wx:if）、样式类已定义、显示与否/文案由纯件按 DTO 计算（页面零判据）');
+    t.eq(caseLib.layerHits(textOf('pkg-customer/pages/order-detail/parts/transfer-view.js')), [],
+      'R5 新增纯件零 wx.cloud/零七状态字面量/零 random/零直调 client.call（门禁 #21）');
+    t.eq(['TRANSFER_REQUESTED', 'TRANSFER_DECLINED', 'TRANSFER_CANCELLED', 'TRANSFER_EXPIRED'].filter(function hit(type) {
+      return detailJs.indexOf(type) >= 0 || detailWxml.indexOf(type) >= 0;
+    }), [], 'R6 4 个私有转派事件顾客页面零特判（服务端消息中心已拉黑，页面不做过滤/隐藏判据）');
   });
 }
 

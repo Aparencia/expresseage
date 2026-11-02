@@ -56,6 +56,17 @@
       <view class="small zone-note">楼栋、每日上限、营业时间属 P1，本期不展示。</view>
     </view>
 
+    <!-- D59：团队页入口（成员/子邀请码/名额在 pkg-partner/pages/team/index） -->
+    <view class="card">
+      <view class="row between" bindtap="goTeam">
+        <view class="flex-1">
+          <view class="strong">我的团队</view>
+          <view class="small">发子邀请码给协作队员；顾客只绑定你本人，订单由你转派给队员</view>
+        </view>
+        <view class="muted">›</view>
+      </view>
+    </view>
+
     <view wx:if="{{errorText}}" class="error">{{errorText}}</view>
     <button class="btn btn-primary btn-block" disabled="{{saving || readonly}}" bindtap="onSave">
       {{saving ? '保存中…' : '保存'}}

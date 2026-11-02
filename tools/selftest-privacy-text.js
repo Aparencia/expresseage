@@ -523,9 +523,9 @@ function register(h) {
     t.check(qaDoc.indexOf('## AD. v1.8 批 21 增补（D57 本机取件码清单') !== -1
       && qaDoc.indexOf('| AD1 |') !== -1 && qaDoc.indexOf('| AD6 |') !== -1,
     'QA 真机清单新增 §AD AD1~AD6（人（真机），agent 不代勾）');
-    t.check(/^> 维护规则：[\s\S]{0,160}当前 \*\*350\*\* 条/m.test(qaDoc)
-      && /→ \*\*350\*\*/.test(qaDoc),
-    'QA 附录 E 计数与取数命令真实输出同步为 350（330 + §AD 6 + §AE 7 + §AF 7）');
+    t.check(/^> 维护规则：[\s\S]{0,200}当前 \*\*362\*\* 条/m.test(qaDoc)
+      && /→ \*\*362\*\*/.test(qaDoc),
+    'QA 附录 E 计数与取数命令真实输出同步为 362（330 + §AD 6 + §AE 7 + §AF 7 + §AG 12）');
     t.check(qaDoc.indexOf('## AF. v2.0 批 25 增补（D61 件级取件 / D62 多站点按件分组') !== -1
       && qaDoc.indexOf('| AF1 |') !== -1 && qaDoc.indexOf('| AF7 |') !== -1,
     'QA 真机清单新增 §AF AF1~AF7（D61/D62；人（真机+控制台），agent 不代勾）');

@@ -33,6 +33,8 @@
       <view class="status-title">{{statusText}}</view>
       <view class="subtitle" wx:if="{{statusDesc}}">{{statusDesc}}</view>
       <view class="muted" wx:if="{{waitingHint}}">{{waitingHint}}</view>
+      <!-- D58 转派：新兼职接手后只读提示，只显示编号（不显示头像昵称；D19/D42） -->
+      <view class="transfer-hint" wx:if="{{transferHint}}">{{transferHint}}</view>
       <view class="progress row">
         <view wx:for="{{progress.steps}}" wx:key="label" class="progress-step flex-1 center">
           <view class="progress-dot {{item.state}}"></view>

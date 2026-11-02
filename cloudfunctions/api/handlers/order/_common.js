@@ -5,6 +5,7 @@
 const orderState = require('../../shared/order-state');
 const { errors } = require('../../lib/errors');
 const store = require('./_store');
+const transfer = require('./_transfer');
 
 const {
   enums,
@@ -64,6 +65,45 @@ function buildEventDocument(options) {
     payload: opts.payload || {},
     requestKey: opts.requestKey
   };
+}
+
+// 事务体（从 runOrderAction 拆出控单函数行数）：orders 单文档 patch + 1 条主事件
+// +（批 26/D58 Q4）订单离开 ACCEPTED 时的转派过期事件（同事务、幂等 requestKey）+ after 钩子。
+async function applyOrderActionWrite(trx, params) {
+  const built = params.built;
+  const order = params.order;
+  const patch = Object.assign({}, built.set || {}, {
+    status: params.toStatus || params.fromStatus,
+    version: order.version + 1,
+    statusUpdatedAt: params.nowDate,
+    updatedAt: params.nowDate
+  });
+  if (params.batchActionId !== null) {
+    patch.batchActionId = params.batchActionId;
+  }
+  if (params.transferExpiry) {
+    patch.transfer = params.transferExpiry.transfer;
+  }
+  await trx.update(store.COLLECTIONS.ORDERS, order._id, patch);
+  await trx.add(store.COLLECTIONS.ORDER_EVENTS, params.eventDoc);
+  if (params.transferExpiry) {
+    await trx.add(store.COLLECTIONS.ORDER_EVENTS, params.transferExpiry.event);
+  }
+  if (typeof params.spec.after === 'function') {
+    await params.spec.after({
+      trx,
+      order,
+      now: params.now,
+      nowDate: params.nowDate,
+      actorRole: params.actorRole,
+      scope: params.scope,
+      built,
+      clientRequestId: params.clientRequestId,
+      fromStatus: params.fromStatus,
+      toStatus: params.toStatus,
+      ctx: params.ctx
+    });
+  }
 }
 
 // spec = { action, guard?, build?, after?, extraResult? }
@@ -132,6 +172,9 @@ async function runOrderAction(ctx, payload, spec) {
   const toStatus = built.toStatus !== undefined
     ? built.toStatus
     : orderState.nextStatus(spec.action, fromStatus, order);
+  // 批 26/D58 Q4：订单离开 ACCEPTED 时把 PENDING 转派邀请在同一事务内落 EXPIRED/STATE_CHANGED
+  // （状态守卫通过后才有意义；无 transfer PENDING 的订单返回 null，零行为变化）。
+  const transferExpiry = transfer.expiryOnStatusChangeOf(order, toStatus, nowDate);
   const eventDoc = buildEventDocument({
     orderId: order._id,
     orderNo: order.orderNo,
@@ -147,34 +190,22 @@ async function runOrderAction(ctx, payload, spec) {
     requestKey: eventKey
   });
   try {
-    await ctx.dao.transaction(async (trx) => {
-      const patch = Object.assign({}, built.set || {}, {
-        status: toStatus || fromStatus,
-        version: order.version + 1,
-        statusUpdatedAt: nowDate,
-        updatedAt: nowDate
-      });
-      if (batchActionId !== null) {
-        patch.batchActionId = batchActionId;
-      }
-      await trx.update(store.COLLECTIONS.ORDERS, order._id, patch);
-      await trx.add(store.COLLECTIONS.ORDER_EVENTS, eventDoc);
-      if (typeof spec.after === 'function') {
-        await spec.after({
-          trx,
-          order,
-          now,
-          nowDate,
-          actorRole,
-          scope,
-          built,
-          clientRequestId,
-          fromStatus,
-          toStatus,
-          ctx
-        });
-      }
-    });
+    await ctx.dao.transaction((trx) => applyOrderActionWrite(trx, {
+      built,
+      order,
+      fromStatus,
+      toStatus,
+      nowDate,
+      batchActionId,
+      transferExpiry,
+      eventDoc,
+      spec,
+      ctx,
+      now,
+      actorRole,
+      scope,
+      clientRequestId
+    }));
   } catch (error) {
     if (ctx.dao.isDuplicateError && ctx.dao.isDuplicateError(error)) {
       return { order: await buildCurrentOrderView(ctx, order), duplicated: true };

@@ -4,6 +4,7 @@
 
 const F = require('../../../common/format');
 const C = require('../../../common/constants');
+const enums = require('../../../../shared/enums');
 
 // v1.0 逐件包裹（D23）：parcels[] 优先；历史单 parcel{} 视作单件（同一视图，不新增判据）
 function parcelsOf(order) {
@@ -54,6 +55,25 @@ function parcelFieldsOf(order) {
   };
 }
 
+// D58 转派留痕（只读、编号级）：状态中文优先服务端下发，其次 shared 单源，缺符号时回落原始值；
+// 只透出编号与时间，绝不下发/展示 openid、内部 id、昵称头像（草案 §1.4 admin 行；脱敏走服务端单源）。
+function transferTraceOf(order) {
+  const row = order || {};
+  const transfer = row.transfer && typeof row.transfer === 'object' ? row.transfer : null;
+  if (!transfer) return null;
+  const status = typeof transfer.status === 'string' ? transfer.status : '';
+  const labels = enums.TRANSFER_STATUS_TEXT || {};
+  return {
+    statusText: transfer.statusText || labels[status] || status || '—',
+    fromPartnerNoText: F.textOrDash(transfer.fromPartnerNo),
+    toPartnerNoText: F.textOrDash(transfer.toPartnerNo),
+    requestedAtText: transfer.requestedAt ? F.formatTime(transfer.requestedAt) : '',
+    expiresAtText: transfer.expiresAt ? F.formatTime(transfer.expiresAt) : '',
+    resolvedAtText: transfer.resolvedAt ? F.formatTime(transfer.resolvedAt) : '',
+    resolveReasonText: transfer.resolveReasonText || ''
+  };
+}
+
 function decorateOrder(order, fallbackNo) {
   const row = order || {};
   const parcel = row.parcel || {};
@@ -89,6 +109,7 @@ function decorateOrder(order, fallbackNo) {
     reportedAtText: exception.reportedAt ? F.formatTime(exception.reportedAt) : '',
     createdAtText: F.formatTime(row.createdAt),
     statusUpdatedAtText: F.formatTime(row.statusUpdatedAt),
+    transfer: transferTraceOf(row),
     isTest: row.isTest === true,
     impersonatedBy: row.impersonatedBy || ''
   };

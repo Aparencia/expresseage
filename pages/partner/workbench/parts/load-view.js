@@ -204,12 +204,17 @@ function chunkPlanOf(groups) {
   return { first: chunks[0], rest: chunks.slice(1), hasRest: chunks.length > 1 };
 }
 
-// 红点：工作台格显示待接单数（测试会话订单服务端已隔离，不额外判断）；不得覆盖消息红点
-function badgePatch(counts, currentBadges) {
+// 红点：工作台格显示待接单数 + D58 待接收转派数（测试会话订单服务端已隔离，不额外判断）；
+// 复用既有 badges.workbenchPending 机制，不新增红点键；不得覆盖消息红点。
+function badgePatch(counts, currentBadges, transferPending) {
   const current = currentBadges || {};
   const submitted = counts && typeof counts.submitted === 'number' ? counts.submitted : 0;
+  const pending = typeof transferPending === 'number' && isFinite(transferPending) && transferPending > 0
+    ? Math.floor(transferPending)
+    : 0;
+  const total = submitted + pending;
   return {
-    workbenchPending: submitted > 0 ? submitted : 0,
+    workbenchPending: total > 0 ? total : 0,
     messages: typeof current.messages === 'number' ? current.messages : 0
   };
 }

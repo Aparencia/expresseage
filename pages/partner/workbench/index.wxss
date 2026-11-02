@@ -3,3 +3,4 @@
 @import "./parts/list.wxss";
 @import "./parts/order-row.wxss";
 @import "./parts/overlay.wxss";
+@import "./parts/transfer.wxss";

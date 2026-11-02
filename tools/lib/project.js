@@ -36,6 +36,8 @@ const SUBPACKAGES = {
     'pages/stats/index',
     'pages/messages/index',
     'pages/pick-list/index',
+    // D59：主兼职「我的团队」页（成员/子邀请码/名额）
+    'pages/team/index',
   ],
   'pkg-admin': [
     'pages/overview/index',
@@ -102,13 +104,15 @@ add('user', ['acceptPrivacy', 'deleteAccount'], WRITE);
 add('customer', ['saveProfile'], WRITE);
 add('customer', ['getProfile'], READ);
 add('partner', ['activate', 'saveProfile', 'saveServiceConfig', 'unbindCustomer', 'saveCustomerNote'], WRITE);
-add('partner', ['getPublic', 'listBindings', 'getCustomer', 'stats'], READ);
+// D59：主兼职团队（发子邀请码/作废/移除成员）+ 团队列表读
+add('partner', ['createSubInvites', 'revokeSubInvite', 'removeSubMember'], WRITE);
+add('partner', ['getPublic', 'listBindings', 'getCustomer', 'stats', 'listSubMembers'], READ);
 add('bind', ['create', 'release'], WRITE);
 add('bind', ['getCurrent'], READ);
 add('bind', ['claimGuestOrder'], WRITE);
 add('order', ['create', 'accept', 'reject', 'markPicked', 'unmarkPicked', 'markDelivered',
   'unmarkDelivered', 'reportException', 'resolveException', 'cancel', 'confirmDelivery', 'correct', 'undo',
-  'deleteRecord'], WRITE);
+  'deleteRecord', 'requestTransfer', 'acceptTransfer', 'declineTransfer', 'cancelTransfer'], WRITE);
 add('order', ['get', 'listCustomer', 'listPartner', 'imageUrl'], READ);
 add('message', ['send', 'markRead'], WRITE);
 add('message', ['list'], READ);

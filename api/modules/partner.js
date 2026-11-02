@@ -30,5 +30,18 @@ module.exports = {
   },
   saveCustomerNote(payload) {
     return client.call('partner.saveCustomerNote', payload || {});
+  },
+  // D59 子队员（批 26 服务端/共享冻结；页面在批 27 接入）：发码/作废/列表为可重试幂等形制，移除为写形制
+  createSubInvites(payload) {
+    return client.call('partner.createSubInvites', payload || {}, { retry: true });
+  },
+  revokeSubInvite(payload) {
+    return client.call('partner.revokeSubInvite', payload || {}, { retry: true });
+  },
+  listSubMembers(payload) {
+    return client.call('partner.listSubMembers', payload || {}, { retry: true });
+  },
+  removeSubMember(payload) {
+    return client.call('partner.removeSubMember', payload || {});
   }
 };

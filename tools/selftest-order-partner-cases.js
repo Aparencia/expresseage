@@ -47,12 +47,14 @@ const COUNTS_KEYS = ['submitted', 'accepted', 'picked', 'delivered', 'exception'
 // 列表/详情 DTO 允许的顶层键（白名单：多一个=可能泄漏 raw 文档字段）
 // v1.0 一单多包裹（D23/D24/D25）：新增 parcels/images/delivery/manualEntry；parcel/image 为历史单兼容键。
 // D61 件级取件：订单级增 pickedCount/parcelCount/allPicked（每件 picked/pickedAt/actions 在 parcels[] 内，不改顶层）。
+// D58（批 26）：订单级增 transfer（恒返回，无则 null）+ fulfillmentPartnerNo（当前实际履约兼职编号快照）。
 const DTO_ROW_KEYS = [
   'orderNo', 'status', 'statusText', 'bucket', 'progressIndex', 'needCode', 'failureHint', 'source',
   'service', 'appoint', 'parcel', 'parcels', 'pickedCount', 'parcelCount', 'allPicked',
   'note', 'phoneTail', 'dorm', 'delivery', 'manualEntry',
   'guest', 'exception', 'deliveryNote',
   'cancelReason', 'cancelReasonText', 'cancelledBy', 'cancelledByText', 'customerNo', 'partnerNo',
+  'fulfillmentPartnerNo', 'transfer',
   'image', 'images', 'counterpart', 'actions', 'version', 'statusUpdatedAt', 'createdAt', 'updatedAt', 'acceptedAt',
   'pickedAt', 'deliveredAt', 'completedAt', 'cancelledAt', 'deletedByCustomerAt'
 ];
@@ -327,7 +329,9 @@ function actionNameOfKey(key) {
   const map = {
     accept: 'order.accept', reject: 'order.reject', pick: 'order.markPicked', deliver: 'order.markDelivered',
     undoPick: 'order.undo', undoDeliver: 'order.undo', exception: 'order.reportException',
-    resolve: 'order.resolveException', correct: 'order.correct', cancel: 'order.cancel'
+    resolve: 'order.resolveException', correct: 'order.correct', cancel: 'order.cancel',
+    // D58（批 26）：转派动作（ACCEPTED 且一件未取才广告；canAct 走 ACTION_RULES 的 to:'SAME' 通路）
+    requestTransfer: 'order.requestTransfer', cancelTransfer: 'order.cancelTransfer'
   };
   return map[key] || '';
 }

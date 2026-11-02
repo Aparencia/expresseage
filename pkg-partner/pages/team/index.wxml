@@ -1,0 +1,132 @@
+<!-- pkg-partner/pages/team/index.wxml · 我的团队（D59：成员/发子邀请码/待用子码按批次/作废/移除/名额） -->
+<view class="page-body">
+  <switch-bar />
+
+  <view wx:if="{{loading && !hasData}}" class="empty-text">加载中…</view>
+
+  <block wx:else>
+    <!-- 已有旧数据时刷新失败：保留数据 + 顶部提示（不假装成功） -->
+    <view wx:if="{{error && hasData}}" class="card error-tip">{{error}}</view>
+    <view wx:if="{{error && !hasData}}" class="card">
+      <empty-state text="{{error}}" actionText="重试" bind:action="load" />
+    </view>
+
+    <!-- 子队员视角：只显示所属队伍与成员数 -->
+    <block wx:if="{{member}}">
+      <view class="card">
+        <view class="section-title">我的队伍</view>
+        <view class="row team-line">
+          <text class="small">所属队伍</text>
+          <id-text kind="PARTNER" no="{{team.parentPartnerNo}}" />
+        </view>
+        <view class="row team-line">
+          <text class="small">成员数</text>
+          <text class="strong">{{team.memberCountText}}</text>
+        </view>
+        <view class="divider"></view>
+        <view class="small">{{team.noteText}}</view>
+      </view>
+    </block>
+
+    <!-- 主兼职（队长）视角 -->
+    <block wx:elif="{{captain}}">
+      <view class="card">
+        <view class="row between">
+          <view class="section-title">我的团队</view>
+          <view wx:if="{{quota.usedText}}" class="tag">{{quota.usedText}}</view>
+        </view>
+        <view class="small">{{introText}}</view>
+        <view wx:if="{{readonly}}" class="small lock-text">{{readonlyText}}</view>
+      </view>
+
+      <view class="card">
+        <view class="section-title">队员</view>
+        <view wx:if="{{!members.length}}" class="empty-text">{{membersEmptyText}}</view>
+        <view wx:for="{{members}}" wx:key="partnerNo" class="member-row row">
+          <view class="flex-1 member-main">
+            <view class="strong">{{item.displayNameText}}</view>
+            <view class="row small member-meta">
+              <id-text kind="PARTNER" no="{{item.partnerNo}}" />
+              <text wx:if="{{item.statusText}}" class="status-text">{{item.statusText}}</text>
+              <text wx:if="{{item.joinedText}}">{{item.joinedText}}</text>
+            </view>
+          </view>
+          <view wx:if="{{canWrite}}" class="btn btn-ghost mini-btn" data-index="{{index}}" bindtap="onRemoveTap">移除</view>
+        </view>
+      </view>
+
+      <view class="card">
+        <view class="section-title">待使用的子邀请码</view>
+        <view class="small">完整码只在生成时显示一次；这里只显示尾 4 位与到期时间。</view>
+        <view wx:if="{{!inviteGroups.length}}" class="empty-text">{{pendingEmptyText}}</view>
+        <view wx:for="{{inviteGroups}}" wx:key="key" wx:for-item="group" wx:for-index="groupIndex" class="invite-group">
+          <view class="row between invite-head">
+            <view class="flex-1">
+              <view class="strong">{{group.batchText}}</view>
+              <view class="small">{{group.rowCountText}}</view>
+            </view>
+            <view
+              wx:if="{{canWrite}}"
+              class="btn btn-ghost mini-btn"
+              data-index="{{groupIndex}}"
+              bindtap="onRevokeTap"
+            >作废本批</view>
+          </view>
+          <view wx:for="{{group.rows}}" wx:key="key" wx:for-item="invite" class="row between invite-row">
+            <text class="strong">{{invite.codeTailText}}</text>
+            <text class="small">{{invite.expiresText}}</text>
+          </view>
+        </view>
+      </view>
+
+      <view wx:if="{{showCreateForm}}" class="card">
+        <view class="section-title">发子邀请码</view>
+        <view class="small">{{createHintText}}</view>
+        <view class="row form-line">
+          <text class="form-label">数量</text>
+          <view class="row flex-1 form-chips">
+            <view
+              wx:for="{{countOptions}}"
+              wx:key="*this"
+              class="chip {{item === form.count ? 'chip-active' : ''}}"
+              data-count="{{item}}"
+              bindtap="onCountTap"
+            >{{item}}</view>
+          </view>
+        </view>
+        <view class="row form-line">
+          <text class="form-label">有效期</text>
+          <view class="row flex-1 form-chips">
+            <view
+              wx:for="{{validityOptions}}"
+              wx:key="key"
+              class="chip {{item.key === form.validity ? 'chip-active' : ''}}"
+              data-key="{{item.key}}"
+              bindtap="onValidityTap"
+            >{{item.label}}</view>
+          </view>
+        </view>
+        <view class="form-line">
+          <text class="form-label">备注（可选）</text>
+          <input class="form-input" maxlength="{{noteMax}}" placeholder="例如：给同楼的小李" value="{{form.note}}" bindinput="onNoteInput" />
+        </view>
+        <view wx:if="{{quota.fullReasonText}}" class="small full-reason">{{quota.fullReasonText}}</view>
+        <button class="btn btn-primary btn-block create-btn" disabled="{{creating || quota.disabled}}" bindtap="onCreateTap">
+          {{creating ? '生成中…' : '生成子邀请码'}}
+        </button>
+      </view>
+
+      <view wx:if="{{result.visible}}" class="card result-card">
+        <view class="row between">
+          <view class="section-title">{{result.title}}</view>
+          <text wx:if="{{result.batchText}}" class="small">{{result.batchText}}</text>
+        </view>
+        <view wx:for="{{result.codeRows}}" wx:key="key" class="code-row">
+          <text class="code-text">{{item.display}}</text>
+        </view>
+        <view class="small result-hint">{{result.hintText}}</view>
+        <view wx:if="{{result.expiresText}}" class="small">{{result.expiresText}}</view>
+      </view>
+    </block>
+  </block>
+</view>

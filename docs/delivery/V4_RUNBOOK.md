@@ -65,6 +65,13 @@
 - 建 **14 个集合**（名称见 ENGINEERING §4.6；v0.9 不新增集合）。**名字必须逐个复制粘贴，不要手打**：长名最容易拼错（如 `invitation_codes`、`recognition_failures`、`admin_view_sessions`、`upload_tickets`）。拼错时控制台不会报错，但首次读写该集合的接口会以 `INTERNAL_ERROR` 失败——云端日志为 `-502005 ... Db or Table not exist: <名字>`，客户端只看到「重试/截图反馈开发者」。
 - 每个集合 → 权限设置 → **`{"read": false, "write": false}`**（客户端全部拒绝）。**两种填法等价，任选**：①控制台预设「**所有用户不可读写**（仅管理端可读写）」，一次点选、最不易错，**推荐**；②自定义安全规则手填上述 JSON。云函数的 admin 权限**不受数据库规则约束**，14 集合的业务读写全部经云函数（ARCHITECTURE §1），所以"客户端全拒"不会影响功能。
 - 按 DATA_MODEL §5.1 建全部索引；**唯一索引必须建**（如 `uk_customer_no`、`uk_partner_no`、`uk_active_key`、`uk_order_no`、`uk_request_key`、`uk_code`、`uk_failure_no`）。
+- **v1.10/D58/D59 新增 3 个索引（用户控制台创建；`admin.bootstrap` 不自动建）**：
+  1. `orders.idx_transfer_target`：字段 `transfer.toPartnerId`（升序）、`transfer.status`（升序）、`status`（升序）、`transfer.requestedAt`（**降序**）——目标兼职待接收列表（`order.listPartner({view:'transfer'})`）主路径。
+  2. `invitation_codes.idx_issuer`：字段 `issuerPartnerId`（升序）、`createdAt`（降序）——团队页待用子码列表与按批次作废锚。
+  3. `partners.idx_parent`：字段 `parentPartnerId`（升序）、`status`（升序）——`listSubMembers` 与主兼职停用/注销级联扫描（每页 ≤100）。
+  - **退化方案（控制台不支持四段复合索引时）**：`idx_transfer_target` 退为 `(transfer.toPartnerId, transfer.status)`，服务端查询再下推 `where(status:'ACCEPTED')`；**仍必须服务端过滤，禁止客户端过滤**；退化在 §13 记录并在后续批次评估（不阻塞上线，查询量级可控）。
+  - 建后验证：`order.listPartner({view:'transfer'})` 在测试账号下能返回 `transferPending` 且不报「索引不存在」；控制台慢查询中该路径无全表扫描告警。
+  - **本批无新增集合/触发器/云函数**：14 集合不变、`cleanup` 触发器配置不变、无新云函数部署单元；`shared/**` 变更后需 `node tools/sync-cloud-shared.js` 并重部署 `api`（`cleanup` 因副本同步亦建议重部署，行为无 sweep 变更）。
 - 核对集合名：云函数 `api` → 测试 → 入参 `{"action":"admin.bootstrap","data":{}}`，返回的 `missingCollections` 必须为 `[]` 才算集合就位；**若控制台里出现拼错的集合（例如 `inbitation_codes`）**，先确认里面没有数据，删除后按正确名字新建，并补权限与索引。
 - 证据：集合列表截图 + 索引导出/截图 + 每个集合安全规则截图。
 - 失败处理：存量冲突先清场再建唯一索引；控制台不支持代码建索引时以控制台为准。**注意：`admin.bootstrap` 只返回「应建唯一索引清单」（15 项），不检测索引是否已建**——索引是否齐以控制台为准，建完逐项核对。
@@ -401,3 +408,29 @@
 - 回滚：回退体验版即可；本机清单只存用户设备，无服务端数据需迁移/清理。**边界（本地口径的已知代价）**：已存清单无法由服务端远程清除——只能用户点「清空本机清单」或清小程序缓存；回滚前请知悉。
 - 隐私文本：上线前确认微信后台《用户隐私保护指引》与端内帮助页包含「本机取件码清单（仅存本机/不上传/可清空/换机丢失）」条款（批 21 已同源回写：`docs/privacy/隐私保护指引.md`、`docs/privacy/补充文档.txt`、`pkg-customer/parts/privacy-text.js`）。
 - 取证（用户点检，agent 不代勾）：本机清单添加/识别/清空界面截图；抓包与云函数日志显示零上传零外呼（QA §AD5）。
+
+---
+
+## 18. 批 26/27 上线（2026-11-03，D58 转派 / D59 子队员 / D63 顾客邀请顾客）
+
+### 18.1 部署与资源（用户执行，agent 不代跑）
+
+- **本批无新增集合、无新增触发器、无新增云函数部署单元**：集合恒 14、`cleanup` 单触发器配置不变；`api` 需重部署（新增 `handlers/order/{requestTransfer,acceptTransfer,declineTransfer,cancelTransfer,_transfer}.js` 与 `handlers/partner/{createSubInvites,revokeSubInvite,listSubMembers,removeSubMember,_team}.js` 等）。
+- **共享副本**：`shared/{enums,actions,order-state,validate}.js` 与 `config/defaults.js` 变更 → Lead 先跑 `node tools/sync-cloud-shared.js` 生成 `cloudfunctions/{api,cleanup}/shared/**` 副本（禁止手写），再上传 `api`（建议同版本重传 `cleanup`，行为无 sweep 变更）。
+- **配置**：`transferTtlMinutes=10`、`transferRate{perMinute:3,perDay:20}`、`teamMaxMembers=5`、`subInviteRate{perMinute:3,perDay:20}` 为**出厂默认（`config/defaults.js`）**、**不进公开子集、不进 `admin.updateConfig` 白名单**；上线**无需**在控制台改 `config`（改值只能走部署配置脚本/控制台并重跑 sync）。
+- **索引**：按 §3.5 新增 3 个索引（`idx_transfer_target`/`idx_issuer`/`idx_parent`），退化方案见同节；建后冒烟见 18.3。
+- **隐私文本**：`docs/privacy/隐私保护指引.md` 已回写 **v1.10 候选（待用户终审）** 增补段（订单可能由协作队员协助履约 + 队内昵称可见），`privacyVersion` 配置值**未改**（是否升版待用户裁决）；端内全文 `pkg-customer/parts/privacy-text.js` 与 `补充文档.txt` 正文需用户终审后由对应 owner 同源同步。
+
+### 18.2 上线前冒烟（用户/Lead，最小链路）
+
+1. `node tools/sync-cloud-shared.js` 后 `node tools/sync-cloud-shared.js --check` 通过；`health.check` 正常；`admin.bootstrap` 的集合清单不含新集合（仍 14）。
+2. 测试账号两端（或双机）：接单（一件未取）→ 发起转派 → 目标确认 → 双端状态正确（含 `orders.transfer` 与 `TRANSFER_*` 事件）；拒收/撤回/过期各一遍。
+3. 主兼职发子码（1 个）→ 子账号激活 → 控制台确认 `parentPartnerId/teamJoinedAt`；再按批次作废、移除成员各一遍。
+4. 顾客有绑定时「我的」分享 → 新账号从卡片进入 → 隐私闸 → 自动绑定同一兼职。
+5. 观察 `api` 日志无 `-502005`（集合缺失）/「索引不存在」类错误；控制台慢查询中 `view=transfer` 路径无全表扫描告警。
+
+### 18.3 真机验收与回滚
+
+- **真机项**：`docs/delivery/V4_QA_CHECKLIST.md` **§AG1~AG12**（全部「人（真机/控制台）」，**agent 不代勾、不宣布通过**）；附双机录屏/返回体 + 控制台脱敏截图。
+- **回滚**：本批为**增量字段/动作**——回退 `api` 版本即可让新动作不可用（旧数据里的 `orders.transfer`/`partners.parentPartnerId` 只是多余字段，旧代码忽略，无需清库）；索引可保留（对旧代码无影响）。回滚前确认无进行中的转派邀请（`PENDING` 记录在回滚后不会自动过期，需用户/Lead 接受陈旧或临时用控制台清理——审计口径见 §12）。
+- **风险提示（登记 TD-090/TD-091）**：①`message.list` 事件可见性仍是黑名单式（新增私有事件需同步 `MESSAGE_HIDDEN_EVENT_TYPES`）；②转派过期只做惰性判定，不读则 `PENDING` 停留（不影响业务判定）。

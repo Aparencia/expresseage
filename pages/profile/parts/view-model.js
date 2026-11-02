@@ -1,5 +1,5 @@
 // pages/profile/parts/view-model.js · 我的页视图模型（纯件：零 wx、零 setData、零业务写）
-// 口径：V4_UX_CUSTOMER §3.5/§7/§9.4、V4_UX_PARTNER §3.10/§6；枚举/上行校验/苑标识全部来自 shared/，
+// 口径：V4_UX_CUSTOMER §3.5/§7/§9.4、V4_UX_PARTNER §3.10/§6、D63（顾客分享绑定卡装配）；枚举/上行校验/苑标识全部来自 shared/，
 // 页面只负责取 snapshot、调 api、setData 与事件转发（ARCHITECTURE §3.5 页面层零判据）。
 'use strict';
 
@@ -161,6 +161,18 @@ function buildBindingCard(binding) {
   };
 }
 
+// D63：顾客分享其「绑定兼职」的同一张绑定卡——只取 store.binding.partnerPublic.partnerNo
+// （bind.getCurrent/启动期水合）或已归一后的 binding.partnerNo；不掺邀请者任何信息。
+// 无 ACTIVE 绑定（解绑/RELEASED）或编号为空 → null（分享纯件据此回通用卡）。
+function buildBoundPartnerCard(binding) {
+  if (!isBindingActive(binding)) {
+    return null;
+  }
+  const partnerPublic = (binding && binding.partnerPublic) || {};
+  const partnerNo = textOf(partnerPublic.partnerNo) || textOf(binding.partnerNo);
+  return partnerNo ? { partnerNo: partnerNo } : null;
+}
+
 function buildPartnerCard(partner) {
   const doc = partner || {};
   const partnerNo = textOf(doc.partnerNo);
@@ -186,7 +198,9 @@ function buildVm(snapshot) {
   const customer = snap.customer || {};
   const partner = snap.partner || {};
   const binding = snap.binding || null;
-  const partnerCard = isCustomer ? null : buildPartnerCard(partner);
+  // D63：顾客有 ACTIVE 绑定时 partnerCard 只承载「分享用绑定卡编号」；无绑定为 null（分享回通用卡）。
+  // 兼职侧 partnerCard 仍是身份卡（编号/接单状态），分享纯件按身份挑标题与编号，页面零判据。
+  const partnerCard = isCustomer ? buildBoundPartnerCard(binding) : buildPartnerCard(partner);
   const customerNo = isCustomer ? textOf(customer.customerNo) : '';
   const status = textOf(partner.status);
   return {

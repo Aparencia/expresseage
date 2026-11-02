@@ -33,7 +33,14 @@ const EVENT_TEXT = {
   PARCELS_APPENDED: '追加了包裹',
   // D61 件级取件：payload 只带 itemIndex 且服务端裁剪事件时不下发，顾客端用通用人话（不显示第 N 件/内部编号）
   PARCEL_PICKED: '兼职已取走一件',
-  PARCEL_PICKED_REVERTED: '兼职撤销了一件已取件'
+  PARCEL_PICKED_REVERTED: '兼职撤销了一件已取件',
+  // D58 转派（批 26）：5 个事件都给人话（A17「全部事件类型不裸英文上屏」覆盖）；顾客消息中心只放行
+  // TRANSFER_ACCEPTED，其余 4 个私有事件由服务端拉黑（页面不特判），这里只保证万一上屏不是英文码。
+  TRANSFER_REQUESTED: '兼职发起了转派邀请',
+  TRANSFER_ACCEPTED: '兼职已交接，后续由新兼职继续履约',
+  TRANSFER_DECLINED: '转派邀请已被对方拒收',
+  TRANSFER_CANCELLED: '转派邀请已撤回',
+  TRANSFER_EXPIRED: '转派邀请已过期'
 };
 EVENT_TEXT[STATUS.ACCEPTED] = state.statusText(STATUS.ACCEPTED);
 EVENT_TEXT[STATUS.PICKED] = state.statusText(STATUS.PICKED);

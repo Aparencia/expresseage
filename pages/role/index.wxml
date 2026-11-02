@@ -14,7 +14,7 @@
   <view class="card" wx:if="{{bindCard}}">
     <view class="row between">
       <view class="col flex-1">
-        <view class="section-title">兼职邀请你绑定</view>
+        <view class="section-title">兼职绑定卡</view>
         <view class="subtitle">{{bindCard.displayName}} · {{bindCard.partnerNo}}</view>
         <view class="muted">{{bindCard.servicesText}} · 服务范围 {{bindCard.zonesText || '全部苑'}}</view>
         <view class="muted" wx:if="{{!bindCard.acceptingOrders}}">这个兼职暂停接单，可以稍后再试。</view>

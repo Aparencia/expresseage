@@ -1,5 +1,6 @@
-// api/modules/order.js · order 域（18 动作；批量由客户端循环 + 同一 batchActionId）
+// api/modules/order.js · order 域（22 动作；批量由客户端循环 + 同一 batchActionId）
 // v1.0：下单单入口 order.create（一单多包裹/多图/无截图手填/合并窗口）；order.createBatch 已移除。
+// D58（批 26）：转派四写动作（request/accept/decline/cancelTransfer）；待接收列表复用 listPartner({view:'transfer'})。
 // 幂等：写动作 opts.clientRequestId 透传（页面重试复用同一键，防重复写；UX §4.8）；
 // 乐观锁：写动作 opts.expectedVersion 透传 DTO.version（服务端 CONFLICT → 人话"请刷新后重试"）。
 const client = require('../client');
@@ -61,6 +62,19 @@ module.exports = {
   },
   deleteRecord(payload, opts) {
     return call('order.deleteRecord', payload, opts);
+  },
+  // D58 转派：入参 {orderNo,toPartnerNo,clientRequestId} / {orderNo,clientRequestId}；幂等键由页面复用
+  requestTransfer(payload, opts) {
+    return call('order.requestTransfer', payload, opts);
+  },
+  acceptTransfer(payload, opts) {
+    return call('order.acceptTransfer', payload, opts);
+  },
+  declineTransfer(payload, opts) {
+    return call('order.declineTransfer', payload, opts);
+  },
+  cancelTransfer(payload, opts) {
+    return call('order.cancelTransfer', payload, opts);
   },
   imageUrl(payload) {
     return client.call('order.imageUrl', payload || {}, { retry: true });

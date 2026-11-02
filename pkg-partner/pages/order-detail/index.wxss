@@ -240,3 +240,41 @@
 .piece-action-btn {
   margin-right: 16rpx;
 }
+
+/* D58 转派区块：发起入口 / 邀请卡 / 等待卡 / 结果态（数据全来自 DTO，样式只做视觉分组） */
+.transfer-card {
+  border: 1rpx solid #D8E3FA;
+}
+
+.transfer-request,
+.transfer-invite,
+.transfer-waiting,
+.transfer-result {
+  padding: 8rpx 0;
+}
+
+.transfer-invite,
+.transfer-waiting {
+  border-top: 1rpx solid #EEEEEE;
+  margin-top: 12rpx;
+  padding-top: 20rpx;
+}
+
+.transfer-remain {
+  color: #C56A00;
+  margin-top: 6rpx;
+}
+
+.transfer-hint {
+  color: #8A9099;
+  margin-top: 6rpx;
+}
+
+.transfer-actions {
+  justify-content: flex-end;
+  margin-top: 16rpx;
+}
+
+.transfer-actions .mini-btn {
+  margin-left: 16rpx;
+}

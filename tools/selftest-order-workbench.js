@@ -57,6 +57,8 @@ const orderCases = require(path.join(__dirname, 'lib', 'order-workbench-cases.js
 const cases = require(path.join(__dirname, 'lib', 'workbench-cases.js'));
 // 批 25-B（D61/D62）：件级取件 + 多站点分组用例表（拆 tools/lib，控测试文件 ≤1000 行，门禁 #18）
 const pickedCases = require(path.join(__dirname, 'lib', 'workbench-picked-cases.js'));
+// 批 26-W4（D58 转派兼职端）：待接收区块/红点/零判据用例表（拆 tools/lib，控测试文件 ≤1000 行，门禁 #18）
+const transferCases = require(path.join(__dirname, 'lib', 'partner-transfer-ui-cases.js'));
 const {
   STATUS, STATUS_LITERALS, PAGES, ISO, DOC_MS,
   actionsFor, dto, multiDto, manualDto, row, rowsOf, groupsOf, selectedNames, orderDoc, FAKE_DTO_CTX
@@ -65,7 +67,7 @@ const {
 const summaryCopy = optionalRequire('pages/partner/workbench/parts/summary-copy.js');
 
 const EXPECTED_ASSERTIONS = 235 + dayCases.EXPECTED_ASSERTIONS + 33 + 15 + orderCases.EXPECTED_ASSERTIONS
-  + pickedCases.EXPECTED_ASSERTIONS + 6; // A~N 实际断言总数（批 25-B：N 组用例表见 lib；G15~G20 真实 DTO 联调）
+  + pickedCases.EXPECTED_ASSERTIONS + 6 + transferCases.WORKBENCH_EXPECTED_ASSERTIONS; // A~O 实际断言总数（批 26-W4：O 组转派待接收用例表见 lib）
 function textOf(rel) {
   return fsutil.readText(path.join(ROOT, rel));
 }
@@ -561,14 +563,20 @@ function register(h) {
     }
     return Promise.all(dtoList).then((realDtos) => {
       t.eq(realDtos.map((item) => item.status), orderState.STATUS_LIST.slice(), 'G01 七状态真实服务端 DTO 全部生成（样本非空）');
-      t.eq(realDtos.map((item) => item.actions.map((action) => action.key).sort()), orderState.STATUS_LIST.map((status) => actionsFor(status).sort()),
-        'G02 真实 DTO actions[] 与契约矩阵逐状态一致');
+      // D58：服务端在 ACCEPTED 且一件未取时额外下发转派入口 requestTransfer（本夹具无已取件）；
+      // 该动作属详情页转派区块，不属于工作台行工具（见 G03）
+      const TRANSFER_KEYS = ['requestTransfer', 'acceptTransfer', 'declineTransfer', 'cancelTransfer'];
+      const serverMatrix = orderState.STATUS_LIST.map((status) => actionsFor(status)
+        .concat(status === STATUS.ACCEPTED ? ['requestTransfer'] : []).sort());
+      t.eq(realDtos.map((item) => item.actions.map((action) => action.key).sort()), serverMatrix,
+        'G02 真实 DTO actions[] 与契约矩阵逐状态一致（含 D58 转派入口）');
       const toolbarKeys = realDtos.map((item) => {
         const built = rowActions.buildToolbar(groupView.toRow(item), {});
         return built.primary.concat(built.secondary).map((tool) => tool.key).sort();
       });
-      t.eq(toolbarKeys, realDtos.map((item) => item.actions.map((action) => action.key).sort()),
-        'G03 端侧行工具键集合 = 真实服务端 actions[]（七状态逐格一致）');
+      t.eq(toolbarKeys, realDtos.map((item) => item.actions.map((action) => action.key)
+        .filter((key) => TRANSFER_KEYS.indexOf(key) < 0).sort()),
+      'G03 端侧行工具键集合 = 真实服务端 actions[] 去掉转派键（七状态逐格一致；转派只在详情页）');
       t.eq(realDtos[0].version, 5, 'G04 真实 DTO 带 version（写动作乐观锁入参）');
       t.eq(realDtos[3].actions.map((item) => item.key).sort(), actionsFor(STATUS.DELIVERED).sort(),
         'G05 送达 5s 窗内真实 DTO 给 undoDeliver（窗口判定在服务端）');
@@ -952,6 +960,9 @@ function register(h) {
     batchView: batchView,
     loadView: loadView
   }));
+
+  // ── O. 批 26-W4（D58）：待接收转派区块（count 服务端 transferPending / 行文案 / 排序 / 红点复用 / 零判据）──
+  h.section('O D58 待接收转派（工作台）', (t) => transferCases.workbenchTransferChecks(t));
 }
 
 module.exports = { EXPECTED_ASSERTIONS, register };

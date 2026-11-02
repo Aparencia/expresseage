@@ -50,6 +50,22 @@ const ACTIONS = {
   message: {
     label: '留言',
     panel: 'message'
+  },
+  // D58 转派四动作：可见性仍 100% 由服务端 actions[] 决定；本注册表只保证「不被丢弃 + 兜底文案」，
+  // 交互承载在 parts/transfer（发起面板/邀请卡/等待卡/结果态），不排进底部动作条（view-model 里拆分）。
+  requestTransfer: {
+    label: '转派给其他兼职',
+    panel: 'transfer'
+  },
+  acceptTransfer: {
+    label: '确认接收'
+  },
+  declineTransfer: {
+    label: '拒收',
+    danger: true
+  },
+  cancelTransfer: {
+    label: '撤回转派'
   }
 };
 

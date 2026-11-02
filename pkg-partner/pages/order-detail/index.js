@@ -5,9 +5,11 @@
 const orderApi = require('../../../api/modules/order');
 const messageApi = require('../../../api/modules/message');
 const modeGuard = require('../../../api/mode-guard');
+const client = require('../../../api/client');
 const actionsPart = require('./parts/actions');
 const eventView = require('./parts/event-view');
 const exceptionPanel = require('./parts/exception-panel');
+const transferPart = require('./parts/transfer');
 const undoPart = require('./parts/undo');
 const viewModel = require('./parts/view-model');
 const messagePoll = require('./parts/message-poll');
@@ -41,6 +43,11 @@ Page(Object.assign({
     events: [],
     messages: [],
     actions: [],
+    // D58 转派：可见性/文案全部由 DTO actions[] 与 transfer 块驱动（纯件装配，页面零状态判据）
+    transferCard: transferPart.closedCard(),
+    transferPanel: transferPart.requestPanel(),
+    transferInput: '',
+    transferError: '',
     loading: true,
     error: '',
     readonly: false,
@@ -114,6 +121,8 @@ Page(Object.assign({
       order: view.order,
       events: events,
       actions: view.actions,
+      transferCard: view.transferCard,
+      transferPanel: view.transferPanel,
       voucher: view.voucher,
       correctPanel: view.correctPanel,
       exceptionPanel: view.exceptionPanel,
@@ -242,6 +251,98 @@ Page(Object.assign({
     return Promise.resolve();
   },
 
+  // ---------- D58 转派（发起/确认接收/拒收/撤回）----------
+  // 可见性 100% 来自 DTO：发起入口看 actions[] 是否含转派请求动作，邀请/等待/结果看 transfer 块（纯件装配）。
+  // 写请求按既有形制带 clientRequestId（幂等）+ expectedVersion（乐观锁），错误文案一律用服务端 message。
+  writeOpts() {
+    return { expectedVersion: this.data.order && this.data.order.version };
+  },
+  onTransferRequestTap() {
+    if (this.guardReadonly()) {
+      return;
+    }
+    this.setData({ panel: 'transfer', transferInput: '', transferError: '' });
+  },
+  onTransferInput(event) {
+    this.setData({ transferInput: ((event.detail && event.detail.value) || '').slice(0, transferPart.INPUT_MAX) });
+  },
+  // 输入完整 partnerNo → 二次确认（免责：转派后你将失去该单）→ api.order.requestTransfer
+  onTransferSubmit() {
+    if (this.guardReadonly()) {
+      return;
+    }
+    const input = transferPart.inputOf(this.data.transferInput);
+    if (!input.ok) {
+      this.setData({ transferError: input.message });
+      return;
+    }
+    const confirm = transferPart.requestConfirmOf(input.toPartnerNo);
+    wx.showModal({
+      title: confirm.title,
+      content: this.writeHint(confirm.content),
+      confirmText: confirm.confirmText,
+      success: (res) => {
+        if (!res.confirm) {
+          return;
+        }
+        this.submitWrite(() => orderApi.requestTransfer({
+          orderNo: this.data.orderNo,
+          toPartnerNo: input.toPartnerNo,
+          clientRequestId: client.createRequestId()
+        }, this.writeOpts()), transferPart.successTextOf('request'), 'transfer');
+      }
+    });
+  },
+  onTransferAcceptTap() {
+    if (this.guardReadonly()) {
+      return;
+    }
+    this.submitWrite(() => orderApi.acceptTransfer({
+      orderNo: this.data.orderNo,
+      clientRequestId: client.createRequestId()
+    }, this.writeOpts()), transferPart.successTextOf('accept'));
+  },
+  onTransferDeclineTap() {
+    if (this.guardReadonly()) {
+      return;
+    }
+    const confirm = transferPart.declineConfirmOf();
+    wx.showModal({
+      title: confirm.title,
+      content: this.writeHint(confirm.content),
+      confirmText: confirm.confirmText,
+      success: (res) => {
+        if (!res.confirm) {
+          return;
+        }
+        this.submitWrite(() => orderApi.declineTransfer({
+          orderNo: this.data.orderNo,
+          clientRequestId: client.createRequestId()
+        }, this.writeOpts()), transferPart.successTextOf('decline'));
+      }
+    });
+  },
+  onTransferCancelTap() {
+    if (this.guardReadonly()) {
+      return;
+    }
+    const confirm = transferPart.cancelConfirmOf();
+    wx.showModal({
+      title: confirm.title,
+      content: this.writeHint(confirm.content),
+      confirmText: confirm.confirmText,
+      success: (res) => {
+        if (!res.confirm) {
+          return;
+        }
+        this.submitWrite(() => orderApi.cancelTransfer({
+          orderNo: this.data.orderNo,
+          clientRequestId: client.createRequestId()
+        }, this.writeOpts()), transferPart.successTextOf('cancel'));
+      }
+    });
+  },
+
   // 写动作统一入口：loading 防重 → 成功 toast（TEST_WRITE 带测试数据提示）→ 重拉 DTO；状态/版本冲突（INVALID_TRANSITION/CONFLICT）自动刷新，不保留旧按钮态。
   submitWrite(run, successText, panelName) {
     if (this.guardReadonly()) {
@@ -317,7 +418,7 @@ Page(Object.assign({
   },
 
   onPanelClose() {
-    this.setData({ panel: '', correctError: '', exceptionError: '', deliveryError: '', reasonError: '' });
+    this.setData({ panel: '', correctError: '', exceptionError: '', deliveryError: '', reasonError: '', transferError: '' });
   },
   noop() {},
 

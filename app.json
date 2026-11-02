@@ -30,7 +30,8 @@
         "pages/service-settings/index",
         "pages/stats/index",
         "pages/messages/index",
-        "pages/pick-list/index"
+        "pages/pick-list/index",
+        "pages/team/index"
       ]
     },
     {

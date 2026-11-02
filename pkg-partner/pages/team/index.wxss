@@ -1,0 +1,113 @@
+/* pkg-partner/pages/team/index.wxss · 我的团队（D59）局部样式；颜色/间距复用 app.wxss token */
+.error-tip {
+  color: #B45309;
+  background: #FFF7E6;
+  font-size: 26rpx;
+}
+
+.team-line {
+  margin-top: 16rpx;
+  align-items: center;
+}
+
+.team-line .small:first-child {
+  width: 160rpx;
+  flex-shrink: 0;
+}
+
+.lock-text {
+  margin-top: 8rpx;
+  color: #8A6D00;
+}
+
+.member-row {
+  align-items: center;
+  padding: 20rpx 0;
+  border-bottom: 1rpx solid var(--v4-line);
+}
+
+.member-row:last-child {
+  border-bottom: none;
+}
+
+.member-main {
+  min-width: 0;
+}
+
+.member-meta {
+  margin-top: 8rpx;
+  align-items: center;
+}
+
+.status-text {
+  margin-left: 16rpx;
+  color: var(--v4-text-2);
+}
+
+.invite-group {
+  padding-top: 16rpx;
+}
+
+.invite-head {
+  align-items: center;
+  padding: 8rpx 0 16rpx;
+  border-top: 1rpx solid var(--v4-line);
+}
+
+.invite-row {
+  padding: 8rpx 0 8rpx 24rpx;
+}
+
+.form-line {
+  min-height: 88rpx;
+  border-top: 1rpx solid var(--v4-line);
+}
+
+.form-chips {
+  flex-wrap: wrap;
+}
+
+.chip {
+  min-height: 64rpx;
+  line-height: 64rpx;
+  padding: 0 24rpx;
+  border-radius: 32rpx;
+  background: #F0F2F5;
+  color: var(--v4-text-2);
+  font-size: 26rpx;
+  margin: 8rpx 16rpx 8rpx 0;
+}
+
+.chip-active {
+  background: var(--v4-partner);
+  color: #FFFFFF;
+}
+
+.full-reason {
+  color: #B45309;
+  margin: 12rpx 0;
+}
+
+.create-btn {
+  margin-top: 16rpx;
+}
+
+.result-card {
+  background: #E8F0FF;
+}
+
+.code-row {
+  padding: 8rpx 0;
+}
+
+.code-text {
+  font-family: Menlo, "Courier New", monospace;
+  font-size: 40rpx;
+  letter-spacing: 2rpx;
+  color: var(--v4-partner);
+}
+
+.result-hint {
+  margin-top: 8rpx;
+  color: #8A6D00;
+}

@@ -1,6 +1,8 @@
 // pages/partner/workbench/index.js · 取件清单（工作台）· 页面只做取参/接线/setData，判据与流程在 parts/*
 // 口径：UX_PARTNER §4（工作台专章）、§6（READONLY/TEST_WRITE）。数据源 order.listPartner；
 // 行级动作只消费服务端行内 actions[]（批6-A），页面零七状态字面量、零 wx.cloud、零编号生成。
+// 批 26（D58）：顶部「待接收转派」区块 + 红点复用既有 badges.workbenchPending；
+// 拉取/增量渲染接线拆到 parts/load-flow，转派区块接线拆到 parts/transfer-flow（页面行数 ≤500，门禁 #18）。
 'use strict';
 
 const orderApi = require('../../../api/modules/order');
@@ -14,11 +16,10 @@ const actionFlow = require('./parts/action-flow');
 const loadView = require('./parts/load-view');
 const guideView = require('./parts/guide-view');
 const dayView = require('./parts/day-view');
+const transferView = require('./parts/transfer');
 const share = require('../../../utils/share/handlers');
 
 const DETAIL_PAGE = '/pkg-partner/pages/order-detail/index?orderNo=';
-const ACCOUNT_SWITCH_PAGE = '/pkg-admin/pages/account-switch/index';
-const CHUNK_DELAY_MS = 16;
 
 const base = {
   data: {
@@ -48,6 +49,8 @@ const base = {
     batchResult: null,
     panel: null,
     undo: actionFlow.closedUndo(),
+    // D58 待接收转派：count 来自服务端顶层 transferPending；rows 来自 view='transfer'（服务端过滤）
+    transfer: transferView.closedState(),
     banner: { visible: false, pendingNew: 0, text: '', actionText: '去看看' },
     completed: { text: '', expanded: false, loading: false, sections: [], moreText: '', hasMore: false, nextCursor: null },
     guide: guideView.closedState(),
@@ -67,6 +70,8 @@ const base = {
     this._ack = null;
     this._chunkToken = 0;
     this._lastBatch = null;
+    this._transferRows = [];
+    this._transferToken = 0;
     this._maintenanceClosed = '';
     this._maintenanceView = null;
     this._configFetchedAt = 0;
@@ -205,139 +210,8 @@ const base = {
     });
   },
 
-  startPolling() {
-    this.stopPolling();
-    this.poller = setInterval(() => {
-      if (!this.data.batchRunning) {
-        this.load({ poll: true });
-      }
-    }, loadView.POLL_MS);
-  },
-
-  stopPolling() {
-    if (this.poller) {
-      clearInterval(this.poller);
-      this.poller = null;
-    }
-  },
-
   // P0-11：onHide/onUnload 清理防抖定时器（切走瞬间输入不再触发卸载后请求）
   clearSearchTimer() { if (this.searchTimer) { clearTimeout(this.searchTimer); this.searchTimer = null; } },
-
-  load(options) {
-    const opts = options || {};
-    if (!opts.poll && this.data.stage !== 'ready') {
-      this.setData({ stage: 'skeleton', errorText: '' });
-    }
-    const payload = loadView.queryOf({ filterKey: this.data.filter, keyword: this.data.keyword });
-    return orderApi.listPartner(payload).then((data) => this.applyResult(data, opts)).catch((err) => this.loadError(err, opts));
-  },
-
-  loadError(err, opts) {
-    if (err && err.code === 'VIEW_TICKET_EXPIRED') {
-      wx.showModal({
-        title: '切换会话已过期',
-        content: '请回「切换账号」重新开启。',
-        showCancel: false,
-        success: () => wx.reLaunch({ url: ACCOUNT_SWITCH_PAGE })
-      });
-      return;
-    }
-    // 维护闸拒读兜底（正常口径读放行，此处只保证不把 INVALID_STATE 吞成网络错误）
-    const maintenanceFallback = this.maintenanceFallbackOf(err);
-    if (maintenanceFallback) {
-      this.setData({
-        maintenance: {
-          visible: true,
-          title: maintenanceFallback.view.title,
-          text: maintenanceFallback.view.text
-        }
-      });
-      if (opts.poll || this.data.stage === 'ready') {
-        this.setData({ syncError: maintenanceFallback.text });
-        return;
-      }
-      this.setData({
-        stage: 'error',
-        errorText: maintenanceFallback.text,
-        empty: loadView.emptyOf({ filter: this.data.filter })
-      });
-      return;
-    }
-    const text = loadView.errorTextOf(this.data.lastSuccessText);
-    if (opts.poll || this.data.stage === 'ready') {
-      this.setData({ syncError: text });
-      return;
-    }
-    this.setData({ stage: 'error', errorText: text, empty: loadView.emptyOf({ filter: this.data.filter }) });
-  },
-
-  applyResult(data, options) {
-    const opts = options || {};
-    const prev = { list: this._list, page1Keys: this._page1Keys, groups: this.data.groups, counts: this.data.counts };
-    const plan = loadView.applyRefresh(prev, data, {
-      filterKey: this.data.filter,
-      keyword: this.data.keyword,
-      selectedMap: this.data.selecting ? groupView.selectionMapOf(this.data.groups) : null,
-      nowMs: Date.now()
-    });
-    this._list = plan.list;
-    this._page1Keys = plan.page1Keys;
-    // D54：今日流水（view=day）的 summary 才是「今日已送达」口径；其它 chip 的旧 D48 summary 不覆盖它
-    if (this.data.filter === filterView.FILTER_ALL && data && data.summary) {
-      this._summary = data.summary;
-      this._summaryCounts = plan.counts;
-      this._summaryDayKey = dayView.dayDateKeyOf(Date.now());
-    }
-    const result = loadView.resultPatch(plan, {
-      filterKey: this.data.filter,
-      poll: opts.poll,
-      selecting: this.data.selecting,
-      prevGroups: prev.groups,
-      nowMs: Date.now()
-    });
-    this.setData(result.setData);
-    // P0-5：每个结果都作废旧分片追加（旧片不得落到新结构上）；replace 结果才继续分帧追加
-    const token = (this._chunkToken || 0) + 1;
-    this._chunkToken = token;
-    if (result.chunk) {
-      this.appendChunks(result.appendPatches, token);
-    }
-    this.syncBadge(plan.counts);
-    this.syncBanner(plan.counts);
-  },
-
-  // P0-5：分片追加只发新片 `groups[n]` 路径补丁，不 concat 重发已渲染组
-  appendChunks(patches, token) {
-    if (!patches || !patches.length) {
-      return;
-    }
-    const step = (rest) => {
-      if (this._chunkToken !== token || !rest.length) {
-        return;
-      }
-      this.setData(rest[0]);
-      if (rest.length > 1) {
-        setTimeout(() => step(rest.slice(1)), CHUNK_DELAY_MS);
-      }
-    };
-    setTimeout(() => step(patches), CHUNK_DELAY_MS);
-  },
-
-  // P0-6：先判等再 store.patch（轮询无变化时零通知，隐藏页/其他订阅者不再重算）
-  syncBadge(counts) {
-    const current = store.get('badges') || {};
-    const next = loadView.badgePatch(counts, current);
-    if (next.workbenchPending === current.workbenchPending && next.messages === current.messages) return;
-    store.patch({ badges: next });
-  },
-
-  syncBanner(counts) {
-    if (this._ack === null) {
-      this._ack = counts.submitted;
-    }
-    this.setData({ banner: loadView.bannerOf(counts, this._ack) });
-  },
 
   onRefreshTap() {
     this._historyDirty = true;
@@ -493,6 +367,10 @@ const base = {
 
 // 维护模式挂钩以「页面方法」形态并入 base（不改 workbench 既有入口合并方式，F21 口径保持）
 Object.assign(base, require('./parts/maintenance-hook'));
+// 加载/轮询/增量渲染接线（批 26 拆件：原 index.js 内联方法逐字搬移）
+Object.assign(base, require('./parts/load-flow'));
+// D58：顶部「待接收转派」区块接线（count 取服务端 transferPending，行取 view='transfer'）
+Object.assign(base, require('./parts/transfer-flow'));
 // 件级取件接线（D61）：逐件「已取件/撤销已取」→ itemIndex 写请求；页面只做事件转发
 Object.assign(base, require('./parts/piece-flow'));
 

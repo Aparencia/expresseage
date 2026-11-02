@@ -1,4 +1,4 @@
-// handlers/order/index.js · 订单域 action 注册表（19 个动作，键名逐字对齐 shared/actions.js）
+// handlers/order/index.js · 订单域 action 注册表（23 个动作，键名逐字对齐 shared/actions.js）
 'use strict';
 
 module.exports = {
@@ -20,6 +20,11 @@ module.exports = {
     'order.correct': require('./correct'),
     'order.undo': require('./undo'),
     'order.deleteRecord': require('./deleteRecord'),
-    'order.imageUrl': require('./imageUrl')
+    'order.imageUrl': require('./imageUrl'),
+    // D58（批 26）：转派四写动作（acceptTransfer 是唯一订单归属改写点）
+    'order.requestTransfer': require('./requestTransfer'),
+    'order.acceptTransfer': require('./acceptTransfer'),
+    'order.declineTransfer': require('./declineTransfer'),
+    'order.cancelTransfer': require('./cancelTransfer')
   }
 };

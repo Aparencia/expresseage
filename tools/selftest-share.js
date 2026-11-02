@@ -9,9 +9,11 @@
  *   B. 朋友圈卡片纯件：{title,query:'',imageUrl}，query 恒空、不自定义落地 path（平台限制）；
  *      单页模式场景 1154 判定与提示文案。
  *   C. 平台适配（注入假 api，不 mock 全局 wx）：切换会话隐藏/恢复菜单只调一次、单页模式识别与异常降级。
- *   D. 静态接线：20 页好友转发 / 3 页朋友圈 / 后台 11 页零分享；app.json 页面集与清单双向一致；
+ *   D. 静态接线：19 页好友转发 / 3 页朋友圈 / 后台 11 页零分享；app.json 页面集与清单双向一致（D64 取件码页禁分享）；
  *      app.js 单页模式跳过云启动、switch-bar 会话禁分享收口、页面自拼卡片零命中（反例有牙）。
  *   E. 中性封面素材：存在、PNG 签名、尺寸 5:4 与 1:1、体积上限。
+ *   S. D63 顾客邀请顾客：兼职/顾客同一张绑定卡（S1/S2）、无绑定回通用卡（S3）、切会话通用卡（S4）、
+ *      零泄漏（S5）、页面/纯件静态零自拼 + 装配单源（S6）、check-share path 白名单门禁（S7）。
  *
  * 纪律：不 mock 全局 wx；先合法基线再反例；EXPECTED_ASSERTIONS 与实际断言数精确相等。
  * 取数：node tools/selftest-share.js | Select-Object -Last 2
@@ -22,12 +24,17 @@ const { createHarness, installCrashGuard } = require('./selftest');
 const zeroMoney = require('./zero-money-scan');
 
 const ROOT = path.resolve(__dirname, '..');
-const EXPECTED_ASSERTIONS = 195; // 实跑读数：node tools/selftest-share.js（批24-D64：转发清单 20→19 页 -4 断言；新增取件码页禁分享 +1）
+const EXPECTED_ASSERTIONS = 248; // 实跑读数：node tools/selftest-share.js（D63：+S1~S7 共 52 条；D59：团队页禁分享 +1 条）
 
 const sharePages = require('./lib/share-pages');
+const checkShare = require('./lib/check-share');
 const share = require(path.join(ROOT, 'utils/share/index.js'));
 const platform = require(path.join(ROOT, 'utils/share/platform.js'));
 const route = require(path.join(ROOT, 'config/route.js'));
+const ids = require(path.join(ROOT, 'utils/ids.js'));
+const enums = require(path.join(ROOT, 'shared/enums.js'));
+const profileVm = require(path.join(ROOT, 'pages/profile/parts/view-model.js'));
+const profileShareCard = require(path.join(ROOT, 'pages/profile/parts/share-card.js'));
 
 const PAGES_JSON = path.join(ROOT, 'app.json');
 
@@ -216,11 +223,16 @@ function register(h) {
     t.eq(sharePages.TIMELINE.length, 3, '朋友圈页面清单 3 页（role/home/help）');
     t.eq(sharePages.ADMIN_PAGES.length, 11, '后台页面清单 11 页（零分享）');
     // D64：取件码页是本机 L3 明文页，明确禁分享——既不在清单、也不得私挂钩子（其余业务页仍双向对帐）
-    const NO_SHARE = ['pages/customer/pickcodes/index.js'];
+    // D59：团队页含子邀请码/成员信息（治理数据不外传），同样禁分享
+    const NO_SHARE = ['pages/customer/pickcodes/index.js', 'pkg-partner/pages/team/index.js'];
     const noShareSource = readText(NO_SHARE[0]);
     t.check(noShareSource.indexOf('onShareAppMessage') === -1 && noShareSource.indexOf('onShareTimeline') === -1
       && sharePages.APP_MESSAGE.indexOf(NO_SHARE[0]) === -1,
     'D64 取件码页（本机 L3）不提供分享/转发：无分享钩子且不在好友转发清单');
+    const teamPageSource = readText(NO_SHARE[1]);
+    t.check(teamPageSource.indexOf('onShareAppMessage') === -1 && teamPageSource.indexOf('onShareTimeline') === -1
+      && sharePages.APP_MESSAGE.indexOf(NO_SHARE[1]) === -1,
+    'D59 团队页不提供分享/转发：无分享钩子且不在好友转发清单（邀请码/成员信息不外传）');
     const business = businessPageFiles().filter((rel) => NO_SHARE.indexOf(rel) === -1).sort();
     t.eq(business, sharePages.APP_MESSAGE.slice().sort(), 'app.json 业务页集合（除禁分享页外）= 好友转发清单（新增页面漏接即红）');
 
@@ -296,6 +308,148 @@ function register(h) {
     const badPage = 'Page({\n  onShareAppMessage() {\n    return { title: "校园快递代取", path: "/pages/role/index?bind=P-7K2-M9X" };\n  }\n});';
     t.eq(selfBuiltCard(badPage, 'onShareAppMessage'), true, '反例命中：页面自拼 title/path 会被本断言判红');
     t.check(handlerBody(badPage, 'onShareAppMessage').indexOf('title:') !== -1, '钩子体抽取位置稳定（判据可复现）');
+  });
+
+  // ------------------------------------------------------------ S. D63 顾客邀请顾客
+  h.section('S D63 顾客邀请顾客（同一张绑定卡 / 无绑定回通用 / 切会话通用 / 零泄漏 / 静态 / 门禁）', (t) => {
+    const BOUND = { partnerNo: 'P-7K2-M9X' };
+    const profileJs = readText('pages/profile/index.js');
+    const profileWxml = readText('pages/profile/index.wxml');
+    const roleWxml = readText('pages/role/index.wxml');
+    const shareCardJs = readText('pages/profile/parts/share-card.js');
+    const pageBoundPath = route.LAUNCH_PAGE + '?bind=P-7K2-M9X';
+
+    // S1 基线-兼职：有编号 → 绑定卡（D63 不改兼职侧行为）
+    const partnerCard = share.buildAppMessage({ isCustomer: false, viewSession: false, partnerCard: BOUND });
+    t.eq(partnerCard.path, pageBoundPath, 'S1 兼职基线：绑定卡 path=launch?bind=<编号>（D36 口径不变）');
+    t.eq(partnerCard.title, share.TITLES.BIND, 'S1 兼职基线：标题仍是兼职 BIND（D63 不改兼职文案）');
+
+    // S2 基线-顾客：有 ACTIVE 绑定 → 同一张卡（同 path、同 query 键，只换中性标题）
+    const customerBind = share.buildAppMessage({ isCustomer: true, viewSession: false, boundPartnerNo: 'P-7K2-M9X' });
+    t.eq(customerBind.path, partnerCard.path, 'S2 顾客基线：有绑定时 path 与兼职卡逐字相同（同一张绑定卡）');
+    t.eq(customerBind.title, share.TITLES.BIND_CUSTOMER, 'S2 顾客基线：标题=TITLES.BIND_CUSTOMER（单源常量）');
+    t.check(customerBind.title !== share.TITLES.BIND, 'S2 顾客卡标题与兼职卡不同（顾客不说"我在做代取"）');
+    t.check(!/(奖励|返现|红包|提成|佣金|邀请者|邀请人|分享者|昵称|头像|宿舍)/.test(customerBind.title),
+      'S2 顾客卡标题零奖励/邀请者/个人信息字样（中性）');
+    t.eq(zeroMoney.scanText(share.TITLES.BIND_CUSTOMER).length, 0, 'S2 顾客卡标题零金额词（复用零金额词表单源）');
+    t.eq(Object.keys(customerBind).sort(), ['imageUrl', 'path', 'title'], 'S2 顾客绑定卡同样只有 {title,path,imageUrl} 三键');
+    const noRole = share.buildAppMessage({ viewSession: false, partnerCard: BOUND, boundPartnerNo: 'P-7K2-M9X' });
+    t.eq(noRole.path, route.LAUNCH_PAGE, 'S2 身份缺省 → 通用卡（放行式严格判 true/false，不看真值）');
+
+    // S3 无绑定：顾客无 boundPartnerNo → 通用卡（零 query）；接 partnerCard 也不能放行（防扩面）
+    const unbound = share.buildAppMessage({ isCustomer: true, viewSession: false });
+    t.eq(unbound.path, route.LAUNCH_PAGE, 'S3 顾客无绑定 → 通用卡（launch 零 query，不拼 ?bind=）');
+    t.eq(unbound.title, share.TITLES.GENERIC, 'S3 顾客无绑定 → 通用标题');
+    const blankBound = share.buildAppMessage({ isCustomer: true, viewSession: false, boundPartnerNo: '   ' });
+    t.eq(blankBound.path, route.LAUNCH_PAGE, 'S3 空白绑定编号按无绑定处理（不拼空 bind）');
+    const customerWithPartnerCard = share.buildAppMessage({ isCustomer: true, viewSession: false, partnerCard: BOUND });
+    t.eq(customerWithPartnerCard.path, route.LAUNCH_PAGE, 'S3 顾客不能靠 partnerCard 放行（只认 boundPartnerNo，防越权）');
+
+    // S4 切会话：viewSession===true 一律通用卡（哪怕有编号/绑定，不外发目标账号编号）
+    [{
+      isCustomer: true, boundPartnerNo: 'P-7K2-M9X'
+    }, {
+      isCustomer: false, partnerCard: BOUND
+    }].forEach((src, index) => {
+      const msg = share.buildAppMessage(Object.assign({ viewSession: true }, src));
+      t.eq(msg.path, route.LAUNCH_PAGE, 'S4 切换会话（#' + index + '）→ 通用卡，不外发编号');
+      t.eq(msg.title, share.TITLES.GENERIC, 'S4 切换会话（#' + index + '）→ 通用标题');
+    });
+
+    // S5 零泄漏：卡片对象序列化后不含邀请者编号/昵称/头像/宿舍/尾号/订单/取件码/票据
+    const leakCard = share.buildAppMessage({
+      isCustomer: true,
+      viewSession: false,
+      boundPartnerNo: 'P-7K2-M9X',
+      customerNo: 'C7K2M9X1',
+      inviter: 'C7K2M9X1',
+      displayName: '小王',
+      avatarFileId: 'cloud://avatars/x.png',
+      dormKey: 'D4-522',
+      phoneTail: '6678',
+      orderNo: 'C20261028000001',
+      pickupCode: '207-3-1014',
+      viewTicket: 'T'.repeat(32)
+    });
+    const leakText = JSON.stringify(leakCard);
+    ['C7K2M9X1', '小王', 'cloud://', 'D4-522', '6678', 'C20261028000001', '207-3-1014', 'T'.repeat(32)]
+      .forEach((token) => {
+        t.check(leakText.indexOf(token) === -1, 'S5 顾客绑定卡零泄漏「' + token + '」');
+      });
+    t.eq(leakCard.path, pageBoundPath, 'S5 卡片 path 逐字等于 launch?bind=<编号>（零新增 query）');
+    t.eq(leakCard.path.split('&').length, 1, 'S5 path 无第二个参数（无 inviter= 等追加）');
+
+    // S6 静态：页面/纯件不自拼 path/title；装配单源在 view-model（顾客 ACTIVE 绑定 → partnerCard）
+    t.check(/onShareAppMessage\(\)\s*\{/.test(profileJs), 'S6 我的页挂好友转发钩子');
+    const body = handlerBody(profileJs, 'onShareAppMessage');
+    t.check(body.indexOf('shareCard.buildShareMessage(') !== -1, 'S6 我的页钩子只调纯件（不自拼卡片）');
+    t.check(!selfBuiltCard(profileJs, 'onShareAppMessage'), 'S6 我的页钩子零 title/path/imageUrl 自拼');
+    t.check(body.indexOf('boundPartnerNo:') !== -1, 'S6 我的页钩子显式传 boundPartnerNo（D63 数据装配在页面）');
+    t.check(profileJs.indexOf('?bind=') === -1 && profileWxml.indexOf('?bind=') === -1,
+      'S6 我的页 js/wxml 零绑定 path 自拼（页面层零判据）');
+    t.check(shareCardJs.indexOf('buildAppMessage') !== -1 && !/(?:title|path|imageUrl)\s*:/.test(shareCardJs),
+      'S6 share-card 薄封装只透传（零标题/路径构造）');
+    t.check(profileWxml.indexOf('open-type="share"') !== -1, 'S6 我的页保留分享按钮（Q15=A：唯一顾客分享入口）');
+    t.eq((readText('utils/share/index.js').match(/\bwx\./g) || []).length, 0, 'S6 卡片纯件零 wx 调用（可离线直测）');
+    t.check(roleWxml.indexOf('兼职绑定卡') !== -1 && roleWxml.indexOf('兼职邀请你绑定') === -1,
+      'S6 落地邀请卡标题中性（D63：顾客分享的卡同样成立，不声称"兼职邀请你绑定"）');
+    t.check(!/邀请者|邀请人/.test(roleWxml), 'S6 落地页零邀请者字样（顾客分享不暴露邀请者信息）');
+
+    const vmBound = profileVm.buildVm({
+      roles: ['CUSTOMER'],
+      activeRole: 'CUSTOMER',
+      customer: {},
+      binding: { status: enums.BINDING_STATUS.ACTIVE, partnerNo: 'P-7K2-M9X' }
+    });
+    t.eq(vmBound.partnerCard && vmBound.partnerCard.partnerNo, 'P-7K2-M9X',
+      'S6 顾客 ACTIVE 绑定 → 页面 partnerCard 带绑定兼职编号（装配单源）');
+    const vmPublic = profileVm.buildVm({
+      roles: ['CUSTOMER'],
+      activeRole: 'CUSTOMER',
+      customer: {},
+      binding: { status: enums.BINDING_STATUS.ACTIVE, partnerNo: '', partnerPublic: { partnerNo: 'P-7K2-M9X' } }
+    });
+    t.eq(vmPublic.partnerCard && vmPublic.partnerCard.partnerNo, 'P-7K2-M9X',
+      'S6 store.binding.partnerPublic.partnerNo 优先（P0-3 水合口径）');
+    const vmUnbound = profileVm.buildVm({ roles: ['CUSTOMER'], activeRole: 'CUSTOMER', customer: {}, binding: null });
+    t.eq(vmUnbound.partnerCard, null, 'S3 顾客无绑定 → partnerCard 为空（分享回通用卡）');
+    const vmReleased = profileVm.buildVm({
+      roles: ['CUSTOMER'],
+      activeRole: 'CUSTOMER',
+      customer: {},
+      binding: { status: enums.BINDING_STATUS.RELEASED, partnerNo: 'P-7K2-M9X' }
+    });
+    t.eq(vmReleased.partnerCard, null, 'S3 已解绑（RELEASED）→ partnerCard 为空（不外发旧编号）');
+    const vmPartner = profileVm.buildVm({
+      roles: ['PARTNER'],
+      activeRole: 'PARTNER',
+      partner: { status: enums.PARTNER_STATUS.ACTIVE, acceptingOrders: true, partnerNo: 'P-8F3-K2M' }
+    });
+    t.eq(vmPartner.partnerCard && vmPartner.partnerCard.partnerNo, 'P-8F3-K2M', 'S1 兼职 partnerCard 不被 D63 误伤（仍是身份卡）');
+    const pageMsg = profileShareCard.buildShareMessage({
+      isCustomer: true,
+      viewSession: false,
+      partnerCard: vmBound.partnerCard,
+      boundPartnerNo: vmBound.partnerCard.partnerNo
+    });
+    t.eq(pageMsg.path, pageBoundPath, 'S2 端到端：我的页数据 → 顾客绑定卡 path（页面零自拼）');
+    const pageNoBind = profileShareCard.buildShareMessage({
+      isCustomer: true, viewSession: false, partnerCard: null, boundPartnerNo: ''
+    });
+    t.eq(pageNoBind.path, route.LAUNCH_PAGE, 'S3 端到端：无绑定页面数据 → 通用卡');
+
+    // S7 门禁：check-share path 白名单（bind 值必须过兼职编号形态，零新增 query）
+    t.eq(checkShare.landingProblemsOf(route.LAUNCH_PAGE, route.LAUNCH_PAGE, ids), [], 'S7 通用卡 path（launch 零 query）放行');
+    t.eq(checkShare.landingProblemsOf(pageBoundPath, route.LAUNCH_PAGE, ids), [], 'S7 绑定卡 path（bind=合法兼职编号）放行');
+    t.check(checkShare.landingProblemsOf(route.LAUNCH_PAGE + '?bind=C7K2M9X', route.LAUNCH_PAGE, ids).length > 0,
+      'S7 反例：bind=顾客编号必须判红');
+    t.check(checkShare.landingProblemsOf(route.LAUNCH_PAGE + '?bind=P7K2M9X&inviter=C7K2M9X', route.LAUNCH_PAGE, ids).length > 0,
+      'S7 反例：追加 inviter= 等 query 必须判红');
+    t.check(checkShare.landingProblemsOf('/pages/role/index?bind=P7K2M9X', route.LAUNCH_PAGE, ids).length > 0,
+      'S7 反例：直落 role 必须判红');
+    t.eq(ids.isPartnerNo('P7K2M9X'), true, 'S7 bind 值归一后 = shared/validate 兼职编号形态（P+6 位）');
+    t.eq(ids.isPartnerNo('P0O1I2X'), false, 'S7 反例：含易混字符的编号不算合法（判据有牙）');
+    t.eq(checkShare.run(), null, 'S7 门禁 #33 全量通过（含 D63 顾客绑定卡 path 白名单）');
   });
 
   // ------------------------------------------------------------ E. 中性封面素材

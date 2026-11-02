@@ -1,11 +1,11 @@
 'use strict';
 /**
- * tools/selftest-partner-pages.js — 代客下单/客户档案端侧断言套件（A~O；D44 同批 + T5-A 收口）。
+ * tools/selftest-partner-pages.js — 代客下单/客户档案端侧断言套件（A~Q；D44 同批 + T5-A 收口）。
  * A 客户列表 / B 顾客详情 / C 解绑流程 / D 代客下单两路径 / E 字段校验矩阵 / F READONLY+transport /
  * G 静态纪律 / H 激活页邀请码 / I 代客缺陷回归 / J 服务类型目录 / K D42 头像 / N D44 站点按件+多图+识别预填 /
- * O T5-A TD-084 逐件识别兜底·幂等键按件·超限请分单·预约请求时校时（TD-083 结果块配置化在 D 段）。
- * 纪律：纯件 + api 层 fake transport（禁 mock 全局 wx、不连网络）；先合法基线再反例；样本非空；
- *      EXPECTED_ASSERTIONS 与实际断言数精确相等（少算/多算都判红）。
+ * O T5-A TD-084 逐件识别兜底·幂等键按件·超限请分单·预约请求时校时（TD-083 结果块配置化在 D 段）；
+ * Q 批27/D59 团队页（主兼职成员/子码批次作废/移除/名额 + 子队员队伍摘要 + 零判据静态扫）。
+ * 纪律：纯件 + api 层 fake transport（禁 mock 全局 wx、不连网络）；先合法基线再反例；样本非空；EXPECTED_ASSERTIONS 与实际精确相等。
  * 取数：node tools/selftest-partner-pages.js | Select-Object -Last 2
  */
 const path = require('path');
@@ -35,16 +35,14 @@ const serviceSettingsModel = require(path.join(ROOT, 'pkg-partner/pages/service-
 const shareCard = require(path.join(ROOT, 'pages/profile/parts/share-card.js'));
 const codeInput = require(path.join(ROOT, 'pkg-partner/pages/activate/parts/code-input-model.js'));
 
-// 注意：F 段（异步 fake transport）必须注册在最后——harness 的异步断言在 await 之后才计入，
-// 若后面再注册同步段，console 的节标题会被后注册的段名覆盖。
+// 注意：F 段（异步 fake transport）必须注册在最后——异步断言在 await 之后才计入，后注册同步段会覆盖节标题。
 // 226 + 17：T5-A 收口（TD-083 结果块配置化 3 条 + TD-084 逐件兜底/幂等粒度/超限/请求时校时 14 条）
-// 243 + P 组批20-C 首屏流式/占位/排序置底/底部安全区（36 条，拆到 tools/lib/partner-pages-cases.js）
+// 243 基线 + P 组批20-C 36 条 + 批24/D67 客户页筛选器 12 条 + 批27/D59 团队页（Q 组断言数在 cases 内独立记账）
 const cases = require(path.join(__dirname, 'lib', 'partner-pages-cases.js'));
 // TD-083/T5-A 拆件：夹具/静态扫描样本拆到 tools/lib/partner-pages-cases.js（控测试文件 ≤950 行，门禁 #18；
 // tools/lib 不参与 tools/selftest.js 注册完整性闸，先例 tools/lib/workbench-cases.js）。
-// 批 24/D67：客户页筛选器段（A2）断言数独立记账，不改 cases.PERF_EXPECTED_ASSERTIONS。
 const D67_PAGE_ASSERTIONS = 12;
-const EXPECTED_ASSERTIONS = 243 + cases.PERF_EXPECTED_ASSERTIONS + D67_PAGE_ASSERTIONS;
+const EXPECTED_ASSERTIONS = 243 + cases.PERF_EXPECTED_ASSERTIONS + D67_PAGE_ASSERTIONS + cases.TEAM_PAGE_ASSERTIONS;
 
 const {
   CONFIG, PARTNER, NOW, DAY, ROW_1, ROW_2, STATUS_LITERALS, bindingRow, orderRow,
@@ -837,6 +835,8 @@ function register(h) {
   // ------------------------------------------------------------------ P 批20-C 首屏流式/占位/排序置底
   h.section('P. 批20-C：客户页首屏 6 张灰占位/分片 setData/刷新行级 diff 沿用头像/空 dormKey 置底/底部安全区',
     (t) => cases.perfChecks(t));
+  // ------------------------------------------------------------------ Q 批27/D59 团队页
+  h.section('Q. D59 团队页：成员/子码批次作废/移除/名额 + 子队员摘要 + 零判据静态扫（§2.3/§2.4）', (t) => cases.teamChecks(t));
   // ------------------------------------------------------------------ F READONLY/TEST_WRITE + transport
   h.section('F. READONLY/TEST_WRITE 与 fake transport：包络/零请求/票据/分享（§6.3、§6.4）', async (t) => {
     const captured = [];

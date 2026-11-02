@@ -43,6 +43,17 @@ function personTextOf(displayName, no) {
   return name || number;
 }
 
+// D58 转派留痕（只读、编号级）：行内小标签「转派 P-A→P-B」；无编号（历史单/匿名化）时不显示，
+// 状态与时间等完整留痕放详情页（列表不新增列，避免布局破坏）。
+function transferTextOf(row) {
+  const transfer = row && row.transfer && typeof row.transfer === 'object' ? row.transfer : null;
+  if (!transfer) return '';
+  const from = transfer.fromPartnerNo || '';
+  const to = transfer.toPartnerNo || '';
+  if (!from && !to) return '';
+  return '转派 ' + (from || '—') + '→' + (to || '—');
+}
+
 function decorateRow(item) {
   const row = item || {};
   const exception = row.exception || {};
@@ -60,7 +71,8 @@ function decorateRow(item) {
     partnerText: personTextOf(row.partnerDisplayName, row.partnerNo),
     reportedAtText: exception.reportedAt ? F.formatTime(exception.reportedAt) : '',
     parcelCountText: parcelCountTextOf(row.parcelCount),
-    manualEntryText: manualEntryTextOf(row)
+    manualEntryText: manualEntryTextOf(row),
+    transferText: transferTextOf(row)
   };
 }
 

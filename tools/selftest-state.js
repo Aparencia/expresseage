@@ -15,6 +15,7 @@ const project = require('./lib/project');
 const ROOT = path.resolve(__dirname, '..');
 const state = require(path.join(ROOT, 'shared/order-state.js'));
 const enums = require(path.join(ROOT, 'shared/enums.js'));
+const actions = require(path.join(ROOT, 'shared/actions.js'));
 const orderView = require(path.join(ROOT, 'shared/order-view.js'));
 const format = require(path.join(ROOT, 'shared/format.js'));
 const validate = require(path.join(ROOT, 'shared/validate.js'));
@@ -26,7 +27,7 @@ const statusView = require(path.join(ROOT, 'pkg-customer/parts/status-view.js'))
 const createModel = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/model.js'));
 const appointUtil = require(path.join(ROOT, 'shared/appoint.js'));
 
-const EXPECTED_ASSERTIONS = 361; // 355 + 6：D61 件级取件状态规则（unmarkPicked 起点 PICKED/ACCEPTED、逐件撤销同状态目标、件级事件 2 种登记） // 354 + 1：D51 送达自动完成提示新口径（该时刻前当天完成/该时刻后下一轮，无旧顺延文案）；同步 `node tools/selftest-state.js` 读数 // 344 + 10：D47 预约 LATEST 枚举/文案/选项/边界/载荷/摘要/指纹/拦截
+const EXPECTED_ASSERTIONS = 405; // 361 + 44：批 26 冻结层（D58 转派 5 事件/4 状态规则/4 写动作、D59 4 动作/INVITATION_KIND/validateTeamNote+validity、4 个 config 出厂键+CONFIG_LIMITS）；同步 `node tools/selftest-state.js` 读数 // 355 + 6：D61 件级取件状态规则（unmarkPicked 起点 PICKED/ACCEPTED、逐件撤销同状态目标、件级事件 2 种登记） // 354 + 1：D51 送达自动完成提示新口径（该时刻前当天完成/该时刻后下一轮，无旧顺延文案）；同步 `node tools/selftest-state.js` 读数 // 344 + 10：D47 预约 LATEST 枚举/文案/选项/边界/载荷/摘要/指纹/拦截
 
 const STATUS = state.STATUS;
 const ALL_ROLES = ['CUSTOMER', 'PARTNER', 'SYSTEM', 'ADMIN'];
@@ -85,8 +86,13 @@ function sectionActionRules(h) {
   h.section('§5.1 动作规则与角色（接单/取消/undo/异常恢复）', (t) => {
     const rules = state.ACTION_RULES;
     const actionNames = Object.keys(rules);
+    // 批 26/D58：转派四动作先落冻结层，CONTRACT 动作镜像（tools/lib/project.js）在批 27 文档回写时补；
+    // 这里显式豁免并以新组断言其登记（防「镜像未同步」与「规则漏登记」互相掩盖）。
+    const TRANSFER_ACTION_RULES = ['order.requestTransfer', 'order.acceptTransfer',
+      'order.declineTransfer', 'order.cancelTransfer'];
     t.notEmpty(actionNames, '§5.1 动作规则样本（空集不得判绿）');
-    t.check(actionNames.every((a) => !!project.ACTIONS[a]), '§5.1 动作规则全部在 CONTRACT 动作镜像中登记');
+    t.check(actionNames.filter((a) => TRANSFER_ACTION_RULES.indexOf(a) === -1)
+      .every((a) => !!project.ACTIONS[a]), '§5.1 动作规则全部在 CONTRACT 动作镜像中登记（批 26 转派 4 动作待批 27 回写）');
     t.check(actionNames.every((a) => rules[a].from.every((s) => state.isOrderStatus(s))),
       '§5.1 from 全部为合法状态');
     t.check(actionNames.every((a) => ['SAME', 'UNDO', 'FROM_STATUS'].indexOf(rules[a].to) !== -1
@@ -95,10 +101,10 @@ function sectionActionRules(h) {
       && rules[a].roles.every((role) => ALL_ROLES.indexOf(role) !== -1)), '§5.1 每个动作角色非空且合法');
     t.check(actionNames.filter((a) => a !== 'order.undo')
       .every((a) => enums.ORDER_EVENTS.indexOf(rules[a].event) !== -1),
-    '§5.1 事件类型都在 19 种枚举内（undo 事件按 UNDO_TARGETS 动态解析）');
+    '§5.1 事件类型都在 24 种枚举内（undo 事件按 UNDO_TARGETS 动态解析）');
     t.check(Object.keys(state.UNDO_TARGETS).every(
       (from) => enums.ORDER_EVENTS.indexOf(state.UNDO_TARGETS[from].event) !== -1),
-    '§5.1 undo 实际落库事件在 19 种枚举内');
+    '§5.1 undo 实际落库事件在 24 种枚举内');
     t.eq(enums.ORDER_EVENTS.length, enums.ORDER_EVENT_COUNT, '§5.1 事件枚举条数与登记一致');
 
     t.eq(rules['order.accept'].roles, ['PARTNER'], '§5.1 接单仅兼职');
@@ -130,7 +136,7 @@ function sectionActionRules(h) {
     t.eq(state.nextStatus('order.unmarkPicked', STATUS.ACCEPTED), STATUS.ACCEPTED,
       '§5.1/D61 逐件撤销目标=同状态 ACCEPTED（状态不变但 statusUpdatedAt 仍更新）');
     t.check(['PARCEL_PICKED', 'PARCEL_PICKED_REVERTED'].every((type) => enums.ORDER_EVENTS.indexOf(type) >= 0)
-      && enums.ORDER_EVENT_COUNT === 19, '§5.1/D61 件级事件 2 种已登记且事件总数=19');
+      && enums.ORDER_EVENT_COUNT === 24, '§5.1/D61 件级事件 2 种已登记且事件总数=24（批 26/D58 由 19 增至 24）');
 
     t.check(state.canAct('order.accept', STATUS.SUBMITTED, 'PARTNER'), '§5.1 兼职可接待接单');
     t.check(!state.canAct('order.accept', STATUS.SUBMITTED, 'CUSTOMER'), '§5.1 顾客不可接单');
@@ -193,6 +199,110 @@ function sectionActionRules(h) {
     t.eq(state.progressIndex('EXCEPTION'), -1, '§5 异常不占进度');
     t.eq(state.actionRule('order.accept'), rules['order.accept'], '§5.1 动作查询返回同一规则对象');
     t.eq(state.actionRule('order.noSuchAction'), null, '§5.1 未登记动作查询返回 null');
+  });
+}
+
+// ---------------------------------------------------------------- 批 26 冻结层（D58 转派 / D59 子队员）
+function sectionBatch26Frozen(h) {
+  h.section('§5.1/§4.2/§3 批 26 冻结层（D58 转派 / D59 子队员 / 出厂默认）', (t) => {
+    // D58：5 个 TRANSFER_* 事件（19→24），追加在 GUEST_ORDER_CLAIMED 之后；顾客消息中心拉黑 4 个私有事件
+    t.eq(enums.ORDER_EVENTS.length, 24, '§5.1/D58 事件类型 24 种（19→24）');
+    t.eq(enums.ORDER_EVENT_COUNT, 24, '§5.1/D58 事件登记数与枚举同源（24）');
+    t.eq(enums.ORDER_EVENTS.slice(-5), ['TRANSFER_REQUESTED', 'TRANSFER_ACCEPTED', 'TRANSFER_DECLINED',
+      'TRANSFER_CANCELLED', 'TRANSFER_EXPIRED'], '§5.1/D58 转派 5 事件追加在 GUEST_ORDER_CLAIMED 之后');
+    t.eq(new Set(enums.ORDER_EVENTS).size, enums.ORDER_EVENTS.length, '§5.1/D58 事件枚举无重复值');
+    t.eq(Object.keys(enums.TRANSFER_STATUS).sort(), ['ACCEPTED', 'CANCELLED', 'DECLINED', 'EXPIRED', 'PENDING'],
+      '§5.1/D58 TRANSFER_STATUS 五值');
+    t.eq(Object.keys(enums.TRANSFER_STATUS_TEXT).sort(), Object.keys(enums.TRANSFER_STATUS).sort(),
+      '§5.1/D58 转派状态中文覆盖五值（不重不漏）');
+    t.eq([enums.TRANSFER_STATUS_TEXT.PENDING, enums.TRANSFER_STATUS_TEXT.ACCEPTED,
+      enums.TRANSFER_STATUS_TEXT.DECLINED, enums.TRANSFER_STATUS_TEXT.CANCELLED,
+      enums.TRANSFER_STATUS_TEXT.EXPIRED],
+    ['待对方确认', '已转派', '对方已拒收', '已撤回', '邀请已过期'],
+    '§5.1/D58 转派状态中文文案（服务端 DTO 下发，页面零判据）');
+    t.eq(Object.keys(enums.TRANSFER_RESOLVE_REASON).sort(),
+      ['EXPIRED', 'FROM_CANCELLED', 'STATE_CHANGED', 'TARGET_ACCEPTED', 'TARGET_DECLINED'],
+      '§5.1/D58 TRANSFER_RESOLVE_REASON 五值');
+    t.eq(enums.MESSAGE_HIDDEN_EVENT_TYPES.slice(),
+      ['TRANSFER_REQUESTED', 'TRANSFER_DECLINED', 'TRANSFER_CANCELLED', 'TRANSFER_EXPIRED'],
+      '§5.1/D58 顾客消息中心只拉黑 4 个私有转派事件（TRANSFER_ACCEPTED 保留可见）');
+    t.check(enums.MESSAGE_HIDDEN_EVENT_TYPES.every((type) => enums.ORDER_EVENTS.indexOf(type) >= 0),
+      '§5.1/D58 拉黑集全部是已登记事件（零拼写漂移）');
+    t.eq(Object.keys(enums.INVITATION_KIND).sort(), ['DEV', 'SUB'], '§5.1/D59 邀请码类别 DEV/SUB 两值');
+
+    // D58 状态规则：四动作 ACCEPTED 起始、to='SAME'（不改订单状态）、PARTNER 角色、事件逐一对齐
+    const transferRuleActions = ['order.requestTransfer', 'order.acceptTransfer',
+      'order.declineTransfer', 'order.cancelTransfer'];
+    t.check(transferRuleActions.every((a) => !!state.ACTION_RULES[a]), '§5.1/D58 转派四动作全部登记在状态规则');
+    t.eq(transferRuleActions.map((a) => state.ACTION_RULES[a].to), ['SAME', 'SAME', 'SAME', 'SAME'],
+      '§5.1/D58 转派四动作 to=SAME（不产生订单状态迁移）');
+    t.eq(transferRuleActions.map((a) => state.ACTION_RULES[a].from),
+      [['ACCEPTED'], ['ACCEPTED'], ['ACCEPTED'], ['ACCEPTED']], '§5.1/D58 转派四动作仅 ACCEPTED 起始');
+    t.check(transferRuleActions.every((a) => state.ACTION_RULES[a].roles.join(',') === 'PARTNER'),
+      '§5.1/D58 转派四动作仅兼职可执行');
+    t.check(transferRuleActions.every((a) => state.ACTION_RULES[a].changesStatus === false),
+      '§5.1/D58 转派四动作 changesStatus=false');
+    t.eq(transferRuleActions.map((a) => state.ACTION_RULES[a].event),
+      ['TRANSFER_REQUESTED', 'TRANSFER_ACCEPTED', 'TRANSFER_DECLINED', 'TRANSFER_CANCELLED'],
+      '§5.1/D58 转派四动作事件逐一对齐');
+    t.check(transferRuleActions.every((a) => enums.ORDER_EVENTS.indexOf(state.ACTION_RULES[a].event) >= 0),
+      '§5.1/D58 转派规则事件都在 24 种枚举内');
+    t.eq(transferRuleActions.map((a) => state.nextStatus(a, STATUS.ACCEPTED)),
+      ['ACCEPTED', 'ACCEPTED', 'ACCEPTED', 'ACCEPTED'], '§5.1/D58 引擎 SAME 通路返回原状态（不改引擎）');
+    t.check(transferRuleActions.every((a) => state.canAct(a, STATUS.ACCEPTED, 'PARTNER')),
+      '§5.1/D58 已接单兼职可执行四个转派动作');
+    t.check(transferRuleActions.every((a) => !state.canAct(a, STATUS.SUBMITTED, 'PARTNER')
+      && !state.canAct(a, STATUS.PICKED, 'PARTNER')), '§5.1/D58 非 ACCEPTED 状态不可执行转派（含已取件）');
+    t.check(transferRuleActions.every((a) => !state.canAct(a, STATUS.ACCEPTED, 'CUSTOMER')),
+      '§5.1/D58 顾客不可执行转派动作');
+
+    // actions 注册表：D58 四写 + D59 三写一读（write 标记逐条对齐；listSubMembers 为读）
+    const actionWriteExpect = {
+      'order.requestTransfer': true, 'order.acceptTransfer': true, 'order.declineTransfer': true,
+      'order.cancelTransfer': true, 'partner.createSubInvites': true, 'partner.revokeSubInvite': true,
+      'partner.listSubMembers': false, 'partner.removeSubMember': true
+    };
+    const registryNames = Object.keys(actionWriteExpect);
+    t.check(registryNames.every((a) => actions.isRegisteredAction(a)),
+      '§5.1/D58+D59 注册表新增 8 条全部登记');
+    t.check(registryNames.every((a) => actions.isClientAction(a)), '§5.1/D58+D59 注册表新增 8 条全部 client 可见');
+    t.check(registryNames.every((a) => actions.isWriteAction(a) === actionWriteExpect[a]),
+      '§5.1/D58+D59 注册表 write 标记与契约一致（listSubMembers 为读）');
+
+    // config 出厂默认（唯一默认源）+ CONFIG_LIMITS；四个键不进公开子集、不改后台白名单
+    t.eq(defaults.DEFAULT_CONFIG.transferTtlMinutes, 10, '§4.2/D58 转派邀请有效期出厂 10 分钟');
+    t.eq(defaults.DEFAULT_CONFIG.transferRate, { perMinute: 3, perDay: 20 },
+      '§4.2/D58 转派发起限流出厂 3/分钟、20/日');
+    t.eq(defaults.DEFAULT_CONFIG.teamMaxMembers, 5, '§4.2/D59 队伍成员上限出厂 5 人');
+    t.eq(defaults.DEFAULT_CONFIG.subInviteRate, { perMinute: 3, perDay: 20 },
+      '§4.2/D59 子码发码限流出厂 3/分钟、20/日');
+    t.check(['transferTtlMinutes', 'transferRate', 'teamMaxMembers', 'subInviteRate']
+      .every((key) => defaults.PUBLIC_CONFIG_KEYS.indexOf(key) === -1),
+    '§4.2 四个新治理键不进公开子集');
+    t.check(['transferTtlMinutes', 'transferRate', 'teamMaxMembers', 'subInviteRate']
+      .every((key) => defaults.pickPublicConfig(defaults.DEFAULT_CONFIG)[key] === undefined),
+    '§4.2 公开配置实际裁剪结果不含四个新治理键');
+    t.eq(defaults.CONFIG_LIMITS.transferTtlMinutes, { min: 1, max: 60 }, '§4.2/D58 转派有效期范围 1~60 分钟');
+    t.eq(defaults.CONFIG_LIMITS.transferRate, { perMinute: { min: 1, max: 30 }, perDay: { min: 1, max: 200 } },
+      '§4.2/D58 转派限流范围（逐窗口对象形制）');
+    t.eq(defaults.CONFIG_LIMITS.teamMaxMembers, { min: 1, max: 10 }, '§4.2/D59 队伍上限范围 1~10 人');
+    t.eq(defaults.CONFIG_LIMITS.subInviteRate, { perMinute: { min: 1, max: 30 }, perDay: { min: 1, max: 200 } },
+      '§4.2/D59 子码限流范围（逐窗口对象形制）');
+    t.eq(defaults.PUBLIC_CONFIG_KEYS.length, 11, '§4.2 公开子集键数零变化（11 项，批 26 不下发新键）');
+
+    // validate：子码备注 ≤50（可缺省）+ 有效期三值
+    t.eq(validate.TEXT_LIMITS.teamNote, 50, '§3/D59 子码备注上限 50 字（单源常量）');
+    t.check(validate.validateTeamNote(undefined).ok && validate.validateTeamNote('').ok,
+      '§3/D59 子码备注可缺省（空串/undefined 通过）');
+    t.eq(validate.validateTeamNote('备'.repeat(51)).reason, 'TOO_LONG', '§3/D59 备注超 50 字拒绝');
+    t.check(validate.validateTeamNote('  报备  ').value === '报备', '§3/D59 备注去首尾空白');
+    t.eq(validate.validateTeamNote(5).reason, 'TYPE', '§3/D59 备注非字符串拒绝');
+    t.check(validate.validateSubInviteValidity('24H').ok && validate.validateSubInviteValidity('72H').ok
+      && validate.validateSubInviteValidity('7D').ok, '§3/D59 子码有效期 24H/72H/7D 三值合法');
+    t.eq(validate.validateSubInviteValidity('168H').reason, 'NOT_ALLOWED',
+      '§3/D59 非登记有效期拒绝（168H 不在 24H/72H/7D）');
+    t.eq(validate.validateSubInviteValidity('').reason, 'NOT_ALLOWED',
+      '§3/D59 缺省有效期拒绝（createSubInvites 必填）');
   });
 }
 
@@ -368,8 +478,8 @@ function sectionValidate(h) {
   h.section('§3 字段校验（文本上限 / 编号形态 / 宿舍身份）', (t) => {
     t.eq(validate.TEXT_LIMITS, {
       note: 200, deliveryNote: 100, partnerNote: 100, msg: 200, exception: 200,
-      lockerNo: 10, displayName: 20, releaseNote: 100, failureNote: 100
-    }, '§3 文本上限与 CONTRACT 一致');
+      lockerNo: 10, displayName: 20, releaseNote: 100, failureNote: 100, teamNote: 50
+    }, '§3 文本上限与 CONTRACT 一致（批 26/D59 增子码备注 50）');
     t.check(validate.validateText('a'.repeat(200), 200, 'note', true).ok, '§3 恰好达上限通过');
     t.eq(validate.validateText('a'.repeat(201), 200, 'note', true).reason, 'TOO_LONG', '§3 超上限拒绝');
     t.eq(validate.validateText('  x  ', 200, 'note', false).value, 'x', '§3 文本去首尾空白');
@@ -722,6 +832,7 @@ function sectionOrderCreateModel(h) {
 function register(h) {
   sectionStatusMachine(h);
   sectionActionRules(h);
+  sectionBatch26Frozen(h);
   sectionEnumsCopy(h);
   sectionServices(h);
   sectionOrderView(h);

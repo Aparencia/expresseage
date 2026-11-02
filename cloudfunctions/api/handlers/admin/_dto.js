@@ -243,6 +243,22 @@ async function loadOrderDisplayNames(scope, orders) {
 }
 
 // ── 订单 ─────────────────────────────────────────────────────────────────────
+// D58（批 26）转派只读留痕（admin 投影）：只给状态/双方编号/失效时刻/解决原因，无 openid、无内部 id；
+// 历史单无 transfer 字段 → null（零迁移）。列表行与详情共用（详情另经 orderDetail 继承）。
+function transferBrief(order) {
+  const block = order && order.transfer;
+  if (!block || typeof block !== 'object') {
+    return null;
+  }
+  return {
+    status: typeof block.status === 'string' ? block.status : '',
+    fromPartnerNo: typeof block.fromPartnerNo === 'string' ? block.fromPartnerNo : '',
+    toPartnerNo: typeof block.toPartnerNo === 'string' ? block.toPartnerNo : '',
+    expiresAt: dateValue(block.expiresAt),
+    resolveReason: typeof block.resolveReason === 'string' ? block.resolveReason : ''
+  };
+}
+
 // 列表行（脱敏）：v1.0 只出聚合件数（件数/需查明件数/无截图标记/苑+栋地址），**不出逐件码/柜号/尾号**
 // （列表是最高频出口，逐件 L3 类字段只在详情按件打码后下发，DATA_MODEL §2.5/§7.6）。
 function orderBrief(order, isTest, names) {
@@ -271,6 +287,9 @@ function orderBrief(order, isTest, names) {
     customerDisplayName: maskedName(display.customerDisplayName),
     partnerNo: doc.partnerNo || '',
     partnerDisplayName: maskedName(display.partnerDisplayName),
+    // D58：当前实际履约兼职编号（= orders.partnerNo 快照）+ 最近一次转派留痕（只读投影）
+    fulfillmentPartnerNo: doc.partnerNo || '',
+    transfer: transferBrief(doc),
     isTest: isTest === true || doc.isTest === true,
     // v1.0（D23/D24/D25）：单量按订单计（一行=1 单），件数独立呈现；无截图手填单独标记
     parcelCount: parcels.length,
@@ -338,25 +357,6 @@ function auditBrief(record) {
     target: doc.target || { type: '', id: '' },
     detail: doc.detail || {},
     at: dateValue(doc.at)
-  };
-}
-
-function inviteBrief(invite, partner) {
-  const doc = invite || {};
-  const code = doc.code || '';
-  return {
-    invitationCode: code,
-    codeTail: code.slice(-4),
-    status: doc.status || '',
-    statusText: enums.INVITATION_STATUS_LABELS[doc.status] || '',
-    batchId: doc.batchId || '',
-    expiresAt: dateValue(doc.expiresAt),
-    usedByPartnerNo: partner ? partner.partnerNo || '' : '',
-    usedByDisplayName: partner ? maskedName(partner.displayName) : '',
-    usedAt: dateValue(doc.usedAt),
-    note: typeof doc.note === 'string' ? doc.note : '',
-    createdBy: doc.createdBy || '',
-    createdAt: dateValue(doc.createdAt)
   };
 }
 
@@ -457,7 +457,6 @@ module.exports = {
   orderDetail,
   eventBrief,
   auditBrief,
-  inviteBrief,
   testAccountBrief,
   failureBrief,
   failureDetail,

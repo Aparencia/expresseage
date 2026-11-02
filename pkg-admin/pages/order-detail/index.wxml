@@ -47,6 +47,39 @@
       </view>
     </view>
 
+    <view class="card" wx:if="{{order.transfer}}">
+      <text class="section-title">转派留痕</text>
+      <view class="row between info-row">
+        <text class="muted">状态</text>
+        <text>{{order.transfer.statusText}}</text>
+      </view>
+      <view class="row between info-row">
+        <text class="muted">发起方编号</text>
+        <text>{{order.transfer.fromPartnerNoText}}</text>
+      </view>
+      <view class="row between info-row">
+        <text class="muted">接收方编号</text>
+        <text>{{order.transfer.toPartnerNoText}}</text>
+      </view>
+      <view class="row between info-row" wx:if="{{order.transfer.requestedAtText}}">
+        <text class="muted">发起时间</text>
+        <text>{{order.transfer.requestedAtText}}</text>
+      </view>
+      <view class="row between info-row" wx:if="{{order.transfer.expiresAtText}}">
+        <text class="muted">有效期至</text>
+        <text>{{order.transfer.expiresAtText}}</text>
+      </view>
+      <view class="row between info-row" wx:if="{{order.transfer.resolvedAtText}}">
+        <text class="muted">处理时间</text>
+        <text>{{order.transfer.resolvedAtText}}</text>
+      </view>
+      <view class="row between info-row" wx:if="{{order.transfer.resolveReasonText}}">
+        <text class="muted">处理结果</text>
+        <text>{{order.transfer.resolveReasonText}}</text>
+      </view>
+      <view class="small">留痕只含编号与时间；转派不改变订单号/顾客/绑定关系。</view>
+    </view>
+
     <view class="card">
       <view class="row between">
         <text class="section-title">包裹</text>

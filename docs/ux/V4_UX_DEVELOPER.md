@@ -143,12 +143,12 @@ wx 启动 → pages/launch/index → user.bootstrap
 | # | 路径 | 名称 | 入口 | 主要动作 |
 | :-- | :-- | :-- | :-- | :-- |
 | 1 | `pkg-admin/pages/overview/index` | 总览 | launch 分流 / 切换会话退出 | `admin.stats`、`admin.listAudit` |
-| 2 | `pkg-admin/pages/invite-codes/index` | 邀请码 | 总览快捷入口 | `createInvites`/`revokeInvite`/`listInvites` |
+| 2 | `pkg-admin/pages/invite-codes/index` | 邀请码 | 总览快捷入口 | `createInvites`/`revokeInvite`/`listInvites`；**D59 增 `kind` 列（DEV/SUB）与 `issuerPartnerNo`，SUB 码只读不可作废** |
 | 3 | `pkg-admin/pages/customers/index` | 顾客列表 | 总览 | `admin.listCustomers` |
 | 4 | `pkg-admin/pages/customer-detail/index` | 顾客详情 | 顾客列表行 | `admin.getCustomer` + `admin.listOrders` |
 | 5 | `pkg-admin/pages/partners/index` | 兼职列表 | 总览 | `admin.listPartners`、`setPartnerStatus`、账号切换入口 |
-| 6 | `pkg-admin/pages/orders/index` | 订单总览/异常工单 | 总览 | `admin.listOrders` |
-| 7 | `pkg-admin/pages/order-detail/index` | 订单详情（只读） | 订单总览/异常工单 | `admin.getOrder`、异常单 `order.cancel`（ADMIN） |
+| 6 | `pkg-admin/pages/orders/index` | 订单总览/异常工单 | 总览 | `admin.listOrders`；**D58 行可选只读「转派」标记**（不新增列、不破坏布局） |
+| 7 | `pkg-admin/pages/order-detail/index` | 订单详情（只读） | 订单总览/异常工单 | `admin.getOrder`（**D58 含只读转派留痕**）、异常单 `order.cancel`（ADMIN） |
 | 8 | `pkg-admin/pages/config/index` | 全局配置 | 总览 | `admin.updateConfig`（读走 `admin.stats` 配置区块） |
 | 9 | `pkg-admin/pages/account-switch/index` | 账号切换（真实只读 / 测试可写 + 测试账号管理） | 总览「切换账号」/顾客详情/兼职列表 | `viewAsStart`/`viewAsEnd` + `createTestAccount`/`listTestAccounts`/`deleteTestAccount`/`purgeTestData` + 目标搜索/列表 |
 | 10 | `pkg-admin/pages/messages/index` | 后台消息 | 总览铃铛/红点 | `admin.listOrders(status=EXCEPTION)` + `admin.listRecognitionFailures(status=PENDING)` 摘要 + 配置状态（聚合视图） |
@@ -192,12 +192,13 @@ wx 启动 → pages/launch/index → user.bootstrap
 **目标/入口**：邀请码生成、批量、复制、作废、状态查看的唯一入口；从总览「生成邀请码」进入，生成成功留在本页刷新列表。
 **线框**：
 ```
-[← 总览] 邀请码 [生成邀请码]   [全部 32][未使用 20][已使用 8][已作废 3][已过期 1]
-行：****-****-{后4} · 未使用 · 批次 B{…} · 有效期至 {t} · 创建 {t} [作废]
+[← 总览] 邀请码 [生成邀请码]   [全部 32][未使用 20][已使用 8][已作废 3][已过期 1]  [类型：全部▾]
+行：****-****-{后4} · 未使用 · 类型 DEV · 批次 B{…} · 有效期至 {t} · 创建 {t} [作废]
 已使用行：使用人 P-7K2-M9X 小王 · {usedAt}
+子码行（D59）：****-****-{后4} · 未使用 · 类型 SUB · 发码人 P-8F3-K2M · 批次 TB{…} · 有效期至 {t}（**只读，无「作废」**）
 ```
-**组件/数据来源**：状态筛选 tab（含计数）、邀请码行卡、生成弹层、生成结果弹层、作废确认框、空态；数据= `admin.listInvites({status?,cursor?,limit?})`/`admin.createInvites`/`admin.revokeInvite`。
-**状态/交互校验**：加载=列表骨架；空=`还没有邀请码…`；筛选空=另一文案；错误=错误条+重试；无权限=回总览。生成数量 1~50、有效期四选一（默认 7 天）、备注 ≤50；提交防连点；作废仅 `UNUSED` 可点；分页 20、下拉刷新（细则本文 §4）。
+**组件/数据来源**：状态筛选 tab（含计数）、邀请码行卡、生成弹层、生成结果弹层、作废确认框、空态；数据= `admin.listInvites({status?,cursor?,limit?})`/`admin.createInvites`/`admin.revokeInvite`。**D59/v1.10**：列表增 `kind` 列（`DEV`/`SUB`）与 `issuerPartnerNo`（本页批量查、不 N+1）；**SUB 码只读**——`partner.createSubInvites` 生成、`partner.revokeSubInvite` **按批次**作废（在兼职团队页操作），后台**不可作废**（行内无按钮、不提供跨域操作）；筛选可按类型（全部/DEV/SUB）。
+**状态/交互校验**：加载=列表骨架；空=`还没有邀请码…`；筛选空=另一文案；错误=错误条+重试；无权限=回总览。生成数量 1~50、有效期四选一（默认 7 天）、备注 ≤50；提交防连点；作废仅 `UNUSED` 可点（仅 DEV 码）；分页 20、下拉刷新（细则本文 §4）。
 **文案/跳转**：见本文 §11.3；行「作废」确认后原地刷新，使用人只读展示、不做跨页深链。
 
 ### 3.3 顾客列表 `pkg-admin/pages/customers/index`
@@ -244,8 +245,9 @@ wx 启动 → pages/launch/index → user.bootstrap
 行：{orderNo} · {状态} · {服务类型} · D4 · {statusUpdatedAt} · {N 件（N>1 时）} · {无截图（manualEntry）}   [详情]
 测试行（开启后出现）：[测试] {orderNo} · {状态} · {服务类型} · {statusUpdatedAt}
 异常行（置顶）：{异常码文案} · 上报 {t} · P-7K2-M9X
+转派标记（D58，有则显示，不新增列）：行尾小标签「转派中」/「已转派」——只显示状态与目标编号，不展示 openid/顾客昵称
 ```
-**组件/数据来源**：状态筛选 tab（含计数，**只计真实数据**）、搜索框、订单行卡（脱敏、无头像）、测试数据开关（默认关）、分页、空态；数据= `admin.listOrders({status?,keyword?,cursor,limit,includeTest})`（默认 `includeTest=false`，仅测试数据时可切 `true`）；**v1.0/D23 行字段**：`parcelCount`（件数，仅 N>1 显示「N 件」chip）、`needCodeCount`（「N 件需查明」）、`manualEntry`（「无截图」chip）、`delivery{zone,buildingNo,buildingText}`（地址列只显苑/楼栋或下单人宿舍脱敏串）；**列表行不下发逐件取件码/柜号/尾号**（防泄漏，逐件只在详情打码后展示）。
+**组件/数据来源**：状态筛选 tab（含计数，**只计真实数据**）、搜索框、订单行卡（脱敏、无头像）、测试数据开关（默认关）、分页、空态；数据= `admin.listOrders({status?,keyword?,cursor,limit,includeTest})`（默认 `includeTest=false`，仅测试数据时可切 `true`）；**v1.0/D23 行字段**：`parcelCount`（件数，仅 N>1 显示「N 件」chip）、`needCodeCount`（「N 件需查明」）、`manualEntry`（「无截图」chip）、`delivery{zone,buildingNo,buildingText}`（地址列只显苑/楼栋或下单人宿舍脱敏串）；**列表行不下发逐件取件码/柜号/尾号**（防泄漏，逐件只在详情打码后展示）；**D58 行只读转派投影**：`transfer{status,toPartnerNo}` 可选下发（仅真实单；`PENDING`→「转派中」、`ACCEPTED`→「已转派」；**无 openid/无顾客昵称/无 fromPartnerId**），列表不因此加列（放行尾小标签，窄屏不破版）。
 **状态/交互校验**：加载=骨架；空=`当前筛选下没有订单。`；异常空=`没有待处理的异常工单。`；错误=错误条+重试；无权限=回总览。状态筛选/搜索只影响列表、不改计数；异常工单置顶；行只读；**测试数据开关只影响列表展示，不改统计与红点**；分页 20、下拉刷新。
 **文案/跳转**：见本文 §11.5；行 → `order-detail?orderNo=`；异常行 → 详情并显示「介入取消」；测试行带 `测试` 标签（不可介入取消，测试单按测试流程处理）。
 
@@ -259,9 +261,10 @@ wx 启动 → pages/launch/index → user.bootstrap
 包裹（1~10 件，逐件打码）：第 1 件 · P4 菜鸟驿站 · 取件码 7***9 · 柜号 *** · 尾号 ***78
                         第 2 件 · P6 快递柜 · 需查明（NEED_CODE）
 服务：标准代取 · 预约 ASAP · 备注 {note} · 时间线只读   [介入取消（仅真实 EXCEPTION）]
+转派留痕（D58/v1.10，只读）：{fromPartnerNo} → {toPartnerNo} · {状态文案} · {时间} · 原因 {resolveReason}（无 openid、无顾客昵称/头像/编号之外的顾客信息）
 测试单追溯行：由 DEV-01 以测试账号写入（isTest=true，仅显示 developerNo）
 ```
-**组件/数据来源**：状态卡、双方编号卡（无头像、昵称脱敏）、**逐件包裹卡（`parcels[]`，顺序=itemIndex，单件单不显示件序号）**、配送地址行、服务/预约/备注、时间线、介入取消按钮与确认框、测试单标签与追溯行；数据= `admin.getOrder({orderNo})`（含时间线，字段以 DATA_MODEL 为准；`parcels[]` + `parcel`=首件兼容 + `images[]{hasImage,cleaned}` + `imageUploaded` + `manualEntry`；历史单 `parcels` 缺失时回退 `parcel{}` 单件）；**`delivery` 只下发 `zone/buildingNo/buildingText`**，页面不得展示/请求 `recipientName/phoneTail/room/dormKey`；介入取消走 `order.cancel`（ADMIN 执行）。
+**组件/数据来源**：状态卡、双方编号卡（无头像、昵称脱敏）、**逐件包裹卡（`parcels[]`，顺序=itemIndex，单件单不显示件序号）**、配送地址行、服务/预约/备注、**转派留痕块（D58，只读）**、时间线、介入取消按钮与确认框、测试单标签与追溯行；数据= `admin.getOrder({orderNo})`（含时间线，字段以 DATA_MODEL 为准；`parcels[]` + `parcel`=首件兼容 + `images[]{hasImage,cleaned}` + `imageUploaded` + `manualEntry`；历史单 `parcels` 缺失时回退 `parcel{}` 单件）；**D58 只读 `transfer` 投影**：`{status,fromPartnerNo,toPartnerNo,expiresAt,resolveReason}`（**不下发 `toPartnerId/fromPartnerId/openid`**；无转派时整块不渲染）；**`delivery` 只下发 `zone/buildingNo/buildingText`**，页面不得展示/请求 `recipientName/phoneTail/room/dormKey`；介入取消走 `order.cancel`（ADMIN 执行）。
 **状态/交互校验**：加载=骨架；错误=错误条；无权限=回订单列表；不存在=`NOT_FOUND`；非异常无「介入取消」；**测试订单不显示「介入取消」**（测试数据按测试流程处理/清空，不进真实治理动作）。截图无入口（仅真实账号只读会话可看），无「显示完整」；介入取消仅真实 `EXCEPTION`，原因必填 ≤200 + 二次确认（本文 §7.3）。
 **文案/跳转**：见本文 §11.6，脱敏说明`敏感信息默认脱敏；完整值仅在真实账号只读会话中按目标身份查看。`；返回订单总览，取消成功原地刷新。
 
@@ -546,7 +549,7 @@ USED / REVOKED / EXPIRED = 终态；不存在「重新生效」，需要时重�
 - **后台零分享**：`pkg-admin/**` 的 11 个后台页**不挂** `onShareAppMessage`/`onShareTimeline`、无 `open-type="share"` 入口——治理数据不外传（ENGINEERING §8.2 #33③；`selftest-admin-pages` 同口径）。
 - **切换会话禁分享（O3/M-33 关闭）**：`components/switch-bar` 统一调 `utils/share/platform.syncSession(inSession)`——进入 `READONLY`/`TEST_WRITE` 调 `wx.hideShareMenu()` 隐藏右上角「转发/分享到朋友圈」菜单，退出 `showShareMenu({withShareTicket:false})` 恢复（仅状态变化时调 API）；首页/我的/帮助页内分享按钮在 `viewSession` 时不渲染。
 - **卡片中性**：好友转发卡片只有两种、构造单源 `utils/share/index.js`（页面零自拼）——①兼职绑定卡（兼职身份 + 非切换会话 + 有 `partnerNo`，`path=/pages/launch/index?bind={partnerNo}`（D37：先过隐私同意闸），只带编号）；②通用邀请卡（`path=/pages/launch/index`，零 query）。朋友圈卡片 `query` 恒空。一律显式固定中性封面 `/assets/share/cover.png`（5:4）与 `/assets/share/cover-timeline.png`（1:1），**禁止页面截图**——平台默认截图会把取件码/宿舍/尾号等 L3 带进卡片；卡片不含订单号/取件码/站点/宿舍/尾号/头像/昵称/截图/票据/识别原文。
-- **范围与平台事实**：好友转发覆盖顾客/兼职 19 个业务页；朋友圈仅 `pages/role`、`pages/customer/home`、`pkg-customer/pages/help` 三页——朋友圈落地=当前页**单页模式**（scene=1154：无登录态、不能跳页、tabBar 不渲染、云资源不可用），故 `app.js` 启动识别后跳过云初始化与 `user.bootstrap`，三页只做静态预览与「前往小程序」提示；朋友圈为平台 Beta（基础库 ≥2.11.3，支持范围以官方文档为准）、只能经右上角菜单触发、不得诱导分享。
+- **范围与平台事实**：好友转发覆盖顾客/兼职 19 个业务页（完整清单 `tools/lib/share-pages.js`；**禁分享例外两页**——D64 顾客取件码页含本机 L3 明文、D59 主兼职团队页含子邀请码/成员信息，均不提供分享/转发、不进清单，`tools/selftest-share.js` D 组按禁分享清单双向对帐）；朋友圈仅 `pages/role`、`pages/customer/home`、`pkg-customer/pages/help` 三页——朋友圈落地=当前页**单页模式**（scene=1154：无登录态、不能跳页、tabBar 不渲染、云资源不可用），故 `app.js` 启动识别后跳过云初始化与 `user.bootstrap`，三页只做静态预览与「前往小程序」提示；朋友圈为平台 Beta（基础库 ≥2.11.3，支持范围以官方文档为准）、只能经右上角菜单触发、不得诱导分享。
 - **判据与取数**：`node tools/check.js` #33（19 页转发/3 页朋友圈/后台 11 页零分享/固定封面/会话收口/单页模式）+ `node tools/selftest-share.js`（断言数以命令真实输出为准；2026-10-28 实测 **182/182 PASS**）；页面清单单源 `tools/lib/share-pages.js`；真机分享/朋友圈效果属人项（`docs/delivery/V4_QA_CHECKLIST.md` §X），agent 不代勾。开发者后台不提供任何分享/转发入口，也不因治理动作产生外发卡片。
 
 ---

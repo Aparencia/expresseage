@@ -39,6 +39,48 @@
       <view wx:if="{{guestAutoHint}}" class="small auto-hint">{{guestAutoHint}}</view>
     </view>
 
+    <!-- D58 转派：可见性/文案 100% 由服务端 DTO 驱动——发起入口看 actions[] 是否含转派请求动作，
+         邀请/等待/结果看 order.transfer 块（白名单键，无 statusText，中文文案来自 shared 枚举单源）；
+         剩余分钟在纯件算（parts/transfer），页面只渲染；READONLY 不出现写按钮 -->
+    <view wx:if="{{transferCard.visible}}" class="card transfer-card">
+      <!-- 发起入口（DTO actions[] 含 order.requestTransfer） -->
+      <view wx:if="{{transferCard.request.visible}}" class="transfer-request">
+        <view class="row between">
+          <view class="section-title">{{transferCard.request.title}}</view>
+          <view wx:if="{{!readonly}}" class="btn btn-ghost mini-btn" bindtap="onTransferRequestTap">{{transferCard.request.actionText}}</view>
+        </view>
+        <view class="small">{{transferCard.request.hint}}</view>
+        <view wx:if="{{readonly}}" class="small transfer-hint">{{transferCard.request.readonlyHint}}</view>
+      </view>
+
+      <!-- 目标兼职视角：邀请卡（发起方编号 + 剩余 N 分钟 + 确认接收/拒收） -->
+      <view wx:if="{{transferCard.invite.visible}}" class="transfer-invite">
+        <view class="strong">{{transferCard.invite.title}}</view>
+        <view wx:if="{{transferCard.invite.remainingText}}" class="small transfer-remain">{{transferCard.invite.remainingText}}</view>
+        <view wx:if="{{transferCard.invite.hint}}" class="small transfer-hint">{{transferCard.invite.hint}}</view>
+        <view wx:if="{{transferCard.invite.accept || transferCard.invite.decline}}" class="row transfer-actions">
+          <view wx:if="{{transferCard.invite.decline}}" class="btn btn-ghost mini-btn" bindtap="onTransferDeclineTap">{{transferCard.invite.decline.label}}</view>
+          <view wx:if="{{transferCard.invite.accept}}" class="btn btn-primary mini-btn" bindtap="onTransferAcceptTap">{{transferCard.invite.accept.label}}</view>
+        </view>
+      </view>
+
+      <!-- 发起方视角：等待对方确认（剩余 N 分钟）+ 撤回转派 -->
+      <view wx:if="{{transferCard.waiting.visible}}" class="transfer-waiting">
+        <view class="strong">{{transferCard.waiting.title}}</view>
+        <view wx:if="{{transferCard.waiting.targetText}}" class="small">{{transferCard.waiting.targetText}}</view>
+        <view wx:if="{{transferCard.waiting.hint}}" class="small transfer-hint">{{transferCard.waiting.hint}}</view>
+        <view wx:if="{{transferCard.waiting.cancel}}" class="row transfer-actions">
+          <view class="btn btn-ghost mini-btn" bindtap="onTransferCancelTap">{{transferCard.waiting.cancel.label}}</view>
+        </view>
+      </view>
+
+      <!-- 结果态：状态中文文案（已转派/对方已拒收/已撤回/邀请已过期） -->
+      <view wx:if="{{transferCard.result.visible}}" class="transfer-result">
+        <view class="strong">{{transferCard.result.text}}</view>
+        <view wx:if="{{transferCard.result.hint}}" class="small transfer-hint">{{transferCard.result.hint}}</view>
+      </view>
+    </view>
+
     <!-- 取件信息（v1.0 一单多包裹：逐件站点/码/柜/尾号/识别来源；D61 逐件已取状态 + 独立按钮） -->
     <view class="card">
       <view class="row between">
@@ -285,6 +327,24 @@
       <view class="row panel-actions">
         <view class="btn btn-ghost mini-btn" bindtap="onPanelClose">返回</view>
         <view class="btn btn-danger mini-btn" bindtap="onReasonSubmit">{{sending ? '提交中…' : '提交'}}</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- D58 转派面板：输入对方完整 partnerNo（纯件只拦空值，形态由服务端校验并回中文 message）；
+       点「下一步」再走一次二次确认（免责：转派后你将失去该单） -->
+  <view wx:if="{{panel === 'transfer'}}" class="panel-mask" bindtap="onPanelClose">
+    <view class="panel" catchtap="noop">
+      <view class="section-title">{{transferPanel.title}}</view>
+      <view class="small">{{transferPanel.hint}}</view>
+      <view class="form-row">
+        <view class="form-label">对方兼职编号</view>
+        <input class="form-input" maxlength="{{transferPanel.maxLength}}" placeholder="{{transferPanel.placeholder}}" value="{{transferInput}}" bindinput="onTransferInput" />
+      </view>
+      <view wx:if="{{transferError}}" class="error-text">{{transferError}}</view>
+      <view class="row panel-actions">
+        <view class="btn btn-ghost mini-btn" bindtap="onPanelClose">取消</view>
+        <view class="btn btn-primary mini-btn" bindtap="onTransferSubmit">{{sending ? '提交中…' : transferPanel.nextText}}</view>
       </view>
     </view>
   </view>

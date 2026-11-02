@@ -1,18 +1,6 @@
 'use strict';
 /**
- * tools/selftest-admin-pages.js — 批 8-T3「开发者后台端侧 11 页」断言套件（pkg-admin/**）。
- *
- * 覆盖：
- *   §0.3/§11.4/§11.5  五态文案纯件（网络/业务错误分流、无权限说明、空态区分）
- *   §3.1~§3.11        11 页视图模型：脱敏展示、状态标签、测试行「测试」标签、危险确认后果句、表单校验
- *   §5.2/§6.7         列表默认脱敏（服务端 DTO）与测试数据开关/标签口径
- *   §7.2~§7.5         治理动作前置条件与二次确认文案（停用/恢复、介入取消、配置保存、维护开关、测试账号删除/清空）
- *   §5.6/§8.6         识别失败复核：原图按钮、AI 排障码中文映射、补录只回填识别字段、忽略备注必填
- *   §7.2 API 适配层     admin.* 经 api/client 的 transport 注入：动作名/入参/读重试/写不重试/错误映射（不 mock 全局 wx）
- *   静态纪律          四件套齐全、单文件 ≤500 行、零 wx.cloud/七状态字面量/random/本地存储/avatarFileId/孤立 TEST、
- *                     无权限态与错误文案绑定、零金额、语法可编译
- *
- * 纪律：纯件 + api 层 fake transport；不 mock 全局 wx / Page；EXPECTED_ASSERTIONS 与断言数精确相等。
+ * tools/selftest-admin-pages.js — 后台端侧 11 页断言套件（pkg-admin/**）：五态/视图模型脱敏/列表脱敏/治理确认/复核/API 适配层/静态纪律；纯件 + api 层 fake transport，不 mock 全局 wx/Page。
  * 取数：node tools/selftest-admin-pages.js | Select-Object -Last 2
  */
 const path = require('path');
@@ -43,10 +31,9 @@ const accountSwitchVm = require(path.join(ROOT, 'pkg-admin/pages/account-switch/
 const reviewVm = require(path.join(ROOT, 'pkg-admin/pages/recognition-review/parts/view-model.js'));
 const messagesVm = require(path.join(ROOT, 'pkg-admin/pages/messages/parts/view-model.js'));
 
-const EXPECTED_ASSERTIONS = 154 + 22 + 3 + 11 + adminOrdersCases.CLIENT_ASSERTIONS; // +11：D43 自动完成时间 HH:MM 用例表（tools/lib/admin-config-clock-cases.js）；+6：订单行/消息行「称呼（编号）」（tools/lib/admin-orders-cases.js）；余同批 16 前：v1.1/D32 站点卡 16 + 反馈④ 6 + D41 目录 3
+const EXPECTED_ASSERTIONS = 154 + 22 + 3 + 11 + 3 + adminOrdersCases.CLIENT_ASSERTIONS; // +3：批26-D58 后台转派留痕（P 组）；+11：D43 自动完成时间用例表；+6：订单行/消息行「称呼（编号）」；余同批 16 前：v1.1/D32 站点卡 16 + 反馈④ 6 + D41 目录 3
 
-const ADMIN_PAGES = ['overview', 'invite-codes', 'customers', 'customer-detail', 'partners', 'orders',
-  'order-detail', 'config', 'account-switch', 'messages', 'recognition-review'];
+const ADMIN_PAGES = ['overview', 'invite-codes', 'customers', 'customer-detail', 'partners', 'orders', 'order-detail', 'config', 'account-switch', 'messages', 'recognition-review'];
 const STATUS_LITERALS = ['SUBMITTED', 'ACCEPTED', 'PICKED', 'DELIVERED', 'COMPLETED', 'CANCELLED', 'EXCEPTION'];
 const PAGE_SIZE = 20;
 const PAGE_BUILTIN_METHODS = ['setData', 'getTabBar', 'selectComponent', 'triggerEvent'];
@@ -63,8 +50,7 @@ function has(relPath) {
   return fsutil.isFile(rel(relPath));
 }
 
-// 页面方法完整性（反馈④补牙）：页面源码 this.<name>( 必须命中 Page 方法定义或内置白名单。
-// 抽件重构删掉 Page 方法但调用点未改时只在真机运行才炸；这里按源码静态挡住（AGENTS §5.2 不 mock wx/Page）。
+// 页面方法完整性（反馈④补牙）：页面源码 this.<name>( 必须命中 Page 方法定义或内置白名单（抽件删方法但调用点未改只在真机炸，这里静态挡住）。
 function pageMethodGaps(relPath) {
   const code = fsutil.stripComments(textOf(relPath));
   const defined = {};
@@ -982,6 +968,20 @@ function register(h) {
       '总览含「识别失败待复核」统计卡与复核入口（D16/D17 入口）');
     t.check(textOf('pkg-admin/pages/messages/index.wxml').indexOf('去复核') >= 0,
       '后台消息页识别失败摘要行给「去复核」跳转');
+  });
+  h.section('P. D58 转派留痕：详情编号级留痕、列表转派标签、旧单不显示、零 openid/昵称头像', (t) => {
+    const transfer = { status: 'PENDING', fromPartnerNo: 'P-AAA-AAA', toPartnerNo: 'P-BBB-BBB', requestedAt: Date.now(), expiresAt: Date.now() + 600000, resolveReasonText: '订单状态已变，邀请失效' };
+    const trace = orderDetailVm.buildDetailView({ order: { orderNo: '20261022-0031', transfer: transfer }, events: [] }, '').order.transfer || {};
+    t.eq([trace.statusText, trace.fromPartnerNoText, trace.toPartnerNoText, trace.requestedAtText.length > 0, trace.resolveReasonText,
+      orderDetailVm.decorateOrder({ orderNo: 'X' }, 'X').transfer, JSON.stringify(trace).indexOf('openid')],
+    [enums.TRANSFER_STATUS_TEXT.PENDING, 'P-AAA-AAA', 'P-BBB-BBB', true, '订单状态已变，邀请失效', null, -1], 'P1 详情只读留痕：状态中文取 shared 单源 + 发起/接收方编号 + 时间/结果；旧单无 transfer 不留痕；投影零 openid');
+    t.eq([ordersVm.decorateRow({ orderNo: 'Y', transfer: transfer }).transferText, ordersVm.decorateRow({ orderNo: 'Z' }).transferText],
+    ['转派 P-AAA-AAA→P-BBB-BBB', ''], 'P2 列表行转派标签只含编号（无转派/无编号不渲染，不新增列破坏布局）');
+    t.check(textOf('pkg-admin/pages/order-detail/index.wxml').indexOf('转派留痕') >= 0
+      && textOf('pkg-admin/pages/order-detail/index.wxml').indexOf('order.transfer.fromPartnerNoText') >= 0
+      && textOf('pkg-admin/pages/order-detail/index.wxml').indexOf('order.transfer.toPartnerNoText') >= 0
+      && textOf('pkg-admin/pages/orders/index.wxml').indexOf('item.transferText') >= 0,
+    'P3 后台详情/列表 WXML 渲染编号级转派留痕（只读、无 openid/昵称头像）');
   });
 }
 

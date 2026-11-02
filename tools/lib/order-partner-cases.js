@@ -66,8 +66,9 @@ async function listPartnerChecks(t) {
   const cApi = apiOf(db, C1);
 
   const workbench = await pApi.call('order.listPartner', { view: 'workbench' });
-  t.eq(Object.keys(workbench.data || {}).sort(), ['counts', 'list', 'nextCursor', 'summary'],
-    'A1 listPartner 工作台响应顶层键 = counts/list/nextCursor/summary（summary 只增、无 groups/raw）');
+  // D58（批 26）：Workbench 顶层只增 transferPending（待接收转派角标，服务端计数；counts 六项形状不变）
+  t.eq(Object.keys(workbench.data || {}).sort(), ['counts', 'list', 'nextCursor', 'summary', 'transferPending'],
+    'A1 listPartner 工作台响应顶层键 = counts/list/nextCursor/summary/transferPending（只增、无 groups/raw）');
   t.eq(Object.keys(workbench.data.counts).sort(), COUNTS_KEYS.slice().sort(),
     'A2 counts 恰为六项（submitted/accepted/picked/delivered/exception/todayCompleted）');
   t.eq(workbench.data.counts, {
@@ -132,8 +133,9 @@ async function listPartnerChecks(t) {
     'A14 workbench 每行内联 actions[] 非空（行级操作只消费服务端动作，前端不自行判定状态机）');
   t.eq(actionKeysOf(rowSub), ['accept', 'cancel', 'correct', 'message', 'reject'],
     'A15 SUBMITTED 行动作集（接单/拒单/补码/取消/留言）');
-  t.eq(actionKeysOf(rowAcc), ['cancel', 'correct', 'exception', 'message', 'pick'],
-    'A16 ACCEPTED 行动作集（已取件/异常/改码/取消/留言）');
+  // D58（批 26）：ACCEPTED 且一件未取 → 广告转派入口 requestTransfer（页面零判据）；A21 同源矩阵不变
+  t.eq(actionKeysOf(rowAcc), ['cancel', 'correct', 'exception', 'message', 'pick', 'requestTransfer'],
+    'A16 ACCEPTED 行动作集（已取件/异常/改码/取消/留言/转派）');
   t.eq(actionKeysOf(rowPick), ['cancel', 'correct', 'deliver', 'exception', 'message', 'undoPick'],
     'A17 PICKED 行动作集含 5s 窗内 undoPick');
   t.eq(actionKeysOf(rowPickOld).indexOf('undoPick'), -1,

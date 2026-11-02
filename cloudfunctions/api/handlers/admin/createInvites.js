@@ -74,6 +74,27 @@ async function replayOf(scope, replay) {
   };
 }
 
+// 邀请码文档单源（D59：开发者发的都是主码 kind='DEV'/issuerPartnerId 恒 ''，SUB 子码只由 partner 域写）。
+function buildInviteDoc(code, options) {
+  const opt = options;
+  return {
+    code: code,
+    kind: enums.INVITATION_KIND.DEV,
+    issuerPartnerId: '',
+    status: enums.INVITATION_STATUS.UNUSED,
+    batchId: opt.batchId,
+    expiresAt: opt.expiresAt,
+    usedBy: '',
+    usedAt: null,
+    note: opt.note,
+    createdBy: opt.developerNo,
+    createdAt: opt.nowDate,
+    revokedAt: null,
+    revokedBy: '',
+    updatedAt: opt.nowDate
+  };
+}
+
 async function handler(ctx, payload) {
   const scope = await createAdminScope(ctx);
   requireClientRequestId(ctx);
@@ -90,26 +111,12 @@ async function handler(ctx, payload) {
   const batchId = 'B' + time.dayKey(scope.now) + '-' + pad2(seq);
   const expiresAt = new Date(time.addHours(scope.now, expiresInHours));
   const codes = [];
+  const docOptions = { batchId: batchId, expiresAt: expiresAt, note: note, developerNo: scope.developerNo, nowDate: scope.nowDate };
   for (let i = 0; i < count; i += 1) {
     const inserted = await idGenerator.insertUnique(scope.dao, COLLECTIONS.INVITATION_CODES, {
       field: 'code',
       generate: idGenerator.generateInviteCode,
-      build(code) {
-        return {
-          code: code,
-          status: enums.INVITATION_STATUS.UNUSED,
-          batchId: batchId,
-          expiresAt: expiresAt,
-          usedBy: '',
-          usedAt: null,
-          note: note,
-          createdBy: scope.developerNo,
-          createdAt: scope.nowDate,
-          revokedAt: null,
-          revokedBy: '',
-          updatedAt: scope.nowDate
-        };
-      }
+      build: (code) => buildInviteDoc(code, docOptions)
     });
     codes.push(inserted.value);
   }

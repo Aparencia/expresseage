@@ -5,7 +5,7 @@
 #   输出必须同时含：check.js 汇总行、check-docs 汇总行、零金额 0 命中行、selftest 全局汇总行。
 #   只验退出码不够（M-46/R-C-04）：每步还必须命中该步汇总行正则，缺失或不符同样判失败
 #   （"没有汇总输出 = 读数作废"；也禁止用 SKIP/空集把退出码骗成 0）。
-#   判据/套件条数已钉住（TD-085，2026-11-01；批 24/D65 起 check.js 39 条）：check.js 39 条、check-docs 12 条、selftest 36 套；
+#   判据/套件条数已钉住（TD-085，2026-11-01；批 24/D65 起 check.js 39 条，批 26/27 起 selftest 38 套）：check.js 39 条、check-docs 12 条、selftest 38 套；
 #   判据被静默增删时汇总行条数变化即红。故意增删判据必须同批改 $EXPECTED + ENGINEERING §8.2 表，
 #   并留「先红后绿」证据（删一条判据/套件 → 本脚本 exit 1 且 FAIL 行写出期望与实际）。
 # 编码：本文件必须 UTF-8 BOM（门禁 #7）；被编译的 js/wxml/wxss/json 必须无 BOM（门禁 #8）。
@@ -28,7 +28,7 @@ Set-Location $root
 $EXPECTED = @{
   CheckCriteria  = 39
   DocCriteria    = 12
-  SelfTestSuites = 36
+  SelfTestSuites = 38
 }
 
 $steps = @(

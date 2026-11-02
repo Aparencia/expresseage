@@ -648,12 +648,14 @@ C中的隐私合规中的C1 见上文
 **被否**：B 直接改派（对方无确认、顾客无感）；C 退回待接单（推翻「接单不可撤销」口径）。
 **代价/落点**：`orders.transfer` 字段、4 个 action、待接收入口与红点、DTO、动作矩阵、消息通知、限流、审计、8 套判据；CONTRACT §5/§5.1/§5.3/§10、DATA_MODEL §2.6/§8.4、UX_PARTNER/UX_CUSTOMER、QA。
 **真机项**：转派邀请/确认/过期/顾客通知在测试账号两端或双机验证（用户）。
+**批 26/27 冻结补充（2026-11-03，接口草案 §1 Q1~Q12 全部关闭）**：待接收列表复用 `order.listPartner({view:'transfer'})`（顶层只增 `transferPending`，`counts` 六项形状不变）；过期=惰性判定（读到即落 `EXPIRED`，不新增 sweep，代价登记 TD-091）；`pickedCount>0` 禁发起；`PENDING` 期间订单离开 ACCEPTED → `EXPIRED(STATE_CHANGED)`；顾客侧只显示 `partnerNo`+`fulfillmentPartnerNo`；目标兼职 DTO 不给 `customerNo/displayName/avatarUrl`；目标只校验 `status='ACTIVE'`；子队员转派限本队；不新增 audit 枚举；config 新增 `transferTtlMinutes=10`/`transferRate{3,20}`；索引 `idx_transfer_target` 待用户控制台创建；4 个私有事件黑名单 `MESSAGE_HIDDEN_EVENT_TYPES`（存量泛化风险 TD-090）。**文档落点**：CONTRACT §4.2/§5.1/§5.3/§9/§10/§11.2/§13 D58、DATA_MODEL §2.5/§4.8E/§5.1/§5.2/§7.5/§8.4/§12#47~51、ENGINEERING §4.2/§7.5 M25~M30、UX_PARTNER §3.3/§4.1/§4.12、UX_CUSTOMER §3.8、QA §AG1~AG7。
 
 ### D59 · 兼职子队员（Q2=B：主兼职发子邀请码开子账号；顾客不绑定子队员）
 **裁决**：`invitation_codes` 增 `kind('DEV'|'SUB')/issuerPartnerId`；主兼职生成子邀请码（一次性、24h/72h/7d、可作废、默认上限 5 人）；激活写 `partners.parentPartnerId`（仅一层）；子队员为独立兼职账号；**顾客只能绑主兼职、不能绑子队员**（`partner.getPublic` 对子队员 `NOT_FOUND`、`bind.create` 拒绝）；子队员不可代客下单；订单推送 = D58 转派且限本队；主兼职停用/注销级联子队员停用；隐私文本加「订单可能由协作队员协助履约」披露。
 **被否**：A 轻量协作（用户选 B）；队员可被顾客绑定（隐私面扩大）。
 **代价/落点**：改 D3/§1.1/§10 邀请码权限；新增 `partner.createSubInvites/revokeSubInvite/listSubMembers/removeSubMember`、团队页/入口、级联停用、限流、审计、隐私文本；CONTRACT §1/§1.1/§4.2/§10/§11、DATA_MODEL、UX_PARTNER、QA、privacy。
 **真机项**：主兼职发码→子账号激活→转派/推送→子队员履约→主兼职停用级联；隐私文本点检（用户）。
+**批 26/27 冻结补充（2026-11-03，接口草案 §2 Q7~Q13 全部关闭）**：主兼职可见子队员 `partnerNo`+`displayName`（无头像/fileId）；团队页=新分包页 `pkg-partner/pages/team/index`（页数 32→33，批 27 落）；**`revokeSubInvite` 为批次级作废**（`{batchId}`→`{batchId,revokedCount}`；该批无未用码 `INVALID_STATE`、他人批次 `NOT_FOUND`；团队页按 `batchId` 分组「作废本批」）；`removeSubMember`=解除隶属+`SUSPENDED(TEAM_REMOVED)`（恢复需开发者）；不新增 audit 枚举；隐私披露列为 CONTRACT §11.2 **v1.10 新增项（待用户终审）**；config `teamMaxMembers=5`/`subInviteRate{3,20}`；索引 `idx_issuer`/`idx_parent` 待用户控制台创建。**文档落点**：CONTRACT §1.1/§4.2/§5.3/§10/§11.2/§13 D59、DATA_MODEL §2.3/§2.8/§4.8F/§5.1/§5.2/§7.4/§10.4/§12#52~55、ENGINEERING §4.2/§7.5 M31~M34、UX_PARTNER §3.10/§3.12、UX_DEVELOPER §3.2、QA §AG8~AG11、privacy（v1.10 待终审）。
 
 ### D60 · 快递件信息来源可行性结论（Q3=接受推荐）
 **裁决**：结论「受限可行→本项目不可行」，**维持现状**（截图 OCR + 规则 + DeepSeek 去敏文本兜底 + 无截图手填 D24 + 本机清单 D57）；**不做** P1 粘贴短信解析、P2 线下数据合作；不改「永不收集完整手机号」；第三方计费属运营成本，不进程序字段/文案。
@@ -678,9 +680,10 @@ C中的隐私合规中的C1 见上文
 **被否**：记录邀请关系（需 token/新集合+隐私披露）；卡片带邀请者编号（违反 §3.1）。
 **代价/落点**：`utils/share/{index,handlers}`、`pages/profile/**`、`pages/role/**`、`selftest-share`/`check-share`、UX_CUSTOMER、QA。
 **真机项**：顾客分享卡落地→新顾客自动绑定同一兼职（用户）。
+**批 27 冻结补充（2026-11-03，接口草案 §3 Q14/Q15 关闭）**：新增中性标题常量 `TITLES.BIND_CUSTOMER`（卡片类型/字段/path 不变）；分享入口只在「我的」（`pages/profile`）主入口，不进首页/订单详情；`buildAppMessage` 入参 +`boundPartnerNo`、`viewSession=true` 一律通用卡；卡片只带 `partnerNo`、零邀请者信息、不新增 query（`launch` 白名单仍 `bind`/`orderNo`）；**零数据模型变更**。**文档落点**：CONTRACT §8/§11.2/§13 D63、DATA_MODEL §13.1e（零变更说明）、ARCHITECTURE §3.2、UX_CUSTOMER §3.5/§3.6/§6.3、UX_PARTNER §7、ENGINEERING §7.5 M35~M37、QA §AG12。
 
 ### D64 · 顾客取件码升一级入口（Q10=C：伪 tab / 改名「取件码」/ 删 D26 订单区 / 首页入口卡删除 / 本页禁分享）
-**裁决**：页面迁主包 `pages/customer/pickcodes/index`，顾客底部第 4 格「取件码」（页标题「我的取件码」）；因平台 `tabBar.list` 上限 5 项且已满，采用**伪 tab**：底部栏视觉抽共用组件、页面内自绘、`app.json` tabBar 保持 5 项；该页只显示自建本机取件码（写入/删除/复制/已取标记），删除 D26 订单区；首页原入口卡删除；本页不提供分享；D57 本机边界不变。
+**裁决**：页面迁主包 `pages/customer/pickcodes/index`，顾客底部**第 3 格「取件码」（共 4 格：首页/订单/取件码/我的；已按实现核对 `custom-tab-bar/index.js` 注释与伪 tab 顺序，与 CONTRACT §7「视觉同级第 3 格」对齐）**（页标题「我的取件码」）；因平台 `tabBar.list` 上限 5 项且已满，采用**伪 tab**：底部栏视觉抽共用组件、页面内自绘、`app.json` tabBar 保持 5 项；该页只显示自建本机取件码（写入/删除/复制/已取标记），删除 D26 订单区；首页原入口卡删除；本页不提供分享；D57 本机边界不变。
 **被否**：A 兼职「客户」退 tab 换真 tab（改动兼职 IA）；B 订单并入新页（违背同级）；D 维持 3 tab+首页入口（不满足同级）。
 **代价/落点**：页面迁移、共用底部栏组件、app.json/页数注册表/门禁/分享页清单/5 套判据/约 20 处文档；CONTRACT §7/§13、ARCHITECTURE、ENGINEERING、UX_CUSTOMER、QA、review 材料。
 **真机项**：4 格切换手感/返回栈/下拉刷新（用户）。

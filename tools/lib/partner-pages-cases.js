@@ -11,6 +11,8 @@
  *   - 代客下单表单夹具：withStation/parcelOf/ticketFile/boundState/guestState/mutate（D44 逐件站点合法基线）；
  *   - 静态扫描样本：STATUS_LITERALS（七状态字面量样本）、MY_FILES/PAGE_SCRIPTS/PAGE_FILES（G 段静态纪律
  *     与四件套扫描清单）；
+ *   - Q 组（批27/D59 团队页）：teamCaptainDto/teamMemberDto 夹具 + teamChecks（成员/子码批次作废/移除/
+ *     名额/子队员摘要/零判据静态扫；服务端 DTO 形状 = partner.listSubMembers）；
  *   - 接线小工具：textOfRel（只读源码）、stubTransport（api/client transport 注入点，唯一允许的桩）。
  *
  * 非独立套件：由 tools/selftest-partner-pages.js require（拆出以控测试文件 ≤950 行，门禁 #18；
@@ -24,9 +26,12 @@ const ROOT = path.resolve(__dirname, '../..');
 
 const fsutil = require('./fsutil');
 const client = require(path.join(ROOT, 'api/client.js'));
+const partnerApi = require(path.join(ROOT, 'api/modules/partner.js'));
 const enums = require(path.join(ROOT, 'shared/enums.js'));
 const stations = require(path.join(ROOT, 'shared/stations.js'));
 const formModel = require(path.join(ROOT, 'pkg-partner/pages/create-on-behalf/parts/form-model.js'));
+const teamModel = require(path.join(ROOT, 'pkg-partner/pages/team/parts/team-model.js'));
+const zeroMoney = require('../zero-money-scan');
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
@@ -188,19 +193,25 @@ const MY_FILES = [
   'pkg-partner/pages/create-on-behalf/parts/result-model.js',
   'components/image-picker/state.js',
   'components/image-picker/index.js',
-  'utils/customer-view.js'
+  'utils/customer-view.js',
+  // 批 27/D59：团队页（四件套中的脚本/WXML + 纯件）纳入静态纪律扫描
+  'pkg-partner/pages/team/index.js',
+  'pkg-partner/pages/team/index.wxml',
+  'pkg-partner/pages/team/parts/team-model.js'
 ];
 
 const PAGE_SCRIPTS = [
   'pages/partner/customers/index.js',
   'pkg-partner/pages/customer-detail/index.js',
-  'pkg-partner/pages/create-on-behalf/index.js'
+  'pkg-partner/pages/create-on-behalf/index.js',
+  'pkg-partner/pages/team/index.js'
 ];
 
 const PAGE_FILES = [
   'pages/partner/customers/index',
   'pkg-partner/pages/customer-detail/index',
-  'pkg-partner/pages/create-on-behalf/index'
+  'pkg-partner/pages/create-on-behalf/index',
+  'pkg-partner/pages/team/index'
 ];
 
 // ── 批20-C：客户页首屏流式/占位/刷新 diff/空 dormKey 置底/底部安全区（P 组；拆出控主套件 ≤950 行）──
@@ -383,6 +394,218 @@ async function perfChecks(t) {
     t.notEmpty(entriesP, 'P 组样本非空（防止空集全绿）');
 }
 
+// ── 批 27/D59：团队页（Q 组）夹具与静态纪律样本 ──────────────────────────────
+// 服务端 DTO = partner.listSubMembers：主兼职 {members[],pendingInvites[],quota}，子队员 {parentPartnerNo,memberCount}
+const TEAM_BATCH_A = 'TB20261022-1';
+const TEAM_BATCH_B = 'TB20261021-2';
+const TEAM_RELS = [
+  'pkg-partner/pages/team/index.js',
+  'pkg-partner/pages/team/index.json',
+  'pkg-partner/pages/team/index.wxml',
+  'pkg-partner/pages/team/index.wxss',
+  'pkg-partner/pages/team/parts/team-model.js'
+];
+// 队伍/邀请码状态字面量（页面层零判据：状态中文只取 shared/enums 标签表）
+const TEAM_STATUS_WORDS = ['UNUSED', 'USED', 'REVOKED', 'EXPIRED', 'ACTIVE', 'SUSPENDED', 'CLOSED', 'SUB', 'DEV', 'PENDING'];
+// Q 组断言数（含首红正控；实跑为准，改断言必须同步本条）
+const TEAM_PAGE_ASSERTIONS = 40;
+
+function teamCaptainDto(overrides) {
+  return Object.assign({
+    members: [
+      { partnerNo: 'P8F3K2M', displayName: '小王', status: enums.PARTNER_STATUS.ACTIVE, teamJoinedAt: NOW - 2 * DAY },
+      { partnerNo: 'P7A2B9C', displayName: '', status: enums.PARTNER_STATUS.SUSPENDED, teamJoinedAt: 0 }
+    ],
+    pendingInvites: [
+      { codeTail: 'EFGH', expiresAt: NOW + 2 * DAY, batchId: TEAM_BATCH_A },
+      { codeTail: 'JKLM', expiresAt: NOW + 3 * DAY, batchId: TEAM_BATCH_A },
+      { codeTail: 'NPQR', expiresAt: NOW + DAY, batchId: TEAM_BATCH_B }
+    ],
+    quota: { used: 2, max: 5 }
+  }, overrides || {});
+}
+
+function teamMemberDto(overrides) {
+  // 服务端子队员返回：team 包装 + 三个空集合 + quota:null（只看队伍摘要）
+  return Object.assign({
+    team: { parentPartnerNo: 'P8F3K2M', memberCount: 3 },
+    members: [],
+    pendingInvites: [],
+    quota: null
+  }, overrides || {});
+}
+
+function stripWxmlComments(text) {
+  return String(text).replace(/<!--[\s\S]*?-->/g, '');
+}
+
+function teamStatusLiteralHits(text) {
+  const hits = [];
+  TEAM_STATUS_WORDS.forEach((word) => {
+    if (new RegExp("['\"]" + word + "['\"]").test(text)) hits.push(word);
+  });
+  return hits;
+}
+
+async function teamChecks(t) {
+  const pageSrc = textOfRel('pkg-partner/pages/team/index.js');
+  const modelSrc = textOfRel('pkg-partner/pages/team/parts/team-model.js');
+  const wxmlSrc = textOfRel('pkg-partner/pages/team/index.wxml');
+  const jsonSrc = textOfRel('pkg-partner/pages/team/index.json');
+  const settingsSrc = textOfRel('pkg-partner/pages/service-settings/index.js');
+  const settingsWxml = textOfRel('pkg-partner/pages/service-settings/index.wxml');
+  const apiSrc = textOfRel('api/modules/partner.js');
+
+  // ① 视图模型基线（主兼职 / 子队员 / 名额 / 待用码）
+  const initial = teamModel.initialView();
+  t.eq([initial.loading, initial.hasData, initial.captain, initial.member, initial.members.length, initial.form, initial.noteMax],
+    [true, false, false, false, 0, { count: 1, validity: '24H', note: '' }, 50],
+    'Q1 初始视图：加载中且无假数据；默认数量 1/有效期 24 小时/备注上限 50 字');
+  const view = teamModel.buildSnapshot(teamCaptainDto(), { nowMs: NOW });
+  t.eq([view.captain, view.member, view.hasData, view.members.length, view.inviteGroups.length], [true, false, true, 2, 2],
+    'Q2 主兼职基线：队长视角 + 2 名队员 + 2 个待用批次（服务端已排序分组，客户端不重排）');
+  t.eq(view.members[0], {
+    key: 'P8F3K2M',
+    partnerNo: 'P8F3K2M',
+    displayNameText: '小王',
+    statusText: enums.PARTNER_STATUS_LABELS.ACTIVE,
+    joinedText: '加入 2026-10-20'
+  }, 'Q3 成员行：昵称 + 编号 + 状态中文（取 shared/enums 标签表）+ 加入日期');
+  t.eq([view.members[1].displayNameText, view.members[1].statusText, view.members[1].joinedText],
+    ['未填称呼', enums.PARTNER_STATUS_LABELS.SUSPENDED, ''],
+    'Q4 昵称缺失回落「未填称呼」；停用成员仍列出；无加入时间不造假日');
+  t.eq(Object.keys(view.members[0]).sort(), ['displayNameText', 'joinedText', 'key', 'partnerNo', 'statusText'],
+    'Q5 成员行键集合恰为白名单（D59：主兼职只看到编号/昵称/状态/加入时间）');
+  t.check(!/avatar|fileId|openid/i.test(JSON.stringify(view)),
+    'Q6 团队页视图零头像/fileId/openid 字段（D19/D59：隐私面不扩大）');
+  t.eq(view.inviteGroups.map((group) => group.batchId), [TEAM_BATCH_A, TEAM_BATCH_B],
+    'Q7 待用子码按 batchId 分组、保持服务端顺序（作废以批为单位 = Lead 裁决）');
+  t.eq([view.inviteGroups[0].rows.length, view.inviteGroups[0].rowCountText,
+    view.inviteGroups[0].rows[0].codeTailText, view.inviteGroups[0].rows[0].expiresText],
+  [2, '2 个待使用', '尾号 EFGH', '到期 2026-10-24 10:00'],
+  'Q8 组内逐码只显示尾 4 位 + 到期时刻（完整码只在创建响应）');
+  const available = teamModel.buildSnapshot(teamCaptainDto({ pendingInvites: [], quota: { used: 2, max: 5 } }), { nowMs: NOW });
+  t.eq([available.quota.usedText, available.quota.canCreate, available.quota.disabled, available.quota.remaining],
+    ['已用 2 / 5 人', true, false, 3], 'Q9 名额基线：used/max 文案 + 可发码（名额取服务端 quota，不本地计数）');
+  const fullByPending = teamModel.buildSnapshot(teamCaptainDto(), { nowMs: NOW }).quota;
+  const fullByMembers = teamModel.buildSnapshot(teamCaptainDto({ pendingInvites: [], quota: { used: 5, max: 5 } }), { nowMs: NOW }).quota;
+  t.check(fullByPending.canCreate === false && fullByPending.disabled === true
+    && fullByPending.fullReasonText.indexOf('待使用') >= 0 && fullByPending.fullReasonText.indexOf('2/5') >= 0
+    && fullByMembers.fullReasonText.indexOf('人数已达上限') >= 0 && fullByMembers.fullReasonText.indexOf('5/5') >= 0,
+  'Q10 名额达上限禁用发码 + 给原因（待用码同占名额/人数已满两种原因分别说真话）');
+  t.eq([view.countOptions, available.countOptions,
+    teamModel.buildSnapshot(teamCaptainDto({ pendingInvites: [], quota: { used: 4, max: 5 } }), { nowMs: NOW }).countOptions],
+  [[], [1, 2, 3], [1]], 'Q11 数量选项 1~5 内按有效剩余（扣掉待用码）收窄；满员前最后一码仍可发');
+  t.eq(view.validityOptions.map((item) => [item.key, item.label]),
+    [['24H', '24 小时'], ['72H', '72 小时'], ['7D', '7 天']],
+    'Q12 有效期恰三档 24h/72h/7d 且文案非空（D59）');
+
+  // ② 发码提交体与校验转发（服务端仍唯一权威）
+  t.eq(teamModel.buildCreatePayload({ count: 2, validity: '7D', note: ' 给小李 ' }),
+    { ok: true, data: { count: 2, validity: '7D', note: '给小李' }, message: '' },
+    'Q13 发码提交体基线：数量/有效期/备注去空白后原样转发');
+  const badCounts = [0, 6, 2.5, 'abc'].map((value) => teamModel.buildCreatePayload({ count: value, validity: '24H', note: '' }));
+  t.eq(badCounts.map((item) => item.ok), [false, false, false, false],
+    'Q14 非法数量（0/超 5/小数/非数字串）一律本地挡住（不盲发请求）');
+  t.eq([teamModel.buildCreatePayload({ count: 1, validity: '30D', note: '' }).ok,
+    teamModel.buildCreatePayload({ count: 1, validity: '24H', note: '' }).ok], [false, true],
+  'Q15 有效期只接受三档；备注可缺省（空备注合法提交）');
+  t.eq([teamModel.buildCreatePayload({ count: 1, validity: '24H', note: '备'.repeat(51) }).message,
+    teamModel.buildCreatePayload({ count: 1, validity: '24H', note: '备'.repeat(50) }).ok],
+  ['备注最多 50 字', true], 'Q16 备注 >50 字被挡、恰 50 字通过（与 shared/validate teamNote 同上限）');
+
+  // ③ 创建结果块（完整码只在本会话展示一次）
+  const result = teamModel.resultOf({ batchId: TEAM_BATCH_A, codes: ['ABCD2345EFGH', 'JKLM2345NPQR'], expiresAt: NOW + DAY }, NOW);
+  t.eq([result.visible, result.title, result.codeRows.map((row) => row.display)],
+    [true, '已生成 2 个子邀请码', ['ABCD-2345-EFGH', 'JKLM-2345-NPQR']],
+    'Q17 创建成功结果块：完整码 4-4-4 分组展示（一次性口径）');
+  t.check(result.hintText.indexOf('只显示这一次') >= 0 && result.hintText.indexOf('当面告知') >= 0
+    && result.expiresText === '有效期至 2026-10-23 10:00',
+  'Q18 结果块提示「只显示这一次/请当面告知」并带到期时刻');
+  t.eq(teamModel.resultOf({ batchId: '', codes: [], expiresAt: 0 }, NOW).visible, false,
+    'Q19 空码响应不画假结果块（空集不得判绿）');
+
+  // ④ 批次级作废 / 移除队员（二次确认 + 提交体）
+  t.eq([teamModel.buildRevokePayload(view.inviteGroups[0]), teamModel.buildRevokePayload({ batchId: '' }).ok],
+    [{ ok: true, data: { batchId: TEAM_BATCH_A }, message: '' }, false],
+    'Q20 作废提交体按批次 {batchId}（裁决：不改完整码暴露面）；缺批次号不盲发');
+  const revokeDialog = teamModel.revokeConfirmDialog(view.inviteGroups[0]);
+  t.check(revokeDialog.content.indexOf('2 个未使用的邀请码') >= 0 && revokeDialog.content.indexOf('全部失效') >= 0
+    && revokeDialog.content.indexOf('已使用的码不受影响') >= 0 && revokeDialog.confirmText === '确认作废',
+  'Q21 作废二次确认写清后果（本批未用码全部失效、已用码不受影响）');
+  t.eq([teamModel.buildRemovePayload({ partnerNo: 'P8F3K2M' }), teamModel.buildRemovePayload({ partnerNo: '' }).ok],
+    [{ ok: true, data: { partnerNo: 'P8F3K2M' }, message: '' }, false],
+    'Q22 移除提交体 {partnerNo}；缺编号不盲发');
+  t.check(teamModel.removeConfirmDialog(view.members[0]).content.indexOf('停用') >= 0
+    && teamModel.removeConfirmDialog(view.members[0]).content.indexOf('联系管理员') >= 0,
+  'Q23 移除二次确认写清后果（对方被停用、恢复需联系管理员）');
+  const memberView = teamModel.buildSnapshot(teamMemberDto(), { nowMs: NOW });
+  t.eq([memberView.member, memberView.captain, memberView.team.parentPartnerNo, memberView.team.memberCountText,
+    memberView.showCreateForm, memberView.members.length, memberView.inviteGroups.length],
+  [true, false, 'P8F3K2M', '成员数 3 人', false, 0, 0],
+  'Q24 子队员视角：只显示所属队伍 P-XXX / 成员数，无成员列表与发码/作废入口（D59 仅一层）');
+  const readonlyView = teamModel.buildSnapshot(teamCaptainDto(), { nowMs: NOW, readonly: true });
+  t.eq([readonlyView.canWrite, readonlyView.showCreateForm, readonlyView.readonlyText],
+    [false, false, '开发者只读视角不能操作'],
+    'Q25 READONLY：隐藏发码表单/移除/作废按钮并给只读原因（切换会话二道闸）');
+  t.eq([teamModel.selectCount(view.form, 3).count, teamModel.selectCount(view.form, 9).count,
+    teamModel.selectValidity(view.form, '7D').validity, teamModel.selectValidity(view.form, '30D').validity,
+    Array.from(teamModel.inputNote(view.form, '备'.repeat(60)).note).length],
+  [3, 1, '7D', '24H', 50],
+  'Q26 交互归一：数量/有效期非法值不生效；备注超长按 50 字截断（输入框 maxlength 双保险）');
+  t.eq([teamModel.revokedTextOf({ revokedCount: 2 }), teamModel.revokedTextOf({})],
+    ['已作废 2 个邀请码', '邀请码已作废'], 'Q27 作废成功文案带服务端 revokedCount（不本地猜数量）');
+
+  // ⑤ 四件套/接线/静态纪律（页面层零判据）
+  const four = ['js', 'json', 'wxml', 'wxss'].map((ext) => fsutil.exists(path.join(ROOT, 'pkg-partner/pages/team/index.' + ext)));
+  t.eq(four.concat([jsonSrc.indexOf('"enablePullDownRefresh": true') >= 0, pageSrc.indexOf('onPullDownRefresh()') >= 0]),
+    [true, true, true, true, true, true],
+    'Q28 团队页四件套齐全 + 下拉刷新 handler 与 json 开关对齐（#39 纪律）');
+  t.eq(['.listSubMembers(', '.createSubInvites(', '.revokeSubInvite(', '.removeSubMember(',
+    "'./parts/team-model'", 'modeGuard.canRenderWriteButton()', "'../../../api/modules/partner'"]
+    .map((token) => pageSrc.indexOf(token) >= 0), [true, true, true, true, true, true, true],
+  'Q29 页面接线：四个动作只经 api/modules/partner + 纯件单向依赖 + READONLY 由 modeGuard 判');
+  const layerCode = [pageSrc, modelSrc].map((src) => fsutil.stripComments(src)).join('\n');
+  t.eq([/wx\.cloud\./.test(layerCode), /Math\.random|\brandom\(/.test(layerCode),
+    /wx\.[A-Za-z]*Storage[A-Za-z]*/.test(layerCode), /['"]partner\.[a-z]/.test(layerCode)],
+  [false, false, false, false],
+  'Q30 页面/纯件零 wx.cloud/random/本地存储直写/action 字符串（铁律 §2、门禁 #14/#15/#21）');
+  const scanned = [fsutil.stripComments(pageSrc), stripWxmlComments(wxmlSrc), fsutil.stripComments(modelSrc)].join('\n');
+  t.eq(teamStatusLiteralHits(scanned), [],
+    'Q31 团队页零队伍/邀请码状态字面量（状态中文只取 shared/enums 标签表，页面层零判据）');
+  t.check(teamStatusLiteralHits("code.status === 'UNUSED' && item.status === 'ACTIVE'").length === 2,
+    'Q31b 有牙正控：判据能扫出状态字面量样本（不是空转全绿）');
+  const privacyHits = ['avatar', 'fileid', 'openid', 'wx.cloud'].filter((token) =>
+    (fsutil.stripComments(pageSrc) + stripWxmlComments(wxmlSrc) + fsutil.stripComments(modelSrc)).toLowerCase()
+      .indexOf(token) >= 0);
+  t.eq(privacyHits, [], 'Q32 团队页零头像/fileId/openid 痕迹（D59：主兼职看编号+昵称，无头像）');
+  const teamMoneyHits = [];
+  TEAM_RELS.forEach((rel) => {
+    zeroMoney.scanText(textOfRel(rel)).forEach((hit) => teamMoneyHits.push(rel + ':' + hit.token));
+  });
+  t.eq(teamMoneyHits, [], 'Q33 团队页零金额词表零命中（门禁 #22：服务只表达做什么）');
+  t.check(wxmlSrc.indexOf('<switch-bar') >= 0
+    && ['onCountTap', 'onValidityTap', 'onNoteInput', 'onCreateTap', 'onRevokeTap', 'onRemoveTap']
+      .every((name) => wxmlSrc.indexOf('bindtap="' + name + '"') >= 0 || wxmlSrc.indexOf('bindinput="' + name + '"') >= 0),
+  'Q34 WXML：switch-bar + 六类交互接线（数量/有效期/备注/发码/作废/移除）');
+  t.check(wxmlSrc.indexOf('codeTailText') >= 0 && wxmlSrc.indexOf('result.codeRows') >= 0
+    && wxmlSrc.indexOf('avatar-view') < 0 && wxmlSrc.indexOf('fileId') < 0,
+  'Q35 WXML：待用码只渲尾 4 位、结果块渲完整码；零头像组件与 fileId');
+  t.check(settingsSrc.indexOf('goTeam()') >= 0 && settingsSrc.indexOf("'/pkg-partner/pages/team/index'") >= 0
+    && settingsWxml.indexOf('我的团队') >= 0 && settingsWxml.indexOf('bindtap="goTeam"') >= 0,
+  'Q36 服务设置页「我的团队」入口行：跳团队页 + 文案说明顾客只绑定本人');
+  t.eq([['createSubInvites', 'revokeSubInvite', 'listSubMembers', 'removeSubMember']
+    .every((name) => typeof partnerApi[name] === 'function' && apiSrc.indexOf("'partner." + name + "'") >= 0),
+  client.isWriteAction('partner.createSubInvites'), client.isWriteAction('partner.revokeSubInvite'),
+  client.isWriteAction('partner.listSubMembers'), client.isWriteAction('partner.removeSubMember')],
+  [true, true, true, false, true],
+  'Q37 API 层四动作已导出且读写登记正确（发码/作废/移除写、列表读）');
+  t.eq([fsutil.countLines(path.join(ROOT, 'pkg-partner/pages/team/index.js')),
+    fsutil.countLines(path.join(ROOT, 'pkg-partner/pages/team/parts/team-model.js'))].every((lines) => lines <= 500),
+  true, 'Q38 团队页页面脚本/纯件均 ≤500 行（门禁 #18）');
+  t.notEmpty(view.members, 'Q 组样本非空（防止空集全绿）');
+}
+
 module.exports = {
   CONFIG,
   DAY,
@@ -392,7 +615,9 @@ module.exports = {
   PAGE_FILES,
   PAGE_SCRIPTS,
   PERF_EXPECTED_ASSERTIONS,
+  TEAM_PAGE_ASSERTIONS,
   perfChecks,
+  teamChecks,
   PARTNER,
   ROW_1,
   ROW_2,

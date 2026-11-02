@@ -6,6 +6,8 @@
 //   ⑥ 页面层零封面路径拼接；⑦ switch-bar 统一收口会话禁分享；⑧ app.js 识别单页模式（scene=1154）；
 //   ⑨ D37 落地判据：好友转发卡片只能落 `/pages/launch/index`（绑定卡 `?bind=<合法兼职编号>`、通用卡零 query），
 //      出现 role 等业务页直落即判红（否则新用户/版本变更会绕过启动页隐私同意闸）。
+//   ⑩ D63 放行式：顾客有 ACTIVE 绑定兼职时用同一张绑定卡（bind 值仍必须过兼职编号形态，零新增 query）；
+//      无绑定/切换会话必须回通用卡（`?inviter=` 等额外参数、顾客编号/canonical 不合法一律判红）。
 'use strict';
 
 const fs = require('fs');
@@ -153,11 +155,45 @@ function run() {
     });
     landingProblemsOf(bindCard.path, route.LAUNCH_PAGE, ids)
       .forEach((msg) => out.push('utils/share/index.js: 绑定卡 ' + msg));
+    // D63：顾客有 ACTIVE 绑定 → 与兼职同一张绑定卡（同 path 形态、零新增 query）；无绑定/切换会话 → 通用卡
+    const customerBindCard = cardsLib.buildAppMessage({
+      isCustomer: true,
+      viewSession: false,
+      boundPartnerNo: 'P-7K2-M9X'
+    });
+    landingProblemsOf(customerBindCard.path, route.LAUNCH_PAGE, ids)
+      .forEach((msg) => out.push('utils/share/index.js: 顾客绑定卡 ' + msg));
+    if (customerBindCard.path === route.LAUNCH_PAGE) {
+      out.push('utils/share/index.js: 顾客有绑定时仍回通用卡（D63 顾客邀请顾客未落地）');
+    }
+    const customerPlain = cardsLib.buildAppMessage({ isCustomer: true, viewSession: false });
+    const customerSession = cardsLib.buildAppMessage({
+      isCustomer: true,
+      viewSession: true,
+      boundPartnerNo: 'P-7K2-M9X'
+    });
+    [customerPlain, customerSession].forEach((card) => {
+      if (card.path !== route.LAUNCH_PAGE) {
+        out.push('utils/share/index.js: 顾客无绑定/切换会话必须回通用卡（实际 ' + card.path + '）');
+      }
+    });
   }
   if (landingProblemsOf('/pages/role/index?bind=P7K2M9X', route.LAUNCH_PAGE, ids).length === 0) {
     out.push('D37 落地判据无牙：role 直落卡片未被判红');
   }
+  // D63 有牙：额外 query / 顾客编号 / 非法形态必须全部判红（否则"卡片零新增 query"无判据）
+  const BAD_PATHS = [
+    route.LAUNCH_PAGE + '?bind=P7K2M9X&inviter=C7K2M9X',
+    route.LAUNCH_PAGE + '?inviter=C7K2M9X',
+    route.LAUNCH_PAGE + '?bind=C7K2M9X',
+    route.LAUNCH_PAGE + '?bind=P7K2M9'
+  ];
+  BAD_PATHS.forEach((badPath) => {
+    if (landingProblemsOf(badPath, route.LAUNCH_PAGE, ids).length === 0) {
+      out.push('D63 落地判据无牙：违规分享 path「' + badPath + '」未被判红');
+    }
+  });
   return out.length ? out : null;
 }
 
-module.exports = { run };
+module.exports = { run, landingProblemsOf };

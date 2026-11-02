@@ -19,7 +19,9 @@ const TEXT_LIMITS = {
   lockerNo: 10,
   displayName: 20,
   releaseNote: 100,
-  failureNote: 100
+  failureNote: 100,
+  // D59：主兼职发子邀请码时的备注上限（契约 §2.3 note ≤50）
+  teamNote: 50
 };
 
 const PICKUP_CODE_MAX_RAW = 40;
@@ -115,6 +117,16 @@ function validateInvitationCode(raw) {
   return succeed('invitationCode', { canonical: result.canonical });
 }
 
+// 子邀请码有效期选项（D59）：主兼职发码只能选 24H/72H/7D；小时换算由 handler 按 D59 口径负责
+const INVITATION_VALIDITY = ['24H', '72H', '7D'];
+
+function validateSubInviteValidity(value) {
+  if (typeof value !== 'string' || INVITATION_VALIDITY.indexOf(value) === -1) {
+    return fail('validity', 'NOT_ALLOWED');
+  }
+  return succeed('validity', { value });
+}
+
 // 房间级文本：去掉首尾空白后按"字符数"（码点）计，避免 emoji 被算成两个
 function textLength(text) {
   return typeof text === 'string' ? Array.from(text).length : 0;
@@ -147,6 +159,11 @@ function validateDeliveryNote(value) {
 
 function validatePartnerNote(value) {
   return validateText(value, TEXT_LIMITS.partnerNote, 'partnerNote', false);
+}
+
+// 子邀请码备注（D59）：可缺省；非字符串/去首尾空白后 >50 字 → 失败
+function validateTeamNote(value) {
+  return validateText(value, TEXT_LIMITS.teamNote, 'note', false);
 }
 
 function validateMessageText(value) {
@@ -389,6 +406,7 @@ module.exports = {
   validateNote,
   validateDeliveryNote,
   validatePartnerNote,
+  validateTeamNote,
   validateMessageText,
   validateExceptionText,
   validateLockerNo,
@@ -400,6 +418,7 @@ module.exports = {
   validatePartnerNo,
   validateDeveloperNo,
   validateInvitationCode,
+  validateSubInviteValidity,
   validateCancelReason,
   validateCancelNote,
   validateReleaseReason,

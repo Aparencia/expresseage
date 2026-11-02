@@ -31,8 +31,10 @@ const client = require(path.join(ROOT, 'api/client.js'));
 const orderApi = require(path.join(ROOT, 'api/modules/order.js'));
 const serverDto = require(path.join(ROOT, 'cloudfunctions/api/handlers/order/_dto.js'));
 const pieceActions = require(path.join(ROOT, 'pages/partner/workbench/parts/piece-actions.js'));
+// 批 26-W4（D58 转派兼职端）：用例表拆 tools/lib（控测试文件 ≤1000 行，门禁 #18）
+const uiCases = require(path.join(__dirname, 'lib', 'partner-transfer-ui-cases.js'));
 
-const EXPECTED_ASSERTIONS = 191 + 15; // 191 + 批 25-B D61 件级取件/时间线人话 15 条（J 组）
+const EXPECTED_ASSERTIONS = 191 + 15 + 2 + uiCases.DETAIL_EXPECTED_ASSERTIONS; // 191 + 批 25-B D61 15 条（J 组）+ 批 26 D58 A 组拆分对齐 2 条（A7b/A8b）+ K 组转派
 const STATUS = orderState.STATUS;
 const STATUS_LITERALS = enums.ORDER_STATUS_LIST.slice();
 const PAGE_JS = 'pkg-partner/pages/order-detail/index.js';
@@ -155,7 +157,8 @@ function serverActionsOf(doc, nowMs) {
 
 const EXPECTED_ACTIONS = {};
 EXPECTED_ACTIONS[STATUS.SUBMITTED] = ['accept', 'reject', 'correct', 'cancel', 'message'];
-EXPECTED_ACTIONS[STATUS.ACCEPTED] = ['pick', 'exception', 'correct', 'cancel', 'message'];
+// D58：ACCEPTED 且一件未取（本夹具无 parcels）才下发转派入口 requestTransfer（服务端守卫，页面不判状态）
+EXPECTED_ACTIONS[STATUS.ACCEPTED] = ['pick', 'exception', 'correct', 'cancel', 'requestTransfer', 'message'];
 EXPECTED_ACTIONS[STATUS.PICKED] = ['deliver', 'undoPick', 'exception', 'correct', 'cancel', 'message'];
 // DELIVERED 不可补码（DATA_MODEL §7.5 order.correct 起始状态不含 DELIVERED / UX §4.4 / handler ACTION_RULES），
 // 服务端 buildActions 已收敛为不下发 correct；本期望值即最终服务端口径。
@@ -189,14 +192,25 @@ function register(h) {
     t.eq(serverActionsOf(agedDelivered, DOC_MS + 6000),
       ['exception', 'cancel', 'message'],
       'A6 撤销已送达同样 5 秒后由服务端收回（DELIVERED 全程无 correct）');
-    // 页面可见动作 = 服务端 actions[] 原样呈现（不增删、不重排）；服务端矩阵由 A3 独立锁定
-    const expectedPageKeys = dtos.map((dto) => dto.actions.map((action) => action.key));
+    // 页面可见动作 = 服务端 actions[] 原样呈现（不增删、不重排）：D58 起转派四动作从底部动作条
+    // 移入转派区块（parts/transfer），底部条 = 服务端清单去掉转派键，两处合起来与服务端逐项一致。
+    const TRANSFER_ACTION_KEYS = ['requestTransfer', 'acceptTransfer', 'declineTransfer', 'cancelTransfer'];
+    const statusKeysOf = (dto) => dto.actions.map((action) => action.key)
+      .filter((key) => TRANSFER_ACTION_KEYS.indexOf(key) < 0);
+    const transferKeysOf = (dto) => dto.actions.map((action) => action.key)
+      .filter((key) => TRANSFER_ACTION_KEYS.indexOf(key) >= 0);
     const pageViews = dtos.map((dto) => viewModel.buildView(dto, [], { nowMs: NOW_MS }));
-    t.eq(pageViews.map((view) => view.actions.map((item) => item.key)), expectedPageKeys,
-      'A7 页面可见动作 = 服务端 actions[] 原样呈现（七状态逐项一致，不本地增删）');
+    t.eq(pageViews.map((view) => view.actions.map((item) => item.key)), dtos.map(statusKeysOf),
+      'A7 底部动作条 = 服务端 actions[] 去掉转派键后原样呈现（七状态逐项一致，不本地增删）');
+    t.eq(pageViews.map((view) => view.transferCard.keys), dtos.map(transferKeysOf),
+      'A7b 转派动作原样进转派区块（不增删、不重复出现在底部条）');
     const pageLabels = pageViews.map((view) => view.actions.map((item) => item.label));
-    t.eq(pageLabels, dtos.map((dto) => dto.actions.map((action) => action.label)),
-      'A8 动作文案取服务端 label（页面不复制一套文案）');
+    t.eq(pageLabels, dtos.map((dto) => dto.actions
+      .filter((action) => TRANSFER_ACTION_KEYS.indexOf(action.key) < 0)
+      .map((action) => action.label)),
+    'A8 底部动作文案取服务端 label（页面不复制一套文案）');
+    t.eq(pageViews[1].transferCard.request.action && pageViews[1].transferCard.request.action.label,
+      '转派给其他兼职', 'A8b 转派入口文案同样取服务端 label（D58 requestTransfer）');
     const mixed = actionsPart.buildVisibleActions({
       actions: [{ key: 'confirm', label: '确认已收到' }, { key: 'accept', label: '接单' }, 'message', null, {}, { label: '无 key' }]
     }, { readonly: false });
@@ -855,6 +869,9 @@ function register(h) {
       'J14 撤销事件无 note 同样有人话兜底');
     t.notEmpty([detail.parcels, withNote], 'J 组样本非空');
   });
+
+  // ---------------------------------------------------------------- K 批 26-W4 D58 转派（兼职端）
+  h.section('K. D58 转派：发起入口/邀请卡/等待卡/撤回/结果态/只读/零判据', (t) => uiCases.detailTransferChecks(t));
 }
 
 module.exports = { EXPECTED_ASSERTIONS, register };

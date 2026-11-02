@@ -5,6 +5,7 @@
 
 const enums = require('../../shared/enums');
 const mask = require('../../db/dto/mask');
+const time = require('../../lib/time');
 const store = require('./_store');
 const pickedState = require('./_picked');
 const { recognitionSourceLabel } = require('../../lib/ai/parse');
@@ -15,6 +16,28 @@ function textOf(value) {
 
 function numberOrZero(value) {
   return typeof value === 'number' && isFinite(value) ? value : 0;
+}
+
+// 时间归一（DTO 单源）：number/Date/非空字符串 → 毫秒；其余/空 → 0。
+// 不能直接用 time.toMs：它对非 number/Date 回落 Date.now()，会把"已清空的时间戳"序列化成当前真实时钟。
+function msOf(value) {
+  if (typeof value === 'number') {
+    return isFinite(value) && value > 0 ? value : 0;
+  }
+  if (value instanceof Date) {
+    const ms = value.getTime();
+    return isFinite(ms) && ms > 0 ? ms : 0;
+  }
+  if (typeof value === 'string' && value !== '') {
+    const ms = time.toMs(value);
+    return isFinite(ms) && ms > 0 ? ms : 0;
+  }
+  return 0;
+}
+
+function isoOf(value) {
+  const ms = msOf(value);
+  return ms > 0 ? new Date(ms).toISOString() : '';
 }
 
 // 单件包裹视图（v1.0 parcels[] 的元素，itemIndex=包裹序号；历史单 parcel{} 也走同一归一）
@@ -129,6 +152,10 @@ function maskDeliveryDto(delivery) {
 }
 
 module.exports = {
+  textOf,
+  numberOrZero,
+  msOf,
+  isoOf,
   buildParcelDto,
   buildParcelDtos,
   buildImageDto,

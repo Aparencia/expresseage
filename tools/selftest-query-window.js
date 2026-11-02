@@ -217,13 +217,15 @@ async function sectionQ2(t) {
   // workbench 基线必须真发生 6 次 orders.count；history 必须 0 次——判据不是空集。
   const counted = countingApiOf(world({ orders: partnerTodayWindowOrders() }), P1);
   const countedWorkbench = await counted.api.call('order.listPartner', {});
-  t.eq([countedWorkbench.ok, counted.counters.orderCounts], [true, 6],
-    'Q2.3 合法基线：workbench counts 六项 = orders.count 6 次（收口前先证明计数探针真能读到）');
+  // D58（批 26）：workbench 固定 6 项状态 counting + 1 次 transferPending 角标 count = 7 次 orders.count
+  t.eq([countedWorkbench.ok, counted.counters.orderCounts], [true, 7],
+    'Q2.3 合法基线：workbench counts 六项 + transferPending 角标 = orders.count 7 次（计数探针真能读到）');
   counted.counters.orderCounts = 0;
   counted.counters.orderGets = 0;
   const history = await counted.api.call('order.listPartner', { view: 'history' });
+  // history 不计 6 项 counts、也不下发 transferPending 角标（TD-073 零额外查询口径不变）
   t.eq([history.ok, counted.counters.orderCounts], [true, 0],
-    'Q2.4 history 视图 0 次 orders.count（TD-073：历史摘要不再白算 counts）');
+    'Q2.4 history 视图 0 次 orders.count（TD-073：历史摘要不再白算 counts；角标只在 workbench/day）');
   t.eq(history.data.counts,
     { submitted: 0, accepted: 0, picked: 0, delivered: 0, exception: 0, todayCompleted: 0 },
     'Q2.5 响应形状不变：history 仍返回 counts 六键（零值模板、不计入）');
@@ -526,8 +528,8 @@ async function sectionQ5(t) {
   const workbench = await pApi.call('order.listPartner', { view: 'workbench' });
   t.eq([workbench.ok, workbench.data && workbench.data.summary], [true, summaryExpected()],
     'Q5.10 handler：workbench 响应 summary 与纯件聚合逐值一致（复用本次命中行）');
-  t.eq(Object.keys(workbench.data).sort(), ['counts', 'list', 'nextCursor', 'summary'],
-    'Q5.11 响应只增 summary：既有 counts/list/nextCursor 键不变');
+  t.eq(Object.keys(workbench.data).sort(), ['counts', 'list', 'nextCursor', 'summary', 'transferPending'],
+    'Q5.11 响应只增 summary/transferPending：既有 counts/list/nextCursor 键不变');
   const limited = await pApi.call('order.listPartner', { view: 'workbench', limit: 1 });
   t.eq([limited.data.list.length, limited.data.summary], [1, summaryExpected()],
     'Q5.12 summary 与分页切片无关：limit=1 仍汇总全部候选行（分页前聚合）');
@@ -541,17 +543,18 @@ async function sectionQ5(t) {
 
   const counted = countingApiOf(world({ orders: summaryOrders() }), P1);
   const countedRes = await counted.api.call('order.listPartner', { view: 'workbench' });
+  // D58：summary 不增 count（仍 6 次）+ transferPending 角标 1 次 = 7 次；find 仍 5 次
   t.eq([countedRes.ok, counted.counters.orderCounts, counted.counters.orderGets],
-    [true, 6, 5],
-    'Q5.15 零额外查询：summary 不增 count（仍 6 次）也不二次 find（仍按 5 个状态各 1 次）');
+    [true, 7, 5],
+    'Q5.15 零额外查询：summary 不增 count（6+1 角标=7 次）也不二次 find（仍按 5 个状态各 1 次）');
   const history = await pApi.call('order.listPartner', { view: 'history' });
   t.eq([history.ok, history.data.summary, Object.keys(history.data).sort()],
     [true, undefined, ['counts', 'list', 'nextCursor']],
-    'Q5.16 history 视图不返回 summary、既有响应形状不变');
+    'Q5.16 history 视图不返回 summary、既有响应形状不变（无 transferPending 角标）');
   const customer = await pApi.call('order.listPartner', { view: 'customer', bindingId: B1 });
   t.eq([customer.ok, customer.data.summary, Object.keys(customer.data).sort()],
     [true, undefined, ['list', 'nextCursor']],
-    'Q5.17 customer 视图不返回 summary（既有 {list,nextCursor} 形状不变）');
+    'Q5.17 customer 视图不返回 summary（既有 {list,nextCursor} 严格形状不变）');
   const pickedOnly = await pApi.call('order.listPartner', { view: 'workbench', status: PICKED });
   t.eq(pickedOnly.data.summary, {
     total: 1,
@@ -588,8 +591,9 @@ async function sectionQ5(t) {
     'Q5.25 触顶数据下 history 视图仍无 summary（既有响应形状不变）');
   const wideCounted = countingApiOf(wideDb, P1);
   const wideCountedRes = await wideCounted.api.call('order.listPartner', { view: 'workbench', limit: 5 });
+  // 6 项 counts + 1 角标 = 7 count；5 find 不变
   t.eq([wideCountedRes.ok, wideCounted.counters.orderCounts, wideCounted.counters.orderGets],
-    [true, 6, 5], 'Q5.26 触顶路径也零额外查询（仍 6 count + 5 find，不因 truncated 再扫一遍）');
+    [true, 7, 5], 'Q5.26 触顶路径也零额外查询（6 count + 1 角标 + 5 find，不因 truncated 再扫一遍）');
 }
 
 // ================================================================ Q6 D67 客户页筛选器 × 游标分页

@@ -126,6 +126,11 @@ Page({
     this.setData({ zones: zones });
   },
 
+  // D59 团队页入口：成员列表/子邀请码/名额在独立分包页维护（顾客只绑定主兼职本人）
+  goTeam() {
+    wx.navigateTo({ url: '/pkg-partner/pages/team/index' });
+  },
+
   // 只提交服务端真正持久化的三键（services/zones/acceptingOrders）；不夹带客户端保留字段。
   // D41：已停用类型不进 services（行模型过滤），服务端对目录外 code 也是忽略不报错。
   buildPayload() {

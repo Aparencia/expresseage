@@ -10,6 +10,10 @@ const getCustomer = require('./getCustomer');
 const stats = require('./stats');
 const unbindCustomer = require('./unbindCustomer');
 const saveCustomerNote = require('./saveCustomerNote');
+const createSubInvites = require('./createSubInvites');
+const revokeSubInvite = require('./revokeSubInvite');
+const listSubMembers = require('./listSubMembers');
+const removeSubMember = require('./removeSubMember');
 
 module.exports = {
   actions: {
@@ -21,6 +25,10 @@ module.exports = {
     'partner.getCustomer': getCustomer.handler,
     'partner.stats': stats.handler,
     'partner.unbindCustomer': unbindCustomer.handler,
-    'partner.saveCustomerNote': saveCustomerNote.handler
+    'partner.saveCustomerNote': saveCustomerNote.handler,
+    'partner.createSubInvites': createSubInvites.handler,
+    'partner.revokeSubInvite': revokeSubInvite.handler,
+    'partner.listSubMembers': listSubMembers.handler,
+    'partner.removeSubMember': removeSubMember.handler
   }
 };

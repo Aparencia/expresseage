@@ -187,15 +187,21 @@ function registerP(t) {
   const subPages = (appJson.subPackages || []).reduce(function flat(list, sub) {
     return list.concat((sub && sub.pages) || []);
   }, []);
+  // 页数口径动态取（单源 tools/lib/project.js ALL_PAGES），不写死数字：新增页只改 project.js
+  //   与 app.json 两处，本组断言自动跟随；仍保留「app.json ⇄ project.js 对帐」的牙。
+  const appTotal = mainPages.length + subPages.length;
   t.eq([mainPages.indexOf('pages/customer/pickcodes/index') >= 0,
     (pkgCustomer.pages || []).indexOf('pages/pickup-list/index') === -1,
-    mainPages.length + subPages.length, ((appJson.tabBar || {}).list || []).length],
-  [true, true, 32, 5],
-  'P29 app.json：主包新增取件码页 / 分包移除 pickup-list / 总页数仍 32 / tabBar.list 仍 5 项');
+    appTotal, ((appJson.tabBar || {}).list || []).length],
+  [true, true, project.ALL_PAGES.length, 5],
+  'P29 app.json：主包新增取件码页 / 分包移除 pickup-list / 总页数＝ALL_PAGES 动态对帐（'
+    + project.ALL_PAGES.length + ' 页）/ tabBar.list 仍 5 项');
   t.eq([project.MAIN_PAGES.indexOf('pages/customer/pickcodes/index') >= 0,
     project.SUBPACKAGES['pkg-customer'].indexOf('pages/pickup-list/index') === -1,
-    project.ALL_PAGES.length],
-  [true, true, 32], 'P30 tools/lib/project.js 镜像同步（主包新增 / 分包移除 / ALL_PAGES 仍 32）');
+    project.ALL_PAGES.length, new Set(project.ALL_PAGES).size],
+  [true, true, appTotal, appTotal],
+  'P30 tools/lib/project.js 镜像同步（主包新增 / 分包移除 / ALL_PAGES＝app.json 页数 '
+    + appTotal + ' 页动态对帐、无重复路径）');
   const tabsData = require(path.join(ROOT, TAB_DATA));
   const customerTabs = tabsData.CUSTOMER_TABS || [];
   t.eq([customerTabs.length, customerTabs.map(function text(tab) { return tab.text; }),

@@ -14,6 +14,7 @@ const { errors } = require('../../lib/errors');
 const tx = require('../../lib/tx');
 const identity = require('../user/_common');
 const bindCommon = require('../bind/_common');
+const team = require('../partner/_team');
 
 function bindingDto(binding) {
   return {
@@ -22,6 +23,22 @@ function bindingDto(binding) {
     buildingText: binding.dormSnapshot ? binding.dormSnapshot.buildingText : '',
     boundAt: binding.boundAt ? new Date(binding.boundAt).getTime() : 0
   };
+}
+
+// 目标兼职读取与可绑闸（格式 → 存在/注销 → D59 子队员不可绑；全部同码同文案，不暴露存在性）。
+async function loadBindablePartner(ctx, rawPartnerNo) {
+  const codeResult = validate.validatePartnerNo(rawPartnerNo);
+  if (!codeResult.ok) {
+    // 错前缀同源提示（CONTRACT §3.1 规则 4）：C 开头/DEV 开头/其他格式三句只取 shared/error-copy 单源，
+    // 只描述格式、不暴露该编号是否存在。
+    throw errors.validation('partnerNo', ids.prefixHint(rawPartnerNo).message);
+  }
+  const partner = await ctx.dao.findOne(COLLECTIONS.PARTNERS, { where: { partnerNo: codeResult.canonical } });
+  if (!partner || partner.deletedAt || partner.status === enums.PARTNER_STATUS.CLOSED
+    || team.parentPartnerIdOf(partner) !== '') {
+    throw errors.notFound('该兼职编号不存在，请核对后重试');
+  }
+  return partner;
 }
 
 async function handler(ctx, payload) {
@@ -36,16 +53,7 @@ async function handler(ctx, payload) {
   if (!customer.profileCompleted) {
     throw errors.invalidState('请先完善宿舍资料后再绑定兼职');
   }
-  const codeResult = validate.validatePartnerNo(input.partnerNo);
-  if (!codeResult.ok) {
-    // 错前缀同源提示（CONTRACT §3.1 规则 4）：C 开头/DEV 开头/其他格式三句只取 shared/error-copy 单源，
-    // 只描述格式、不暴露该编号是否存在。
-    throw errors.validation('partnerNo', ids.prefixHint(input.partnerNo).message);
-  }
-  const partner = await ctx.dao.findOne(COLLECTIONS.PARTNERS, { where: { partnerNo: codeResult.canonical } });
-  if (!partner || partner.deletedAt || partner.status === enums.PARTNER_STATUS.CLOSED) {
-    throw errors.notFound('该兼职编号不存在，请核对后重试');
-  }
+  const partner = await loadBindablePartner(ctx, input.partnerNo);
   if (partner.status !== enums.PARTNER_STATUS.ACTIVE) {
     throw errors.partnerClosed('该兼职当前不接单（已停用）');
   }

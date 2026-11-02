@@ -207,7 +207,7 @@ if (require.main === module) {
     'selftest-profile', 'selftest-switch', 'selftest-testaccount',
     'selftest-admin', 'selftest-messages', 'selftest-cleanup', 'selftest-admin-pages',
     'selftest-message-pages', 'selftest-privacy-text', 'selftest-tools', 'selftest-deletion', 'selftest-performance',
-    'selftest-security', 'selftest-share'];
+    'selftest-security', 'selftest-share', 'selftest-transfer', 'selftest-team'];
   // 非独立套件（被其他 suite require 的夹具/用例表）：显式声明、不参与聚合。
   // 磁盘上新增 selftest-*.js 时必须二选一：进 SUITES（参与聚合）或在此登记并给理由，否则完整性闸判红。
   const NON_AGGREGATE = new Map([

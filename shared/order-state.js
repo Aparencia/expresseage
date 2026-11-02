@@ -76,6 +76,20 @@ const ACTION_RULES = {
   'order.deleteRecord': {
     from: [STATUS.COMPLETED], to: 'SAME', event: 'DELETED_BY_CUSTOMER', roles: [enums.ROLES.CUSTOMER], changesStatus: false
   },
+  // D58 转派四动作：ACCEPTED 起始、订单状态不变（to:'SAME'/changesStatus:false）；归属改写与
+  // orders.transfer 状态机由 handlers/order/_transfer 在事务内负责，引擎无需改动。
+  'order.requestTransfer': {
+    from: [STATUS.ACCEPTED], to: 'SAME', event: 'TRANSFER_REQUESTED', roles: [enums.ROLES.PARTNER], changesStatus: false
+  },
+  'order.acceptTransfer': {
+    from: [STATUS.ACCEPTED], to: 'SAME', event: 'TRANSFER_ACCEPTED', roles: [enums.ROLES.PARTNER], changesStatus: false
+  },
+  'order.declineTransfer': {
+    from: [STATUS.ACCEPTED], to: 'SAME', event: 'TRANSFER_DECLINED', roles: [enums.ROLES.PARTNER], changesStatus: false
+  },
+  'order.cancelTransfer': {
+    from: [STATUS.ACCEPTED], to: 'SAME', event: 'TRANSFER_CANCELLED', roles: [enums.ROLES.PARTNER], changesStatus: false
+  },
   'cleanup.orderTimeout': {
     from: [STATUS.SUBMITTED], to: STATUS.CANCELLED, event: 'TIMEOUT_CANCELLED', roles: [enums.CANCELLED_BY.SYSTEM], changesStatus: true
   },

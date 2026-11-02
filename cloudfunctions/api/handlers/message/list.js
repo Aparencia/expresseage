@@ -103,6 +103,12 @@ function unreadOf(all) {
   };
 }
 
+// D58（批 26）：消息中心/红点拉黑 4 个私有转派事件；TRANSFER_ACCEPTED 保留可见（D29 机制，顾客可见）
+function visibleEventRowsOf(events) {
+  const hidden = common.enums.MESSAGE_HIDDEN_EVENT_TYPES || [];
+  return (Array.isArray(events) ? events : []).filter((event) => hidden.indexOf(event.type) < 0);
+}
+
 async function listCenter(ctx, payload) {
   const scope = common.scopeOf(ctx);
   if (scope.roles.length === 0) {
@@ -126,7 +132,7 @@ async function listCenter(ctx, payload) {
       orderBy: [['at', 'desc']],
       limit: common.EVENTS_PER_ORDER
     });
-    events.forEach((event) => {
+    visibleEventRowsOf(events).forEach((event) => {
       items.push(common.buildEventItem(scope, orderNo, event, readWatermarkMs));
     });
     const messages = await ctx.dao.find(common.COLLECTIONS.ORDER_MESSAGES, {

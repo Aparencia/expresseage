@@ -13,6 +13,7 @@ const { errors } = require('../../lib/errors');
 const identity = require('../user/_common');
 const uploadCommon = require('../upload/_common');
 const configCommon = require('../config/_common');
+const team = require('./_team');
 
 // D41（2026-10-28 用户拍板）：默认服务目录取运行时 `config.serviceCatalog`（configCommon 读层已按新 5 类归一，
 // 旧库/含已停用 PICKUP_DOOR 的目录会回退新默认），保持既有「全部启用」行为；不在这里另写一份码表。
@@ -128,44 +129,85 @@ async function handler(ctx, payload) {
   };
 }
 
+// D59（批 26 冻结）：SUB 子码激活写 parentPartnerId=发码主兼职 _id、teamJoinedAt=激活时刻（层级仅一层）；
+// kind='DEV'/字段缺失的旧码零改动（不写这两个字段，读侧按 ''/缺失兼容，零迁移）。SUB 码缺 issuerPartnerId
+// 属脏数据 → fail-closed（不生成无归属的子账号，需主兼职重新发码）。
+function teamFieldsOf(invitation, nowDate) {
+  if (!invitation || invitation.kind !== enums.INVITATION_KIND.SUB) {
+    return {};
+  }
+  const issuer = typeof invitation.issuerPartnerId === 'string' ? invitation.issuerPartnerId : '';
+  if (!issuer) {
+    throw errors.invalidState('邀请码信息不完整，请向主兼职重新索取');
+  }
+  return { parentPartnerId: issuer, teamJoinedAt: nowDate };
+}
+
+// D59 收尾闸（批 26 Lead 裁决）：主兼职停用/注销后，其未用 SUB 码不得再长出 ACTIVE 子账号
+//（否则绕过「主兼职停用/注销级联子队员」口径）。在同一事务内读发码主兼职：不存在/已注销/
+// 上级非主兼职（脏数据）一律 NOT_FOUND 防枚举；其余非 ACTIVE（SUSPENDED/未知状态）→ PARTNER_CLOSED。
+// fail-closed：拒绝路径在写 partners/codes/users 之前抛出 → 零写库（事务回滚兜底）。
+async function assertIssuerUsable(trx, invitation) {
+  if (!invitation || invitation.kind !== enums.INVITATION_KIND.SUB) {
+    return;
+  }
+  const issuerId = typeof invitation.issuerPartnerId === 'string' ? invitation.issuerPartnerId : '';
+  if (!issuerId) {
+    throw errors.invalidState('邀请码信息不完整，请向主兼职重新索取');
+  }
+  const issuer = await trx.get(COLLECTIONS.PARTNERS, issuerId);
+  if (!issuer || issuer.deletedAt || issuer.status === enums.PARTNER_STATUS.CLOSED || team.parentPartnerIdOf(issuer) !== '') {
+    throw errors.notFound('邀请码已失效，请重新向主兼职索取');
+  }
+  if (issuer.status !== enums.PARTNER_STATUS.ACTIVE) {
+    throw errors.partnerClosed('邀请方已停用，请联系管理员');
+  }
+}
+
+async function activateInTx(trx, ctx, opts, runtimeConfig) {
+  const invitation = await trx.findOne(COLLECTIONS.INVITATION_CODES, { where: { code: opts.code } });
+  if (!invitation || invitation.status === enums.INVITATION_STATUS.REVOKED) {
+    throw errors.notFound('邀请码不存在或已作废，请向开发者索取新的邀请码');
+  }
+  if (invitation.status === enums.INVITATION_STATUS.USED) {
+    throw errors.inviteUsed('邀请码已被使用，请向开发者索取新的邀请码');
+  }
+  // 惰性过期判定（DATA_MODEL §4.3：激活时也判定）：admin.createInvites 落库的 expiresAt 是 Date，
+  // 而 time.isPast 只接受毫秒数——这里显式归一 Date/number，否则 Date 直传恒判"未过期"（expiresAt 缺失不判过期）。
+  const expiresAtMs = invitation.expiresAt instanceof Date ? invitation.expiresAt.getTime()
+    : (typeof invitation.expiresAt === 'number' && isFinite(invitation.expiresAt) ? invitation.expiresAt : 0);
+  if (invitation.status === enums.INVITATION_STATUS.EXPIRED || (expiresAtMs > 0 && expiresAtMs <= opts.nowMs)) {
+    throw errors.inviteExpired('邀请码已过期，请向开发者索取新的邀请码');
+  }
+  await assertIssuerUsable(trx, invitation);
+  const doc = Object.assign(
+    buildPartnerDoc(opts.scope.openid, { displayName: opts.displayName, avatarFileId: opts.avatarFileId }, opts.nowDate, runtimeConfig),
+    teamFieldsOf(invitation, opts.nowDate)
+  );
+  const inserted = await insertUnique(trx, COLLECTIONS.PARTNERS, {
+    field: 'partnerNo',
+    generate: () => (ctx.ids && typeof ctx.ids.partnerNo === 'function' ? ctx.ids.partnerNo() : generatePartnerNo()),
+    build: (partnerNo) => Object.assign({ partnerNo }, doc)
+  });
+  await trx.update(COLLECTIONS.INVITATION_CODES, invitation._id, {
+    status: enums.INVITATION_STATUS.USED,
+    usedBy: inserted._id,
+    usedAt: opts.nowDate,
+    updatedAt: opts.nowDate
+  });
+  const roles = opts.user && Array.isArray(opts.user.roles) ? opts.user.roles.slice() : [];
+  if (roles.indexOf(enums.ROLES.PARTNER) < 0) {
+    roles.push(enums.ROLES.PARTNER);
+  }
+  await trx.update(COLLECTIONS.USERS, opts.scope.openid, { roles, updatedAt: opts.nowDate });
+  return { partnerNo: inserted.value, serviceConfig: doc.serviceConfig, roles, partnerId: inserted._id };
+}
+
 async function activateInTransaction(ctx, options, runtimeConfig) {
   const opts = options;
   const attempt = async (tries) => {
     try {
-      return await ctx.dao.transaction(async (trx) => {
-        const invitation = await trx.findOne(COLLECTIONS.INVITATION_CODES, { where: { code: opts.code } });
-        if (!invitation || invitation.status === enums.INVITATION_STATUS.REVOKED) {
-          throw errors.notFound('邀请码不存在或已作废，请向开发者索取新的邀请码');
-        }
-        if (invitation.status === enums.INVITATION_STATUS.USED) {
-          throw errors.inviteUsed('邀请码已被使用，请向开发者索取新的邀请码');
-        }
-        // 惰性过期判定（DATA_MODEL §4.3：激活时也判定）：admin.createInvites 落库的 expiresAt 是 Date，
-        // 而 time.isPast 只接受毫秒数——这里显式归一 Date/number，否则 Date 直传恒判"未过期"（expiresAt 缺失不判过期）。
-        const expiresAtMs = invitation.expiresAt instanceof Date ? invitation.expiresAt.getTime()
-          : (typeof invitation.expiresAt === 'number' && isFinite(invitation.expiresAt) ? invitation.expiresAt : 0);
-        if (invitation.status === enums.INVITATION_STATUS.EXPIRED || (expiresAtMs > 0 && expiresAtMs <= opts.nowMs)) {
-          throw errors.inviteExpired('邀请码已过期，请向开发者索取新的邀请码');
-        }
-        const doc = buildPartnerDoc(opts.scope.openid, { displayName: opts.displayName, avatarFileId: opts.avatarFileId }, opts.nowDate, runtimeConfig);
-        const inserted = await insertUnique(trx, COLLECTIONS.PARTNERS, {
-          field: 'partnerNo',
-          generate: () => (ctx.ids && typeof ctx.ids.partnerNo === 'function' ? ctx.ids.partnerNo() : generatePartnerNo()),
-          build: (partnerNo) => Object.assign({ partnerNo }, doc)
-        });
-        await trx.update(COLLECTIONS.INVITATION_CODES, invitation._id, {
-          status: enums.INVITATION_STATUS.USED,
-          usedBy: inserted._id,
-          usedAt: opts.nowDate,
-          updatedAt: opts.nowDate
-        });
-        const roles = opts.user && Array.isArray(opts.user.roles) ? opts.user.roles.slice() : [];
-        if (roles.indexOf(enums.ROLES.PARTNER) < 0) {
-          roles.push(enums.ROLES.PARTNER);
-        }
-        await trx.update(COLLECTIONS.USERS, opts.scope.openid, { roles, updatedAt: opts.nowDate });
-        return { partnerNo: inserted.value, serviceConfig: doc.serviceConfig, roles, partnerId: inserted._id };
-      });
+      return await ctx.dao.transaction((trx) => activateInTx(trx, ctx, opts, runtimeConfig));
     } catch (error) {
       if (tries > 0 && ctx.dao.isDuplicateError && ctx.dao.isDuplicateError(error)) {
         return attempt(tries - 1);

@@ -247,11 +247,15 @@ async function dayGroupingChecks(t, deps) {
   t.check(indexSrc.indexOf("require('./parts/day-view')") >= 0
     && indexSrc.indexOf('dayView.dayDateKeyOf(') >= 0 && indexSrc.indexOf('TZ_OFFSET_MS') < 0,
     'J36 A7 页面接线：日界/日期键全走 parts/day-view（页面零本地时区常量）');
-  const resultFlow = indexSrc.slice(indexSrc.indexOf('applyResult('));
+  // 批 26（D58）：加载/增量渲染接线按门禁 #18 拆到 parts/load-flow（页面已 499/500 行），
+  // 判据改为「纯件仍逐字保留行为 + 页面经 require 接线」，防拆件时把 prevGroups/appendPatches 丢掉
+  const flowSrc = fsutil.stripComments(deps.textOf('pages/partner/workbench/parts/load-flow.js'));
+  const resultFlow = flowSrc.slice(flowSrc.indexOf('applyResult('));
   t.check(resultFlow.indexOf('prevGroups: prev.groups') >= 0
     && resultFlow.indexOf('nowMs: Date.now()') >= 0
     && resultFlow.indexOf('this.appendChunks(result.appendPatches') >= 0
-    && indexSrc.indexOf('.concat(rest[0])') < 0,
+    && flowSrc.indexOf('.concat(rest[0])') < 0
+    && indexSrc.indexOf("require('./parts/load-flow')") >= 0,
     'J37 P0-5 页面接线：刷新透传 prevGroups/nowMs、分片追加只发 appendPatches（不再整表 concat）');
   const wxmlSrc = deps.textOf(deps.PAGES.wxml);
   t.check(wxmlSrc.indexOf('row.delayDaysText') >= 0 && wxmlSrc.indexOf('按下单日分') >= 0

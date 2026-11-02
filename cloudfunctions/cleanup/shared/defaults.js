@@ -1,5 +1,6 @@
 // config/defaults.js · 全局配置出厂值（唯一默认值来源；admin.bootstrap 种子、admin 范围校验、公开子集）
-// 契约：docs/contract/V4_CONTRACT.md v1.4 §4 config 行（含 autoCompleteAt（D43/D51）/orderMergeWindowMinutes（D23）/stations（D32））；
+// 契约：docs/contract/V4_CONTRACT.md v1.4 §4 config 行（含 autoCompleteAt（D43/D51）/orderMergeWindowMinutes（D23）/stations（D32）/
+//       transferTtlMinutes·transferRate（D58）/teamMaxMembers·subInviteRate（D59））；
 //       docs/data/V4_DATA_MODEL.md §2.10。docs/ENGINEERING §3.6（键与默认/范围）。
 // 纪律：值只含布尔/字符串/整数次数与毫秒；无 Key、无第三方服务标识（客户端包内零外呼痕迹）。
 //       `aiFallback.model` 的出厂模型名由云函数 lib/ai 自持（本文件留空串表示"用云侧默认模型"）。
@@ -50,6 +51,12 @@ const DEFAULT_CONFIG = {
     cooldownMinutes: 10
   },
   viewTicketTtlMinutes: 30,
+  // 批 26（D58/D59）：转派邀请有效期/发起限流、主兼职队员上限/子码发码限流。
+  // 出厂默认、只进 CONFIG_LIMITS；不进公开子集、不进 admin.updateConfig 白名单（本批后台不可改）。
+  transferTtlMinutes: 10,
+  transferRate: { perMinute: 3, perDay: 20 },
+  teamMaxMembers: 5,
+  subInviteRate: { perMinute: 3, perDay: 20 },
   avatarMaxBytes: 200 * 1024,
   testAccountMaxPerRole: 3,
   testDataRetentionDays: PROMISE_RETENTION_DAYS.testData,
@@ -67,7 +74,13 @@ const CONFIG_LIMITS = {
   testAccountMaxPerRole: { min: 1, max: 3 },
   testDataRetentionDays: { min: 7, max: 90 },
   // v1.0（D23/CONTRACT §4 config 行）：合并窗口 0~60 分钟，0=关闭
-  orderMergeWindowMinutes: { min: 0, max: 60 }
+  orderMergeWindowMinutes: { min: 0, max: 60 },
+  // 批 26（D58/D59）：转派/子码治理参数范围。rate 形制 = {perMinute:{min,max}, perDay:{min,max}}（对象型）；
+  // 既有数字型键形制不变。四个键均不在 updateConfig 白名单（后台不可改），此处仅供后续放开时复用。
+  transferTtlMinutes: { min: 1, max: 60 },
+  transferRate: { perMinute: { min: 1, max: 30 }, perDay: { min: 1, max: 200 } },
+  teamMaxMembers: { min: 1, max: 10 },
+  subInviteRate: { perMinute: { min: 1, max: 30 }, perDay: { min: 1, max: 200 } }
 };
 
 // config.getPublic 下发的公开子集（模板 ID / aiFallback / 治理参数一律不下发）

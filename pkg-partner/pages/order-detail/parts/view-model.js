@@ -5,6 +5,7 @@ const correctPanel = require('./correct-panel');
 const deliveryPanel = require('./delivery-panel');
 const exceptionPanel = require('./exception-panel');
 const orderView = require('./order-view');
+const transferPart = require('./transfer');
 const undoPart = require('./undo');
 const voucherPart = require('./voucher');
 
@@ -32,7 +33,11 @@ function buildView(order, events, options) {
   // D43：送达文案按公开配置 config.autoCompleteAt（调用方注入 store 里的 configPublic；缺则纯件回退出厂默认）
   const config = opts.config || null;
   const detail = orderView.buildDetail(item, nowMs, { readonly: readonly });
-  const actions = hideBlockedActions(item, actionsPart.buildVisibleActions(item, { readonly: readonly }));
+  const visibleActions = hideBlockedActions(item, actionsPart.buildVisibleActions(item, { readonly: readonly }));
+  // D58：转派四动作不进底部动作条（由转派区块/面板承载），其余动作仍原样下发底部条
+  const actionSplit = transferPart.splitActions(visibleActions);
+  const actions = actionSplit.status;
+  const transferCard = transferPart.cardOf(item, visibleActions, { readonly: readonly, nowMs: nowMs });
   const voucher = voucherPart.buildVoucher(item, events);
   // 只读视角不出现撤销条（UX §4.7/§6.3：写操作全置灰/隐藏）
   const undoBar = readonly
@@ -41,6 +46,8 @@ function buildView(order, events, options) {
   return {
     order: Object.assign({}, item, detail),
     actions: actions,
+    transferCard: transferCard,
+    transferPanel: transferPart.requestPanel(),
     voucher: voucher,
     correctPanel: correctPanel.buildPanel(item),
     exceptionPanel: exceptionPanel.buildPanel(),

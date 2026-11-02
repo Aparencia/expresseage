@@ -11,6 +11,7 @@ const view = require('../../parts/status-view');
 const flow = require('../../parts/order-detail-flow');
 const format = require('../../parts/format');
 const parcelView = require('./parts/parcel-view');
+const transferView = require('./parts/transfer-view');
 const share = require('../../../utils/share/handlers');
 
 const CREATE_PAGE = '/pkg-customer/pages/order-create/index';
@@ -44,6 +45,8 @@ Page({
     notice: { type: '', text: '' },
     exception: null,
     waitingHint: '',
+    // 批 26-D58：转派完成（新兼职接手）只读提示「由 P-XXX-XXX 接手履约」，只显示编号（D19/D42）
+    transferHint: '',
     pickupCodeText: '—',
     messages: [],
     message: { inputVisible: false, archiveText: '' },
@@ -161,7 +164,12 @@ Page({
     if (session.view) Object.assign(payload, session.view);
     // v1.0 订单模型：parcels[]/images[]/delivery/manualEntry 由本地纯件转视图（不改共享 parts）；
     // D41/D49：服务类型说明取公开配置 serviceCatalog 的 desc 单源，历史停用类型按 DTO 标记渲染「（已停用）」
-    if (payload.order) Object.assign(payload, parcelView.pageExtras(payload.order, this.data.config, Date.now()));
+    if (payload.order) {
+      Object.assign(payload, parcelView.pageExtras(payload.order, this.data.config, Date.now()),
+        transferView.pageExtras(payload.order));
+      // 时间线：TRANSFER_ACCEPTED 换顾客人话（带接手编号），其余事件原样
+      payload.events = transferView.eventsView(payload.events, payload.order);
+    }
     this.setData(payload);
   },
 

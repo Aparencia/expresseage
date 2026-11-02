@@ -204,10 +204,12 @@
           </view>
         </view>
 
+        <!-- D63：有 ACTIVE 绑定时分享其绑定兼职的绑定卡（只带这位兼职编号、零邀请者信息）；无绑定回通用邀请卡 -->
         <view wx:if="{{isCustomer && !viewSession}}" class="card">
           <view class="section-label">分享</view>
           <button class="btn btn-ghost btn-block" open-type="share">分享给朋友</button>
-          <view class="muted share-hint">分享卡片不含取件码、宿舍、订单与个人信息；切换会话下不提供分享。</view>
+          <view wx:if="{{partnerCard}}" class="muted share-hint">卡片只带这位兼职的编号，不含你的取件码、宿舍、订单与个人信息；切换会话下不提供分享。</view>
+          <view wx:else class="muted share-hint">分享卡片不含取件码、宿舍、订单与个人信息；切换会话下不提供分享。</view>
         </view>
 
         <view class="card list-card">

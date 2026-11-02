@@ -11,8 +11,8 @@
  *   E. 待送达复制文案只到楼栋级（D48 红线：不含房间号/roomTag/订单号/称呼/尾号/取件码；空清单不复制）
  *   F. 页面静态纪律（零 wx.cloud/random/状态字面量/action 字面量；switch-bar 首子节点；复制接线）
  *   G. 批量送达复用工作台纯件（batchView.plan/run/summary + rowActions.buildWrite）+ READONLY 禁用/TEST_WRITE 提示
- *   H. 注册与文档联动（app.json=32 页、tools/lib/project.js ALL_PAGES=32、CONTRACT §7/ARCHITECTURE/
- *      UX_PARTNER/QA/docs README 页数读数、工作台入口、sync 副本一致）
+ *   H. 注册与文档联动（app.json 总页数/ALL_PAGES/CONTRACT §7/ARCHITECTURE/UX_PARTNER/QA/docs README 页数
+ *      一律与 app.json + tools/lib/project 动态对账，不写死页数）、工作台入口、sync 副本一致）
  *   I. 零金额扫描（7 文件）+ 行数闸（页面/纯件 ≤500、本套件 ≤1000）
  *   J. 修复批 T4：复制前自动拉全（P1-7）/ 批量失败重试条与取消不刷新（P1-8）/ 卸载与请求序号守卫（P2）
  *   K. 批 20 双阶段数据源（待取件 ACCEPTED / 待送达 PICKED 两条现成动作 payload；counts→chip 文案；默认阶段）
@@ -434,36 +434,49 @@ function register(h) {
       'G13 行内「已送达」与批量送达入口均接线');
   });
 
-  // ------------------------------------------------------------ H. 注册与文档联动（31→32）
-  h.section('H 注册与文档联动（app.json/project/CONTRACT §7/ARCH/UX/QA/README 31→32）', (t) => {
+  // ------------------------------------------------------------ H. 注册与文档联动（页数随 app.json 动态对账）
+  h.section('H 注册与文档联动（app.json/project/CONTRACT §7/ARCH/UX/QA/README 页数联动）', (t) => {
     const pickPath = 'pkg-partner/pages/pick-list/index';
     const four = [FILES.page, FILES.wxml, FILES.wxss, FILES.json];
     t.eq(four.filter((rel) => readText(rel) === ''), [], 'H1 页面四件套齐全且非空');
     const pageJson = jsonOf(FILES.json);
     t.eq(pageJson && pageJson.navigationBarTitleText, '取件清单', 'H2 页面 json 标题正确（批 20 双阶段更名）');
     t.eq(pageJson && pageJson.enablePullDownRefresh, true, 'H3 页面启用下拉刷新（切页/下拉才刷新）');
+    // 页数不写死（AGENTS §4.7）：真源 = app.json；文档读数一律与 app.json/project 实数对账
+    const appJson = jsonOf('app.json') || {};
+    const subApps = appJson.subPackages || appJson.subpackages || [];
+    const declaredTotal = (appJson.pages || []).length
+      + subApps.reduce((sum, sub) => sum + (sub.pages || []).length, 0);
     const pages = appPages();
-    t.eq(pages.length, 32, 'H4 app.json 总页数 = 32（31→32）');
+    const totalPages = pages.length;
+    const partnerPages = (project.SUBPACKAGES['pkg-partner'] || []).length;
+    t.eq([pages.length, declaredTotal], [totalPages, totalPages],
+      'H4 app.json 总页数 = 主包 + 各分包声明之和（动态取，不写死页数）');
     t.eq(pages.indexOf(pickPath) !== -1, true, 'H5 app.json 声明 pkg-partner/pages/pick-list/index');
-    t.eq(project.ALL_PAGES.length, 32, 'H6 tools/lib/project.js ALL_PAGES = 32（与 app.json 对帐）');
+    t.eq(project.ALL_PAGES.length, totalPages,
+      'H6 tools/lib/project.js ALL_PAGES = ' + totalPages + '（与 app.json 动态对账，不写死）');
     t.eq(project.SUBPACKAGES['pkg-partner'].indexOf('pages/pick-list/index') !== -1, true,
       'H7 tools/lib/project.js pkg-partner 追加 pick-list（页数口径联动）');
     const sec7 = fsutil.section(readText(CONTRACT), /^##\s*7\./) || '';
-    t.eq(sec7.indexOf(pickPath) !== -1, true, 'H8 CONTRACT §7 页面地图含第 32 页（check-docs #2 双向一致）');
+    t.eq(sec7.indexOf(pickPath) !== -1, true, 'H8 CONTRACT §7 页面地图含取件清单页路径（check-docs #2 双向一致）');
     t.eq(sec7.indexOf('pages/customer/pickcodes/index') !== -1, true,
       'H9 CONTRACT §7 既有页面未被删（D64：取件码页迁主包在册，无回归）');
     const arch = readText(ARCH);
-    t.eq(arch.indexOf('32 个页面') !== -1, true, 'H10 ARCHITECTURE 页面数 31→32');
-    t.eq(arch.indexOf('`pkg-partner` 8 页') !== -1, true, 'H11 ARCHITECTURE 分包页数 pkg-partner 7→8');
-    t.eq(arch.indexOf(pickPath) !== -1, true, 'H12 ARCHITECTURE 页面清单含第 32 页路径');
+    t.eq(arch.indexOf(totalPages + ' 个页面') !== -1, true,
+      'H10 ARCHITECTURE 页面数 = app.json 实数 ' + totalPages + '（动态读数，不写死）');
+    t.eq(arch.indexOf('`pkg-partner` ' + partnerPages) !== -1, true,
+      'H11 ARCHITECTURE pkg-partner 页数 = project 实数 ' + partnerPages + '（动态读数，不写死）');
+    t.eq(arch.indexOf(pickPath) !== -1, true, 'H12 ARCHITECTURE 页面清单含取件清单页路径');
     const ux = readText(UX_PARTNER);
     t.eq(ux.indexOf(pickPath) !== -1 && ux.indexOf('D46') !== -1, true, 'H13 UX_PARTNER 新页规格 + 导航（D46）');
     const qa = readText(QA);
     t.eq(['| F31 |', '| F32 |', '| F33 |', '| F34 |'].filter((row) => qa.indexOf(row) === -1), [],
       'H14 QA 真机项 F31~F34（楼层清单滚动/分组/复制楼栋级/批量送达）');
     const readme = readText(DOCS_README);
-    t.eq(readme.indexOf('**32 页**') !== -1 && readme.indexOf('`pkg-partner` 8') !== -1, true,
-      'H15 docs/README 页数读数 31→32（页面结构行）');
+    // 页数在 README 里可能带 markdown 加粗（如 `pkg-partner` **9**）：宽容匹配，只锁数字真值
+    const partnerInReadme = new RegExp('`pkg-partner`\\s*\\*{0,2}' + partnerPages + '\\*{0,2}').test(readme);
+    t.eq(readme.indexOf('**' + totalPages + ' 页**') !== -1 && partnerInReadme, true,
+      'H15 docs/README 页数读数 = app.json/project 实数（动态读数，不写死）');
     const workbenchJs = readText('pages/partner/workbench/index.js');
     const workbenchWxml = readText('pages/partner/workbench/index.wxml');
     t.eq(workbenchWxml.indexOf('onPickListTap') !== -1, true, 'H16 工作台顶部入口按钮接线（wxml 1 处）');

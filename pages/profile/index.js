@@ -194,8 +194,7 @@ Page({
     this.setData({ editMode: true, form: vm.buildForm(source, this.data.isCustomer) });
   },
 
-  // P1-1：资料未完善自动展开编辑态（判定在 parts/view-model.js 纯件；每个页面实例只自动展开一次，取消后不回弹）
-  // 完成度按当前渲染角色传（顾客 customerComplete / 兼职 partnerComplete），页面不再自己判角色口径。
+  // P1-1：资料未完善自动展开编辑态（判定在 parts/view-model.js 纯件；每实例只展开一次，取消不回弹；完成度按渲染角色传）
   maybeOpenEditForm() {
     const open = vm.shouldAutoOpenEdit({
       edit: this._openEdit === true,
@@ -488,12 +487,13 @@ Page({
     });
   },
 
-  // 分享卡判据全在 parts/share-card.js：只带兼职编号，不带昵称/头像/宿舍/尾号（纯件可单测）
+  // 分享卡判据全在 parts/share-card.js（D63：顾客带其 ACTIVE 绑定兼职编号）；零昵称/头像/宿舍/尾号/订单，纯件可单测。
   onShareAppMessage() {
     return shareCard.buildShareMessage({
       isCustomer: this.data.isCustomer,
       viewSession: this.data.viewSession,
-      partnerCard: this.data.partnerCard
+      partnerCard: this.data.partnerCard,
+      boundPartnerNo: this.data.isCustomer ? (this.data.partnerCard || {}).partnerNo || '' : ''
     });
   }
 });

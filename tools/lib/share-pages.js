@@ -3,6 +3,8 @@
 //   - APP_MESSAGE：顾客/兼职业务页支持「转发给朋友」（卡片在中性纯件里构造，页面零自拼）；
 //     **D64 例外**：顾客「取件码」页（`pages/customer/pickcodes/index`）是本机 L3 明文页，不提供分享/转发，
 //     故不在本清单（新增业务页仍必须接入本清单，漏接即红）；
+//     **D59 例外**：主兼职「我的团队」页（`pkg-partner/pages/team/index`）含子邀请码/成员信息，不提供分享/转发，
+//     同不在本清单（tools/selftest-share.js D 组按禁分享清单双向对帐）；
 //   - TIMELINE：仅 3 个「朋友圈单页模式可自洽」的页面（role=身份/邀请、home=顾客首页、help=静态帮助），
 //     其它数据页打开在单页模式下无登录态/无云资源会空白，故不挂朋友圈；
 //   - ADMIN_PAGES：后台 11 页零分享入口（治理数据不外传，selftest-admin-pages §N 同口径）。

@@ -78,6 +78,10 @@ async function prepareCustomerContext(ctx, scope, config, now) {
 
 async function preparePartnerContext(ctx, scope, config, now, selector, bindingId) {
   const partner = await common.loadWritablePartner(ctx);
+  // D59：子队员不可代客下单（bindingId 与 guest 两条兼职路径都在本函数汇合）；顾客路径不经过这里。
+  if (typeof partner.parentPartnerId === 'string' && partner.parentPartnerId !== '') {
+    throw errors.forbidden('子队员不能代客下单，请让主兼职操作');
+  }
   parcelUtil.assertAcceptingOrders(partner);
   const partnerUser = await common.getUser(ctx, partner.openid);
   const base = {
