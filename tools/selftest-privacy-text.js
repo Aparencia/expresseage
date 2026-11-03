@@ -3,7 +3,7 @@
  * tools/selftest-privacy-text.js — 批 8 T6「端内隐私文本同步」断言套件（ENGINEERING §7.2 接入范式）
  *
  * 覆盖（task-80 交付 4 的五组判据）：
- *   A. 定稿候选 v1.3 关键条目 ⊆ 端内全文：17 项数据表 / 8 个章节标题 / 必披露主题 / 留存数字，
+ *   A. 定稿 v1.10 关键条目 ⊆ 端内全文：17 项数据表 / 8 个章节标题 / 必披露主题 / 留存数字，
  *      端内文本与 docs/privacy/隐私保护指引.md 同时存在（防双份漂移、防端内缺项）。
  *   B. launch 隐私弹窗 PRIVACY_ITEMS 与文档口径一致：头像/昵称可见边界（兼职昵称凭完整编号预览、
  *      头像绑定成功后才可见）、AI 仅去敏文字、账号切换/测试账号、留存期限、未成年人、注销/解绑；
@@ -38,7 +38,7 @@ const privacyText = require(path.join(__dirname, '..', 'pkg-customer/parts/priva
 const defaults = require(path.join(__dirname, '..', 'config/defaults.js'));
 
 const ROOT = path.resolve(__dirname, '..');
-const EXPECTED_ASSERTIONS = 295; // 291 + 4（2026-11-03 D58/D59/D63：QA §AG 分区声明/AG1~AG12 区间/12 行精确计数/人列且未代勾）；259 + 30（2026-11-01 D57 本机取件码清单）+ 1（2026-11-02 D64~D67 QA §AE 与计数 343）+ 1（2026-11-03 D61/D62 QA §AF 与计数 350）
+const EXPECTED_ASSERTIONS = 305; // 295 + 10（2026-11-03 D58/D59/D63 隐私文本定稿 v1.10：转派协作履约披露/队内昵称可见/去候选状态 10 条 M 组）；291 + 4（2026-11-03 D58/D59/D63：QA §AG 分区声明/AG1~AG12 区间/12 行精确计数/人列且未代勾）；259 + 30（2026-11-01 D57 本机取件码清单）+ 1（2026-11-02 D64~D67 QA §AE 与计数 343）+ 1（2026-11-03 D61/D62 QA §AF 与计数 350）
 
 const PART_FILE = 'pkg-customer/parts/privacy-text.js';
 const HELP_JS = 'pkg-customer/pages/help/index.js';
@@ -154,7 +154,7 @@ function register(h) {
   const allStatements = Object.keys(statements || {}).map((key) => statements[key]).join('\n');
 
   // ------------------------------------------------------------ A. 定稿关键条目 ⊆ 端内全文
-  h.section('A 定稿候选 v1.3 关键条目 ⊆ 端内全文（数据项/章节/主题/留存）', (t) => {
+  h.section('A 定稿 v1.10 关键条目 ⊆ 端内全文（数据项/章节/主题/留存）', (t) => {
     DATA_ITEMS.forEach((term) => checkTextSides(t, term));
     SECTION_TITLES.forEach((title) => {
       t.check(SECTIONS.some((section) => section.title === title),
@@ -223,12 +223,12 @@ function register(h) {
 
   // ------------------------------------------------------------ D. 文本版本 ↔ config.privacyVersion
   h.section('D 文本版本 ↔ config.privacyVersion 对应（版本单源）', (t) => {
-    t.eq(privacyText.TEXT_VERSION, 'v1.3', '文本版本 v1.3（与定稿候选一致；历史 v1.0 留痕）');
-    t.check(TEXT.indexOf(privacyText.TEXT_VERSION_LABEL) !== -1, '全文写明「定稿候选 v1.3」文本版本');
+    t.eq(privacyText.TEXT_VERSION, 'v1.10', '文本版本 v1.10（定稿 v1.10；历史 v1.0 / 定稿候选 v1.3 留痕）');
+    t.check(TEXT.indexOf(privacyText.TEXT_VERSION_LABEL) !== -1, '全文写明「定稿 v1.10」文本版本');
     t.check(privacyTextDocCache.indexOf(privacyText.TEXT_VERSION_LABEL) !== -1,
-      '定稿文档头部同为「定稿候选 v1.3」（改版本必须两端同步）');
+      '定稿文档头部同为「定稿 v1.10」（改版本必须两端同步）');
     t.check(privacyTextDocCache.indexOf(privacyText.TEXT_VERSION) !== -1,
-      '定稿文档写明文本版本号 v1.3（与端内全文同一标签）');
+      '定稿文档写明文本版本号 v1.10（与端内全文同一标签）');
     t.check(privacyTextDocCache.indexOf('历史版本') !== -1
       && privacyTextDocCache.indexOf('定稿候选 v1.0') !== -1,
     '定稿文档保留「历史版本 v1.0」留痕（版本标签统一不删证据）');
@@ -353,7 +353,7 @@ function register(h) {
       && supplement.indexOf(TEXT) !== -1,
     '定稿文档保留用户填写占位符；剪贴板使用披露两端同源；补充文档为端内全文派生物（随文本重新生成，不单独维护）');
     t.check(supplement.indexOf('文本版本：' + privacyText.TEXT_VERSION_LABEL) !== -1,
-      '补充文档头部文本版本与端内全文同标签（定稿候选 v1.3；派生物随文本重新生成）');
+      '补充文档头部文本版本与端内全文同标签（定稿 v1.10；派生物随文本重新生成）');
   });
 
   // ------------------------------------------------------------ H. 批 10 口径（D24/D25）
@@ -542,6 +542,35 @@ function register(h) {
     t.eq(agRows.length, 12, 'QA §AG 精确 12 行（AG1~AG12 无缺号/无重复，与附录 E 合计口径同源）');
     const agHumanRows = qaDoc.match(/^\| AG\d+ \|.*\| 人（[^|]+） \| \[ \] \|/gm) || [];
     t.eq(agHumanRows.length, 12, 'QA §AG 每条都标「人（…）」且完成列为 [ ]（真机项只能用户点检，agent 不代勾）');
+  });
+
+  // ------------------------------------------------------------ M. 2026-11-03 D58/D59/D63 定稿 v1.10
+  h.section('M 定稿 v1.10（D58/D59/D63：转派协作履约披露 + 队内昵称可见；privacyVersion 保持 v4.0.0）', (t) => {
+    const supplementFile = 'docs/privacy/补充文档.txt';
+    const supplement = exists(supplementFile) ? readSource(supplementFile) : '';
+    t.check(TEXT.indexOf('例外 5（转派与协作履约）') !== -1,
+      '端内全文新增「例外 5（转派与协作履约）」（D58/D59 定稿披露）');
+    t.check(TEXT.indexOf('协作队员') !== -1 && TEXT.indexOf('不会获得你的头像、昵称或客户档案') !== -1,
+      '端内全文写明承接方仅获履约必需信息、不获得头像/昵称/客户档案');
+    t.check(TEXT.indexOf('实际履约兼职的编号') !== -1,
+      '端内全文写明顾客只看实际履约兼职编号（不展示其头像/昵称）');
+    t.check(TEXT.indexOf('团队页') !== -1 && TEXT.indexOf('不含头像') !== -1
+      && TEXT.indexOf('顾客不能绑定子队员') !== -1,
+    '端内全文写明队内昵称可见范围（团队页可见、不含头像、顾客不可绑子队员）');
+    t.check(privacyTextDocCache.indexOf('转派与协作履约') !== -1
+      && privacyTextDocCache.indexOf('协作队员') !== -1,
+    '定稿文档写明转派与协作履约披露（三处同源）');
+    t.check(privacyTextDocCache.indexOf('团队页') !== -1 && privacyTextDocCache.indexOf('不含头像') !== -1,
+      '定稿文档写明队内昵称可见范围（不含头像）');
+    t.check(privacyTextDocCache.indexOf('待用户终审') === -1,
+      '定稿文档不再残留「待用户终审」（v1.10 已由用户 2026-11-03 确认）');
+    t.check(privacyTextDocCache.indexOf('定稿 v1.10') !== -1
+      && privacyTextDocCache.indexOf('2026-11-03 用户确认') !== -1,
+    '定稿文档写明文本版本 v1.10 与用户确认日期');
+    t.check(supplement.indexOf('转派与协作履约') !== -1 && supplement.indexOf('2026-11-03') !== -1,
+      '补充文档派生物含 v1.10 定稿披露与 2026-11-03 定稿日期');
+    t.check(supplement.indexOf('待用户终审') === -1 && supplement.indexOf('v1.10 候选') === -1,
+      '反例锁定：补充文档不得残留「待用户终审 / v1.10 候选」旧状态');
   });
 }
 

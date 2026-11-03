@@ -1,5 +1,5 @@
 // pkg-customer/pages/help/index.js · 帮助 / 隐私 / 关于（静态口径，无网络）
-// 隐私全文单源：pkg-customer/parts/privacy-text.js（与 docs/privacy/隐私保护指引.md 定稿候选 v1.3（历史 v1.0 留痕）对齐）；
+// 隐私全文单源：pkg-customer/parts/privacy-text.js（与 docs/privacy/隐私保护指引.md 定稿 v1.10（2026-11-03 用户确认；历史 v1.0 / 定稿候选 v1.3 留痕）对齐）；
 // 版本号取 config.privacyVersion（store 缓存优先、出厂默认兜底），页面只做取数 → setData。
 'use strict';
 

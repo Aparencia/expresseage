@@ -419,7 +419,7 @@
 - **共享副本**：`shared/{enums,actions,order-state,validate}.js` 与 `config/defaults.js` 变更 → Lead 先跑 `node tools/sync-cloud-shared.js` 生成 `cloudfunctions/{api,cleanup}/shared/**` 副本（禁止手写），再上传 `api`（建议同版本重传 `cleanup`，行为无 sweep 变更）。
 - **配置**：`transferTtlMinutes=10`、`transferRate{perMinute:3,perDay:20}`、`teamMaxMembers=5`、`subInviteRate{perMinute:3,perDay:20}` 为**出厂默认（`config/defaults.js`）**、**不进公开子集、不进 `admin.updateConfig` 白名单**；上线**无需**在控制台改 `config`（改值只能走部署配置脚本/控制台并重跑 sync）。
 - **索引**：按 §3.5 新增 3 个索引（`idx_transfer_target`/`idx_issuer`/`idx_parent`），退化方案见同节；建后冒烟见 18.3。
-- **隐私文本**：`docs/privacy/隐私保护指引.md` 已回写 **v1.10 候选（待用户终审）** 增补段（订单可能由协作队员协助履约 + 队内昵称可见），`privacyVersion` 配置值**未改**（是否升版待用户裁决）；端内全文 `pkg-customer/parts/privacy-text.js` 与 `补充文档.txt` 正文需用户终审后由对应 owner 同源同步。
+- **隐私文本**：`docs/privacy/隐私保护指引.md` 已定稿 **v1.10（2026-11-03 用户确认）**（转派协作履约 + 队内昵称可见两项披露），`privacyVersion` 配置值**保持 `v4.0.0` 不升版**；端内全文 `pkg-customer/parts/privacy-text.js`、`补充文档.txt`、发布前填写清单已同源同步（三处一致由 `selftest-privacy-text` 锁定）。
 
 ### 18.2 上线前冒烟（用户/Lead，最小链路）
 
