@@ -119,7 +119,7 @@
         <view wx:if="{{!readonly && (item.action || canCorrect)}}" class="row parcel-ops">
           <view
             wx:if="{{item.action}}"
-            class="btn {{item.picked ? 'btn-ghost' : 'btn-primary'}} mini-btn piece-action-btn"
+            class="btn btn-ghost mini-btn piece-action-btn"
             data-index="{{item.index}}"
             data-key="{{item.action.key}}"
             bindtap="onPieceAction"
@@ -133,7 +133,7 @@
       </view>
       <view wx:if="{{order.hasImage}}" class="row image-row">
         <view class="btn btn-ghost mini-btn" bindtap="onViewImage">查看取件截图</view>
-        <text class="small">共 {{order.imageCount}} 张</text>
+        <text class="small">共 {{order.imageCount}} 张{{order.imageCount > 1 ? '，可左右滑动' : ''}}</text>
       </view>
     </view>
 
@@ -206,20 +206,30 @@
     </view>
 
     <!-- D65：操作条走底部条组件（自带 env 安全区底垫 + 可测高占位，替代页面 static 垫高）；
-         只渲染服务端 order.actions[]；READONLY 全部置灰（点击只 toast、不发请求） -->
-    <bottom-bar wx:if="{{actions.length}}">
+         只渲染服务端 order.actions[]；READONLY 全部置灰（点击只 toast、不发请求）。
+         2026-11-05：主操作（推进状态的唯一动作）独占最底行实心按钮；异常/改码/留言与取消/拒单
+         走上一行小号幽灵按钮，危险动作排末尾——不再 5 个整宽按钮竖排、红色不再夹在中间。
+         分组在 parts/action-bar（纯件），actions[] 原样保留用于分派。 -->
+    <bottom-bar wx:if="{{actionBar.visible}}">
+      <view wx:if="{{actionBar.secondary.length}}" class="action-secondary-row">
+        <view
+          wx:for="{{actionBar.secondary}}"
+          wx:key="key"
+          class="btn {{item.danger ? 'btn-ghost-danger' : 'btn-ghost'}} action-secondary-btn {{item.disabled ? 'btn-disabled' : ''}}"
+          data-key="{{item.key}}"
+          bindtap="onActionTap"
+        >{{item.label}}</view>
+      </view>
       <view
-        wx:for="{{actions}}"
-        wx:key="key"
-        class="btn {{item.danger ? 'btn-danger' : 'btn-primary'}} action-btn {{item.disabled ? 'btn-disabled' : ''}}"
-        disabled="{{item.disabled || sending}}"
-        data-key="{{item.key}}"
+        wx:if="{{actionBar.primary}}"
+        class="btn btn-primary action-primary-btn {{actionBar.primary.disabled ? 'btn-disabled' : ''}}"
+        data-key="{{actionBar.primary.key}}"
         bindtap="onActionTap"
-      >{{item.label}}</view>
+      >{{actionBar.primary.label}}</view>
     </bottom-bar>
 
     <!-- 撤销条：仅服务端 actions 给出 undoPick/undoDeliver 时出现，5 秒倒计时 -->
-    <view wx:if="{{undoBar.visible}}" class="undo-bar {{actions.length ? 'undo-bar-above-actions' : ''}}">
+    <view wx:if="{{undoBar.visible}}" class="undo-bar {{actionBar.visible ? 'undo-bar-above-actions' : ''}}">
       <text>{{undoBar.label}} · 可撤销 {{undoBar.remaining}}s</text>
       <view class="btn btn-ghost mini-btn" bindtap="onUndoTap">{{undoBar.undoLabel}}</view>
     </view>

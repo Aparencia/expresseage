@@ -66,6 +66,7 @@
 | 批 25 | 用户 11 条新需求第二批（D61 件级取件 / D62 多站点按件分组） | **工程侧完成并收口（2026-11-03）** | 服务端件级取件（可选 `itemIndex`、`parcels[].pickedAt/pickedByNo`、订单 PICKED 聚合派生、19 种事件、DTO 件级字段/actions、旧单派生无迁移）、兼职端逐件 UI（工作台/取件清单/订单详情，无 5 秒撤销条）、D62 按件站点分组（工作台/清单，批量仍整单）、顾客端只读件级进度与列表标签；`check.ps1` 4 步 0、check 39/39、check-docs 12/12、零金额 0（白名单 108 项）、selftest 36 套 0 失败；`gate.ps1` 红 0/黄 0（63 件/1576 行≤4800）；真机项 QA §AF1~AF7（+§E2/E9/§F24/§AC4 复验）待用户；证据见 §20 |
 | 批 26 | 用户 11 条新需求第三批：D58 转派全栈 + D59 服务端/共享冻结（2026-11-03） | **工程侧完成并收口（2026-11-03，HEAD `470250a` + 本收口证据提交）** | 冻结层：`shared/{enums,actions,order-state,validate}.js`（事件 19→24、8 新 action、4 条 `to:'SAME'` 规则、`validateTeamNote`）、`config/defaults.js`（`transferTtlMinutes=10`/`transferRate{3,20}`/`teamMaxMembers=5`/`subInviteRate{3,20}`，均不入公开子集/后台白名单）、`api/modules/{order,partner}.js` 各 +4、SUITES 36→38、`check.ps1 SelfTestSuites=38`；服务端：`order.{requestTransfer,acceptTransfer,declineTransfer,cancelTransfer}` + `_transfer.js`、`get/listPartner(view=transfer)/_dto`、`message.list` 私有事件过滤、admin 只读投影、匿名化清编号；`partner.{createSubInvites,revokeSubInvite(批次级),listSubMembers,removeSubMember}` + `_team.js`、`activate/getPublic`、`bind/create`、`order/_create` 守卫、`setPartnerStatus` 级联、admin 邀请码 `kind/issuerPartnerNo`；新增 `selftest-transfer`/`selftest-team`；**文档回写（W8）**：CONTRACT §1.1/§4/§4.2/§5/§5.1/§5.3/§7/§8/§9/§10/§11.2/§13、DATA_MODEL（字段/事件/config/索引×3/查询/契约/匿名化/级联/负向 #47~55/§13.1e）、ARCHITECTURE、ENGINEERING（§4.2/§7.5 M25~M34/§8.1 38 套/§8.2 #3 33 页/#13）、UX_PARTNER/UX_CUSTOMER/UX_DEVELOPER、QA §AG、RUNBOOK §18、privacy v1.10 候选（待用户终审）、TECH_DEBT TD-090/091；**真机项 QA §AG1~AG11 待用户**；收口读数：`check.ps1` 4 步退出码 0、`check-docs` 12/12、`selftest` 38 套 0 失败、`gate.ps1` 红 0/黄 0，变异电池 M25~M34（D58/D59）由 `selftest-transfer`/`selftest-team` 捕获（首红/SHA256 复原见证据提交）；**无新增集合/触发器/云函数单元；新增 3 索引需用户在控制台创建（RUNBOOK §3.5/§18）** |
 | 批 27 | 用户 11 条新需求第四批：D59 客户端团队页 + D63 顾客邀请顾客（2026-11-03） | **工程侧完成并收口（2026-11-03，HEAD `470250a` + 本收口证据提交）** | D63：`utils/share` 入参 +`boundPartnerNo`、`TITLES.BIND_CUSTOMER`、`pages/profile` 顾客绑定卡装配、`pages/role` 落地提示、`selftest-share` +S1~S7、`check-share` path 白名单（**零服务端/零数据模型变更、不记录邀请关系**）；D59 客户端：新建 `pkg-partner/pages/team/**`（第 33 页：成员/发子码/按批次作废/移除/名额；子队员只看队伍摘要）、`service-settings` 加「我的团队」入口、`selftest-partner-pages` 新组；**文档回写（W8）**：CONTRACT §8/§10/§11.2/§13 D63、DATA_MODEL §13.1e（零变更说明）、ARCHITECTURE §3.2、UX_CUSTOMER §3.5/§3.6/§6.3、UX_PARTNER §3.10/§3.12/§7、UX_DEVELOPER §3.2、QA §AG12、RUNBOOK §18；**页数 32→33 已随批 27 落地（`app.json`/`tools/lib/project.js` 同步）**；真机项 QA §AG12 待用户；收口读数：`check.ps1` 4 步退出码 0、`check-docs` 12/12、`selftest` 38 套 0 失败、`gate.ps1` 红 0/黄 0；HEAD `470250a`（修复提交）+ 本收口证据提交 |
+| 批 28 | 真机缺陷修复批（2026-11-05 用户截图反馈）：客户列表只出 20 人 / 订单详情动作条 UI / 多图截图只能看一张 | **工程侧完成并收口（2026-11-05，HEAD `8259e13` + 本批修复提交）** | ①**游标对象化回归**（服务端 `{dormKey,allocSeq}`/`{sortValue,tie}` 被客户端 `textOf` 字符串化 → 恒 `''`）：`utils/customer-view.hasCursorOf` 单源 + `pages/partner/customers/parts/list-model`、`pkg-partner/pages/customer-detail/{index,parts/detail-view}` 原样透传（顺带修「查看更早」永不出现）；②**订单详情动作条**两层渲染：主操作独占整宽实心行、异常/改码/留言/取消·拒单进次行、危险动作末位白底红字、撤销动作不进条（纯件 `parts/action-bar.js`；根因 `.bb-bar` 非 flex 容器使旧 `flex:1` 从未生效）；③**多图预览**：兼职端 `parts/{image-view,image-actions}.js` 逐张签一次 `previewImage({urls,current})`，顾客端 `parts/parcel-view.previewOf` 同口径（关闭 **TD-066**）；判据 partner-pages +5 / order-detail-partner +13 / order-customer +2，变异电池 M38~M41 四组首红 + SHA256 逐字节还原；`check.ps1` 4 步退出码 0、check 39/39、check-docs 12/12、零金额 0 命中（白名单 108 项）、selftest 38 套 0 失败；**无服务端/契约变更，客户端需重新上传体验版**；真机项见 §23.4；证据 §23 |
 
 ## 3. 批 1 并行交付快照（全部收口）
 
@@ -1302,3 +1303,53 @@ selftest-privacy-text：断言 305/305；失败 0 项
 
 - 上一轮推送回填提交 `0978b6a`（已推送远端 `origin/main`）。
 - 本轮收口提交：隐私 v1.10 定稿 + 审核材料包 v2.1 重做 + 文档回写（本节随该提交回填；提交后同渠道推送，远端 HEAD 以 `git ls-remote origin refs/heads/main` 回读为准）；工作树干净、未 tag/提审/发布。
+
+## 23. 批 28 真机缺陷修复批（2026-11-05，用户截图反馈）
+
+### 23.1 交付范围
+
+- **①兼职客户列表只显示 20 人（用户截图反馈）**——根因是**游标类型漂移**：服务端 `partner.listBindings` 自批20-C 起返回不透明对象 `{dormKey,allocSeq}`，客户端 `pages/partner/customers/parts/list-model.js` 仍用 `textOf()` 把它字符串化（对象恒 `''`）→ `nextCursor` 永远为空 → `nextQuery` 返回 null → 只出第一页 `PAGE_LIMIT=20`，页脚还误写「没有更多了」。修复：`utils/customer-view.js` 新增 `hasCursorOf`（只判有无、原样透传），`list-model` 的 `cursorOf/nextQuery/applyResponse/applyMoreResponse/headingText` 全部改透传；`listStateOf` 的 `hasMore/footerText` 同步。
+- **②顾客详情「查看更早」永不出现（同根因）**——`pkg-partner/pages/customer-detail/{index.js,parts/detail-view.js}` 同样 `textOf` 了 `{sortValue,tie}` 对象游标；修复为 `cursorOf` 透传，`buildOrdersQuery` 不再丢 cursor、`buildSnapshot.showMore` 如实出现。
+- **③兼职订单详情底部动作条 UI（用户截图反馈）**——根因：`components/bottom-bar` 的 `.bb-bar` 不是 flex 容器，`index.wxss` 的 `.action-btn{flex:1}` 从未生效 → 服务端下发的 5 个动作各自整宽竖排，红色「取消订单」夹在绿色按钮中间。修复：新增纯件 `pkg-partner/pages/order-detail/parts/action-bar.js`——主操作（送达 > 已取件 > 接单 > 解除异常）独占最底行整宽实心按钮；异常/改码/留言与取消/拒单进上一行等宽描边小按钮，**危险动作排末位且白底红字**；`undoPick/undoDeliver` 不进动作条（5 秒撤销条唯一入口）；`actions[]` 原样保留供分派。WXML 两行渲染、WXSS 显式 `display:flex`；逐件「已取件」按钮降为描边（不与主操作抢视觉）；撤销条上抬躲开两行动作条。
+- **④多张取件截图只能看一张（用户截图反馈）**——旧实现只签 `index=0` 并 `previewImage({urls:[url]})`。修复（兼职端）：新增纯件 `parts/image-view.js`（`indexesOf/urlsOf`）与页面方法段 `parts/image-actions.js`——按 `imageCount` 逐张并行签发（≤10），一次 `wx.previewImage({urls, current})` 打开整组、可左右滑动，单张失败只丢该张。**顾客端同缺陷一并修复**（`parts/parcel-view.previewOf`，点任意一张滑看全部），关闭 **TD-066**。
+- **文档回写**：`docs/ux/V4_UX_PARTNER.md` §3.3（动作条布局/多图）、`docs/ux/V4_UX_CUSTOMER.md` §3.8（多图）、`docs/governance/V4_TECH_DEBT.md`（TD-066 关闭）、`CHANGELOG.md`、本文件。**无契约/集合/接口变更，无新云函数单元，客户端改动需重新编译体验版。**
+- **判据**：`selftest-partner-pages` +5（A16b~A16d、B19b/B19c，对象游标原样透传）；`selftest-order-detail-partner` +13（L 组：动作条分级/撤销不进条/多图预览）；`selftest-order-customer` +2（I8/I9 多图预览计划）。
+
+### 23.2 门禁真实输出
+
+```text
+$ powershell -File check.ps1
+PASS  check.js 代码/配置门禁（39 条）
+PASS  check-docs.js 设计文档门禁（--batch 1）
+PASS  zero-money-scan.js 零金额扫描（源码+页面+文档）
+PASS  selftest.js 全部断言 suite（EXPECTED_ASSERTIONS 闸）
+selftest：运行 38 套；失败 0 套；SKIP 0 套（无）；完整性 0 项；非聚合辅助文件 4 件（已声明）
+check.ps1：全部通过（4 步，退出码 0）
+
+通过 39 项；失败 0 项
+check-docs（--batch 1）：通过 12 项；失败 0 项（文档范围 83 份）
+零金额扫描：0 命中（白名单 108 项）
+```
+
+- 分域读数：`selftest-partner-pages` 347/347、`selftest-order-detail-partner` 298/298、`selftest-order-customer` 378/378（`node tools/selftest-*.js` 真实末行）。
+
+### 23.3 变异电池（判据有牙：注入 → 首红 → SHA256 逐字节还原）
+
+| 组 | 注入 | 首红判据 | 还原 |
+| :-- | :-- | :-- | :-- |
+| M38 游标字符串化 | `list-model.cursorOf` 改回 `typeof value === 'string' ? value.trim() : null` | A16b「对象游标原样保留」+ A16c「触底原样回传」 | SHA256 一致，复跑 347/347 |
+| M39 多图改单张 | `image-actions` 的 `urls: urls` 改 `urls: [urls[0]]` | L12「多图可左右滑动」 | SHA256 一致 |
+| M40 撤销动作进条 | `action-bar.UNDO_KEYS` 置空 | L2「撤销不进动作条」+ L5「无主操作只渲染次操作行」 | SHA256 一致 |
+| M41 顾客端只给单 URL | `parcel-view.previewOf` 返回 `urls:[当前]` | I8「一次给全部成功 URL」 | SHA256 一致 |
+
+### 23.4 待用户（真机，agent 不代勾）
+
+- 重新编译体验版后点检：①客户列表第 21 人起触底加载（≥21 位顾客）；②顾客详情「查看更早」翻页；③订单详情动作条层级：主操作一行、异常/改码/留言/取消在上一行、取消为白底红字、单件单不再双主操作；④多图订单「查看取件截图」左右滑动（兼职端与顾客端各一次）；⑤撤销条 5 秒窗不被两行动作条遮挡。
+- **服务端零改动，无需重部署云函数**；客户端改动需用户「上传」体验版后生效。
+
+### 23.5 提交
+
+- 代码/判据/文档提交：本批修复（fix）。
+- 证据回填提交：本节读数与顶部快照行 HEAD 回填（chore，本提交）。
+- 未推送远端、未 tag、未提审、未发布（推送由用户确认后执行）。
+

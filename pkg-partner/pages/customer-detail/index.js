@@ -45,7 +45,7 @@ Page({
   onLoad(options) {
     this.rawOrders = [];
     this.profile = null;
-    this.nextCursor = '';
+    this.nextCursor = null;
     const bindingId = textOf(options && options.bindingId);
     this.setData({ bindingId: bindingId, readonly: !modeGuard.canRenderWriteButton() });
     this.load();
@@ -83,7 +83,7 @@ Page({
         this.profile = results[0] || {};
         const ordersPage = results[1] || {};
         this.rawOrders = ordersPage.list || [];
-        this.nextCursor = textOf(ordersPage.nextCursor);
+        this.nextCursor = detailView.cursorOf(ordersPage.nextCursor);
         this.applyData(false);
       })
       .catch((err) => {
@@ -109,7 +109,7 @@ Page({
 
   // "查看更早"：同一 order.listPartner(view=customer) 带服务端 nextCursor（不换接口、不本地截断）
   onLoadMore() {
-    const cursor = textOf(this.data.nextCursor);
+    const cursor = detailView.cursorOf(this.data.nextCursor);
     if (!cursor || this.data.loadingMore) {
       return;
     }
@@ -118,7 +118,7 @@ Page({
       .then((ordersPage) => {
         const page = ordersPage || {};
         this.rawOrders = detailView.mergeOrderPages(this.rawOrders, page.list || []);
-        this.nextCursor = textOf(page.nextCursor);
+        this.nextCursor = detailView.cursorOf(page.nextCursor);
         this.applyData(true);
       })
       .catch((err) => {

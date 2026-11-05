@@ -234,6 +234,13 @@ function emptyTextOf(keyword) {
   return '还没有顾客绑定你。绑定只能由顾客发起：把绑定卡片（兼职编号）发给顾客，让顾客自己发起绑定。';
 }
 
+// 游标只判「有 / 无」，原样透传：服务端游标是不透明对象（listBindings 的 {dormKey,allocSeq}、
+// listPartner 的 {sortValue,tie}），**禁止字符串化**——textOf(对象) 恒为 ''，
+// 会把「还有下一页」误判成末页（2026-11-05 客户列表只出第一页 20 条的真因，见 UX_PARTNER §3.5）。
+function hasCursorOf(value) {
+  return value !== null && value !== undefined && value !== '';
+}
+
 // 列表页状态机：骨架 / 错误 / 空态 / 列表（错误时保留旧数据 + 上次成功时间）
 function listStateOf(input) {
   const state = input || {};
@@ -248,7 +255,7 @@ function listStateOf(input) {
   } else if (!hasRows) {
     mode = 'empty';
   }
-  const nextCursor = textOf(state.nextCursor);
+  const hasMore = hasCursorOf(state.nextCursor);
   return {
     mode: mode,
     showRows: mode === 'list',
@@ -263,8 +270,8 @@ function listStateOf(input) {
     lastSuccessText: state.lastSuccessAt ? '更新于 ' + timeHM(state.lastSuccessAt) : '',
     // 批20-C：刷新在途显示「更新中…」（旧列表保留，不闪骨架）；触底追加仍走「正在加载…」
     footerText: loading && hasRows ? (state.loadingMore === true ? '正在加载…' : '更新中…')
-      : (nextCursor ? '上滑加载更多' : (showRowsTail(state) ? '没有更多了' : '')),
-    hasMore: nextCursor !== ''
+      : (hasMore ? '上滑加载更多' : (showRowsTail(state) ? '没有更多了' : '')),
+    hasMore: hasMore
   };
 }
 
@@ -286,6 +293,7 @@ module.exports = {
   dedupeRows,
   emptyTextOf,
   formatDorm,
+  hasCursorOf,
   listStateOf,
   newRowsOf,
   normalizeKeyword,

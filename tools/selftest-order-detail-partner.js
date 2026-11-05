@@ -12,6 +12,8 @@ const { createHarness, installCrashGuard, ROOT } = require('./selftest');
 
 const partsDir = 'pkg-partner/pages/order-detail/parts';
 const actionsPart = require(path.join(ROOT, partsDir, 'actions.js'));
+const actionBar = require(path.join(ROOT, partsDir, 'action-bar.js'));
+const imageView = require(path.join(ROOT, partsDir, 'image-view.js'));
 const correctPanel = require(path.join(ROOT, partsDir, 'correct-panel.js'));
 const deliveryPanel = require(path.join(ROOT, partsDir, 'delivery-panel.js'));
 const exceptionPanel = require(path.join(ROOT, partsDir, 'exception-panel.js'));
@@ -34,7 +36,7 @@ const pieceActions = require(path.join(ROOT, 'pages/partner/workbench/parts/piec
 // 批 26-W4（D58 转派兼职端）：用例表拆 tools/lib（控测试文件 ≤1000 行，门禁 #18）
 const uiCases = require(path.join(__dirname, 'lib', 'partner-transfer-ui-cases.js'));
 
-const EXPECTED_ASSERTIONS = 191 + 15 + 2 + uiCases.DETAIL_EXPECTED_ASSERTIONS; // 191 + 批 25-B D61 15 条（J 组）+ 批 26 D58 A 组拆分对齐 2 条（A7b/A8b）+ K 组转派
+const EXPECTED_ASSERTIONS = 191 + 15 + 2 + uiCases.DETAIL_EXPECTED_ASSERTIONS + 13; // 191 + 批 25-B D61 15 条（J 组）+ 批 26 D58 A 组拆分对齐 2 条（A7b/A8b）+ K 组转派 + L 组 13 条（2026-11-05 动作条层级/多图预览）
 const STATUS = orderState.STATUS;
 const STATUS_LITERALS = enums.ORDER_STATUS_LIST.slice();
 const PAGE_JS = 'pkg-partner/pages/order-detail/index.js';
@@ -751,8 +753,9 @@ function register(h) {
     t.check(wxmlSrc.indexOf('order.parcels') >= 0 && wxmlSrc.indexOf('deliveryText') >= 0
       && wxmlSrc.indexOf('manualEntryText') >= 0 && wxmlSrc.indexOf('onCorrectItemTap') >= 0,
     'H12 WXML 渲染多包裹列表 + 配送地址 + 无截图标识 + 逐件改码入口');
-    t.check(pageSrc.indexOf('index: 0') >= 0 && pageSrc.indexOf('orderApi.imageUrl') >= 0,
-      'H13 截图 URL 契约 v1.0：order.imageUrl 带 index');
+    t.check(fsutil.stripComments(textOf(partsDir + '/image-actions.js')).indexOf('index: index') >= 0
+      && textOf(partsDir + '/image-actions.js').indexOf('orderApi.imageUrl') >= 0,
+    'H13 截图 URL 契约 v1.0：order.imageUrl 逐张带 index（多图各签各的，2026-11-05 修）');
     const legacy = await realDto(partnerDoc(STATUS.SUBMITTED));
     t.eq([orderView.buildDetail(legacy).parcels.length, orderView.buildDetail(legacy).stationText],
       [1, legacy.parcel.stationName], 'H14 单包裹历史 DTO 仍渲染 1 件（兼容窗口，不白屏）');
@@ -872,6 +875,59 @@ function register(h) {
 
   // ---------------------------------------------------------------- K 批 26-W4 D58 转派（兼职端）
   h.section('K. D58 转派：发起入口/邀请卡/等待卡/撤回/结果态/只读/零判据', (t) => uiCases.detailTransferChecks(t));
+
+  // ---------------------------------------------------------------- L 2026-11-05 动作条层级 + 多图预览
+  // 用户真机反馈（订单详情截图）：①5 个整宽按钮竖排、红色「取消订单」夹在中间（bb-bar 非 flex 容器，
+  // 旧 .action-btn{flex:1} 从未生效）；②多张取件截图只能看第一张（只签 index=0）。
+  h.section('L. 动作条主次分级 + 取件截图多图预览（2026-11-05 真机缺陷回归）', async (t) => {
+    const keys = (list) => list.map((item) => item.key);
+    const mk = (list) => list.map((key) => ({ key: key, label: key, danger: key === 'cancel' || key === 'reject' }));
+    const accepted = actionBar.planOf(mk(['pick', 'exception', 'correct', 'cancel', 'message']));
+    t.eq([accepted.primary.key, keys(accepted.secondary), accepted.visible],
+      ['pick', ['exception', 'correct', 'message', 'cancel'], true],
+      'L1 已接单：主操作「标记已取件」独占一行；异常/改码/留言在次行，取消排最后');
+    const undoing = actionBar.planOf(mk(['deliver', 'undoPick', 'exception', 'correct', 'cancel', 'message']));
+    t.eq([undoing.primary.key, keys(undoing.secondary)],
+      ['deliver', ['exception', 'correct', 'message', 'cancel']],
+      'L2 撤销动作不进动作条（5 秒撤销条是唯一入口），主操作=标记已送达');
+    const submitted = actionBar.planOf(mk(['accept', 'reject', 'correct', 'cancel', 'message']));
+    t.eq([submitted.primary.key, keys(submitted.secondary).slice(-2)],
+      ['accept', ['reject', 'cancel']],
+      'L3 待接单：接单为主操作；拒单/取消为危险次操作，排次行末尾（不与主操作同排）');
+    const exception = actionBar.planOf(mk(['resolve', 'correct', 'cancel', 'message']));
+    t.eq([exception.primary.key, keys(exception.secondary)],
+      ['resolve', ['correct', 'message', 'cancel']], 'L4 异常单：解除异常为主操作，其余仍为次操作');
+    const delivered = actionBar.planOf(mk(['undoDeliver', 'exception', 'cancel', 'message']));
+    t.eq([delivered.primary, keys(delivered.secondary), delivered.visible],
+      [null, ['exception', 'message', 'cancel'], true], 'L5 已送达无主操作：只渲染次操作行（不伪造按钮）');
+    t.eq(actionBar.planOf([]).visible, false, 'L6 无动作时动作条整条不渲染（不留空白底条）');
+    const dto = await realDto(partnerDoc(STATUS.ACCEPTED));
+    const barView = viewModel.buildView(dto, [], { nowMs: NOW_MS });
+    t.eq([barView.actionBar.primary.key, keys(barView.actions).indexOf('pick') >= 0,
+      keys(barView.actionBar.secondary).indexOf('requestTransfer')],
+    ['pick', true, -1],
+    'L7 buildView 出 actionBar；actions[] 原样保留、转派动作仍只在转派区块（分组不改动作来源）');
+    const wxml = fsutil.stripComments(textOf(PAGE_WXML));
+    t.check(wxml.indexOf('action-secondary-row') !== -1 && wxml.indexOf('action-primary-btn') !== -1
+      && wxml.indexOf('wx:for="{{actions}}"') === -1,
+    'L8 WXML：次操作行 + 主操作整宽；不再 wx:for 平铺 actions（5 个整宽按钮竖排的根因）');
+    const wxss = textOf('pkg-partner/pages/order-detail/index.wxss');
+    t.check(/\.action-secondary-row\s*\{[^}]*display:\s*flex/.test(wxss) && /\.btn-ghost-danger\s*\{/.test(wxss),
+      'L9 WXSS：次操作行显式 display:flex（.bb-bar 非 flex 容器）+ 危险动作白底红字幽灵按钮');
+    t.eq([imageView.indexesOf({ imageCount: 3 }), imageView.indexesOf({ imageCount: 0 }), imageView.countOf({ imageCount: 99 })],
+      [[0, 1, 2], [], 10], 'L10 多图：按 imageCount 逐张签 0..n-1，上限 10 张（D40）');
+    t.eq(imageView.urlsOf(['https://a', '', 'https://b', 'https://a']),
+      ['https://a', 'https://b'], 'L11 预览 URL：保持顺序、丢失败项、去重');
+    const page = fsutil.stripComments(textOf(PAGE_JS));
+    const imageActions = fsutil.stripComments(textOf(partsDir + '/image-actions.js'));
+    t.check(page.indexOf("require('./parts/image-actions')") !== -1
+      && imageActions.indexOf('imageView.indexesOf(') !== -1
+      && imageActions.indexOf('Promise.all(') !== -1
+      && /wx\.previewImage\(\{\s*urls:\s*urls/.test(imageActions)
+      && imageActions.indexOf('urls: [url]') === -1,
+    'L12 页面接线：逐张签发后一次 previewImage({urls,current})——多图可左右滑动（旧实现只签 index=0）');
+    t.check(/可左右滑动/.test(textOf(PAGE_WXML)), 'L13 多图时文案提示「可左右滑动」（1 张不提示）');
+  });
 }
 
 module.exports = { EXPECTED_ASSERTIONS, register };

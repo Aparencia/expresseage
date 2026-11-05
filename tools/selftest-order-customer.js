@@ -62,7 +62,7 @@ const orderScope = orderScopeReq.value || {};
 const caseLib = require('./lib/order-customer-cases');
 const pickupCases = require('./lib/order-customer-pickup-cases'); // 批25-C/D61：Q 组件级取件顾客可见性
 // 实跑读数；批24-D64/D66：P 组扩 37（H 组 4 条并入并删除，+14 一级入口/文案断言）；批25-C/D61：+Q 组；批26-D58：+R 组 7
-const EXPECTED_ASSERTIONS = 335 + pickupCases.ASSERTIONS + 9; // +9：D58 转派 R 组（R1~R6 共 7 + 批27 审查 P2-5 补 R3b/R3c 2）
+const EXPECTED_ASSERTIONS = 335 + pickupCases.ASSERTIONS + 9 + caseLib.PREVIEW_ASSERTIONS; // +9：D58 转派 R 组（R1~R6 共 7 + 批27 审查 P2-5 补 R3b/R3c 2）
 const {
   STATUS, PAGES, ISO, NOW, DOC_MS, textOf, actionsFor, dto, event, orderDoc,
   FAKE_DTO_CTX
@@ -551,6 +551,7 @@ function register(h) {
       && /dataset\.index/.test(detailWxml + detailJs) && /index:\s*index/.test(detailJs)
       && /orderApi\.imageUrl\(\{[\s\S]*index:\s*index/.test(detailJs),
     'I7 详情多图切换接线：WXML 按 image.list[].index → onViewImage 取 dataset.index → order.imageUrl({orderNo,index})');
+    caseLib.previewChecks(t, parcelView);
     t.notEmpty(multi.list, 'I 组样本非空');
   });
 
