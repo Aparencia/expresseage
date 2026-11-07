@@ -391,7 +391,7 @@
 
 ### 16.2 开启「智能识别兜底」（用户控制台操作；后台配置页只读、`admin.updateConfig` 白名单不含该键）
 
-> 背景（2026-11-01 用户取证）：后台配置页显示「智能识别兜底已关闭」⇒ `config.aiFallback.enabled=false`，识别失败只入队不外呼；「智能识别服务不可用」是复核页对 `LLM_ERROR` 的通用标签。
+> 背景（2026-11-01 用户取证）：后台配置页显示「智能识别兜底已关闭」⇒ `config.aiFallback.enabled=false`，识别失败只入队不外呼；「智能识别服务不可用」是复核页对 `LLM_ERROR` 的通用标签。**2026-11-07 归因修正**：开关关闭/Key 缺失的新记录按规则结果记 `PARSE_MISS`/`LOW_CONFIDENCE`（`aiTried=false`、`aiErrorCode='DISABLED'`）；存量 `LLM_ERROR + DISABLED` 记录在复核页显示「兜底未开启（规则未认出）」，不再误导为服务故障。
 
 1. 云开发控制台 → 数据库 → 集合 `config` → 文档 `_id="global"` → 编辑字段 `aiFallback`：确认 `enabled` 改为 `true`（其余键保留；若整个字段缺失，可填 `{"enabled":true,"model":"","timeoutMs":8000,"maxPerUserPerDay":0,"dailyQuota":200,"cooldownMinutes":10}`）。保存（建议截图留证并记入 §13；该操作不经 `admin.updateConfig`，不产生 `CONFIG_UPDATE` 审计）。
 2. 云开发控制台 → 云函数 `api` → 函数配置 → 环境变量：确认 `DEEPSEEK_API_KEY` 存在且为当前有效 Key（值只存云函数环境变量，截图打码；Key 失效/欠费会 4xx）。

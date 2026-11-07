@@ -316,7 +316,7 @@ v0.7 关闭全部非 D 级缺口：零金额（§0.3）、双角色唯一编号�
 | `_id` | string | 是 | 自增；仅内部关联用，永不返回客户端 | 云函数 | 内部 | L2 |
 | `failureNo` | string | 是 | **唯一索引**；`F-YYYYMMDD-XXXXXX`（`F`+日期+6 位 32 字母表随机，服务端生成、**不走 counters**、碰撞重试 ≤5 次→`DEPENDENCY_FAILED`）；仅后台/日志锚，**不作鉴权**（§4.9） | `ai.parseParcel` | admin | L1 |
 | `requestKey`† | string | 是 | **唯一索引** `{uploaderOpenid}:{clientRequestId}`；同一次逐单调用的重试幂等返回同一 `failureId`（`duplicated:true`）；**同图多单逐单调用各自独立**（不按文本相似度合并）；仅内部 | `ai.parseParcel` | 内部 | L2 |
-| `failureCode` | string | 是 | `NO_TEXT`（OCR 无文本）/`PARSE_MISS`（有文本但规则+AI 均缺站点或码）/`LOW_CONFIDENCE`（AI 低置信）/`LLM_ERROR`（AI 不可用/超限/解析失败）/`IMAGE_UNREADABLE`（图片打不开/压缩失败）——**5 值逐字对齐 CONTRACT §4.3** | `ai.parseParcel` | admin | L1 |
+| `failureCode` | string | 是 | `NO_TEXT`（OCR 无文本）/`PARSE_MISS`（有文本但规则+AI（含 AI 未开启）均缺站点或码）/`LOW_CONFIDENCE`（AI 低置信）/`LLM_ERROR`（**AI 已尝试**但不可用/超限/解析失败）/`IMAGE_UNREADABLE`（图片打不开/压缩失败）——**5 值逐字对齐 CONTRACT §4.3**；开关关闭/Key 缺失不记 `LLM_ERROR` | `ai.parseParcel` | admin | L1 |
 | `sourceRole` | string | 是 | `CUSTOMER`/`PARTNER`（上传者提交时的业务角色） | `ai.parseParcel` | admin | L1 |
 | `uploaderOpenid` | string | 是 | 上传者 openid（测试会话上传时=目标测试账号**合成 openid `TEST-<random>`**）；**永不返回客户端明文**（后台显示脱敏编号/昵称，仅审计内部可追溯） | `ai.parseParcel` | 内部/admin（脱敏） | L2 |
 | `uploadTicketId` | string | 是 | 上传票据标识=`upload_tickets.ticket` 值；入队时校验归属（非本人/过期仍入队供排查，记 `ruleResult.ticketInvalid=true`）；**不返回客户端** | `ai.parseParcel` | 内部/admin | L2 |

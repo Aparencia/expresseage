@@ -128,12 +128,15 @@ module.exports = async function aiParseParcel(ctx, payload) {
     return common.aiParse.buildDegradedDto(queue, aiFieldsEmpty, { source: 'NONE' });
   }
 
-  // ③ 开关关闭 / Key 缺失：不外呼、静默降级并入队（应用可正常启动）
+  // ③ 开关关闭 / Key 缺失：不外呼、静默降级并入队（应用可正常启动）。
+  //    归因按「规则是否认出」：未认出 → PARSE_MISS，已认出但低置信 → LOW_CONFIDENCE；
+  //    **不再记 LLM_ERROR**（那是「AI 已尝试但失败」的码，会把「兜底未开启」显示成「服务不可用」）。
   const client = createDeepSeekClient({ env: ctx.env, config, now: () => now });
   const clientStatus = client.status(now);
   if (!clientStatus.enabled || !clientStatus.hasKey) {
+    const ruleRecognized = !!(ruleResult.stationId && ruleResult.pickupCode);
     const queue = await common.recordFailure(ctx, queueOf(ruleResult, maskedPayload.ocrTextMasked, {
-      failureCode: NEEDS_REVIEW_FAILURE.LLM_ERROR,
+      failureCode: failureCodeFor({ merged: { recognized: ruleRecognized }, aiTried: false }),
       aiErrorCode: AI_ERROR_CODES.DISABLED,
       uploadTicketId: input.uploadTicketId,
       fileId: fileId

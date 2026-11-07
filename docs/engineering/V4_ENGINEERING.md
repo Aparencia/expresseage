@@ -464,7 +464,7 @@ expressage_college_v4/
 - 写入字段：`failureNo(唯一)/requestKey(唯一：{uploaderOpenid}:{clientRequestId})/failureCode/sourceRole/uploaderOpenid/uploadTicketId/fileId/orderId?(未建单为 '')/ocrTextMasked/ruleResult/aiTried/aiModel/aiResult/aiErrorCode/status='PENDING'/createdAt`。
 - **写入幂等**：`requestKey` 唯一；同键重放返回已有 `failureId`（客户端重试/连点必须复用同一 `clientRequestId`，不重复入队）；不同 `clientRequestId` 各自成记录（**同图多单逐单调用即不同 `clientRequestId`**，服务端不按文本相似度合并、也不在 `order.create` 时补建记录）。
 - **`fileId` 入站校验（v1.1/D33）**：`resolveTicketFileId` 只接受 `cloud://` 且路径与票据 `cloudPath` 逐字相等，并先过 `ticketStatusOf`（openid/purpose/有效期/未消费）；任一不满足静默 `''`、不拒绝降级；历史已入队 `fileId=''` 记录仍无原图（仅新记录受益）；复核页以 `hasImage` 决定是否可查看。
-- 降级矩阵（`aiErrorCode` 值域以 `DATA_MODEL §2.14` 为唯一单源）：开关关闭 → `LLM_ERROR`（`aiTried=false`，`aiErrorCode='DISABLED'`）；Key 缺失 → `LLM_ERROR`（`DISABLED`）；超时 → `LLM_ERROR`（`TIMEOUT`）；网络/5xx → `LLM_ERROR`（`HTTP_5XX`）；熔断 → `LLM_ERROR`（`CIRCUIT_OPEN`）；配额超限 → `LLM_ERROR`（`QUOTA_EXCEEDED`，**不外呼**）；解析失败 → `LLM_ERROR`（`PARSE_ERROR`）/`PARSE_MISS`。全部返回 `ok:true + recognized:false`，对用户静默。
+- 降级矩阵（`aiErrorCode` 值域以 `DATA_MODEL §2.14` 为唯一单源）：**开关关闭 / Key 缺失（未外呼）→ 按规则结果归因 `PARSE_MISS`（规则未认出）或 `LOW_CONFIDENCE`（规则已认出但低置信），`aiTried=false`、`aiErrorCode='DISABLED'`，不再记 `LLM_ERROR`**；超时 → `LLM_ERROR`（`TIMEOUT`）；网络/5xx → `LLM_ERROR`（`HTTP_5XX`）；熔断 → `LLM_ERROR`（`CIRCUIT_OPEN`）；配额超限 → `LLM_ERROR`（`QUOTA_EXCEEDED`，**不外呼**）；解析失败 → `LLM_ERROR`（`PARSE_ERROR`）/`PARSE_MISS`。全部返回 `ok:true + recognized:false`，对用户静默。
 
 **4.10.6 复核队列与后台动作（开发者）**
 - `admin.listRecognitionFailures`：按 `status/failureCode/时间` 筛选分页（`limit ≤100`）；`admin.getRecognitionFailure`：返回**原图临时 URL（5 分钟）+ 审计 `FAILURE_IMAGE_VIEW`（每次查看一条）**、脱敏上传人、`ocrTextMasked`、AI 尝试结果、关联订单。

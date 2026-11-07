@@ -91,6 +91,14 @@ FAILURE_CODE_SHORT_LABELS[enums.FAILURE_CODE.LOW_CONFIDENCE] = '可信度低';
 FAILURE_CODE_SHORT_LABELS[enums.FAILURE_CODE.LLM_ERROR] = '识别服务不可用';
 FAILURE_CODE_SHORT_LABELS[enums.FAILURE_CODE.IMAGE_UNREADABLE] = '图片无法读取';
 
+// 失败码展示单源：兜底关闭/Key 缺失的存量记录（failureCode 仍为 LLM_ERROR）不得显示成「服务不可用」，
+// 统一改为「兜底未开启」；新记录已由服务端归因 PARSE_MISS/LOW_CONFIDENCE（2026-11-07）。
+function failureCodeTextOf(row) {
+  const item = row || {};
+  if (item.aiErrorCode === 'DISABLED') return '兜底未开启（规则未认出）';
+  return FAILURE_CODE_LABELS[item.failureCode] || '识别失败';
+}
+
 const FAILURE_CODE_TABS = [{ key: '', label: '全部失败码' }].concat(
   enums.FAILURE_CODE_LIST.map(function (code) {
     return { key: code, label: FAILURE_CODE_SHORT_LABELS[code] || code };
@@ -234,6 +242,7 @@ module.exports = {
   FAILURE_STATUS_LABELS,
   FAILURE_STATUS_PENDING,
   FAILURE_CODE_LABELS,
+  failureCodeTextOf,
   FAILURE_CODE_TABS,
   FAILURE_SOURCE_TABS,
   FAILURE_DATE_TABS,

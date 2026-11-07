@@ -11,6 +11,7 @@ const path = require('path');
 const fsutil = require('./lib/fsutil');
 const { createHarness, installCrashGuard } = require('./selftest');
 const { createFakeDb } = require('./fake-db');
+const { failuresOf, lastFailure, buildDegradedKeys } = require('./lib/ai-assert-helpers');
 
 const ROOT = path.resolve(__dirname, '..');
 const API = path.join(ROOT, 'cloudfunctions/api');
@@ -29,7 +30,7 @@ const ocrFlow = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/o
 const orderModel = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/model.js'));
 const reviewVm = require(path.join(ROOT, 'pkg-admin/pages/recognition-review/parts/view-model.js'));
 
-const EXPECTED_ASSERTIONS = 251; // 255 − 4：D40 彻底不按人拦截（per-user 边界/降级队列断言合并为残留 5 仍放行 4 条）
+const EXPECTED_ASSERTIONS = 253; // 251 + 2：2026-11-07 开关关闭归因 PARSE_MISS / aiTried=false 两条
 
 const NOW = Date.parse('2026-10-21T12:00:00+08:00');
 const CUSTOMER_OPENID = 'openid-customer-ai';
@@ -284,14 +285,6 @@ function sessionDoc(id, viewMode, targetId, targetNo, targetIsTest) {
   };
 }
 
-function failuresOf(db) {
-  return db.dump('recognition_failures');
-}
-
-function lastFailure(db) {
-  return failuresOf(db).slice(-1)[0] || {};
-}
-
 function quotaKey(subject, nowMs) {
   return 'rl:ai:' + subject + ':d' + time.dayKey(nowMs);
 }
@@ -314,10 +307,6 @@ function apiFiles(relDir) {
 
 function filesContaining(files, needle) {
   return files.filter((file) => file.code.indexOf(needle) !== -1).map((file) => file.rel).sort();
-}
-
-function buildDegradedKeys(dto) {
-  return Object.keys(dto).sort().join(',');
 }
 
 // ---------------------------------------------------------------- §7.3.20 外发白名单与去敏
@@ -707,8 +696,10 @@ async function degradedGroup(t) {
     t.check(AI_SOURCE_DOMAIN.indexOf(data.source) >= 0, cases[i][0] + '：source∈{RULE,DEEPSEEK,NONE}');
     t.check(FAILURE_NO_RE.test(data.failureId || ''), cases[i][0] + '：failureId 形态合法');
   }
-  const data = (await cases[2][1]()).data;
-  t.eq(['code', 'message', 'stack', 'ocrText', 'ocrTextMasked', 'duplicated'].filter((key) => key in data), [], '降级响应不返回错误码/堆栈/原始 ocrText/幂等内部字段');
+  const disabledRecord = failuresOf(db).filter((row) => row.aiErrorCode === 'DISABLED')[0] || {};
+  t.eq(disabledRecord.failureCode, 'PARSE_MISS', '开关关闭：入队归因 PARSE_MISS（不再记 LLM_ERROR，避免复核页显示「服务不可用」）');
+  t.eq({ tried: disabledRecord.aiTried, code: disabledRecord.aiErrorCode }, { tried: false, code: 'DISABLED' }, '开关关闭：aiTried=false + aiErrorCode=DISABLED 保留');
+  const data = (await cases[2][1]()).data;  t.eq(['code', 'message', 'stack', 'ocrText', 'ocrTextMasked', 'duplicated'].filter((key) => key in data), [], '降级响应不返回错误码/堆栈/原始 ocrText/幂等内部字段');
   t.eq(Object.keys(data).every((key) => DTO_KEYS.indexOf(key) >= 0), true, '降级响应无 DTO 白名单外键');
   const dto = parseLib.buildDegradedDto({ failureNo: 'F-20261021-ABCDEF', duplicated: true }, {}, { source: 'NONE' });
   t.eq({ duplicated: 'duplicated' in dto, failureId: dto.failureId, confidence: dto.confidence }, { duplicated: false, failureId: 'F-20261021-ABCDEF', confidence: 'LOW' }, 'buildDegradedDto：duplicated 不进 DTO、failureId/failureNo 映射');
