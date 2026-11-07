@@ -396,7 +396,7 @@
 1. 云开发控制台 → 数据库 → 集合 `config` → 文档 `_id="global"` → 编辑字段 `aiFallback`：确认 `enabled` 改为 `true`（其余键保留；若整个字段缺失，可填 `{"enabled":true,"model":"","timeoutMs":8000,"maxPerUserPerDay":0,"dailyQuota":200,"cooldownMinutes":10}`）。保存（建议截图留证并记入 §13；该操作不经 `admin.updateConfig`，不产生 `CONFIG_UPDATE` 审计）。
 2. 云开发控制台 → 云函数 `api` → 函数配置 → 环境变量：确认 `DEEPSEEK_API_KEY` 存在且为当前有效 Key（值只存云函数环境变量，截图打码；Key 失效/欠费会 4xx）。
 3. 重新进入开发者后台 → 配置页：应显示「智能识别兜底：已开启 · 模型 … · 凭据已配置」。
-4. 冒烟：用一张识别失败图走一次识别 → 后台「识别失败复核」记录 `aiTried` 应为 true；云函数日志 `ai.parseParcel` 有外呼且 `aiErrorCode` 为空/无 `DISABLED`。若仍失败，按复核详情 `aiErrorCode`（TIMEOUT/HTTP_5XX/HTTP_4xx/QUOTA_EXCEEDED/PARSE_ERROR）与日志定位，不要改客户端。
+4. 冒烟：用一张识别失败图走一次识别 → 后台「识别失败复核」记录 `aiTried` 应为 true；云函数日志出现 `[ai] outbound failed status=… code=… latencyMs=…` 或外呼成功；`aiErrorCode` 为空/无 `DISABLED`。若仍失败，按复核详情 `aiErrorCode` 定位：`AUTH_FAILED`=401/403（Key 无效/权限不足/欠费，查 `api` 环境变量与 DeepSeek 账户）、`TIMEOUT`、`HTTP_5XX`、`QUOTA_EXCEEDED`、`PARSE_ERROR`；不要改客户端。
 5. 关闭/回滚（AI 事故）：把 `config.aiFallback.enabled` 改回 `false`（或清空 `DEEPSEEK_API_KEY`）→ 静默降级且失败照常入队，再决定是否回滚 `api` 版本。
 
 ---

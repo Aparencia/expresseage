@@ -327,7 +327,7 @@ v0.7 关闭全部非 D 级缺口：零金额（§0.3）、双角色唯一编号�
 | `ruleResult` | object | 是 | 端侧规则解析快照 `{stationId,stationName,pickupCode,trackingTail,lockerNo,codeStatus,conflicts[],ticketInvalid}`；`conflicts` 记冲突原因码（如 `STATION_MISMATCH/CODE_CONFLICT`） | `ai.parseParcel` | admin | L2 |
 | `aiTried`/`aiModel` | boolean/string | 是 | 是否已发起外呼 / 模型名快照（`config.aiFallback.model`；未外呼时 `aiModel=''`） | `ai.parseParcel` | admin | L1 |
 | `aiResult` | object | 否 | AI 格式化返回快照 `{recognized,stationId,stationName,pickupCode,trackingTail,lockerNo,confidence}`；未外呼/失败=null | `ai.parseParcel` | admin | L2 |
-| `aiErrorCode` | string | 否 | 内部排障码 `TIMEOUT`/`HTTP_5XX`/`QUOTA_EXCEEDED`/`CIRCUIT_OPEN`/`PARSE_ERROR`/`DISABLED`/`''`；**不映射业务错误码、不新增错误码**（§7.9） | `ai.parseParcel` | admin | L1 |
+| `aiErrorCode` | string | 否 | 内部排障码 `TIMEOUT`/`HTTP_5XX`/`QUOTA_EXCEEDED`/`CIRCUIT_OPEN`/`PARSE_ERROR`/`AUTH_FAILED`/`DISABLED`/`''`；**不映射业务错误码、不新增错误码**（§7.9）；`AUTH_FAILED`=401/403（密钥/权限），不计入熔断；`DISABLED` 仅表示「未尝试」（开关关闭/Key 缺失） | `ai.parseParcel` | admin | L1 |
 | `status` | string | 是 | `PENDING`→`FIXED`（补录）/`PENDING`→`IGNORED`（忽略或到期）；`FIXED/IGNORED` 终态、**不可重开**（§7.9 状态机） | `admin.fixRecognitionFailure`/`ignoreRecognitionFailure`/cleanup | admin | L1 |
 | `resolution` | object | 否 | `{stationId,stationName,pickupCode,note,by,at}`：fix 时识别字段 ≥1 个有效 + `note?`≤100；ignore 时 `note` **必填**≤100；到期 cleanup 置 `note='EXPIRED'`；`by=developerNo\|'SYSTEM'` | 同上 | admin | L2 |
 | `retentionDays` | number | 是 | 入队时快照 `config.recognitionFailureRetentionDays`（7~30，默认 30；记录级固化，改配置不影响已入队记录；见 §10.1 与 `†` 报备 §13.2） | `ai.parseParcel` | admin | L1 |
