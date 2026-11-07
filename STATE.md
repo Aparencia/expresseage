@@ -5,7 +5,7 @@
 > 更新时机：每批开工/收口、用户裁决变化、风险新增或关闭、HEAD 变化需回读。
 > 本文只记**状态、待办与下一步**，不重复设计口径（口径看 CONTRACT，工程规则看 ENGINEERING，接口看 ARCHITECTURE）。
 
-**快照时间：2026-11-07（HEAD `fabc8bb` 代码精简四批 + 识别失败归因修正收口；上一快照 2026-11-05 `84acab0`）：check.js 39/39 条、check-docs 12/12 条、selftest **38 套** 0 失败、零金额 0 命中（白名单 108 项）；`check.ps1` 4 步退出码 0；**批 28 修 ①兼职客户列表只出 20 人（游标对象化透传）②订单详情动作条分级（主操作一行/次操作一行/危险末位）③多图截图一次打开可左右滑（顾客端同修，TD-066 关闭）**，变异电池 M38~M41 **4/4** 首红 + SHA256 还原；`gate.ps1 -Anchor 8259e13` 红 0/黄 0（24 件/体量 456≤900），证据 §23；隐私文本 **v1.10 定稿（2026-11-03 用户确认，`privacyVersion` 保持 `v4.0.0` 不升版）**、审核材料包 **v2.1 重做**（备案已完成、体验版→可发布口径、32 张截图/4 示意图清单）；批 24~27 已推送远端 `origin/main`（`9526e37..0978b6a`）；批 28 与代码精简四批（P1/P3/P2a/P2b，净 −2,663 行）+ 识别失败归因修正已推送到 PR 分支 `refactor/v4-code-slim`（PR #1），`main` 未直接推送、未 tag/提审/发布；证据 §19~§26，批 16~27 内容见 §2）
+**快照时间：2026-11-07（HEAD `8382b63` 代码精简四批 + 识别归因修正 + AI 排障改进收口；上一快照 2026-11-05 `84acab0`）：check.js 39/39 条、check-docs 12/12 条、selftest **38 套** 0 失败、零金额 0 命中（白名单 108 项）；`check.ps1` 4 步退出码 0；**批 28 修 ①兼职客户列表只出 20 人（游标对象化透传）②订单详情动作条分级（主操作一行/次操作一行/危险末位）③多图截图一次打开可左右滑（顾客端同修，TD-066 关闭）**，变异电池 M38~M41 **4/4** 首红 + SHA256 还原；`gate.ps1 -Anchor 8259e13` 红 0/黄 0（24 件/体量 456≤900），证据 §23；隐私文本 **v1.10 定稿（2026-11-03 用户确认，`privacyVersion` 保持 `v4.0.0` 不升版）**、审核材料包 **v2.1 重做**（备案已完成、体验版→可发布口径、32 张截图/4 示意图清单）；批 24~27 已推送远端 `origin/main`（`9526e37..0978b6a`）；批 28 与代码精简四批（P1/P3/P2a/P2b，净 −2,663 行）+ 识别失败归因修正已推送到 PR 分支 `refactor/v4-code-slim`（PR #1），`main` 未直接推送、未 tag/提审/发布；证据 §19~§26，批 16~27 内容见 §2）
 > 临时总体说明（全局汇总，非状态源）：[`docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md`](docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md)（版本与取数快照由 Lead 统一维护；状态仍以本文件为准、口径以 CONTRACT 为准）。
 
 ## 1. 一句话状态
@@ -1455,4 +1455,37 @@ check.ps1：全部通过（4 步，退出码 0）
 
 - 代码/判据/文档提交 `fabc8bb`（fix，12 件 +52/−25）。
 - 已推送到 PR 分支 `refactor/v4-code-slim`（PR #1），`main` 未动、未 tag、未提审、未发布。
+
+## 27. 2026-11-07 AI 排障改进（401/403 单独归因 + 外呼失败日志）
+
+### 27.1 根因与改动
+
+- **现象**：`config/global.aiFallback.enabled=true`、Key 已配置后仍"没有成功调用 DeepSeek"；复核页把 401/403 显示成「智能识别兜底已关闭」，误导为开关未开。
+- **根因**：`cloudfunctions/api/lib/ai/deepseek.js` 的 `classifyHttpFailure` 把 **401/403 归到 `DISABLED`**；而 `DISABLED` 在本项目里表示「未尝试（开关关/Key 缺失）」，语义冲突。
+- **改动**：
+  - 新增内部排障码 `AUTH_FAILED`（401/403，密钥无效/权限不足/欠费）；`DISABLED` 只保留「未尝试」语义。
+  - 外呼失败打印一行 `[ai] outbound failed status=… code=… latencyMs=…`（网络/超时为 `code=TIMEOUT`），不含 Key/正文/响应体。
+  - **鉴权失败不计入熔断**（配置错误重试无意义，且不应打断后续正常请求）；`DISABLED`/`AUTH_FAILED` 均不写 `LLM_ERROR` 以外的状态判定逻辑。
+  - 复核页 `AI_ERROR_LABELS` 增 `AUTH_FAILED → 「智能识别密钥无效或权限不足，已按识别失败入队。」`
+- **判据**：`selftest-ai` 401/403 断言 `AUTH_FAILED`、鉴权失败后熔断计数为 0；内部排障码计数 6→7（255/255）。
+- **口径回写**：`DATA_MODEL §2.5` aiErrorCode 值域、`ENGINEERING §4.10.5` 降级矩阵、`UX_DEVELOPER §11.8`、`RUNBOOK §16.2` 冒烟说明。
+
+### 27.2 门禁真实输出
+
+```text
+$ powershell -File check.ps1
+PASS  check.js 代码/配置门禁（39 条）
+PASS  check-docs.js 设计文档门禁（--batch 1）
+PASS  zero-money-scan.js 零金额扫描（源码+页面+文档）
+PASS  selftest.js 全部断言 suite（EXPECTED_ASSERTIONS 闸）
+selftest：运行 38 套；失败 0 套；SKIP 0 套（无）；完整性 0 项
+selftest-ai：断言 255/255；失败 0 项
+check.ps1：全部通过（4 步，退出码 0）
+```
+
+### 27.3 提交
+
+- 代码/判据/文档提交 `8382b63`（fix，7 件 +30/−12）。
+- 已推送到 PR 分支 `refactor/v4-code-slim`（PR #1），`main` 未动、未 tag、未提审、未发布。
+- 注：`cloudfunctions/cleanup/config.json` 由微信开发者工具在配置定时触发器时生成（内容为 `cleanup-every-10min` / `0 */10 * * * * *`），当前**未跟踪**，建议随下次 cleanup 部署一并提交或由用户决定是否入库。
 
