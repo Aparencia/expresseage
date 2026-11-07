@@ -5,7 +5,7 @@
 > 更新时机：每批开工/收口、用户裁决变化、风险新增或关闭、HEAD 变化需回读。
 > 本文只记**状态、待办与下一步**，不重复设计口径（口径看 CONTRACT，工程规则看 ENGINEERING，接口看 ARCHITECTURE）。
 
-**快照时间：2026-11-07（HEAD `2b626c0` 代码精简批 P1/P2a/P2b/P3 收口；上一快照 2026-11-05 `84acab0`）：check.js 39/39 条、check-docs 12/12 条、selftest **38 套** 0 失败、零金额 0 命中（白名单 108 项）；`check.ps1` 4 步退出码 0；**批 28 修 ①兼职客户列表只出 20 人（游标对象化透传）②订单详情动作条分级（主操作一行/次操作一行/危险末位）③多图截图一次打开可左右滑（顾客端同修，TD-066 关闭）**，变异电池 M38~M41 **4/4** 首红 + SHA256 还原；`gate.ps1 -Anchor 8259e13` 红 0/黄 0（24 件/体量 456≤900），证据 §23；隐私文本 **v1.10 定稿（2026-11-03 用户确认，`privacyVersion` 保持 `v4.0.0` 不升版）**、审核材料包 **v2.1 重做**（备案已完成、体验版→可发布口径、32 张截图/4 示意图清单）；批 24~27 已推送远端 `origin/main`（`9526e37..0978b6a`），批 28 与代码精简四批（P1/P3/P2a/P2b，净 −2,663 行）本地已提交、**未推送**、未 tag/提审/发布；证据 §19~§25，批 16~27 内容见 §2）
+**快照时间：2026-11-07（HEAD `fabc8bb` 代码精简四批 + 识别失败归因修正收口；上一快照 2026-11-05 `84acab0`）：check.js 39/39 条、check-docs 12/12 条、selftest **38 套** 0 失败、零金额 0 命中（白名单 108 项）；`check.ps1` 4 步退出码 0；**批 28 修 ①兼职客户列表只出 20 人（游标对象化透传）②订单详情动作条分级（主操作一行/次操作一行/危险末位）③多图截图一次打开可左右滑（顾客端同修，TD-066 关闭）**，变异电池 M38~M41 **4/4** 首红 + SHA256 还原；`gate.ps1 -Anchor 8259e13` 红 0/黄 0（24 件/体量 456≤900），证据 §23；隐私文本 **v1.10 定稿（2026-11-03 用户确认，`privacyVersion` 保持 `v4.0.0` 不升版）**、审核材料包 **v2.1 重做**（备案已完成、体验版→可发布口径、32 张截图/4 示意图清单）；批 24~27 已推送远端 `origin/main`（`9526e37..0978b6a`）；批 28 与代码精简四批（P1/P3/P2a/P2b，净 −2,663 行）+ 识别失败归因修正已推送到 PR 分支 `refactor/v4-code-slim`（PR #1），`main` 未直接推送、未 tag/提审/发布；证据 §19~§26，批 16~27 内容见 §2）
 > 临时总体说明（全局汇总，非状态源）：[`docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md`](docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md)（版本与取数快照由 Lead 统一维护；状态仍以本文件为准、口径以 CONTRACT 为准）。
 
 ## 1. 一句话状态
@@ -1427,4 +1427,32 @@ selftest-admin-pages：断言 216/216；失败 0 项
 
 - 代码提交 `2b626c0`（fix，4 件）；本地未推送。
 - 全仓累计：667 件/120,544 行 → **655 件/117,881 行（净 −2,663，−2.2%）**。
+
+## 26. 2026-11-07 识别失败归因修正（复核页「服务不可用」误标，A+B）
+
+### 26.1 根因与修复
+
+- **现象（用户截图）**：复核页同一条记录同时显示「失败码：智能识别服务不可用」与「智能识别尝试：未尝试 · 智能识别兜底已关闭」，把「主动关闭」误读成服务故障。
+- **根因**：`cloudfunctions/api/handlers/ai/parseParcel.js` 在 `aiFallback.enabled=false` / Key 缺失（**未外呼**）分支仍写 `failureCode=LLM_ERROR`；`pkg-admin/common/constants.js` 把 `LLM_ERROR` 统一映射为「智能识别服务不可用」。`RUNBOOK §16.2` 早已记录该歧义，但 UI 未消歧。
+- **B（服务端归因）**：该分支改为按规则结果归因——未认出 → `PARSE_MISS`，已认出但低置信 → `LOW_CONFIDENCE`；保留 `aiTried=false`、`aiErrorCode='DISABLED'`。真实外呼失败（超时/5xx/熔断/鉴权失败）、全局配额超限、解析失败仍记 `LLM_ERROR`（契约口径不变）。`CONTRACT §4.3`、`DATA_MODEL §2.5`、`ENGINEERING §4.10.5` 同步澄清「AI 已尝试」才记 `LLM_ERROR`。
+- **A（后台存量/展示）**：`pkg-admin/common/constants.js` 新增 `failureCodeTextOf(row)`——`aiErrorCode=DISABLED` 且 `failureCode=LLM_ERROR` 的存量记录显示「兜底未开启（规则未认出）」；复核页列表/详情与消息中心同源使用；真实 AI 失败仍显示「智能识别服务不可用」。`UX_DEVELOPER §11.8` 增补该行。
+- **测试（判据有牙）**：`selftest-ai` +2（253）——开关关闭入队归因 `PARSE_MISS`、`aiTried=false + aiErrorCode=DISABLED` 保留；`selftest-admin-pages` +2（218）——存量 `DISABLED` 显示「兜底未开启」、真实 `TIMEOUT` 仍显示「服务不可用」。`selftest-ai` 拆出 `tools/lib/ai-assert-helpers.js`（990 行，满足 #18）。
+- **顾客侧文案不变**：客户端失败文案对 `PARSE_MISS`/`LLM_ERROR` 同为通用兜底句，本次不涉及顾客可见文本。
+
+### 26.2 门禁真实输出
+
+```text
+$ powershell -File check.ps1
+PASS  check.js 代码/配置门禁（39 条）
+PASS  check-docs.js 设计文档门禁（--batch 1）
+PASS  zero-money-scan.js 零金额扫描（源码+页面+文档）
+PASS  selftest.js 全部断言 suite（EXPECTED_ASSERTIONS 闸）
+selftest：运行 38 套；失败 0 套；SKIP 0 套（无）；完整性 0 项
+check.ps1：全部通过（4 步，退出码 0）
+```
+
+### 26.3 提交
+
+- 代码/判据/文档提交 `fabc8bb`（fix，12 件 +52/−25）。
+- 已推送到 PR 分支 `refactor/v4-code-slim`（PR #1），`main` 未动、未 tag、未提审、未发布。
 
