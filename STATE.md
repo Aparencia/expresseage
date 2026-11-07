@@ -5,7 +5,7 @@
 > 更新时机：每批开工/收口、用户裁决变化、风险新增或关闭、HEAD 变化需回读。
 > 本文只记**状态、待办与下一步**，不重复设计口径（口径看 CONTRACT，工程规则看 ENGINEERING，接口看 ARCHITECTURE）。
 
-**快照时间：2026-11-07（HEAD `2138f43` 代码精简批 P1/P2a/P3 收口；上一快照 2026-11-05 `84acab0`）：check.js 39/39 条、check-docs 12/12 条、selftest **38 套** 0 失败、零金额 0 命中（白名单 108 项）；`check.ps1` 4 步退出码 0；**批 28 修 ①兼职客户列表只出 20 人（游标对象化透传）②订单详情动作条分级（主操作一行/次操作一行/危险末位）③多图截图一次打开可左右滑（顾客端同修，TD-066 关闭）**，变异电池 M38~M41 **4/4** 首红 + SHA256 还原；`gate.ps1 -Anchor 8259e13` 红 0/黄 0（24 件/体量 456≤900），证据 §23；隐私文本 **v1.10 定稿（2026-11-03 用户确认，`privacyVersion` 保持 `v4.0.0` 不升版）**、审核材料包 **v2.1 重做**（备案已完成、体验版→可发布口径、32 张截图/4 示意图清单）；批 24~27 已推送远端 `origin/main`（`9526e37..0978b6a`），批 28 与代码精简三批（P1/P3/P2a，净 −2,566 行）本地已提交、**未推送**、未 tag/提审/发布；证据 §19~§24，批 16~27 内容见 §2）
+**快照时间：2026-11-07（HEAD `2b626c0` 代码精简批 P1/P2a/P2b/P3 收口；上一快照 2026-11-05 `84acab0`）：check.js 39/39 条、check-docs 12/12 条、selftest **38 套** 0 失败、零金额 0 命中（白名单 108 项）；`check.ps1` 4 步退出码 0；**批 28 修 ①兼职客户列表只出 20 人（游标对象化透传）②订单详情动作条分级（主操作一行/次操作一行/危险末位）③多图截图一次打开可左右滑（顾客端同修，TD-066 关闭）**，变异电池 M38~M41 **4/4** 首红 + SHA256 还原；`gate.ps1 -Anchor 8259e13` 红 0/黄 0（24 件/体量 456≤900），证据 §23；隐私文本 **v1.10 定稿（2026-11-03 用户确认，`privacyVersion` 保持 `v4.0.0` 不升版）**、审核材料包 **v2.1 重做**（备案已完成、体验版→可发布口径、32 张截图/4 示意图清单）；批 24~27 已推送远端 `origin/main`（`9526e37..0978b6a`），批 28 与代码精简四批（P1/P3/P2a/P2b，净 −2,663 行）本地已提交、**未推送**、未 tag/提审/发布；证据 §19~§25，批 16~27 内容见 §2）
 > 临时总体说明（全局汇总，非状态源）：[`docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md`](docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md)（版本与取数快照由 Lead 统一维护；状态仍以本文件为准、口径以 CONTRACT 为准）。
 
 ## 1. 一句话状态
@@ -1392,10 +1392,39 @@ $ node tools/sync-cloud-shared.js --check
 - **实测（同口径 `tools/lib/fsutil.countLines`）**：精简前 `18fef2c` = 667 件 / **120,544 行**；精简后 `1a0e89c` = 654 件 / **117,978 行**；净减 **2,566 行（−2.1%）**、13 个文件（全部是云函数 shared 生成副本）。
 - **按域变化**：cloudfunctions 28,437→26,093（生成副本 −2,236 + 分支/配置 −108）；pages 12,539→12,522；pkg-customer 7,009→6,910；pkg-admin 5,870→5,824；tools 44,551→44,556（同步器/门禁改造 + 净 5 行）；utils 4,276→4,273；shared 3,025→2,975；其余持平。
 - **未采纳/延后项（写明理由，避免下批重复评估）**：
-  - **P2b 后台 3 列表页 9 方法抽 `list-shell`（估 −140~200）**：页面胶水层没有自动化行为断言，等价性只能靠代码审查；且 `selftest-admin-pages` 的 `pageMethodGaps` 要求页面内 `this.x()` 必须有同名定义，只能保留薄委托，实际收益降到 ~−140，风险/收益不合算。
+  - **P2b 后台 3 列表页 9 方法抽 `list-flow`（估 −140~200）**：页面胶水层没有自动化行为断言，等价性只能靠代码审查；且 `selftest-admin-pages` 的 `pageMethodGaps` 要求页面内 `this.x()` 必须有同名定义，只能保留薄委托。**2026-11-07 追加：该项后续已实施，见 §25；实测净 −97 行（3 页 −260/+55、`list-flow.js` +108），低于估算的原因是公共模块自身占 108 行。**
   - **P5 测试夹具去重（理论 −250~400）**：实测同体函数仅 27 组、前 25 组浪费 ≈381 行；每个 helper 都依赖 `NOW/DAY/STATUS_LITERALS/TEMP_URL` 等自由变量，抽公共模块需工厂注入，净减预计 <−120 且要动 10+ 测试文件，暂缓。
   - **P5/T3 `selftest-partner-pages` §G 搬 cases（−80~95）**：纯移动、净减有限（cases 文件变长），留待下次触碰该文件时顺手做（与 TD-086 同类）。
   - **P4/S1 后台 `forbidden` 卡模板化（−40~55）**：被 `selftest-admin-pages` 的逐页 wxml 静态断言（`wx:if="{{forbidden}}"`/`{{!forbidden}}`/`{{forbidden.title}}`）直接挡住，不做。
   - **P4/S2 地址拼装下沉 `shared/zones`（−10~18）、S3 `guide-view` 跨端收敛（−30~55）**：需动冻结层 `shared/**`，收益小，暂缓。
-- **结论**：在「零对外行为变化」约束下的高收益项已全部落地；余下项单批净值均 <−200 且风险上升，不再单独立批。
+- **结论**：在「零对外行为变化」约束下的高收益项已落地；余下项单批净值均 <−200 且风险上升，不再单独立批（P2b 追加实施见 §25）。
+
+## 25. 2026-11-07 代码精简补充批 P2b（后台列表页加载流程收敛）
+
+### 25.1 交付范围
+
+- 新增 `pkg-admin/common/list-flow.js`（108 行）：`paramsOf/loadList/loadMore/methods`，统一列表请求参数（`keyword/includeTest/limit`，按需 `status`/`cursor`）、四道触底闸、五态 setData、关键词防抖（300ms）、搜索确认、含测试开关、重试、卸载清定时器。
+- `pkg-admin/pages/{customers,orders,partners}/index.js`：删除 9 个逐字重复方法体，只保留 `LIST` 配置（`request/decorate/patch/keywordOfSearch/shouldSearch`）+ 同名薄委托 `loadList(reset)`，以继续满足 `selftest-admin-pages` §M 的 `pageMethodGaps` 判据与门禁 #39（页面源码必须出现 `onPullDownRefresh`）。
+- **行为等价**：请求参数、四道闸、setData 键与值、错误路径（`feedback.handleError` + 重新抛出 / 触底 `feedback.toast`）、防抖时序、游标透传全部逐字保留；页面特有逻辑（订单状态 tab、兼职展开/停用/恢复/切换）未动。
+- 规模：4 件 `+163/−260`，净 **−97 行**；`pkg-admin` 5,824→5,727。
+
+### 25.2 门禁真实输出
+
+```text
+$ powershell -File check.ps1
+PASS  check.js 代码/配置门禁（39 条）
+PASS  check-docs.js 设计文档门禁（--batch 1）
+PASS  zero-money-scan.js 零金额扫描（源码+页面+文档）
+PASS  selftest.js 全部断言 suite（EXPECTED_ASSERTIONS 闸）
+check.ps1：全部通过（4 步，退出码 0）
+
+通过 39 项；失败 0 项
+selftest：运行 38 套；失败 0 套
+selftest-admin-pages：断言 216/216；失败 0 项
+```
+
+### 25.3 提交
+
+- 代码提交 `2b626c0`（fix，4 件）；本地未推送。
+- 全仓累计：667 件/120,544 行 → **655 件/117,881 行（净 −2,663，−2.2%）**。
 
