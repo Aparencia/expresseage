@@ -201,8 +201,14 @@ async function middleware(state) {
   }
   const user = await ensureUser(ctx);
   state.meta.actorUser = user;
-  if (user.status && user.status === USER_STATUS.DEACTIVATED && state.action !== 'user.bootstrap') {
-    throw errors.forbidden('账号已停用，请联系开发者');
+  if (state.action !== 'user.bootstrap') {
+    // D68：停用（可恢复）与注销（不可逆）文案分开说真话；bootstrap 始终放行，供客户端渲染专用状态页。
+    if (user.status === USER_STATUS.DEACTIVATED) {
+      throw errors.forbidden('账号已注销，无法继续使用');
+    }
+    if (user.status === USER_STATUS.SUSPENDED) {
+      throw errors.forbidden('账号已停用，请联系开发者');
+    }
   }
   ctx.identity.developerNo = resolveDeveloperNo(ctx.env, ctx.openid);
   // users.roles 归一（双角色成员制判定的依据）；identity.role 按动作域解析（ARCHITECTURE §4.1 双角色口径）。

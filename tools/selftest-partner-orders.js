@@ -185,6 +185,13 @@ async function sectionC(h) {
     await expectCode(t, pApi.call('order.create', v100CreateInput({ bindingId: BIND_DELETED }),
       { clientRequestId: nextCrid('c8') }), 'INVALID_STATE',
     'C8 绑定顾客资料已注销（deletedAt）→ INVALID_STATE（不给已注销顾客建单）');
+    // D68：绑定顾客账号被停用（SUSPENDED）→ 禁止代客下单；恢复后同一绑定即可继续（资料/绑定不动）。
+    const suspendedUser = db.dump('users').find((row) => row._id === C1);
+    db.seed('users', [Object.assign({}, suspendedUser, { status: 'SUSPENDED' })]);
+    await expectCode(t, pApi.call('order.create', v100CreateInput({ bindingId: BIND_C1 }),
+      { clientRequestId: nextCrid('c8b') }), 'INVALID_STATE',
+    'C8b 绑定顾客账号已停用（SUSPENDED）→ INVALID_STATE（D68 只冻结写）');
+    db.seed('users', [suspendedUser]);
     await expectField(t, pApi.call('order.create', v100CreateInput({}),
       { clientRequestId: nextCrid('c9') }), 'VALIDATION_FAILED', 'guest',
     'C9 兼职单既无 bindingId 也无 guest → VALIDATION_FAILED 且 data.field=guest');

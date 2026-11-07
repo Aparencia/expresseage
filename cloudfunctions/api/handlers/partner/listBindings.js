@@ -10,7 +10,8 @@
 //   顾客资料同步按 100/批批量补（不逐顾客 N+1）。
 // D67（批 24）：只增可选入参 zone/buildingNo/profileIncomplete/hasNote（筛选链 = keyword → D67 → cursor）；
 //   筛选在内存完成、无需新索引/新查询；过滤后再判定 nextCursor，分页不重不漏。
-//   查询预算 = ceil(绑定/100)+1 + ceil(顾客/100) + 5（本页进行中单） + 头像批量 1（D67 不增加）。
+//   D68（本批）：本页行补 users.status（停用顾客标「已停用」），一趟 in 查询（≤100/批）。
+//   查询预算 = ceil(绑定/100)+1 + ceil(顾客/100) + 5（本页进行中单） + 头像批量 1 + 本页 users 1（D68）。
 'use strict';
 
 const { COLLECTIONS } = require('../../shared/collections');
@@ -81,6 +82,26 @@ async function attachActiveCounts(ctx, partner, page) {
   });
 }
 
+// D68：本页顾客账号状态（users.status），只读展示用；注销/停用顾客仍可见（历史关系保留）。
+async function attachCustomerStatuses(ctx, page) {
+  const ids = page.map((entry) => entry.customerId).filter((id) => id !== '');
+  if (ids.length === 0) {
+    return;
+  }
+  const statuses = {};
+  for (let i = 0; i < ids.length; i += CUSTOMER_IN_BATCH) {
+    const part = await ctx.dao.find(COLLECTIONS.USERS, {
+      where: { _id: ctx.dao.command('in', ids.slice(i, i + CUSTOMER_IN_BATCH)) }
+    });
+    part.forEach((doc) => {
+      statuses[doc._id] = doc.status || enums.USER_STATUS.ACTIVE;
+    });
+  }
+  page.forEach((entry) => {
+    entry.row.status = statuses[entry.customerId] || enums.USER_STATUS.ACTIVE;
+  });
+}
+
 async function handler(ctx, payload) {
   const { partner } = await identity.requireActivePartner(ctx);
   const input = payload && typeof payload === 'object' ? payload : {};
@@ -97,6 +118,7 @@ async function handler(ctx, payload) {
     .sort(customerList.compareBindingEntries);
   const page = candidates.slice(0, limit);
   await attachActiveCounts(ctx, partner, page);
+  await attachCustomerStatuses(ctx, page);
   // 只对本页行签发（≤50 个 fileID 一次批量）；keyword/筛选不依赖头像，避免无谓外呼。
   await customer.signRowsAvatarUrls(ctx, page.map((entry) => entry.row));
   const last = page[page.length - 1];

@@ -111,12 +111,17 @@ function customerBrief(customer, options) {
   const opts = options || {};
   const binding = opts.binding || null;
   const partner = opts.partner || null;
+  const user = opts.user || null;
   const out = {
     customerNo: doc.customerNo || '',
     displayName: maskedName(doc.displayName),
     dorm: mask.maskDorm(doc),
     phoneTail: mask.maskPhoneTail(doc.phoneTail),
     profileCompleted: !!doc.profileCompleted,
+    // D68：账号状态取自 users（唯一身份源）；未注入 user 时按 ACTIVE（旧调用方行为不变）
+    status: user ? (user.status || enums.USER_STATUS.ACTIVE) : enums.USER_STATUS.ACTIVE,
+    suspendedAt: user ? dateValue(user.suspendedAt) : 0,
+    suspendedReason: user && typeof user.suspendedReason === 'string' ? user.suspendedReason : '',
     isTest: opts.isTest === true,
     binding: null,
     createdAt: dateValue(doc.createdAt),

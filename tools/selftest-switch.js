@@ -207,7 +207,7 @@ function register(h) {
     store.reset();
     t.eq(store.getViewContext(), null, 'store.reset 清空会话上下文（冷启动丢失，不还原）');
 
-    // 不落盘：本地存储白名单只认 lastRole/guides/draftPointer
+    // 不落盘：本地存储白名单只认 lastRole/guides/draftPointer/pickupChecks/loggedOut（D69）
     const dirtyRaw = JSON.stringify({
       lastRole: 'PARTNER',
       guides: { PARTNER_WORKBENCH_V1: true },
@@ -224,8 +224,8 @@ function register(h) {
       removeStorageSync: function removeStorageSync() { saved = ''; }
     };
     const loaded = storage.load(platform);
-    t.eq(Object.keys(loaded).sort(), ['draftPointer', 'guides', 'lastRole', 'pickupChecks'],
-      '本地存储只归白名单四键（会话票据/模式/目标测试标记不进存储）');
+    t.eq(Object.keys(loaded).sort(), ['draftPointer', 'guides', 'lastRole', 'loggedOut', 'pickupChecks'],
+      '本地存储只归白名单五键（会话票据/模式/目标测试标记不进存储）');
     t.check(!/viewTicket|viewMode|targetIsTest|viewContext/.test(JSON.stringify(loaded)),
       '存储读数零会话字段（ENGINEERING §5.6 / 门禁 #15）');
     t.eq(loaded.guides, { PARTNER_WORKBENCH_V1: true }, '引导标记按白名单保留（纯 UI 偏好）');
@@ -459,7 +459,7 @@ function register(h) {
 
   // ---------------------------------------------------------------- §4.3 审计
   h.section('§4.3 审计动作集合（ACCOUNT_SWITCH_*；旧名零残留）', (t) => {
-    t.eq(audit.AUDIT_ACTION_COUNT, 16, '审计动作恰好 16 个（v0.9 集合）');
+    t.eq(audit.AUDIT_ACTION_COUNT, 18, '审计动作恰好 18 个（v0.9 集合 16 + D68 顾客停用/恢复 2）');
     t.check(['ACCOUNT_SWITCH_START', 'ACCOUNT_SWITCH_END', 'ACCOUNT_SWITCH_EXPIRED']
       .every((action) => audit.AUDIT_ACTION_LIST.indexOf(action) !== -1), '切换会话三审计在册');
     t.check(audit.AUDIT_ACTION_LIST.every((action) => action.indexOf(LEGACY_AUDIT_PREFIX) === -1),

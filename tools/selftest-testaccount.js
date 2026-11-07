@@ -438,7 +438,7 @@ function register(h) {
       removeStorageSync: function removeStorageSync() { raw = ''; }
     };
     const loaded = storage.load(platform);
-    t.eq(loaded, { lastRole: 'CUSTOMER', guides: {}, draftPointer: null, pickupChecks: {} },
+    t.eq(loaded, { lastRole: 'CUSTOMER', guides: {}, draftPointer: null, pickupChecks: {}, loggedOut: false },
       '存储白名单：测试会话标记/模式/票据一律丢弃');
     t.check(JSON.stringify(loaded).indexOf('targetIsTest') === -1
       && JSON.stringify(loaded).indexOf('TEST_WRITE') === -1,

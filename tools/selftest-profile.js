@@ -33,7 +33,7 @@ const uploadCommon = require(path.join(ROOT, 'cloudfunctions/api/handlers/upload
 const profileVm = require(path.join(ROOT, 'pages/profile/parts/view-model.js'));
 const avatarSave = require(path.join(ROOT, 'pages/profile/parts/avatar-save.js'));
 
-const EXPECTED_ASSERTIONS = 192; // 194 - 2（批 16 死代码专项：草稿指针三件套删除，对应 2 条测试断言移除；TD-008）
+const EXPECTED_ASSERTIONS = 199; // 194 - 2（批 16 草稿指针三件套删除）+ 7（D69 本机退出登录）
 
 const TOKEN = 'T'.repeat(32);
 const CONSENT_AT = 1700000000000;
@@ -137,12 +137,12 @@ function register(h) {
       targetIsTest: true,
       [OPEN_ID_WORD]: 'raw-identity'
     });
-    t.eq(keysOf(sanitized), ['draftPointer', 'guides', 'lastRole', 'pickupChecks'], '归一后只剩四个白名单字段');
+    t.eq(keysOf(sanitized), ['draftPointer', 'guides', 'lastRole', 'loggedOut', 'pickupChecks'], '归一后只剩五个白名单字段（D69 增 loggedOut）');
     t.eq(storage.normalize({
       lastRole: 'PARTNER',
       guides: { PARTNER_WORKBENCH_V1: true, CUSTOMER_HOME_V1: 'yes' },
       draftPointer: 'draft_01'
-    }), { lastRole: 'PARTNER', guides: { PARTNER_WORKBENCH_V1: true }, draftPointer: 'draft_01', pickupChecks: {} },
+    }), { lastRole: 'PARTNER', guides: { PARTNER_WORKBENCH_V1: true }, draftPointer: 'draft_01', pickupChecks: {}, loggedOut: false },
     '合法值保留；非法 guide 值（非 true）丢弃');
     t.eq(storage.normalize({ lastRole: 'ADMIN' }).lastRole, null,
       'lastRole 只认两个业务角色（非法值读路径丢弃）');
@@ -162,7 +162,7 @@ function register(h) {
       viewMode: 'READONLY',
       targetIsTest: true
     });
-    t.eq(keysOf(storage.load(plat.api)), ['draftPointer', 'guides', 'lastRole', 'pickupChecks'],
+    t.eq(keysOf(storage.load(plat.api)), ['draftPointer', 'guides', 'lastRole', 'loggedOut', 'pickupChecks'],
       '历史/误写的票据与视角字段在读取时被剥掉');
     storage.setLastRole('PARTNER', plat.api);
     t.check(!/viewTicket|viewContext|viewMode|targetIsTest/.test(String(plat.bucket[storage.KEY])),
@@ -173,6 +173,26 @@ function register(h) {
       && storage.isGuideSeen('CUSTOMER_HOME_V1', plat.api) === true, '引导标记只认白名单键');
     t.check(storage.clearGuideSeen('CUSTOMER_HOME_V1', plat.api) === true
       && storage.isGuideSeen('CUSTOMER_HOME_V1', plat.api) === false, '引导标记可清除（供重看）');
+
+    // D69 退出登录：loggedOut 白名单字段 + clearSession 只清会话键（保留本机取件码清单）
+    t.eq(storage.isLoggedOut(plat.api), false, 'D69 默认未退出登录');
+    t.eq([storage.setLoggedOut(true, plat.api), storage.isLoggedOut(plat.api)], [true, true],
+      'D69 setLoggedOut 只写本机标记（可读回）');
+    storage.addLocalCodes([{ code: 'A1234' }], plat.api);
+    storage.setLastRole('CUSTOMER', plat.api);
+    storage.markGuideSeen('CUSTOMER_HOME_V1', plat.api);
+    storage.setPickupCheck('20261022-0001#0', true, plat.api);
+    t.eq(storage.clearSession(plat.api), true, 'D69 clearSession 写成功');
+    const afterLogout = storage.load(plat.api);
+    t.eq([afterLogout.lastRole, afterLogout.guides, afterLogout.pickupChecks, afterLogout.loggedOut],
+      [null, {}, {}, true], 'D69 退出清 lastRole/guides/pickupChecks 并置 loggedOut');
+    t.eq(storage.loadLocalCodes(plat.api).items.map((item) => item.code), ['A1234'],
+      'D69 退出保留本机取件码清单（用户裁决 A）');
+    t.eq(storage.clearAll(plat.api), true, 'D69 clearAll 仍可清两个键（隐私清理路径不变）');
+    t.check(fs.readFileSync(path.join(ROOT, 'pages/launch/index.js'), 'utf8').indexOf('storage.isLoggedOut()') >= 0
+      && fs.readFileSync(path.join(ROOT, 'pages/launch/index.js'), 'utf8').indexOf('onRelogin') >= 0
+      && fs.readFileSync(path.join(ROOT, 'pages/profile/index.wxml'), 'utf8').indexOf('退出登录') >= 0,
+      'D69 启动页可停退出态、我的页有退出登录入口');
 
     // 批 16（TD-008 承诺执行）：草稿指针三件套（getDraftPointer/setDraftPointer/clearDraftPointer）
     // 生产 0 引用，已从 utils/storage.js 删除；draftPointer 历史键仍在 normalize 白名单内被剥/保留为 null。

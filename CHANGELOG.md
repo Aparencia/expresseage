@@ -11,6 +11,10 @@
 
 ### 用户可见变更
 
+- **2026-11-08 开发者后台可以恢复被停用的顾客账号（D68）**：后台顾客列表/详情新增账号状态与「停用/恢复」——停用需填原因并二次确认，恢复一次确认；停用只冻结登录与写，**资料、绑定与进行中订单一律不动**，恢复后即刻可用；已注销（DEACTIVATED）账号仍不可恢复（注销不可逆）。顾客被停用后打开小程序看到整页「账号已停用」说明（可联系开发者或退出登录），不再每次操作刷错误；已注销账号见「账号已注销」页。兼职端客户列表对停用顾客标「已停用」，且不能再给其代客下单。
+
+- **2026-11-08 「我的」新增「退出登录」（D69）**：确认后清除本机登录状态与缓存（保留「我的取件码（本机）」清单），启动页停在「已退出登录」，点「重新登录」即恢复（微信身份自动识别、照常过隐私闸）；切换会话下不显示该入口。微信小程序不能切换微信登录账号，因此这是本机退出，不是换号登录。
+
 - **2026-11-07 开发者复核页 AI 排障可读性**：DeepSeek 返回 **401/403** 时，复核详情「智能识别尝试」显示`智能识别密钥无效或权限不足`，不再误显示为`智能识别兜底已关闭`（后者只表示开关关闭/Key 缺失、未发起外呼）。其余排障码（超时/5xx/熔断/配额/解析失败）文案不变。
 
 - **2026-11-07 开发者复核页失败码文案修正**：当「智能识别兜底」关闭（或 Key 未配置）时，识别失败记录不再显示「智能识别服务不可用」——**存量记录**显示「兜底未开启（规则未认出）」，**新记录**按实际归因为「有文字但没认出站点或取件码」/「识别结果可信度低」；真实 AI 超时/5xx/熔断/鉴权失败仍显示「智能识别服务不可用」。顾客侧失败文案不变。
@@ -73,6 +77,8 @@
 - **下单与查看更顺（批 10，A 批 P1 十项，2026-10-23）**：新顾客资料未完善时**直接展开资料编辑**（少点一次）；绑定页输入完整编号或分享卡片落地**自动出预览**（0 次「查询」点击，正常路径每日预览只消耗 1 次）；上传失败卡同时给「重新选择截图」与「不传截图，手动填写」两条真实出路，重新识别不再空转，代客下单单图模式再选图=替换；底部「订单」tab 显示**进行中数量角标**（进列表不清零）；首页可见兼职**服务范围**，范围不含本苑时下单按钮提前置灰并说明；顾客首次进首页有**三步新手引导**（可跳过，「我的→重新看新手引导」可重看）；选相册不再请求「保存到相册」授权；选「其他代办」**必须写备注**（客户端行内红字 + 服务端双重校验）；头像上传凭证过期的保存失败会**自动换票重试恢复**（仍失败则保存其余资料并用默认头像、如实提示）。
 
 ### 工程细节
+
+- **2026-11-08 批 29 顾客停用/恢复 + 退出登录（D68/D69）**：`shared/enums.js` `USER_STATUS` 增 `SUSPENDED` + `USER_STATUS_LABELS`（三态）；`shared/audit-actions.js` 增 `CUSTOMER_SUSPEND/CUSTOMER_RESTORE`（16→18）；`shared/actions.js` 增 `admin.setCustomerStatus`（write，admin 白名单）。服务端新增 `handlers/admin/setCustomerStatus.js`（只写 `users.status/suspendedAt/suspendedReason` 的事务；`SUSPENDED→ACTIVE` 才可恢复、`DEACTIVATED` → `INVALID_TRANSITION`、测试账号 `INVALID_STATE`、`from=to` 幂等；审计 detail `customerNo/from/to/toState/reason`）；`admin/{listCustomers,getCustomer,_dto}.js` 客户 DTO 增 `status/suspendedAt/suspendedReason`；`middleware/auth.js` 按状态分流文案（SUSPENDED「账号已停用，请联系开发者」/ DEACTIVATED「账号已注销，无法继续使用」，`user.bootstrap` 均放行）；`order/_store.loadBoundCustomer` 停用顾客禁止代客下单；`partner/{listBindings,getCustomer}.js` 行 DTO 增 `status`（本页一趟 `_id in`，≤100/批）。客户端：`store.accountStatus` 水合、`pages/launch` 停用/注销/已退出三种整页态 + 重新登录、`pages/profile` 新增退出登录（拆件 `parts/logout.js` 与 `parts/delete-account.js`，守 #18）、`utils/storage` 增 `loggedOut` 白名单字段与 `isLoggedOut/setLoggedOut/clearSession`（保留 pickcodes 键）。后台：顾客列表/详情状态标签、停用原因与「停用/恢复」按钮（测试账号不可治理、停用/注销不可切换），详情视图模型对齐服务端真实形状（`customer.binding/orderSummary`）并兼容旧顶层形状。判据：`selftest-admin` +20（拆 `tools/lib/admin-customer-cases.js`，288/288）、`selftest-admin-pages` +6（拆 `tools/lib/admin-customer-ui-cases.js`，224/224）、`selftest-profile` +7（199/199）、`selftest-partner-orders` +1（90/90），存储白名单/审计计数/DTO 白名单断言同批更新。文档：CONTRACT（§1.1/§4.2/§5.3/§7 权限表/§13 D68-D69、`D_MAX` 67→69）、DATA_MODEL（users 三态与字段、§7 动作与顾客/兼职 DTO）、ARCHITECTURE（§2 文件表/§3.2/§3.4）、UX_DEVELOPER §3.3/§3.4、UX_CUSTOMER §9.7、QA §AH。门禁：`check.ps1` 4 步退出码 0、check.js 39/39、check-docs 12/12、零金额 0 命中（白名单 108 项）、selftest 38 套 0 失败。
 
 - **2026-11-07 AI 排障改进（401/403 单独归因 + 外呼失败日志）**：`cloudfunctions/api/lib/ai/deepseek.js` 新增内部排障码 `AUTH_FAILED`（401/403；`DISABLED` 仅保留「未尝试」语义）；外呼失败打印一行 `[ai] outbound failed status=… code=… latencyMs=…`（网络/超时 `code=TIMEOUT`，不含 Key/正文/响应体）；鉴权失败不计入熔断（配置错误不打断后续请求）。复核页 `AI_ERROR_LABELS` 增 `AUTH_FAILED → 密钥无效或权限不足`。判据：`selftest-ai` 401/403 断言 `AUTH_FAILED` + 熔断计数 0，内部排障码 6→7（255/255）。口径回写 `DATA_MODEL §2.5`、`ENGINEERING §4.10.5`、`UX_DEVELOPER §11.8`、`RUNBOOK §16.2`。门禁：`check.ps1` 4 步退出码 0、check.js 39/39、check-docs 12/12、零金额 0 命中（白名单 108 项）、selftest 38 套 0 失败（提交 `8382b63`，已推送到 PR 分支）。
 

@@ -7,3 +7,23 @@
 .link {
   color: var(--v4-brand);
 }
+
+.tag-suspended {
+  color: var(--v4-warn, #B26A00);
+  background: rgba(178, 106, 0, 0.12);
+}
+
+.tag-closed {
+  color: var(--v4-text-2);
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.warn-text {
+  margin-top: 8rpx;
+  color: var(--v4-warn, #B26A00);
+}
+
+.action-row {
+  margin-top: 16rpx;
+  justify-content: flex-end;
+}

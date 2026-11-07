@@ -24,6 +24,9 @@ async function handler(ctx, payload) {
   const activeOrderCount = await customer.countActiveOrders(ctx, partner._id, binding.customerId);
   // D42（task-20）：ACTIVE 绑定期间的顾客头像下发 5 分钟临时 URL（src 优先）；avatarFileId 保留回退。
   const row = customer.customerRowOf(binding, profile, activeOrderCount);
+  // D68：顾客账号状态（停用可恢复/注销不可逆）随详情下发，供页面展示与代客下单前置提示。
+  const user = await identity.loadUser(ctx, binding.customerId);
+  row.status = (user && user.status) || enums.USER_STATUS.ACTIVE;
   await customer.signRowsAvatarUrls(ctx, [row]);
   return {
     customer: row,

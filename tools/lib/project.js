@@ -118,7 +118,7 @@ add('message', ['send', 'markRead'], WRITE);
 add('message', ['list'], READ);
 add('upload', ['prepare', 'cancel'], WRITE);
 add('config', ['getPublic'], READ);
-add('admin', ['createInvites', 'revokeInvite', 'setPartnerStatus', 'updateConfig', 'viewAsStart', 'viewAsEnd',
+add('admin', ['createInvites', 'revokeInvite', 'setPartnerStatus', 'setCustomerStatus', 'updateConfig', 'viewAsStart', 'viewAsEnd',
   'createTestAccount', 'deleteTestAccount', 'purgeTestData', 'fixRecognitionFailure', 'ignoreRecognitionFailure'], WRITE);
 add('admin', ['listInvites', 'listCustomers', 'getCustomer', 'listPartners', 'listOrders', 'getOrder', 'listAudit',
   'stats', 'listTestAccounts', 'listRecognitionFailures', 'getRecognitionFailure'], READ);
@@ -152,8 +152,9 @@ const COLLECTIONS = ['users', 'customers', 'partners', 'bindings', 'orders', 'or
   'invitation_codes', 'admin_view_sessions', 'counters', 'config', 'admin_audit', 'upload_tickets',
   'recognition_failures'];
 
-/** CONTRACT §4.2 admin_audit.action 全集（16 个；VIEW_AS_* 作废）。 */
-const AUDIT_ACTIONS = ['INVITE_CREATE', 'INVITE_REVOKE', 'PARTNER_SUSPEND', 'PARTNER_RESTORE', 'CONFIG_UPDATE',
+/** CONTRACT §4.2 admin_audit.action 全集（18 个；VIEW_AS_* 作废）。 */
+const AUDIT_ACTIONS = ['INVITE_CREATE', 'INVITE_REVOKE', 'PARTNER_SUSPEND', 'PARTNER_RESTORE',
+  'CUSTOMER_SUSPEND', 'CUSTOMER_RESTORE', 'CONFIG_UPDATE',
   'ORDER_ANOMALY_CANCEL', 'BOOTSTRAP', 'FAILURE_IMAGE_VIEW', 'FAILURE_FIX', 'FAILURE_IGNORE',
   'ACCOUNT_SWITCH_START', 'ACCOUNT_SWITCH_END', 'ACCOUNT_SWITCH_EXPIRED', 'TEST_ACCOUNT_CREATE',
   'TEST_ACCOUNT_DELETE', 'TEST_DATA_PURGE'];

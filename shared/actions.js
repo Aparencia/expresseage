@@ -88,6 +88,8 @@ const CLIENT_RULES = defineRules('client', [
   ['admin.getCustomer', false],
   ['admin.listPartners', false],
   ['admin.setPartnerStatus', true],
+  // D68：顾客账号停用/恢复（只冻结登录与写；注销 DEACTIVATED 不可恢复）
+  ['admin.setCustomerStatus', true],
   ['admin.listOrders', false],
   ['admin.getOrder', false],
   ['admin.listAudit', false],

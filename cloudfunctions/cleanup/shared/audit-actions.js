@@ -1,6 +1,6 @@
-// shared/audit-actions.js · 管理审计枚举（恰好 16 个）
+// shared/audit-actions.js · 管理审计枚举（恰好 18 个）
 // 契约：docs/engineering/V4_ARCHITECTURE.md §4.3；docs/contract/V4_CONTRACT.md v0.9 §4.2「admin 审计」/ §1.2/§1.3。
-// 纪律：新日志只写这 16 个值；账号切换统一 ACCOUNT_SWITCH_*（旧 VIEW_AS 系列已作废，
+// 纪律：新日志只写这 18 个值；账号切换统一 ACCOUNT_SWITCH_*（旧 VIEW_AS 系列已作废，
 //       历史日志的兼容换算放在 admin.listAudit 读取侧，不在本文件留旧名，避免被再次写入）。
 // 调用方：云函数 admin.* handler、cleanup、admin_audit 写入与后台审计区块。
 'use strict';
@@ -11,6 +11,9 @@ const AUDIT_ACTIONS = {
   INVITE_REVOKE: 'INVITE_REVOKE',
   PARTNER_SUSPEND: 'PARTNER_SUSPEND',
   PARTNER_RESTORE: 'PARTNER_RESTORE',
+  // 顾客账号治理（D68：停用/恢复；注销不新增审计，沿用既有注销链路）
+  CUSTOMER_SUSPEND: 'CUSTOMER_SUSPEND',
+  CUSTOMER_RESTORE: 'CUSTOMER_RESTORE',
   // 配置 / 异常介入 / 初始化
   CONFIG_UPDATE: 'CONFIG_UPDATE',
   ORDER_ANOMALY_CANCEL: 'ORDER_ANOMALY_CANCEL',
@@ -31,7 +34,7 @@ const AUDIT_ACTIONS = {
 
 const AUDIT_ACTION_LIST = Object.keys(AUDIT_ACTIONS).map((key) => AUDIT_ACTIONS[key]);
 
-const AUDIT_ACTION_COUNT = 16;
+const AUDIT_ACTION_COUNT = 18;
 
 function isAuditAction(action) {
   return typeof action === 'string' && AUDIT_ACTION_LIST.indexOf(action) !== -1;

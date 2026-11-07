@@ -8,7 +8,8 @@ const { COLLECTIONS } = require('../../shared/collections');
 const {
   enums,
   createAdminScope,
-  readTrimmedText
+  readTrimmedText,
+  getUserByOpenid
 } = require('./_common');
 const dto = require('./_dto');
 const paging = require('./_paging');
@@ -37,10 +38,13 @@ async function decorate(scope, customer) {
     where: { customerId: customer._id, status: enums.BINDING_STATUS.ACTIVE }
   });
   const partner = binding ? await scope.dao.get(COLLECTIONS.PARTNERS, binding.partnerId) : null;
+  // D68：账号状态来自 users（与 isTest 同一次读取，避免额外一次查库）
+  const user = await getUserByOpenid(scope, customer._id);
   return dto.customerBrief(customer, {
     binding: binding,
     partner: partner,
-    isTest: await scope.isTestAccount(customer._id)
+    isTest: !!(user && user.isTestAccount === true),
+    user: user
   });
 }
 

@@ -5,7 +5,7 @@
 > 更新时机：每批开工/收口、用户裁决变化、风险新增或关闭、HEAD 变化需回读。
 > 本文只记**状态、待办与下一步**，不重复设计口径（口径看 CONTRACT，工程规则看 ENGINEERING，接口看 ARCHITECTURE）。
 
-**快照时间：2026-11-07（HEAD `8382b63` 代码精简四批 + 识别归因修正 + AI 排障改进收口；上一快照 2026-11-05 `84acab0`）：check.js 39/39 条、check-docs 12/12 条、selftest **38 套** 0 失败、零金额 0 命中（白名单 108 项）；`check.ps1` 4 步退出码 0；**批 28 修 ①兼职客户列表只出 20 人（游标对象化透传）②订单详情动作条分级（主操作一行/次操作一行/危险末位）③多图截图一次打开可左右滑（顾客端同修，TD-066 关闭）**，变异电池 M38~M41 **4/4** 首红 + SHA256 还原；`gate.ps1 -Anchor 8259e13` 红 0/黄 0（24 件/体量 456≤900），证据 §23；隐私文本 **v1.10 定稿（2026-11-03 用户确认，`privacyVersion` 保持 `v4.0.0` 不升版）**、审核材料包 **v2.1 重做**（备案已完成、体验版→可发布口径、32 张截图/4 示意图清单）；批 24~27 已推送远端 `origin/main`（`9526e37..0978b6a`）；批 28 与代码精简四批（P1/P3/P2a/P2b，净 −2,663 行）+ 识别失败归因修正已推送到 PR 分支 `refactor/v4-code-slim`（PR #1），`main` 未直接推送、未 tag/提审/发布；证据 §19~§26，批 16~27 内容见 §2）
+**快照时间：2026-11-08（HEAD 98187d + 批 29 D68/D69 收口提交）：check.js 39/39 条、check-docs 12/12 条、selftest **38 套** 0 失败、零金额 0 命中（白名单 108 项）；check.ps1 4 步退出码 0；**批 29：D68 顾客停用/恢复（users.status 三态 + admin.setCustomerStatus + 后台状态/按钮 + 顾客端状态页 + 兼职端标签与代客下单闸）+ D69 退出登录（本机退出、保留本机取件码清单）**；真机项交用户点检（QA §AH），证据 §28；批 24~28 基线见 §19~§27）
 > 临时总体说明（全局汇总，非状态源）：[`docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md`](docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md)（版本与取数快照由 Lead 统一维护；状态仍以本文件为准、口径以 CONTRACT 为准）。
 
 ## 1. 一句话状态
@@ -68,6 +68,7 @@
 | 批 27 | 用户 11 条新需求第四批：D59 客户端团队页 + D63 顾客邀请顾客（2026-11-03） | **工程侧完成并收口（2026-11-03，HEAD `470250a` + 本收口证据提交）** | D63：`utils/share` 入参 +`boundPartnerNo`、`TITLES.BIND_CUSTOMER`、`pages/profile` 顾客绑定卡装配、`pages/role` 落地提示、`selftest-share` +S1~S7、`check-share` path 白名单（**零服务端/零数据模型变更、不记录邀请关系**）；D59 客户端：新建 `pkg-partner/pages/team/**`（第 33 页：成员/发子码/按批次作废/移除/名额；子队员只看队伍摘要）、`service-settings` 加「我的团队」入口、`selftest-partner-pages` 新组；**文档回写（W8）**：CONTRACT §8/§10/§11.2/§13 D63、DATA_MODEL §13.1e（零变更说明）、ARCHITECTURE §3.2、UX_CUSTOMER §3.5/§3.6/§6.3、UX_PARTNER §3.10/§3.12/§7、UX_DEVELOPER §3.2、QA §AG12、RUNBOOK §18；**页数 32→33 已随批 27 落地（`app.json`/`tools/lib/project.js` 同步）**；真机项 QA §AG12 待用户；收口读数：`check.ps1` 4 步退出码 0、`check-docs` 12/12、`selftest` 38 套 0 失败、`gate.ps1` 红 0/黄 0；HEAD `470250a`（修复提交）+ 本收口证据提交 |
 | 批 28 | 真机缺陷修复批（2026-11-05 用户截图反馈）：客户列表只出 20 人 / 订单详情动作条 UI / 多图截图只能看一张 | **工程侧完成并收口（2026-11-05，HEAD `8259e13` + 本批修复提交）** | ①**游标对象化回归**（服务端 `{dormKey,allocSeq}`/`{sortValue,tie}` 被客户端 `textOf` 字符串化 → 恒 `''`）：`utils/customer-view.hasCursorOf` 单源 + `pages/partner/customers/parts/list-model`、`pkg-partner/pages/customer-detail/{index,parts/detail-view}` 原样透传（顺带修「查看更早」永不出现）；②**订单详情动作条**两层渲染：主操作独占整宽实心行、异常/改码/留言/取消·拒单进次行、危险动作末位白底红字、撤销动作不进条（纯件 `parts/action-bar.js`；根因 `.bb-bar` 非 flex 容器使旧 `flex:1` 从未生效）；③**多图预览**：兼职端 `parts/{image-view,image-actions}.js` 逐张签一次 `previewImage({urls,current})`，顾客端 `parts/parcel-view.previewOf` 同口径（关闭 **TD-066**）；判据 partner-pages +5 / order-detail-partner +13 / order-customer +2，变异电池 M38~M41 四组首红 + SHA256 逐字节还原；`check.ps1` 4 步退出码 0、check 39/39、check-docs 12/12、零金额 0 命中（白名单 108 项）、selftest 38 套 0 失败；**无服务端/契约变更，客户端需重新上传体验版**；真机项见 §23.4；证据 §23 |
 
+| 批 29 | 顾客停用/恢复 + 退出登录（D68/D69，2026-11-08） | **工程侧完成并收口（2026-11-08）** | D68：users.status 三态、admin.setCustomerStatus（只冻结登录与写）、后台顾客列表/详情状态与停用恢复、顾客端状态页、兼职端标签+代客下单闸、审计 CUSTOMER_SUSPEND/RESTORE；D69：本机退出登录（清会话缓存、保留本机取件码、启动页退出态/重新登录）；判据 selftest-admin +20、admin-pages +6、profile +7、partner-orders +1；文档 CONTRACT/DATA_MODEL/ARCHITECTURE/UX×2/QA §AH；证据 §28 |
 ## 3. 批 1 并行交付快照（全部收口）
 
 > 写作用域以 `docs/engineering/V4_ARCHITECTURE.md` §2 为准；实现细节见 CHANGELOG 批 1 条目与各 owner 回执。
@@ -1488,4 +1489,19 @@ check.ps1：全部通过（4 步，退出码 0）
 - 代码/判据/文档提交 `8382b63`（fix，7 件 +30/−12）。
 - 已推送到 PR 分支 `refactor/v4-code-slim`（PR #1），`main` 未动、未 tag、未提审、未发布。
 - 注：`cloudfunctions/cleanup/config.json` 由微信开发者工具在配置定时触发器时生成（内容为 `cleanup-every-10min` / `0 */10 * * * * *`），当前**未跟踪**，建议随下次 cleanup 部署一并提交或由用户决定是否入库。
+
+## 28. 批 29 顾客停用/恢复 + 退出登录（D68/D69，2026-11-08）收口证据（真实输出）
+
+\	ext
+$ powershell -File check.ps1
+PASS  check.js 代码/配置门禁（39 条）
+PASS  check-docs.js 设计文档门禁（--batch 1）
+PASS  zero-money-scan.js 零金额扫描（源码+页面+文档）
+PASS  selftest.js 全部断言 suite（EXPECTED_ASSERTIONS 闸）
+selftest：运行 38 套；失败 0 套；SKIP 0 套（无）；完整性 0 项；非聚合辅助文件 4 件（已声明）
+check.ps1：全部通过（4 步，退出码 0）
+\\n
+- 套件读数（本次真实输出）：admin 288、admin-pages 224、profile 199、partner-orders 90、deletion 105、switch 169、testaccount 172、partner-customers 137、query-window 62；全量断言合计以 ode tools/selftest.js 汇总为准。
+- 真机项 QA §AH1~AH5 待用户点检（agent 不代勾、不代宣布通过）。
+- 部署：需重部署 pi（先 ode tools/sync-cloud-shared.js）；无新增集合/索引/触发器/云函数单元。
 

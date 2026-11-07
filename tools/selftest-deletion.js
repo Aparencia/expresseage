@@ -28,7 +28,7 @@ const enums = require(path.join(ROOT, 'shared/enums.js'));
 const auditActions = require(path.join(ROOT, 'shared/audit-actions.js'));
 
 // harness 完整性闸：先占位，首跑按真实断言数回填（少算/多算都判红）。
-const EXPECTED_ASSERTIONS = 104;
+const EXPECTED_ASSERTIONS = 105;
 
 const NOW = Date.parse('2026-10-22T12:00:00+08:00');
 const MINUTE = 60 * 1000;
@@ -940,22 +940,25 @@ function readText(rel) {
 
 async function sectionF(t) {
   const profile = readText('pages/profile/index.js');
+  // D69 拆件：注销两步确认与调用移入 parts/delete-account.js（#18 行数上限），静态判据读拆件后的真实生产文件。
+  const profileDelete = readText('pages/profile/parts/delete-account.js');
   const profileWxml = readText('pages/profile/index.wxml');
   const privacy = readText('pkg-customer/parts/privacy-text.js');
   const userModule = readText('api/modules/user.js');
   const userHandlers = readText('cloudfunctions/api/handlers/user/index.js');
 
-  t.eq(profile.indexOf("const DELETION_CONFIRM_TEXT = '注销';") !== -1, true,
-    '§F 「注销」确认文本单源常量在 pages/profile（不散落字面量）');
-  t.eq(profile.split('DELETION_CONFIRM_TEXT').length - 1, 3,
+  t.eq(profileDelete.indexOf("const DELETION_CONFIRM_TEXT = '注销';") !== -1, true,
+    '§F 「注销」确认文本单源常量在 pages/profile/parts/delete-account（不散落字面量）');
+  t.eq(profileDelete.split('DELETION_CONFIRM_TEXT').length - 1, 3,
     '§F 确认文本单源被三处引用：常量定义 / 输入比对 / 请求入参');
   const markers = ['注销不可撤销', 'editable: true', '输入「注销」两个字', '确定注销'];
-  t.eq(markers.filter((marker) => profile.indexOf(marker) < 0), [],
+  t.eq(markers.filter((marker) => profileDelete.indexOf(marker) < 0), [],
     '§F 两步确认四要素齐全（不可撤销说明 / 可输入弹窗 / 输入提示 / 确认按钮文案）');
-  t.eq(profile.indexOf('userApi.deleteAccount({ confirmText: DELETION_CONFIRM_TEXT })') !== -1, true,
+  t.eq(profileDelete.indexOf('userApi.deleteAccount({ confirmText: DELETION_CONFIRM_TEXT })') !== -1, true,
     '§F 调用形态：userApi.deleteAccount 只传单源确认文本（不在页面拼 payload）');
-  t.eq(profile.indexOf('wx.cloud.') , -1, '§F 页面层零 wx.cloud 直连（分层铁律）');
-  t.eq(profile.indexOf('注销失败') !== -1, true, '§F 失败提示说真话并给下一步（错误 toast 兜底）');
+  t.eq(profileDelete.indexOf('wx.cloud.'), -1, '§F 页面层零 wx.cloud 直连（分层铁律）');
+  t.eq(profileDelete.indexOf('注销失败') !== -1, true, '§F 失败提示说真话并给下一步（错误 toast 兜底）');
+  t.eq(profile.indexOf('deletion.begin(this)') !== -1, true, '§F 页面入口只转发拆件（行为不变）');
   t.eq(profileWxml.indexOf('注销账号') !== -1, true, '§F 「我的」页有注销账号入口');
   const privacyMarkers = ['我的 → 账号 → 注销账号', '有进行中订单需先处理', '唯一编号作废', '30 天内物理删除'];
   t.eq(privacyMarkers.filter((marker) => privacy.indexOf(marker) < 0), [],

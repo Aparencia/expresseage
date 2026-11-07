@@ -234,6 +234,10 @@
             <text>重新看新手引导</text>
             <text class="row-arrow">›</text>
           </view>
+          <view wx:if="{{!viewSession}}" class="row-item" bindtap="onLogout">
+            <text>退出登录</text>
+            <text class="row-arrow">›</text>
+          </view>
           <view wx:if="{{isCustomer && canEdit}}" class="row-item" bindtap="onDeleteAccount">
             <text class="link-danger">注销账号</text>
             <text class="row-arrow">›</text>

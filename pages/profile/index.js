@@ -6,7 +6,6 @@
 const store = require('../../store/index');
 const modeGuard = require('../../api/mode-guard');
 const bindApi = require('../../api/modules/bind');
-const userApi = require('../../api/modules/user');
 const uploadApi = require('../../api/upload');
 const route = require('../../config/route');
 const storage = require('../../utils/storage');
@@ -18,6 +17,8 @@ const shareCard = require('./parts/share-card');
 const saveFlow = require('./parts/save-flow');
 const avatarRefresh = require('./parts/avatar-refresh');
 const inviteFlow = require('./parts/invite-continuation');
+const deletion = require('./parts/delete-account');
+const logout = require('./parts/logout');
 
 const BIND_PAGE = '/pkg-customer/pages/bind/index';
 const CUSTOMER_ORDERS_PAGE = '/pages/customer/orders/index';
@@ -26,7 +27,6 @@ const PARTNER_MESSAGES_PAGE = '/pkg-partner/pages/messages/index';
 const SERVICE_PAGE = '/pkg-partner/pages/service-settings/index';
 const STATS_PAGE = '/pkg-partner/pages/stats/index';
 const HELP_PAGE = '/pkg-customer/pages/help/index';
-const DELETION_CONFIRM_TEXT = '注销';
 const READONLY_COPY = '开发者只读视角不能操作';
 
 Page({
@@ -429,62 +429,12 @@ Page({
 
   // 注销：两步确认（不可撤销说明 + 输入「注销」），服务端再校验进行中订单
   onDeleteAccount() {
-    if (!this.data.canEdit) {
-      ui.toast(READONLY_COPY);
-      return;
-    }
-    wx.showModal({
-      title: '注销账号',
-      content: '注销不可撤销：订单与资料会被匿名化或删除，绑定会解除。进行中的订单会阻止注销。',
-      confirmText: '继续',
-      confirmColor: '#E54D42',
-      success: (res) => {
-        if (res.confirm) {
-          this.confirmDeletionText();
-        }
-      }
-    });
+    deletion.begin(this);
   },
 
-  confirmDeletionText() {
-    wx.showModal({
-      title: '确认注销',
-      editable: true,
-      placeholderText: '输入「注销」两个字',
-      confirmText: '确定注销',
-      confirmColor: '#E54D42',
-      success: (res) => {
-        if (!res.confirm) {
-          return;
-        }
-        if (String(res.content || '').trim() !== DELETION_CONFIRM_TEXT) {
-          ui.toast('请输入「注销」两个字确认');
-          return;
-        }
-        this.doDeleteAccount();
-      }
-    });
-  },
-
-  doDeleteAccount() {
-    userApi.deleteAccount({ confirmText: DELETION_CONFIRM_TEXT }).then(() => {
-      if (this.unsubscribe) {
-        this.unsubscribe();
-        this.unsubscribe = null;
-      }
-      store.reset();
-      wx.showModal({
-        title: '已注销',
-        content: '订单与资料已匿名化或删除，30 天内完成彻底清理；重新登录将创建新的顾客资料与编号。',
-        showCancel: false,
-        confirmText: '知道了',
-        success() {
-          wx.reLaunch({ url: route.ROLE_PAGE });
-        }
-      });
-    }).catch((err) => {
-      ui.toast((err && err.message) || '注销失败，请稍后重试');
-    });
+  // D69：退出登录（本机退出；清会话缓存，保留本机取件码清单）
+  onLogout() {
+    logout.confirmLogout();
   },
 
   // 分享卡判据全在 parts/share-card.js（D63：顾客带其 ACTIVE 绑定兼职编号）；零昵称/头像/宿舍/尾号/订单，纯件可单测。

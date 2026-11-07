@@ -1,6 +1,20 @@
 <view class="page-body launch-page">
+  <!-- D68/D69：账号状态专用页（停用可恢复 / 注销不可逆 / 本机已退出登录）——优先于隐私闸与加载态 -->
+  <block wx:if="{{accountState}}">
+    <view class="launch-box">
+      <view class="launch-logo">代</view>
+      <view class="launch-title">{{accountTitle}}</view>
+      <view class="launch-error">{{accountText}}</view>
+      <view class="launch-actions">
+        <button wx:if="{{showRelogin}}" class="btn btn-primary btn-block" bindtap="onRelogin">重新登录</button>
+        <button wx:if="{{showContact}}" class="btn btn-primary btn-block" bindtap="onContactDeveloper">联系开发者</button>
+        <button wx:if="{{showLogout}}" class="btn btn-ghost btn-block launch-gap" bindtap="onLogoutFromState">退出登录</button>
+      </view>
+    </view>
+  </block>
+
   <!-- 隐私同意闸：首次/版本变更时阻断，同意后写 user.acceptPrivacy 再分流（CONTRACT §11 / UX_CUSTOMER §9.1） -->
-  <block wx:if="{{privacyVisible}}">
+  <block wx:elif="{{privacyVisible}}">
     <view class="launch-box privacy-box">
       <view class="launch-logo">代</view>
       <view class="launch-title">隐私保护提示</view>

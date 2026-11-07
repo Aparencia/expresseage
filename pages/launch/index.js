@@ -14,6 +14,7 @@ const storage = require('../../utils/storage');
 const pendingInvite = require('../../utils/share/pending-invite');
 
 const HELP_PRIVACY_PAGE = '/pkg-customer/pages/help/index?doc=privacy';
+const HELP_ABOUT_PAGE = '/pkg-customer/pages/help/index?doc=about';
 const MAX_ATTEMPTS = 3;
 const NETWORK_TITLE = '网络开小差了';
 const NETWORK_TEXT = '请检查网络后重试；若一直失败，可在微信里重新打开小程序。';
@@ -21,6 +22,21 @@ const CHECK_NETWORK_HINT = '已连续失败，请检查网络后再试一次。'
 const LOGIN_TITLE = '微信登录失败（错误码 {code}）';
 const LOGIN_TEXT = '退出小程序后重新打开再试。';
 const RETRY_TEXT = '重新加载';
+// D68：账号状态专用页（停用可恢复 / 注销不可逆）——服务端除 user.bootstrap 外一律拒绝，故启动页先拦。
+const ACCOUNT_STATE = {
+  SUSPENDED: {
+    title: '账号已停用',
+    text: '账号已被停用，暂时不能登录与下单；资料、绑定与订单都会保留，开发者恢复后即可继续使用。'
+  },
+  DEACTIVATED: {
+    title: '账号已注销',
+    text: '该账号已注销且不可恢复。如需继续使用，可退出登录后按新用户重新进入并完善资料。'
+  },
+  LOGGED_OUT: {
+    title: '已退出登录',
+    text: '本机登录状态与缓存已清除；你的资料与订单仍保存在云端。点「重新登录」即可继续（微信身份自动识别）。'
+  }
+};
 const FIRST_RUN_LEAD = '首次使用需要你了解并同意隐私政策，同意后才能进入。';
 const VERSION_CHANGED_LEAD = '隐私政策已更新，请重新阅读并同意。';
 // 弹窗条目口径：docs/privacy/隐私保护指引.md（定稿 v1.10，2026-11-03 用户确认；历史 v1.0 / 定稿候选 v1.3 留痕）§一/§三/§四/§六 + CONTRACT §11.1
@@ -50,12 +66,23 @@ Page({
     privacyError: '',
     privacyDeclined: false,
     privacyLead: FIRST_RUN_LEAD,
-    privacyItems: PRIVACY_ITEMS
+    privacyItems: PRIVACY_ITEMS,
+    accountState: '',
+    accountTitle: '',
+    accountText: '',
+    showRelogin: false,
+    showContact: false,
+    showLogout: false
   },
 
   // D37：只解析白名单入口参数；隐私闸在 start() 里先跑，route() 只在闸通过后才被调用。
   onLoad(options) {
     this._entry = launchRoute.entryOf(options);
+    // D69：本机已退出登录 → 停在退出态，不自动进入业务（点「重新登录」再走 start）。
+    if (storage.isLoggedOut()) {
+      this.showAccountState('LOGGED_OUT');
+      return;
+    }
     this.start();
   },
 
@@ -68,11 +95,17 @@ Page({
       errorHint: '',
       privacyVisible: false,
       privacyDeclined: false,
-      privacyError: ''
+      privacyError: '',
+      accountState: ''
     });
     return this.waitStartup(app).then((startup) => {
       if (!startup || !startup.ok) {
         this.fail(startup || {});
+        return null;
+      }
+      const status = store.get('accountStatus');
+      if (status === 'SUSPENDED' || status === 'DEACTIVATED') {
+        this.showAccountState(status);
         return null;
       }
       return this.ensureConfig().then((config) => {
@@ -184,6 +217,47 @@ Page({
     app.globalData.startupError = '';
     app.startupPromise = app.startup();
     this.start();
+  },
+
+  showAccountState(state) {
+    const copy = ACCOUNT_STATE[state] || ACCOUNT_STATE.LOGGED_OUT;
+    this.setData({
+      loading: false,
+      accountState: state,
+      accountTitle: copy.title,
+      accountText: copy.text,
+      showRelogin: state === 'LOGGED_OUT',
+      showContact: state === 'SUSPENDED',
+      showLogout: state !== 'LOGGED_OUT',
+      privacyVisible: false,
+      privacyDeclined: false
+    });
+  },
+
+  // D69：重新登录＝清退出标记 + 重新 bootstrap 水合（微信身份自动），随后照常走隐私闸/分流。
+  onRelogin() {
+    storage.setLoggedOut(false);
+    const app = getApp();
+    app.globalData.startupError = '';
+    app.startupPromise = app.startup();
+    this.setData({ accountState: '', loading: true });
+    this.start();
+  },
+
+  // D69：退出登录＝清本机会话缓存（保留本机取件码清单）并停在「已退出」态。
+  onLogoutFromState() {
+    storage.clearSession();
+    store.reset();
+    this.showAccountState('LOGGED_OUT');
+  },
+
+  onContactDeveloper() {
+    wx.navigateTo({
+      url: HELP_ABOUT_PAGE,
+      fail() {
+        wx.showToast({ title: '打开帮助页失败，请稍后重试', icon: 'none' });
+      }
+    });
   },
 
   fail(result) {

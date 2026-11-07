@@ -29,12 +29,19 @@
     <view class="row between">
       <text class="strong">{{item.customerNo}}</text>
       <view class="row">
+        <text class="tag tag-suspended" wx:if="{{item.isSuspended}}">{{item.statusText}}</text>
+        <text class="tag tag-closed" wx:if="{{item.isDeactivated}}">{{item.statusText}}</text>
         <text class="tag tag-test" wx:if="{{item.isTest}}">测试</text>
         <text class="tag">{{item.profileText}}</text>
       </view>
     </view>
     <view class="subtitle">{{item.displayName}} · {{item.dormText}}</view>
     <view class="muted">{{item.bindingText}} · {{item.progressText}}</view>
+    <view class="small warn-text" wx:if="{{item.suspendedReason}}">停用原因：{{item.suspendedReason}}</view>
+    <view class="row action-row" wx:if="{{item.canSuspend || item.canResume}}">
+      <view class="btn btn-danger btn-small" wx:if="{{item.canSuspend}}" data-index="{{index}}" catchtap="onSuspend">停用</view>
+      <view class="btn btn-primary btn-small" wx:if="{{item.canResume}}" data-index="{{index}}" catchtap="onResume">恢复</view>
+    </view>
   </view>
   </block>
 </view>

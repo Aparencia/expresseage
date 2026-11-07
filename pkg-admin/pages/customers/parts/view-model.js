@@ -1,15 +1,33 @@
 // pkg-admin/pages/customers/parts/view-model.js · 顾客列表视图模型（纯件，零 wx）
-// 口径：V4_UX_DEVELOPER §3.3/§5.2——脱敏行（服务端已脱敏）、搜索门槛、空态文案、测试标签。
+// 口径：V4_UX_DEVELOPER §3.3/§5.2——脱敏行（服务端已脱敏）、搜索门槛、空态文案、测试标签；
+//       D68：账号状态三态（正常/已停用/已注销）与停用/恢复前置条件。
 'use strict';
 
 const F = require('../../../common/format');
+const C = require('../../../common/constants');
 const copy = require('../../../common/copy');
+const statusCopy = require('../../../common/customer-status');
 
 const SEARCH_MIN = 2;
 
+function decoratedStatus(row) {
+  const status = row.status || C.USER_STATUS_ACTIVE;
+  const isTest = row.isTest === true;
+  return {
+    status: status,
+    statusText: status === C.USER_STATUS_ACTIVE ? '' : (C.USER_STATUS_LABELS[status] || ''),
+    suspendedReason: row.suspendedReason || '',
+    isSuspended: status === C.USER_STATUS_SUSPENDED,
+    isDeactivated: status === C.USER_STATUS_DEACTIVATED,
+    canSuspend: !isTest && status === C.USER_STATUS_ACTIVE,
+    canResume: !isTest && status === C.USER_STATUS_SUSPENDED,
+    canSwitch: !isTest && status === C.USER_STATUS_ACTIVE
+  };
+}
+
 function decorateRow(item) {
   const row = item || {};
-  return {
+  return Object.assign({
     customerNo: row.customerNo || '—',
     displayName: F.textOrDash(row.displayName),
     dormText: row.dormText || row.dorm || '—',
@@ -17,7 +35,7 @@ function decorateRow(item) {
     profileText: row.profileCompleted ? '资料完整' : '资料未完整',
     progressText: '进行中 ' + F.numOrZero(row.inProgressCount) + ' / 累计 ' + F.numOrZero(row.totalCount),
     isTest: row.isTest === true
-  };
+  }, decoratedStatus(row));
 }
 
 function decorateList(list) {
@@ -41,10 +59,18 @@ function emptyTextOf(keyword) {
   return '还没有顾客资料。';
 }
 
+// D68：停用/恢复文案与原因校验与详情页同源（pkg-admin/common/customer-status.js）
+const suspendConfirmContent = statusCopy.suspendConfirmContent;
+const resumeConfirmContent = statusCopy.resumeConfirmContent;
+const validateSuspendReason = statusCopy.validateSuspendReason;
+
 module.exports = {
   SEARCH_MIN,
   decorateRow,
   decorateList,
   shouldSearch,
-  emptyTextOf
+  emptyTextOf,
+  suspendConfirmContent,
+  resumeConfirmContent,
+  validateSuspendReason
 };

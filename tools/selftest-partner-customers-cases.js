@@ -65,7 +65,7 @@ const BT = 'bind-b7-test';
 // D42/task-20：avatarUrl = 服务端签发的 5 分钟临时 URL（src 优先）；avatarFileId 保留回退键，两者同进同出。
 const BINDING_ROW_KEYS = [
   'bindingId', 'customerNo', 'dormKey', 'buildingText', 'roomTag', 'displayName',
-  'phoneTail', 'partnerNote', 'boundAt', 'activeOrderCount', 'avatarFileId', 'avatarUrl'
+  'phoneTail', 'partnerNote', 'boundAt', 'activeOrderCount', 'avatarFileId', 'avatarUrl', 'status'
 ];
 // 客户详情订单行：DATA_MODEL §7.4 明确只含 orderNo/status/statusText/serviceName/时间戳（可选时间戳按需出现）
 const ORDER_ROW_KEYS = ['orderNo', 'status', 'statusText', 'serviceName', 'createdAt',

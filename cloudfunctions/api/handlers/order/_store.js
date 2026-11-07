@@ -258,6 +258,13 @@ async function loadBoundCustomer(ctx, partner, bindingId) {
     throw errors.invalidState('顾客资料已不可用，无法代客下单');
   }
   const customerUser = await getUser(ctx, binding.customerId);
+  // D68：顾客账号被停用（可恢复）时禁止代客下单；恢复后即可继续（资料/绑定不动）。
+  if (customerUser && customerUser.status === enums.USER_STATUS.SUSPENDED) {
+    throw errors.invalidState('该顾客账号已停用，暂不能代客下单');
+  }
+  if (customerUser && customerUser.status === enums.USER_STATUS.DEACTIVATED) {
+    throw errors.invalidState('顾客资料已不可用，无法代客下单');
+  }
   return { binding, customer, customerIsTest: !!(customerUser && customerUser.isTestAccount) };
 }
 

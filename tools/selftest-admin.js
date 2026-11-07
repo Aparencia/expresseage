@@ -31,8 +31,9 @@ const { createApi } = require(path.join(ROOT, 'cloudfunctions/api/app.js'));
 const sharedActions = require(path.join(ROOT, 'cloudfunctions/api/shared/actions.js'));
 // v1.0（D23/D24/D25）用例表：拆出以控本文件 ≤1000 行（门禁 #18），断言数合并计
 const v1Cases = require(path.join(__dirname, 'lib', 'admin-v1-cases.js'));
+const customerCases = require(path.join(__dirname, 'lib', 'admin-customer-cases.js'));
 
-const EXPECTED_ASSERTIONS = 220 + v1Cases.EXPECTED_ASSERTIONS + 14 + 5; // +14：v1.1/D32 站点名称配置；+5：D41 服务目录迁移/读层归一/公开子集
+const EXPECTED_ASSERTIONS = 220 + v1Cases.EXPECTED_ASSERTIONS + 14 + 5 + customerCases.EXPECTED_ASSERTIONS; // +14：v1.1/D32 站点名称配置；+5：D41 服务目录迁移/读层归一/公开子集；+20：D68 顾客停用/恢复
 
 const NOW = Date.UTC(2026, 9, 22, 4, 0, 0);
 const MINUTE = 60 * 1000;
@@ -890,9 +891,9 @@ async function sectionF(h) {
 async function sectionG(h) {
   h.section('§G 负向矩阵 / 注册表 / 错误码 / 静态纪律', async (t) => {
     const adminActions = Object.keys(sharedActions.ACTION_MAP).filter((action) => action.indexOf('admin.') === 0);
-    t.eq(adminActions.length, 23, 'G1 admin 动作注册表 23 个（CONTRACT §5.3 全集）');
+    t.eq(adminActions.length, 24, 'G1 admin 动作注册表 24 个（CONTRACT §5.3 全集，D68 +1）');
     const registry = require(path.join(ROOT, 'cloudfunctions/api/handlers/admin/index.js'));
-    t.eq(Object.keys(registry.actions).length, 23, 'G2 handlers/admin/index.js 注册 23 个 handler');
+    t.eq(Object.keys(registry.actions).length, 24, 'G2 handlers/admin/index.js 注册 24 个 handler');
     const db = world();
     const api = apiOf(db, ADMIN);
     const db2 = world();
@@ -942,6 +943,7 @@ function register(h) {
   sectionE(h);
   sectionF(h);
   sectionG(h);
+  customerCases.register(h, { world, apiOf, auditsOf, nextCrid, bannedKeysOf, ADMIN, C1, C2, TEST_C });
   v1Cases.register(h, {
     world,
     apiOf,

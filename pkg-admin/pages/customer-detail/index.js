@@ -14,7 +14,8 @@ Page({
     customer: null,
     binding: null,
     orderSummaryText: '',
-    recentOrders: []
+    recentOrders: [],
+    submitting: false
   },
 
   onLoad(query) {
@@ -74,5 +75,63 @@ Page({
       '&role=' + C.ROLE_CUSTOMER +
       '&targetNo=' + encodeURIComponent(this.data.customerNo);
     feedback.go(url);
+  },
+
+  onSuspend() {
+    const customer = this.data.customer;
+    if (!customer || this.data.submitting) return;
+    if (customer.isTest) {
+      feedback.toast('测试账号不能执行真实治理动作。');
+      return;
+    }
+    feedback.confirm({
+      title: '停用顾客',
+      content: vm.suspendConfirmContent(customer),
+      confirmText: '确认停用',
+      danger: true,
+      editable: true,
+      placeholderText: '停用原因（必填，最多 100 字）'
+    }).then((res) => {
+      if (!res.confirm) return;
+      const checked = vm.validateSuspendReason(res.content);
+      if (!checked.ok) {
+        feedback.toast(checked.error);
+        return;
+      }
+      this.submitStatus(C.USER_STATUS_SUSPENDED, checked.reason);
+    });
+  },
+
+  onResume() {
+    const customer = this.data.customer;
+    if (!customer || this.data.submitting) return;
+    if (customer.isTest) {
+      feedback.toast('测试账号不能执行真实治理动作。');
+      return;
+    }
+    feedback.confirm({
+      title: '恢复顾客',
+      content: vm.resumeConfirmContent(customer),
+      confirmText: '确认恢复'
+    }).then((res) => {
+      if (!res.confirm) return;
+      this.submitStatus(C.USER_STATUS_ACTIVE, C.RESTORE_REASON_DEFAULT);
+    });
+  },
+
+  submitStatus(status, reason) {
+    this.setData({ submitting: true });
+    admin.setCustomerStatus({
+      customerNo: this.data.customerNo,
+      status: status,
+      reason: reason
+    }).then(() => {
+      this.setData({ submitting: false });
+      feedback.toast(status === C.USER_STATUS_ACTIVE ? '已恢复该顾客' : '已停用该顾客');
+      this.loadDetail().catch(function () {});
+    }).catch((err) => {
+      this.setData({ submitting: false });
+      feedback.toast(err && err.message);
+    });
   }
 });

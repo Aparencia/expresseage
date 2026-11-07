@@ -5,6 +5,8 @@ const state = {
   roles: [],
   activeRole: null,
   isDeveloper: false,
+  // D68：账号状态（ACTIVE/SUSPENDED/DEACTIVATED，来自 user.bootstrap.status）——launch 据此渲染专用状态页
+  accountStatus: 'ACTIVE',
   me: null,
   customer: null,
   partner: null,
@@ -71,6 +73,16 @@ function subscribe(fn) {
   };
 }
 
+// 服务端 viewContext 永不回票据（ARCHITECTURE §3.4：viewTicket 只存内存）；水合保留本地票据、其余以服务端为准。
+// 否则会话内任何一次 bootstrap 都会把票据清掉，后续请求失去切换身份（批 10）。
+function applyViewContext(incomingValue) {
+  const incoming = clone(incomingValue) || null;
+  const ticket = state.viewContext && state.viewContext.viewTicket;
+  state.viewContext = incoming
+    ? Object.assign({}, incoming, ticket ? { viewTicket: ticket } : {})
+    : null;
+}
+
 function hydrateFromBootstrap(data) {
   if (!data) {
     return;
@@ -87,6 +99,7 @@ function hydrateFromBootstrap(data) {
   if (data.isDeveloper !== undefined) {
     state.isDeveloper = !!data.isDeveloper;
   }
+  if (data.status !== undefined) state.accountStatus = data.status || 'ACTIVE';
   // 平铺 DTO → 嵌套快照（DATA_MODEL §7.1 user.bootstrap 形状）
   const hasCustomer = roles.indexOf('CUSTOMER') >= 0;
   const hasPartner = roles.indexOf('PARTNER') >= 0;
@@ -136,16 +149,7 @@ function hydrateFromBootstrap(data) {
   if (data.badges !== undefined) {
     state.badges = Object.assign({ workbenchPending: 0, messages: 0, ordersOngoing: 0 }, clone(data.badges) || {});
   }
-  if (data.viewContext !== undefined) {
-    // 服务端 viewContext 永不回票据（ARCHITECTURE §3.4：viewTicket 只存内存）。
-    // 水合时保留本地票据、其余字段以服务端为准；否则在会话内任何一次 bootstrap 都会把票据清掉，
-    // 后续请求失去切换身份（批 10：进入/退出会话水合后必须仍带 viewTicket）。
-    const incoming = clone(data.viewContext) || null;
-    const currentTicket = state.viewContext && state.viewContext.viewTicket;
-    state.viewContext = incoming
-      ? Object.assign({}, incoming, currentTicket ? { viewTicket: currentTicket } : {})
-      : null;
-  }
+  if (data.viewContext !== undefined) applyViewContext(data.viewContext);
   if (typeof data.serverTime === 'number' && data.serverTime > 0) {
     state.serverTimeSkew = Date.now() - data.serverTime;
   }
@@ -178,6 +182,7 @@ function reset() {
   state.roles = [];
   state.activeRole = null;
   state.isDeveloper = false;
+  state.accountStatus = 'ACTIVE';
   state.me = null;
   state.customer = null;
   state.partner = null;

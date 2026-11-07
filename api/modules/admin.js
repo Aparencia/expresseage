@@ -1,4 +1,4 @@
-// api/modules/admin.js · admin 域（23 动作；仅开发者后台页面调用）
+// api/modules/admin.js · admin 域（24 动作；仅开发者后台页面调用）
 const client = require('../client');
 
 function call(action, payload) {
@@ -30,6 +30,10 @@ module.exports = {
   },
   setPartnerStatus(payload) {
     return call('admin.setPartnerStatus', payload);
+  },
+  // D68：顾客账号停用/恢复（只冻结登录与写；注销不可逆）
+  setCustomerStatus(payload) {
+    return call('admin.setCustomerStatus', payload);
   },
   listOrders(payload) {
     return read('admin.listOrders', payload);

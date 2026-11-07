@@ -19,6 +19,7 @@ const C = require(path.join(ROOT, 'pkg-admin/common/constants.js'));
 const adminClockCases = require(path.join(__dirname, 'lib', 'admin-config-clock-cases.js'));
 const adminInviteCases = require(path.join(__dirname, 'lib', 'admin-invite-cases.js'));
 const adminOrdersCases = require(path.join(__dirname, 'lib', 'admin-orders-cases.js'));
+const adminCustomerUiCases = require(path.join(__dirname, 'lib', 'admin-customer-ui-cases.js'));
 const adminDto = require(path.join(ROOT, 'cloudfunctions/api/handlers/admin/_dto.js'));
 const adminFormat = require(path.join(ROOT, 'pkg-admin/common/format.js'));
 
@@ -33,7 +34,7 @@ const accountSwitchVm = require(path.join(ROOT, 'pkg-admin/pages/account-switch/
 const reviewVm = require(path.join(ROOT, 'pkg-admin/pages/recognition-review/parts/view-model.js'));
 const messagesVm = require(path.join(ROOT, 'pkg-admin/pages/messages/parts/view-model.js'));
 
-const EXPECTED_ASSERTIONS = 146 + 22 + 3 + 11 + 5 + 2 + adminOrdersCases.CLIENT_ASSERTIONS + adminInviteCases.CLIENT_ASSERTIONS; // 146+…=C 组 8 条移入 tools/lib/admin-invite-cases.js（含原 8 + D59 新增 15，合计 CLIENT_ASSERTIONS）；+5：批26-D58 后台转派留痕（P 组，D58 真实 DTO 驱动后 3→5）；+11：D43 自动完成时间用例表；+6：订单行/消息行「称呼（编号）」；余同批 16 前：v1.1/D32 站点卡 16 + 反馈④ 6 + D41 目录 3
+const EXPECTED_ASSERTIONS = 146 + 22 + 3 + 11 + 5 + 2 + adminOrdersCases.CLIENT_ASSERTIONS + adminInviteCases.CLIENT_ASSERTIONS + adminCustomerUiCases.CLIENT_ASSERTIONS; // 146+…=C 组 8 条移入 tools/lib/admin-invite-cases.js（含原 8 + D59 新增 15，合计 CLIENT_ASSERTIONS）；+5：批26-D58 后台转派留痕（P 组，D58 真实 DTO 驱动后 3→5）；+11：D43 自动完成时间用例表；+6：订单行/消息行「称呼（编号）」；+6：D68 顾客状态界面（用例表拆出 admin-customer-ui-cases.js）；余同批 16 前：v1.1/D32 站点卡 16 + 反馈④ 6 + D41 目录 3
 
 const ADMIN_PAGES = ['overview', 'invite-codes', 'customers', 'customer-detail', 'partners', 'orders', 'order-detail', 'config', 'account-switch', 'messages', 'recognition-review'];
 const STATUS_LITERALS = ['SUBMITTED', 'ACCEPTED', 'PICKED', 'DELIVERED', 'COMPLETED', 'CANCELLED', 'EXCEPTION'];
@@ -234,6 +235,7 @@ function register(h) {
     t.eq(customerDetailVm.buildDetailView({ customer: {} }, 'C-FALLBACK').customer.customerNo, 'C-FALLBACK',
       '服务端缺编号时回退路由参数');
   });
+  adminCustomerUiCases.register(h, { customersVm, customerDetailVm });
 
   // ------------------------------------------------------------------ E. 兼职列表（治理动作）
   h.section('E §3.5/§7.2 兼职列表：停启用前置/后果句/原因必填/切换边界/测试账号禁治理', (t) => {

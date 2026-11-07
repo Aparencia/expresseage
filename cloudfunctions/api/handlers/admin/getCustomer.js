@@ -10,7 +10,8 @@ const {
   assertValid,
   getCustomerByNo,
   getActiveBindingOfCustomer,
-  getPartnerById
+  getPartnerById,
+  getUserByOpenid
 } = require('./_common');
 const dto = require('./_dto');
 
@@ -49,6 +50,7 @@ async function handler(ctx, payload) {
   }
   const binding = await getActiveBindingOfCustomer(scope, customer._id);
   const partner = binding ? await getPartnerById(scope, binding.partnerId) : null;
+  const user = await getUserByOpenid(scope, customer._id);
   const orderSummary = await orderSummaryOf(scope, customer._id);
   const recentRows = await scope.dao.find(COLLECTIONS.ORDERS, {
     where: { customerId: customer._id },
@@ -61,6 +63,7 @@ async function handler(ctx, payload) {
       binding: binding,
       partner: partner,
       isTest: isTest,
+      user: user,
       orderSummary: orderSummary
     }),
     recentOrders: recentOrders

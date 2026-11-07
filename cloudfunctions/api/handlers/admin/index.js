@@ -12,6 +12,7 @@ const actions = {
   'admin.getCustomer': require('./getCustomer'),
   'admin.listPartners': require('./listPartners'),
   'admin.setPartnerStatus': require('./setPartnerStatus'),
+  'admin.setCustomerStatus': require('./setCustomerStatus'),
   'admin.listOrders': require('./listOrders'),
   'admin.getOrder': require('./getOrder'),
   'admin.listAudit': require('./listAudit'),

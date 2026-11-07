@@ -38,6 +38,7 @@ cloudfunctions/*/shared/（按各云函数静态 require 闭包，从 shared/** 
 | S9 云后台 | cloud-admin（新） | `cloudfunctions/api/handlers/admin/**` `cloudfunctions/api/handlers/admin/dto/**`（如需要） |
 | S10 组件与资产 | ui-components（新） | `components/**` `custom-tab-bar/**` `assets/**` |
 
+- **2026-11-08 D68/D69 新增/改动文件（顾客停用恢复 + 退出登录；均在既有作用域内，无新页面）**：S1 `shared/{enums,audit-actions,actions}.js`（`USER_STATUS` +`SUSPENDED`/`USER_STATUS_LABELS`、审计 `CUSTOMER_SUSPEND/CUSTOMER_RESTORE`（16→18）、action `admin.setCustomerStatus`）；S9 `handlers/admin/setCustomerStatus.js`（新）+ `handlers/admin/{index,listCustomers,getCustomer,_dto}.js`；S7 `middleware/auth.js`（SUSPENDED/DEACTIVATED 文案分流）；S8 `handlers/order/_store.js`（停用顾客禁代客下单）；S1b `handlers/partner/{listBindings,getCustomer}.js`（行 DTO +`status`）；S0 `api/modules/admin.js`、`store/index.js`（`accountStatus`）、`pages/launch/**`（状态页/退出态）、`pages/profile/**`（退出登录入口 + 拆件 `parts/{logout,delete-account}.js`）；S6 `utils/storage.js`（`loggedOut` + `isLoggedOut/setLoggedOut/clearSession`）；S5 `pkg-admin/common/{constants,customer-status}.js`、`pkg-admin/pages/{customers,customer-detail}/**`；S2 `tools/lib/{admin-customer-cases,admin-customer-ui-cases}.js` 与 `tools/selftest-{admin,admin-pages,profile,switch,testaccount,partner-customers,partner-orders,query-window,deletion}.js`。
 - 云函数 `shared/` 副本**任何人不得手写**：由 `node tools/sync-cloud-shared.js` 生成（S2 提供脚本，S1 完成后 Lead 先跑一次）。副本按各云函数的**静态 require 闭包**生成最小子集（清单唯一源 = 脚本导出的 `SHARED_MANIFEST`）：闭包 ⊄ 清单（漏同步）或清单 ⊄ 闭包（陈旧清单）均 fail-closed 中止；门禁 #17 按同一清单逐目标对帐，多余副本文件同样判红。
 - **批 16 组件删减（S10 域说明）**：`components/customer-row/`、`components/form-field/`、`components/role-switch/`、`components/section-card/` 四个全局注册组件在全仓 WXML 零使用，批 16 删除目录并从 `app.json` 全局 `usingComponents` 移除（`app.json` 该次改动由 Lead 授权 S2 执行）。S10 写作用域（`components/**`、`custom-tab-bar/**`、`assets/**`）不变；后续新增全局组件仍须登记本节 §3.5 组件表 + ENGINEERING §5.7，并同时进 `app.json` 注册与门禁 #36 扫描范围。
 - 公共文件一旦冻结（`app.json`、`app.wxss`、`shared/**`、`api/**`、`store/**`）：需要改动先发 Lead，由单写者合并。
@@ -76,7 +77,7 @@ const data = await call('order.confirmDelivery', { orderNo }, { expectedVersion:
 | `api/modules/upload.js` | `prepare({purpose})`、`cancel({uploadTicketId})` |
 | `api/modules/config.js` | `getPublic(force?)`（5 分钟缓存）、`prime(configPublic)`（**启动预热**：bootstrap 已回的公开子集灌入同一缓存，本次会话首次 `getPublic` 零云调用，TTL 语义不变）、`getCachedPublic()`、`clearCache()` |
 | `api/modules/ai.js` | `parseParcel(payload)`（仅识别失败兜底，不自动重试） |
-| `api/modules/admin.js` | `createInvites`、`revokeInvite`、`listInvites`、`listCustomers`、`getCustomer`、`listPartners`、`setPartnerStatus`、`listOrders`、`getOrder`、`listAudit`、`updateConfig`、`stats`、`viewAsStart`、`viewAsEnd`、`createTestAccount`、`listTestAccounts`、`deleteTestAccount`、`purgeTestData`、`listRecognitionFailures`、`getRecognitionFailure`、`fixRecognitionFailure`、`ignoreRecognitionFailure` |
+| `api/modules/admin.js` | `createInvites`、`revokeInvite`、`listInvites`、`listCustomers`、`getCustomer`、`listPartners`、`setPartnerStatus`、`setCustomerStatus`（**D68**：顾客停用/恢复）、`listOrders`、`getOrder`、`listAudit`、`updateConfig`、`stats`、`viewAsStart`、`viewAsEnd`、`createTestAccount`、`listTestAccounts`、`deleteTestAccount`、`purgeTestData`、`listRecognitionFailures`、`getRecognitionFailure`、`fixRecognitionFailure`、`ignoreRecognitionFailure` |
 
 - **内部动作无客户端模块方法**：`admin.bootstrap`、`health.check`、`cleanup.*` 在 `shared/actions.js` 标 `visibility='internal'`，router 不对客户端开放，因此不出现在上表 `api/modules/*.js` 导出中；另 `bind.claimGuestOrder` 为 P1 预留（服务端 handler 已登记，`api/modules/bind.js` 不导出、页面无入口）。`api/modules` 的调用必须 ⊆ 注册表 `client` 集（门禁 `tools/check.js` #13 校验）。
 
@@ -107,6 +108,8 @@ const off = store.subscribe((snapshot) => { this.setData({ vm: snapshot }); });
   config: {}, badges: { workbenchPending: 0, messages: 0, ordersOngoing: 0 },
   viewContext: null | { viewTicket, viewMode, role, targetNo, targetDisplayName, targetAvatarFileId?, targetIsTest, expiresAt },
   serverTimeSkew: 0
+  // D68：accountStatus: 'ACTIVE'|'SUSPENDED'|'DEACTIVATED'（来自 user.bootstrap.status；launch 据此渲染专用状态页）
+  // D69：loggedOut 不进 store（本机标记在 utils/storage；store.reset() 即清内存身份）
 }
 ```
 

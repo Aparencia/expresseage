@@ -27,7 +27,7 @@ function isPlainObject(value) {
 }
 
 function emptyState() {
-  return { lastRole: null, guides: {}, draftPointer: null, pickupChecks: {} };
+  return { lastRole: null, guides: {}, draftPointer: null, pickupChecks: {}, loggedOut: false };
 }
 
 function isValidRole(role) {
@@ -95,6 +95,8 @@ function normalize(raw) {
     state.draftPointer = raw.draftPointer;
   }
   state.pickupChecks = normalizePickupChecks(raw.pickupChecks);
+  // D69：本机退出登录标记（只影响下次启动是否自动进入；不含身份标识，重登录即清）
+  state.loggedOut = raw.loggedOut === true;
   return state;
 }
 
@@ -447,6 +449,25 @@ function clearAll(platform) {
   return ok;
 }
 
+// ── D69 本机退出登录：只清会话缓存并置退出标记，保留 ex_college_v4.pickcodes（用户裁决 A）──
+function isLoggedOut(platform) {
+  return load(platform).loggedOut === true;
+}
+function setLoggedOut(value, platform) {
+  return update(function (state) {
+    state.loggedOut = value === true;
+  }, platform);
+}
+// 清本机会话：lastRole/guides/pickupChecks 清空并置退出标记；不删 pickcodes 键。
+function clearSession(platform) {
+  return update(function (state) {
+    state.lastRole = null;
+    state.guides = {};
+    state.pickupChecks = {};
+    state.loggedOut = true;
+  }, platform);
+}
+
 module.exports = {
   KEY,
   PICKCODES_KEY,
@@ -472,5 +493,8 @@ module.exports = {
   removeLocalCode,
   setLocalCodeChecked,
   clearLocalCodes,
+  isLoggedOut,
+  setLoggedOut,
+  clearSession,
   clearAll
 };
