@@ -70,11 +70,23 @@ function handleError(page, err, fallbackText) {
   page.setData({ loading: false, loadingMore: false, error: message });
 }
 
+// 下拉刷新：页内加载方法成功/失败都收掉刷新态（错误文案由页面自己的 toast/catch 处理，这里不吞业务错误）
+function refresh(page, method, arg) {
+  const target = page || {};
+  const fn = target[method];
+  const stop = function () { wx.stopPullDownRefresh(); };
+  if (typeof fn !== 'function') return Promise.resolve().then(stop);
+  return Promise.resolve().then(function () {
+    return fn.call(target, arg);
+  }).then(stop, stop);
+}
+
 module.exports = {
   FORBIDDEN_CODE,
   toast,
   confirm,
   go,
   redirectOut,
-  handleError
+  handleError,
+  refresh
 };

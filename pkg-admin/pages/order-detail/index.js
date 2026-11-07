@@ -30,11 +30,7 @@ Page({
   },
 
   onPullDownRefresh() {
-    this.load().then(function () {
-      wx.stopPullDownRefresh();
-    }).catch(function () {
-      wx.stopPullDownRefresh();
-    });
+    return feedback.refresh(this, 'load');
   },
 
   load() {

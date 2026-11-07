@@ -67,11 +67,7 @@ Page({
   },
 
   onPullDownRefresh() {
-    this.loadList(true).then(function () {
-      wx.stopPullDownRefresh();
-    }).catch(function () {
-      wx.stopPullDownRefresh();
-    });
+    return feedback.refresh(this, 'loadList', true);
   },
 
   onReachBottom() {

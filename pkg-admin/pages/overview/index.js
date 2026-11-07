@@ -38,11 +38,7 @@ Page({
   },
 
   onPullDownRefresh() {
-    this.loadAll().then(function () {
-      wx.stopPullDownRefresh();
-    }).catch(function () {
-      wx.stopPullDownRefresh();
-    });
+    return feedback.refresh(this, 'loadAll');
   },
 
   loadAll() {

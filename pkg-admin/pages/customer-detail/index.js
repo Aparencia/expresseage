@@ -29,11 +29,7 @@ Page({
   },
 
   onPullDownRefresh() {
-    this.loadDetail().then(function () {
-      wx.stopPullDownRefresh();
-    }).catch(function () {
-      wx.stopPullDownRefresh();
-    });
+    return feedback.refresh(this, 'loadDetail');
   },
 
   loadDetail() {
