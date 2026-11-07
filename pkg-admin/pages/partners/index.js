@@ -2,12 +2,20 @@
 const admin = require('../../../api/modules/admin');
 const C = require('../../common/constants');
 const feedback = require('../../common/feedback');
+const flow = require('../../common/list-flow');
 const vm = require('./parts/view-model');
 
-const PAGE_SIZE = 20;
-const DEBOUNCE_MS = 300;
+const LIST = {
+  withStatus: true,
+  request(page, params) {
+    return admin.listPartners(params);
+  },
+  decorate(page, result) {
+    return vm.decorateList((result && result.list) || [], page.data.expandedNo);
+  }
+};
 
-Page({
+Page(Object.assign(flow.methods(LIST), {
   data: {
     keyword: '',
     statusTabs: vm.buildTabs(''),
@@ -21,7 +29,6 @@ Page({
     searching: false,
     submitting: false,
     error: '',
-    errorAt: '',
     forbidden: false,
     searched: false
   },
@@ -30,86 +37,12 @@ Page({
     this.loadList(true);
   },
 
-  onUnload() {
-    if (this.timer) {
-      clearTimeout(this.timer);
-      this.timer = null;
-    }
-  },
-
   onPullDownRefresh() {
-    this.loadList(true).then(function () {
-      wx.stopPullDownRefresh();
-    }).catch(function () {
-      wx.stopPullDownRefresh();
-    });
-  },
-
-  onReachBottom() {
-    this.loadMore();
+    return feedback.refresh(this, 'loadList', true);
   },
 
   loadList(reset) {
-    if (reset) {
-      this.setData({ loading: !this.data.searched, searching: this.data.searched, error: '' });
-    }
-    return admin.listPartners({
-      keyword: this.data.keyword,
-      status: this.data.activeStatus,
-      includeTest: this.data.includeTest,
-      limit: PAGE_SIZE
-    }).then((result) => {
-      const rows = vm.decorateList((result && result.list) || [], this.data.expandedNo);
-      this.setData({
-        list: reset ? rows : this.data.list.concat(rows),
-        nextCursor: (result && result.nextCursor) || '',
-        loading: false,
-        searching: false,
-        loadingMore: false,
-        searched: true
-      });
-    }).catch((err) => {
-      feedback.handleError(this, err);
-      throw err;
-    });
-  },
-
-  loadMore() {
-    if (this.data.loading || this.data.searching || this.data.loadingMore || !this.data.nextCursor) return;
-    this.setData({ loadingMore: true });
-    admin.listPartners({
-      keyword: this.data.keyword,
-      status: this.data.activeStatus,
-      includeTest: this.data.includeTest,
-      cursor: this.data.nextCursor,
-      limit: PAGE_SIZE
-    }).then((result) => {
-      const rows = vm.decorateList((result && result.list) || [], this.data.expandedNo);
-      this.setData({
-        list: this.data.list.concat(rows),
-        nextCursor: (result && result.nextCursor) || '',
-        loadingMore: false
-      });
-    }).catch((err) => {
-      this.setData({ loadingMore: false });
-      feedback.toast(err && err.message);
-    });
-  },
-
-  onKeywordInput(event) {
-    const keyword = String(event.detail.value || '');
-    this.setData({ keyword: keyword });
-    if (this.timer) {
-      clearTimeout(this.timer);
-    }
-    this.timer = setTimeout(() => {
-      this.timer = null;
-      this.loadList(true).catch(function () {});
-    }, DEBOUNCE_MS);
-  },
-
-  onSearchConfirm() {
-    this.loadList(true).catch(function () {});
+    return flow.loadList(this, reset, LIST);
   },
 
   onTabChange(event) {
@@ -120,15 +53,6 @@ Page({
       statusTabs: vm.buildTabs(key),
       nextCursor: ''
     });
-    this.loadList(true).catch(function () {});
-  },
-
-  onIncludeTestChange(event) {
-    this.setData({ includeTest: event.detail.value === true });
-    this.loadList(true).catch(function () {});
-  },
-
-  onRetry() {
     this.loadList(true).catch(function () {});
   },
 
@@ -230,4 +154,4 @@ Page({
       });
     });
   }
-});
+}));

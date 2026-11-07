@@ -17,6 +17,12 @@ function listOf(value) {
   return Array.isArray(value) ? value : [];
 }
 
+// 服务端游标 = 不透明对象（listBindings 返回 {dormKey,allocSeq}）：只判有/无、原样回传；
+// 不得 textOf()（对象恒为 ''，会把「还有下一页」误判成末页 —— 2026-11-05 只出 20 条）。
+function cursorOf(value) {
+  return view.hasCursorOf(value) ? value : null;
+}
+
 // D42（task-20）：行头像临时 URL 由服务端随 partner.listBindings 下发（私有存储不可直读 cloud://）。
 // buildListRow 只做展示视图，这里按 bindingId 把 avatarUrl 补回行；未签发=空串，
 // avatar-view 自动回退 fileId → 默认头像（读失败不阻断列表）。
@@ -38,7 +44,7 @@ function createState(options) {
     rows: [],
     keyword: view.normalizeKeyword(opts.keyword),
     filters: filterModel.createFilters(),
-    nextCursor: '',
+    nextCursor: null,
     loading: true,
     loadingMore: false,
     error: '',
@@ -57,7 +63,7 @@ function applyKeyword(state, keyword) {
   return Object.assign({}, state, {
     keyword: next,
     rows: [],
-    nextCursor: '',
+    nextCursor: null,
     error: '',
     newRows: [],
     loading: true
@@ -76,7 +82,7 @@ function applyFilterState(state, nextFilters) {
   }
   return Object.assign(next, {
     rows: [],
-    nextCursor: '',
+    nextCursor: null,
     error: '',
     newRows: [],
     loading: true
@@ -112,7 +118,7 @@ function refreshQuery(state) {
 
 // 触底加载下一页；无游标时返回 null（页面不再发无意义请求）
 function nextQuery(state) {
-  const cursor = textOf(state.nextCursor);
+  const cursor = cursorOf(state.nextCursor);
   if (!cursor) {
     return null;
   }
@@ -138,7 +144,7 @@ function applyResponse(state, data, options) {
   const newRows = state.hasLoaded ? view.newRowsOf(state.rows, rows) : [];
   return Object.assign({}, state, {
     rows: rows,
-    nextCursor: textOf(data && data.nextCursor),
+    nextCursor: cursorOf(data && data.nextCursor),
     loading: false,
     loadingMore: false,
     error: '',
@@ -155,7 +161,7 @@ function applyMoreResponse(state, data, options) {
   const merged = view.appendRows(state.rows, incoming);
   return Object.assign({}, state, {
     rows: view.keepAvatarUrls(state.rows, merged),
-    nextCursor: textOf(data && data.nextCursor),
+    nextCursor: cursorOf(data && data.nextCursor),
     loading: false,
     loadingMore: false,
     error: '',
@@ -315,7 +321,7 @@ function buildSnapshot(state, options) {
     rows: state.rows,
     keyword: state.keyword,
     bannerText: view.buildBannerText(state.newRows),
-    headingText: state.nextCursor ? '客户' : '客户（' + state.rows.length + '）',
+    headingText: cursorOf(state.nextCursor) ? '客户' : '客户（' + state.rows.length + '）',
     partnerNo: textOf(opts.partnerNo),
     readonly: opts.readonly === true,
     session: opts.session === true,

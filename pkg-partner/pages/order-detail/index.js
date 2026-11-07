@@ -23,7 +23,6 @@ const COPY = {
   testSuffix: '（将写入测试数据）',
   copyOrder: '订单号已复制',
   copyCustomer: '顾客编号已复制',
-  imageFail: '截图暂时打不开，可能已过保留期（订单完成/取消 7 天后删除）',
   submitFail: '操作没成功，请重试',
   messageEmpty: '先写点内容再发送',
   messageSent: '留言已发送',
@@ -43,6 +42,8 @@ Page(Object.assign({
     events: [],
     messages: [],
     actions: [],
+    // 动作条分组（主操作一行 + 次操作/危险动作一行；分组纯件在 parts/action-bar，actions 原样保留）
+    actionBar: { primary: null, secondary: [], visible: false },
     // P2-4：「改正这一件」「写留言」入口由服务端 actions[] 派生（canCorrect/canMessage），
     // 目标兼职 PENDING 视图只有转派动作时不渲染这两类写入口
     canCorrect: false,
@@ -125,6 +126,7 @@ Page(Object.assign({
       order: view.order,
       events: events,
       actions: view.actions,
+      actionBar: view.actionBar,
       transferCard: view.transferCard,
       transferPanel: view.transferPanel,
       voucher: view.voucher,
@@ -173,17 +175,6 @@ Page(Object.assign({
       data: value,
       success: () => wx.showToast({ title: COPY.copyCustomer, icon: 'none' })
     });
-  },
-  onViewImage() {
-    orderApi.imageUrl({ orderNo: this.data.orderNo, index: 0 })
-      .then((data) => {
-        const url = data && data.url;
-        if (!url) {
-          throw new Error(COPY.imageFail);
-        }
-        wx.previewImage({ urls: [url], current: url });
-      })
-      .catch((err) => wx.showToast({ title: (err && err.message) || COPY.imageFail, icon: 'none' }));
   },
 
   // ---------- 底部动作条：只渲染/分派服务端动作，不猜状态 ----------
@@ -431,4 +422,4 @@ Page(Object.assign({
   onShareAppMessage() {
     return share.appMessage();
   }
-}, require('./parts/page-timers'), require('./parts/panel-actions')));
+}, require('./parts/page-timers'), require('./parts/panel-actions'), require('./parts/image-actions')));

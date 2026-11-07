@@ -139,12 +139,17 @@ function buildProfileQuery(bindingId) {
   return { bindingId: textOf(bindingId) };
 }
 
+// 页面侧游标归一键：服务端对象游标原样保留，空值（null/undefined/''）归一为 null
+function cursorOf(value) {
+  return customerView.hasCursorOf(value) ? value : null;
+}
+
 // 历史订单单一来源：order.listPartner({view:'customer'})（服务端排序/游标/扫描窗与工作台一致）
+// 游标 = 服务端不透明对象（{sortValue,tie}）：只判有/无、原样回传，不做 textOf（对象恒为 ''）。
 function buildOrdersQuery(bindingId, cursor) {
   const query = { view: 'customer', bindingId: textOf(bindingId), limit: ORDERS_LIMIT };
-  const next = textOf(cursor);
-  if (next) {
-    query.cursor = next;
+  if (customerView.hasCursorOf(cursor)) {
+    query.cursor = cursor;
   }
   return query;
 }
@@ -181,15 +186,15 @@ function buildSnapshot(data, options) {
   const source = data || {};
   const customer = source.customer || {};
   const rawOrders = listOf(opts.orders);
-  const nextCursor = textOf(opts.nextCursor);
+  const hasMore = customerView.hasCursorOf(opts.nextCursor);
   const eligibility = source.unbindEligibility || {};
   return {
     view: identityOf(customer),
     sections: buildSections(rawOrders, typeof opts.nowMs === 'number' ? opts.nowMs : Date.now()),
     hasOrders: rawOrders.length > 0,
     emptyOrdersText: '还没有历史订单',
-    nextCursor: nextCursor,
-    showMore: nextCursor !== '',
+    nextCursor: hasMore ? opts.nextCursor : null,
+    showMore: hasMore,
     moreText: opts.loadingMore === true ? '正在加载…' : '查看更早',
     unbind: unbindFlow.buildBlock(customer, eligibility, { readonly: opts.readonly === true }),
     partnerNo: textOf(source.partnerNo)
@@ -205,6 +210,7 @@ module.exports = {
   buildProfileQuery,
   buildSections,
   buildSnapshot,
+  cursorOf,
   dayKeyOf,
   identityOf,
   mergeOrderPages,

@@ -32,6 +32,7 @@ const AI_ERROR_CODES = Object.freeze({
   QUOTA_EXCEEDED: 'QUOTA_EXCEEDED',
   CIRCUIT_OPEN: 'CIRCUIT_OPEN',
   PARSE_ERROR: 'PARSE_ERROR',
+  AUTH_FAILED: 'AUTH_FAILED',
   DISABLED: 'DISABLED',
 });
 
@@ -92,7 +93,10 @@ function isCircuitOpen(atMs) {
   return atMs < breakerState.openUntil;
 }
 
-function recordFailure(atMs, cooldownMs) {
+function recordFailure(atMs, cooldownMs, skip) {
+  if (skip === true) {
+    return;
+  }
   breakerState.consecutiveFailures += 1;
   if (breakerState.consecutiveFailures >= FAILURE_THRESHOLD) {
     breakerState.openUntil = atMs + cooldownMs;
@@ -128,9 +132,16 @@ function classifyHttpFailure(status) {
     return AI_ERROR_CODES.QUOTA_EXCEEDED;
   }
   if (status === 401 || status === 403) {
-    return AI_ERROR_CODES.DISABLED;
+    return AI_ERROR_CODES.AUTH_FAILED;
   }
   return AI_ERROR_CODES.PARSE_ERROR;
+}
+
+/** 归类 + 记一行排障日志（只记 status/code/耗时，不记 Key/正文）。 */
+function classifyAndLog(status, latencyMs) {
+  const code = classifyHttpFailure(status);
+  console.warn('[ai] outbound failed status=' + status + ' code=' + code + ' latencyMs=' + latencyMs);
+  return code;
 }
 
 async function readJsonBody(response) {
@@ -233,7 +244,7 @@ function createDeepSeekClient(options) {
       if (!response || response.ok !== true) {
         return {
           ok: false,
-          errorCode: classifyHttpFailure(status),
+          errorCode: classifyAndLog(status, latencyMs),
           retryable: status >= 500,
           latencyMs,
         };
@@ -246,10 +257,10 @@ function createDeepSeekClient(options) {
       return { ok: true, content, latencyMs };
     } catch (err) {
       const latencyMs = nowMsOf(opts.now) - startedAt;
-      const aborted = !!(err && (err.name === 'AbortError' || err.code === 'ABORT_ERR'));
+      console.warn('[ai] outbound failed code=TIMEOUT latencyMs=' + latencyMs);
       return {
         ok: false,
-        errorCode: aborted ? AI_ERROR_CODES.TIMEOUT : AI_ERROR_CODES.TIMEOUT,
+        errorCode: AI_ERROR_CODES.TIMEOUT,
         retryable: true,
         latencyMs,
       };
@@ -316,7 +327,7 @@ function createDeepSeekClient(options) {
           break;
         }
       }
-      recordFailure(nowMsOf(opts.now), cfg.cooldownMinutes * 60 * 1000);
+      recordFailure(nowMsOf(opts.now), cfg.cooldownMinutes * 60 * 1000, last.errorCode === AI_ERROR_CODES.AUTH_FAILED);
       return last;
     },
 

@@ -24,7 +24,6 @@ Page({
     requestCount: 0,
     order: null,
     loading: true,
-    writing: false,
     error: '',
     pollError: '',
     lastUpdatedText: '',
@@ -47,7 +46,6 @@ Page({
     waitingHint: '',
     // 批 26-D58：转派完成（新兼职接手）只读提示「由 P-XXX-XXX 接手履约」，只显示编号（D19/D42）
     transferHint: '',
-    pickupCodeText: '—',
     messages: [],
     message: { inputVisible: false, archiveText: '' },
     messageText: '',
@@ -234,24 +232,36 @@ Page({
     });
   },
 
+  // 多图（D23/D40 一单 0~10 张）：逐张签发后一次 previewImage({urls,current})——可左右滑动。
+  // 旧实现只签被点的那一张、urls 只有 1 张，多图单无法滑动（2026-11-05 真机反馈）。
   onViewImage(e) {
     const image = this.data.image || {};
-    const index = Number(e && e.currentTarget && e.currentTarget.dataset ? e.currentTarget.dataset.index : 0) || 0;
+    const tapped = Number(e && e.currentTarget && e.currentTarget.dataset ? e.currentTarget.dataset.index : 0) || 0;
     if (!image.canView) {
       wx.showToast({ title: image.text || '这条订单没有截图', icon: 'none' });
       return;
     }
+    const indexes = (image.list || []).map((item) => item.index).filter((index) => typeof index === 'number');
+    if (!indexes.length) {
+      indexes.push(tapped);
+    }
     this.setData({ image: Object.assign({}, image, { state: 'LOADING', text: '正在加载截图…' }) });
-    orderApi.imageUrl({ orderNo: this.data.orderNo, index: index }).then((data) => {
-      const url = data && data.url;
-      if (!url) {
-        this.showImageError('NOT_FOUND', '');
-        return;
-      }
-      const next = parcelView.imagesView(this.data.order || {});
-      this.setData({ image: Object.assign({}, next, { state: 'AVAILABLE' }) });
-      wx.previewImage({ urls: [url] });
-    }).catch((err) => this.showImageError(err && err.code, err && err.message));
+    Promise.all(indexes.map((index) => orderApi.imageUrl({ orderNo: this.data.orderNo, index: index })
+      .then((data) => ({ index: index, url: (data && data.url) || '' }))
+      .catch((err) => ({ index: index, url: '', code: err && err.code, message: err && err.message }))))
+      .then((results) => {
+        const plan = parcelView.previewOf(tapped, results);
+        if (!plan) {
+          // 全失败时说真话：有错误码/文案就照实给（可重试），只有服务端确认无图才说已过期
+          const first = results.filter((item) => item && item.code)[0];
+          this.showImageError(first ? first.code : 'NOT_FOUND', first ? first.message : '');
+          return;
+        }
+        const next = parcelView.imagesView(this.data.order || {});
+        this.setData({ image: Object.assign({}, next, { state: 'AVAILABLE' }) });
+        wx.previewImage({ urls: plan.urls, current: plan.current });
+      })
+      .catch((err) => this.showImageError(err && err.code, err && err.message));
   },
 
   // 截图三态人话：已清理/已过期/加载失败（文案单源在 parts/status-view.imageErrorText）
@@ -356,10 +366,8 @@ Page({
     const session = this._session || flow.createSession();
     const order = session.order || {};
     const version = typeof order.version === 'number' ? order.version : undefined;
-    this.setData({ writing: true });
     return apiCall(Object.assign({ orderNo: this.data.orderNo }, payload || {}), { expectedVersion: version })
       .then((data) => {
-        this.setData({ writing: false });
         const next = data && data.order;
         if (next) {
           this._session = flow.applyOrder(this._session, next, {
@@ -372,7 +380,6 @@ Page({
         return true;
       })
       .catch((err) => {
-        this.setData({ writing: false });
         const text = (err && err.message) || '操作失败，请重试';
         wx.showToast({ title: text, icon: 'none' });
         // CONFLICT：数据已被别人更新 → 人话在 error-copy，刷新详情让操作者基于最新状态再来一次

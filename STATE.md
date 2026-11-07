@@ -5,7 +5,7 @@
 > 更新时机：每批开工/收口、用户裁决变化、风险新增或关闭、HEAD 变化需回读。
 > 本文只记**状态、待办与下一步**，不重复设计口径（口径看 CONTRACT，工程规则看 ENGINEERING，接口看 ARCHITECTURE）。
 
-**快照时间：2026-11-03（HEAD `0978b6a` 推送回填提交 + 本次隐私 v1.10 定稿/审核材料 v2.1 收口提交）：check.js 39/39 条、check-docs 12/12 条、selftest **38 套** 0 失败、零金额 0 命中（白名单 108 项）；`check.ps1` 4 步退出码 0；隐私文本 **v1.10 定稿（2026-11-03 用户确认，`privacyVersion` 保持 `v4.0.0` 不升版）**、审核材料包 **v2.1 重做**（备案已完成、体验版→可发布口径、32 张截图/4 示意图清单）；批 24~27 已推送远端 `origin/main`（`9526e37..0978b6a`，24 提交），本轮隐私/审核材料收口提交随后推送；`gate.ps1 -Anchor c140bf6` 红 0/黄 0（68 件/体量 2512≤3600）；批 26/27 独立审查 3 组与变异电池 M25~M37 **13/13** 见 §21；证据 §19~§22，批 16~25 内容见 §2）
+**快照时间：2026-11-07（HEAD `8382b63` 代码精简四批 + 识别归因修正 + AI 排障改进收口；上一快照 2026-11-05 `84acab0`）：check.js 39/39 条、check-docs 12/12 条、selftest **38 套** 0 失败、零金额 0 命中（白名单 108 项）；`check.ps1` 4 步退出码 0；**批 28 修 ①兼职客户列表只出 20 人（游标对象化透传）②订单详情动作条分级（主操作一行/次操作一行/危险末位）③多图截图一次打开可左右滑（顾客端同修，TD-066 关闭）**，变异电池 M38~M41 **4/4** 首红 + SHA256 还原；`gate.ps1 -Anchor 8259e13` 红 0/黄 0（24 件/体量 456≤900），证据 §23；隐私文本 **v1.10 定稿（2026-11-03 用户确认，`privacyVersion` 保持 `v4.0.0` 不升版）**、审核材料包 **v2.1 重做**（备案已完成、体验版→可发布口径、32 张截图/4 示意图清单）；批 24~27 已推送远端 `origin/main`（`9526e37..0978b6a`）；批 28 与代码精简四批（P1/P3/P2a/P2b，净 −2,663 行）+ 识别失败归因修正已推送到 PR 分支 `refactor/v4-code-slim`（PR #1），`main` 未直接推送、未 tag/提审/发布；证据 §19~§26，批 16~27 内容见 §2）
 > 临时总体说明（全局汇总，非状态源）：[`docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md`](docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md)（版本与取数快照由 Lead 统一维护；状态仍以本文件为准、口径以 CONTRACT 为准）。
 
 ## 1. 一句话状态
@@ -66,6 +66,7 @@
 | 批 25 | 用户 11 条新需求第二批（D61 件级取件 / D62 多站点按件分组） | **工程侧完成并收口（2026-11-03）** | 服务端件级取件（可选 `itemIndex`、`parcels[].pickedAt/pickedByNo`、订单 PICKED 聚合派生、19 种事件、DTO 件级字段/actions、旧单派生无迁移）、兼职端逐件 UI（工作台/取件清单/订单详情，无 5 秒撤销条）、D62 按件站点分组（工作台/清单，批量仍整单）、顾客端只读件级进度与列表标签；`check.ps1` 4 步 0、check 39/39、check-docs 12/12、零金额 0（白名单 108 项）、selftest 36 套 0 失败；`gate.ps1` 红 0/黄 0（63 件/1576 行≤4800）；真机项 QA §AF1~AF7（+§E2/E9/§F24/§AC4 复验）待用户；证据见 §20 |
 | 批 26 | 用户 11 条新需求第三批：D58 转派全栈 + D59 服务端/共享冻结（2026-11-03） | **工程侧完成并收口（2026-11-03，HEAD `470250a` + 本收口证据提交）** | 冻结层：`shared/{enums,actions,order-state,validate}.js`（事件 19→24、8 新 action、4 条 `to:'SAME'` 规则、`validateTeamNote`）、`config/defaults.js`（`transferTtlMinutes=10`/`transferRate{3,20}`/`teamMaxMembers=5`/`subInviteRate{3,20}`，均不入公开子集/后台白名单）、`api/modules/{order,partner}.js` 各 +4、SUITES 36→38、`check.ps1 SelfTestSuites=38`；服务端：`order.{requestTransfer,acceptTransfer,declineTransfer,cancelTransfer}` + `_transfer.js`、`get/listPartner(view=transfer)/_dto`、`message.list` 私有事件过滤、admin 只读投影、匿名化清编号；`partner.{createSubInvites,revokeSubInvite(批次级),listSubMembers,removeSubMember}` + `_team.js`、`activate/getPublic`、`bind/create`、`order/_create` 守卫、`setPartnerStatus` 级联、admin 邀请码 `kind/issuerPartnerNo`；新增 `selftest-transfer`/`selftest-team`；**文档回写（W8）**：CONTRACT §1.1/§4/§4.2/§5/§5.1/§5.3/§7/§8/§9/§10/§11.2/§13、DATA_MODEL（字段/事件/config/索引×3/查询/契约/匿名化/级联/负向 #47~55/§13.1e）、ARCHITECTURE、ENGINEERING（§4.2/§7.5 M25~M34/§8.1 38 套/§8.2 #3 33 页/#13）、UX_PARTNER/UX_CUSTOMER/UX_DEVELOPER、QA §AG、RUNBOOK §18、privacy v1.10 候选（待用户终审）、TECH_DEBT TD-090/091；**真机项 QA §AG1~AG11 待用户**；收口读数：`check.ps1` 4 步退出码 0、`check-docs` 12/12、`selftest` 38 套 0 失败、`gate.ps1` 红 0/黄 0，变异电池 M25~M34（D58/D59）由 `selftest-transfer`/`selftest-team` 捕获（首红/SHA256 复原见证据提交）；**无新增集合/触发器/云函数单元；新增 3 索引需用户在控制台创建（RUNBOOK §3.5/§18）** |
 | 批 27 | 用户 11 条新需求第四批：D59 客户端团队页 + D63 顾客邀请顾客（2026-11-03） | **工程侧完成并收口（2026-11-03，HEAD `470250a` + 本收口证据提交）** | D63：`utils/share` 入参 +`boundPartnerNo`、`TITLES.BIND_CUSTOMER`、`pages/profile` 顾客绑定卡装配、`pages/role` 落地提示、`selftest-share` +S1~S7、`check-share` path 白名单（**零服务端/零数据模型变更、不记录邀请关系**）；D59 客户端：新建 `pkg-partner/pages/team/**`（第 33 页：成员/发子码/按批次作废/移除/名额；子队员只看队伍摘要）、`service-settings` 加「我的团队」入口、`selftest-partner-pages` 新组；**文档回写（W8）**：CONTRACT §8/§10/§11.2/§13 D63、DATA_MODEL §13.1e（零变更说明）、ARCHITECTURE §3.2、UX_CUSTOMER §3.5/§3.6/§6.3、UX_PARTNER §3.10/§3.12/§7、UX_DEVELOPER §3.2、QA §AG12、RUNBOOK §18；**页数 32→33 已随批 27 落地（`app.json`/`tools/lib/project.js` 同步）**；真机项 QA §AG12 待用户；收口读数：`check.ps1` 4 步退出码 0、`check-docs` 12/12、`selftest` 38 套 0 失败、`gate.ps1` 红 0/黄 0；HEAD `470250a`（修复提交）+ 本收口证据提交 |
+| 批 28 | 真机缺陷修复批（2026-11-05 用户截图反馈）：客户列表只出 20 人 / 订单详情动作条 UI / 多图截图只能看一张 | **工程侧完成并收口（2026-11-05，HEAD `8259e13` + 本批修复提交）** | ①**游标对象化回归**（服务端 `{dormKey,allocSeq}`/`{sortValue,tie}` 被客户端 `textOf` 字符串化 → 恒 `''`）：`utils/customer-view.hasCursorOf` 单源 + `pages/partner/customers/parts/list-model`、`pkg-partner/pages/customer-detail/{index,parts/detail-view}` 原样透传（顺带修「查看更早」永不出现）；②**订单详情动作条**两层渲染：主操作独占整宽实心行、异常/改码/留言/取消·拒单进次行、危险动作末位白底红字、撤销动作不进条（纯件 `parts/action-bar.js`；根因 `.bb-bar` 非 flex 容器使旧 `flex:1` 从未生效）；③**多图预览**：兼职端 `parts/{image-view,image-actions}.js` 逐张签一次 `previewImage({urls,current})`，顾客端 `parts/parcel-view.previewOf` 同口径（关闭 **TD-066**）；判据 partner-pages +5 / order-detail-partner +13 / order-customer +2，变异电池 M38~M41 四组首红 + SHA256 逐字节还原；`check.ps1` 4 步退出码 0、check 39/39、check-docs 12/12、零金额 0 命中（白名单 108 项）、selftest 38 套 0 失败；**无服务端/契约变更，客户端需重新上传体验版**；真机项见 §23.4；证据 §23 |
 
 ## 3. 批 1 并行交付快照（全部收口）
 
@@ -1302,3 +1303,189 @@ selftest-privacy-text：断言 305/305；失败 0 项
 
 - 上一轮推送回填提交 `0978b6a`（已推送远端 `origin/main`）。
 - 本轮收口提交：隐私 v1.10 定稿 + 审核材料包 v2.1 重做 + 文档回写（本节随该提交回填；提交后同渠道推送，远端 HEAD 以 `git ls-remote origin refs/heads/main` 回读为准）；工作树干净、未 tag/提审/发布。
+
+## 23. 批 28 真机缺陷修复批（2026-11-05，用户截图反馈）
+
+### 23.1 交付范围
+
+- **①兼职客户列表只显示 20 人（用户截图反馈）**——根因是**游标类型漂移**：服务端 `partner.listBindings` 自批20-C 起返回不透明对象 `{dormKey,allocSeq}`，客户端 `pages/partner/customers/parts/list-model.js` 仍用 `textOf()` 把它字符串化（对象恒 `''`）→ `nextCursor` 永远为空 → `nextQuery` 返回 null → 只出第一页 `PAGE_LIMIT=20`，页脚还误写「没有更多了」。修复：`utils/customer-view.js` 新增 `hasCursorOf`（只判有无、原样透传），`list-model` 的 `cursorOf/nextQuery/applyResponse/applyMoreResponse/headingText` 全部改透传；`listStateOf` 的 `hasMore/footerText` 同步。
+- **②顾客详情「查看更早」永不出现（同根因）**——`pkg-partner/pages/customer-detail/{index.js,parts/detail-view.js}` 同样 `textOf` 了 `{sortValue,tie}` 对象游标；修复为 `cursorOf` 透传，`buildOrdersQuery` 不再丢 cursor、`buildSnapshot.showMore` 如实出现。
+- **③兼职订单详情底部动作条 UI（用户截图反馈）**——根因：`components/bottom-bar` 的 `.bb-bar` 不是 flex 容器，`index.wxss` 的 `.action-btn{flex:1}` 从未生效 → 服务端下发的 5 个动作各自整宽竖排，红色「取消订单」夹在绿色按钮中间。修复：新增纯件 `pkg-partner/pages/order-detail/parts/action-bar.js`——主操作（送达 > 已取件 > 接单 > 解除异常）独占最底行整宽实心按钮；异常/改码/留言与取消/拒单进上一行等宽描边小按钮，**危险动作排末位且白底红字**；`undoPick/undoDeliver` 不进动作条（5 秒撤销条唯一入口）；`actions[]` 原样保留供分派。WXML 两行渲染、WXSS 显式 `display:flex`；逐件「已取件」按钮降为描边（不与主操作抢视觉）；撤销条上抬躲开两行动作条。
+- **④多张取件截图只能看一张（用户截图反馈）**——旧实现只签 `index=0` 并 `previewImage({urls:[url]})`。修复（兼职端）：新增纯件 `parts/image-view.js`（`indexesOf/urlsOf`）与页面方法段 `parts/image-actions.js`——按 `imageCount` 逐张并行签发（≤10），一次 `wx.previewImage({urls, current})` 打开整组、可左右滑动，单张失败只丢该张。**顾客端同缺陷一并修复**（`parts/parcel-view.previewOf`，点任意一张滑看全部），关闭 **TD-066**。
+- **文档回写**：`docs/ux/V4_UX_PARTNER.md` §3.3（动作条布局/多图）、`docs/ux/V4_UX_CUSTOMER.md` §3.8（多图）、`docs/governance/V4_TECH_DEBT.md`（TD-066 关闭）、`CHANGELOG.md`、本文件。**无契约/集合/接口变更，无新云函数单元，客户端改动需重新编译体验版。**
+- **判据**：`selftest-partner-pages` +5（A16b~A16d、B19b/B19c，对象游标原样透传）；`selftest-order-detail-partner` +13（L 组：动作条分级/撤销不进条/多图预览）；`selftest-order-customer` +2（I8/I9 多图预览计划）。
+
+### 23.2 门禁真实输出
+
+```text
+$ powershell -File check.ps1
+PASS  check.js 代码/配置门禁（39 条）
+PASS  check-docs.js 设计文档门禁（--batch 1）
+PASS  zero-money-scan.js 零金额扫描（源码+页面+文档）
+PASS  selftest.js 全部断言 suite（EXPECTED_ASSERTIONS 闸）
+selftest：运行 38 套；失败 0 套；SKIP 0 套（无）；完整性 0 项；非聚合辅助文件 4 件（已声明）
+check.ps1：全部通过（4 步，退出码 0）
+
+通过 39 项；失败 0 项
+check-docs（--batch 1）：通过 12 项；失败 0 项（文档范围 83 份）
+零金额扫描：0 命中（白名单 108 项）
+```
+
+- `gate.ps1 -Anchor 8259e13`：红色 0 项 / 黄色 0 项（24 件、体量 456 ≤ 600×1.5=900、提交信息格式合规）。
+- 分域读数：`selftest-partner-pages` 347/347、`selftest-order-detail-partner` 298/298、`selftest-order-customer` 378/378（`node tools/selftest-*.js` 真实末行）。
+
+### 23.3 变异电池（判据有牙：注入 → 首红 → SHA256 逐字节还原）
+
+| 组 | 注入 | 首红判据 | 还原 |
+| :-- | :-- | :-- | :-- |
+| M38 游标字符串化 | `list-model.cursorOf` 改回 `typeof value === 'string' ? value.trim() : null` | A16b「对象游标原样保留」+ A16c「触底原样回传」 | SHA256 一致，复跑 347/347 |
+| M39 多图改单张 | `image-actions` 的 `urls: urls` 改 `urls: [urls[0]]` | L12「多图可左右滑动」 | SHA256 一致 |
+| M40 撤销动作进条 | `action-bar.UNDO_KEYS` 置空 | L2「撤销不进动作条」+ L5「无主操作只渲染次操作行」 | SHA256 一致 |
+| M41 顾客端只给单 URL | `parcel-view.previewOf` 返回 `urls:[当前]` | I8「一次给全部成功 URL」 | SHA256 一致 |
+
+### 23.4 待用户（真机，agent 不代勾）
+
+- 重新编译体验版后点检：①客户列表第 21 人起触底加载（≥21 位顾客）；②顾客详情「查看更早」翻页；③订单详情动作条层级：主操作一行、异常/改码/留言/取消在上一行、取消为白底红字、单件单不再双主操作；④多图订单「查看取件截图」左右滑动（兼职端与顾客端各一次）；⑤撤销条 5 秒窗不被两行动作条遮挡。
+- **服务端零改动，无需重部署云函数**；客户端改动需用户「上传」体验版后生效。
+
+### 23.5 提交
+
+- 代码/判据/文档提交：`84acab0`（fix，24 件）。
+- 证据回填提交：本节读数与顶部快照行 HEAD 回填（chore，本提交）。
+- 未推送远端、未 tag、未提审、未发布（推送由用户确认后执行）。
+
+## 24. 2026-11-07 代码库精简批（P1/P3/P2a，用户指令「不改变功能前提下精简代码库」）
+
+### 24.1 交付范围
+
+- **P1 真死代码（提交 `ad82879`，52 件 +11/−418）**：删 17 条 `history` 死导出（`shared/enums.js` 8 条、`shared/error-codes.js` `ERROR_CODE_MAP`、`shared/actions.js` `ACTION_COUNT`、`shared/stations.js` `DEFAULT_STATIONS`、`utils/avatar.js` `SIZE_RPX`、`store/index.js` 2 条、`api/upload.js`、`pkg-admin/common/format.js` `formatClock`、`pkg-customer/.../reorder.js` `PREFILL_KEYS`）；`ACTION_COUNT` 删除后 `ALL_ACTIONS` 失去唯一引用，连带删除；3 个模块内死函数 `compareCursor`/`validateFailureNote`/`MINUTE_MS`；页面死键 `writing`/`bindNo`/`shareTip`/`failureCode`/`failureId` 与 11 个后台页 `errorAt`；死样式 `.badge-num`/`.result-row`；`pickupCodeText` 四文件传递死链；测试死资产 3 函数 + 6 个 stale 导出（函数保留、只摘导出）；`db/config.js` 与 `config/_common.js` 两处不可达降级分支（2 条断言改指 `shared/defaults`，数量不变）。`tools/dead-export-baseline.json` 71→54。
+- **P3 云函数 shared 生成副本最小化（提交 `5f9b5f8`，19 件 +238/−2,304）**：`tools/sync-cloud-shared.js` 新增并导出 `SHARED_MANIFEST`（api 17 件 / cleanup 6 件），按各云函数**静态 require 闭包**生成最小子集；闭包 ⊄ 清单（漏同步）或清单 ⊄ 闭包（陈旧清单）均 **fail-closed 不写盘**；门禁 `#17` 改为逐目标**缺件/漂移/多余副本**三向对帐；`selftest-cleanup` §A 读同一清单；删除 13 个副本文件（cleanup 12 + api `format.js`）共 **2,236 行生成物**。文档先改后动代码：ARCHITECTURE §1/§2、ENGINEERING §4 表与 §8.2 #17。
+- **P2a 确定性重复收敛（提交 `2138f43`，12 件 +28/−121）**：`pkg-customer/parts/format.js` 79 行重复实现改为 14 行薄封装（主包 `pages/customer/parts/format.js` 单源 + `clock()`）；后台 10 页下拉刷新收口到 `pkg-admin/common/feedback.refresh(page, method, arg)`。
+- **用户可见行为零变化**：页面/文案/action/DTO/错误码/状态机/事件/集合/索引/触发器/云函数入口均未改；断言 38 套 0 失败，仅随死符号删除其专属断言并同步基线。
+
+### 24.2 门禁真实输出
+
+```text
+$ powershell -File check.ps1
+PASS  check.js 代码/配置门禁（39 条）
+PASS  check-docs.js 设计文档门禁（--batch 1）
+PASS  zero-money-scan.js 零金额扫描（源码+页面+文档）
+PASS  selftest.js 全部断言 suite（EXPECTED_ASSERTIONS 闸）
+selftest：运行 38 套；失败 0 套；SKIP 0 套（无）；完整性 0 项；非聚合辅助文件 4 件（已声明）
+check.ps1：全部通过（4 步，退出码 0）
+
+通过 39 项；失败 0 项
+check-docs（--batch 1）：通过 12 项；失败 0 项
+零金额扫描：0 命中（白名单 108 项）
+
+$ node tools/sync-cloud-shared.js --check
+同步完成：写 0 件、删 0 件、已一致 23 件；hash 对帐 OK（23 件次 / 2 套）
+```
+
+### 24.3 提交
+
+- `ad82879`（P1）、`5f9b5f8`（P3）、`2138f43`（P2a），均为本地提交，**未推送**；工作树仅 `project.config.json`（用户 devtools 改动，未纳入提交）。
+- 后续批次（P2b 后台列表壳 / P5 测试夹具去重 / P4 结构）未开工；本轮未改 CONTRACT/口径。
+
+### 24.4 收口：全仓实测与剩余项评估（2026-11-07）
+
+- **实测（同口径 `tools/lib/fsutil.countLines`）**：精简前 `18fef2c` = 667 件 / **120,544 行**；精简后 `1a0e89c` = 654 件 / **117,978 行**；净减 **2,566 行（−2.1%）**、13 个文件（全部是云函数 shared 生成副本）。
+- **按域变化**：cloudfunctions 28,437→26,093（生成副本 −2,236 + 分支/配置 −108）；pages 12,539→12,522；pkg-customer 7,009→6,910；pkg-admin 5,870→5,824；tools 44,551→44,556（同步器/门禁改造 + 净 5 行）；utils 4,276→4,273；shared 3,025→2,975；其余持平。
+- **未采纳/延后项（写明理由，避免下批重复评估）**：
+  - **P2b 后台 3 列表页 9 方法抽 `list-flow`（估 −140~200）**：页面胶水层没有自动化行为断言，等价性只能靠代码审查；且 `selftest-admin-pages` 的 `pageMethodGaps` 要求页面内 `this.x()` 必须有同名定义，只能保留薄委托。**2026-11-07 追加：该项后续已实施，见 §25；实测净 −97 行（3 页 −260/+55、`list-flow.js` +108），低于估算的原因是公共模块自身占 108 行。**
+  - **P5 测试夹具去重（理论 −250~400）**：实测同体函数仅 27 组、前 25 组浪费 ≈381 行；每个 helper 都依赖 `NOW/DAY/STATUS_LITERALS/TEMP_URL` 等自由变量，抽公共模块需工厂注入，净减预计 <−120 且要动 10+ 测试文件，暂缓。
+  - **P5/T3 `selftest-partner-pages` §G 搬 cases（−80~95）**：纯移动、净减有限（cases 文件变长），留待下次触碰该文件时顺手做（与 TD-086 同类）。
+  - **P4/S1 后台 `forbidden` 卡模板化（−40~55）**：被 `selftest-admin-pages` 的逐页 wxml 静态断言（`wx:if="{{forbidden}}"`/`{{!forbidden}}`/`{{forbidden.title}}`）直接挡住，不做。
+  - **P4/S2 地址拼装下沉 `shared/zones`（−10~18）、S3 `guide-view` 跨端收敛（−30~55）**：需动冻结层 `shared/**`，收益小，暂缓。
+- **结论**：在「零对外行为变化」约束下的高收益项已落地；余下项单批净值均 <−200 且风险上升，不再单独立批（P2b 追加实施见 §25）。
+
+## 25. 2026-11-07 代码精简补充批 P2b（后台列表页加载流程收敛）
+
+### 25.1 交付范围
+
+- 新增 `pkg-admin/common/list-flow.js`（108 行）：`paramsOf/loadList/loadMore/methods`，统一列表请求参数（`keyword/includeTest/limit`，按需 `status`/`cursor`）、四道触底闸、五态 setData、关键词防抖（300ms）、搜索确认、含测试开关、重试、卸载清定时器。
+- `pkg-admin/pages/{customers,orders,partners}/index.js`：删除 9 个逐字重复方法体，只保留 `LIST` 配置（`request/decorate/patch/keywordOfSearch/shouldSearch`）+ 同名薄委托 `loadList(reset)`，以继续满足 `selftest-admin-pages` §M 的 `pageMethodGaps` 判据与门禁 #39（页面源码必须出现 `onPullDownRefresh`）。
+- **行为等价**：请求参数、四道闸、setData 键与值、错误路径（`feedback.handleError` + 重新抛出 / 触底 `feedback.toast`）、防抖时序、游标透传全部逐字保留；页面特有逻辑（订单状态 tab、兼职展开/停用/恢复/切换）未动。
+- 规模：4 件 `+163/−260`，净 **−97 行**；`pkg-admin` 5,824→5,727。
+
+### 25.2 门禁真实输出
+
+```text
+$ powershell -File check.ps1
+PASS  check.js 代码/配置门禁（39 条）
+PASS  check-docs.js 设计文档门禁（--batch 1）
+PASS  zero-money-scan.js 零金额扫描（源码+页面+文档）
+PASS  selftest.js 全部断言 suite（EXPECTED_ASSERTIONS 闸）
+check.ps1：全部通过（4 步，退出码 0）
+
+通过 39 项；失败 0 项
+selftest：运行 38 套；失败 0 套
+selftest-admin-pages：断言 216/216；失败 0 项
+```
+
+### 25.3 提交
+
+- 代码提交 `2b626c0`（fix，4 件）；本地未推送。
+- 全仓累计：667 件/120,544 行 → **655 件/117,881 行（净 −2,663，−2.2%）**。
+
+## 26. 2026-11-07 识别失败归因修正（复核页「服务不可用」误标，A+B）
+
+### 26.1 根因与修复
+
+- **现象（用户截图）**：复核页同一条记录同时显示「失败码：智能识别服务不可用」与「智能识别尝试：未尝试 · 智能识别兜底已关闭」，把「主动关闭」误读成服务故障。
+- **根因**：`cloudfunctions/api/handlers/ai/parseParcel.js` 在 `aiFallback.enabled=false` / Key 缺失（**未外呼**）分支仍写 `failureCode=LLM_ERROR`；`pkg-admin/common/constants.js` 把 `LLM_ERROR` 统一映射为「智能识别服务不可用」。`RUNBOOK §16.2` 早已记录该歧义，但 UI 未消歧。
+- **B（服务端归因）**：该分支改为按规则结果归因——未认出 → `PARSE_MISS`，已认出但低置信 → `LOW_CONFIDENCE`；保留 `aiTried=false`、`aiErrorCode='DISABLED'`。真实外呼失败（超时/5xx/熔断/鉴权失败）、全局配额超限、解析失败仍记 `LLM_ERROR`（契约口径不变）。`CONTRACT §4.3`、`DATA_MODEL §2.5`、`ENGINEERING §4.10.5` 同步澄清「AI 已尝试」才记 `LLM_ERROR`。
+- **A（后台存量/展示）**：`pkg-admin/common/constants.js` 新增 `failureCodeTextOf(row)`——`aiErrorCode=DISABLED` 且 `failureCode=LLM_ERROR` 的存量记录显示「兜底未开启（规则未认出）」；复核页列表/详情与消息中心同源使用；真实 AI 失败仍显示「智能识别服务不可用」。`UX_DEVELOPER §11.8` 增补该行。
+- **测试（判据有牙）**：`selftest-ai` +2（253）——开关关闭入队归因 `PARSE_MISS`、`aiTried=false + aiErrorCode=DISABLED` 保留；`selftest-admin-pages` +2（218）——存量 `DISABLED` 显示「兜底未开启」、真实 `TIMEOUT` 仍显示「服务不可用」。`selftest-ai` 拆出 `tools/lib/ai-assert-helpers.js`（990 行，满足 #18）。
+- **顾客侧文案不变**：客户端失败文案对 `PARSE_MISS`/`LLM_ERROR` 同为通用兜底句，本次不涉及顾客可见文本。
+
+### 26.2 门禁真实输出
+
+```text
+$ powershell -File check.ps1
+PASS  check.js 代码/配置门禁（39 条）
+PASS  check-docs.js 设计文档门禁（--batch 1）
+PASS  zero-money-scan.js 零金额扫描（源码+页面+文档）
+PASS  selftest.js 全部断言 suite（EXPECTED_ASSERTIONS 闸）
+selftest：运行 38 套；失败 0 套；SKIP 0 套（无）；完整性 0 项
+check.ps1：全部通过（4 步，退出码 0）
+```
+
+### 26.3 提交
+
+- 代码/判据/文档提交 `fabc8bb`（fix，12 件 +52/−25）。
+- 已推送到 PR 分支 `refactor/v4-code-slim`（PR #1），`main` 未动、未 tag、未提审、未发布。
+
+## 27. 2026-11-07 AI 排障改进（401/403 单独归因 + 外呼失败日志）
+
+### 27.1 根因与改动
+
+- **现象**：`config/global.aiFallback.enabled=true`、Key 已配置后仍"没有成功调用 DeepSeek"；复核页把 401/403 显示成「智能识别兜底已关闭」，误导为开关未开。
+- **根因**：`cloudfunctions/api/lib/ai/deepseek.js` 的 `classifyHttpFailure` 把 **401/403 归到 `DISABLED`**；而 `DISABLED` 在本项目里表示「未尝试（开关关/Key 缺失）」，语义冲突。
+- **改动**：
+  - 新增内部排障码 `AUTH_FAILED`（401/403，密钥无效/权限不足/欠费）；`DISABLED` 只保留「未尝试」语义。
+  - 外呼失败打印一行 `[ai] outbound failed status=… code=… latencyMs=…`（网络/超时为 `code=TIMEOUT`），不含 Key/正文/响应体。
+  - **鉴权失败不计入熔断**（配置错误重试无意义，且不应打断后续正常请求）；`DISABLED`/`AUTH_FAILED` 均不写 `LLM_ERROR` 以外的状态判定逻辑。
+  - 复核页 `AI_ERROR_LABELS` 增 `AUTH_FAILED → 「智能识别密钥无效或权限不足，已按识别失败入队。」`
+- **判据**：`selftest-ai` 401/403 断言 `AUTH_FAILED`、鉴权失败后熔断计数为 0；内部排障码计数 6→7（255/255）。
+- **口径回写**：`DATA_MODEL §2.5` aiErrorCode 值域、`ENGINEERING §4.10.5` 降级矩阵、`UX_DEVELOPER §11.8`、`RUNBOOK §16.2` 冒烟说明。
+
+### 27.2 门禁真实输出
+
+```text
+$ powershell -File check.ps1
+PASS  check.js 代码/配置门禁（39 条）
+PASS  check-docs.js 设计文档门禁（--batch 1）
+PASS  zero-money-scan.js 零金额扫描（源码+页面+文档）
+PASS  selftest.js 全部断言 suite（EXPECTED_ASSERTIONS 闸）
+selftest：运行 38 套；失败 0 套；SKIP 0 套（无）；完整性 0 项
+selftest-ai：断言 255/255；失败 0 项
+check.ps1：全部通过（4 步，退出码 0）
+```
+
+### 27.3 提交
+
+- 代码/判据/文档提交 `8382b63`（fix，7 件 +30/−12）。
+- 已推送到 PR 分支 `refactor/v4-code-slim`（PR #1），`main` 未动、未 tag、未提审、未发布。
+- 注：`cloudfunctions/cleanup/config.json` 由微信开发者工具在配置定时触发器时生成（内容为 `cleanup-every-10min` / `0 */10 * * * * *`），当前**未跟踪**，建议随下次 cleanup 部署一并提交或由用户决定是否入库。
+

@@ -17,7 +17,6 @@ const uploadModule = require('./modules/upload');
 
 // CONTRACT §4.1：截图 ≤500KB、长边 1440（压缩在服务端/后续批次，本层只登记上限）。
 const MAX_TICKET_BYTES = 500 * 1024;
-const DEFAULT_AVATAR_BYTES = avatar.DEFAULT_MAX_BYTES;
 const TICKET_LONG_SIDE_LIMIT = 1440;
 
 // upload.prepare 的 contentType 只由本地已校验文件的扩展名派生（客户端不自报 MIME）：
@@ -293,6 +292,5 @@ async function prepareAndUpload(options) {
 module.exports = {
   prepareAndUpload,
   resolveTicketSize,
-  MAX_TICKET_BYTES,
-  DEFAULT_AVATAR_BYTES
+  MAX_TICKET_BYTES
 };

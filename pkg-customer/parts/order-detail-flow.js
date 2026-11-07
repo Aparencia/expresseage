@@ -80,7 +80,6 @@ function buildView(order, events, options) {
       ? { label: progress.branchLabel, text: progress.branchText }
       : null,
     waitingHint: view.waitingHint(order, opts.config || {}, format),
-    pickupCodeText: view.pickupCodeText(order),
     codeFilled: codeFilled
   };
 }

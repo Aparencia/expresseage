@@ -38,13 +38,6 @@
       "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
     },
     {
-      "file": "api/upload.js",
-      "symbol": "DEFAULT_AVATAR_BYTES",
-      "reason": "history",
-      "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
-      "note": "历史死导出（teammate B（代客下单/聊天图链路，批 16 并行））：批 16 死代码专项只清任务卡清单内的符号，本项未动、待该域收口时删除"
-    },
-    {
       "file": "config/defaults.js",
       "symbol": "UPLOAD_LIMITS",
       "reason": "test-only",
@@ -73,13 +66,6 @@
       "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
     },
     {
-      "file": "pkg-admin/common/format.js",
-      "symbol": "formatClock",
-      "reason": "history",
-      "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
-      "note": "历史死导出（pkg-admin 域（批 16 未排期））：批 16 死代码专项只清任务卡清单内的符号，本项未动、待该域收口时删除"
-    },
-    {
       "file": "pkg-customer/pages/order-create/parts/model.js",
       "symbol": "stepTitle",
       "reason": "test-only",
@@ -92,13 +78,6 @@
       "reason": "test-only",
       "evidence": "tools/selftest-order-customer.js:453",
       "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
-    },
-    {
-      "file": "pkg-customer/pages/order-create/parts/reorder.js",
-      "symbol": "PREFILL_KEYS",
-      "reason": "history",
-      "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
-      "note": "历史死导出（teammate C（下单链路，批 16 并行））：批 16 死代码专项只清任务卡清单内的符号，本项未动、待该域收口时删除"
     },
     {
       "file": "pkg-customer/parts/poll-policy.js",
@@ -165,13 +144,6 @@
     },
     {
       "file": "shared/actions.js",
-      "symbol": "ACTION_COUNT",
-      "reason": "history",
-      "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
-      "note": "历史死导出：本批未列入删除清单，待后续批清理（清理后移除本项，判据会自动作废）"
-    },
-    {
-      "file": "shared/actions.js",
       "symbol": "CLIENT_ACTIONS",
       "reason": "test-only",
       "evidence": "tools/selftest-cloud.js:22",
@@ -214,45 +186,10 @@
     },
     {
       "file": "shared/enums.js",
-      "symbol": "CODE_ALPHABET_CLASS",
-      "reason": "history",
-      "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
-      "note": "历史死导出：本批未列入删除清单，待后续批清理（清理后移除本项，判据会自动作废）"
-    },
-    {
-      "file": "shared/enums.js",
-      "symbol": "CUSTOMER_NO_GROUPS",
-      "reason": "history",
-      "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
-      "note": "历史死导出：本批未列入删除清单，待后续批清理（清理后移除本项，判据会自动作废）"
-    },
-    {
-      "file": "shared/enums.js",
-      "symbol": "DEVELOPER_NO_SAMPLE",
-      "reason": "history",
-      "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
-      "note": "历史死导出：本批未列入删除清单，待后续批清理（清理后移除本项，判据会自动作废）"
-    },
-    {
-      "file": "shared/enums.js",
       "symbol": "ORDER_EVENT_COUNT",
       "reason": "test-only",
       "evidence": "tools/selftest-state.js:101",
       "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
-    },
-    {
-      "file": "shared/enums.js",
-      "symbol": "ORDER_SOURCE_LABELS",
-      "reason": "history",
-      "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
-      "note": "历史死导出：本批未列入删除清单，待后续批清理（清理后移除本项，判据会自动作废）"
-    },
-    {
-      "file": "shared/enums.js",
-      "symbol": "PARTNER_NO_GROUPS",
-      "reason": "history",
-      "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
-      "note": "历史死导出：本批未列入删除清单，待后续批清理（清理后移除本项，判据会自动作废）"
     },
     {
       "file": "shared/enums.js",
@@ -263,38 +200,10 @@
     },
     {
       "file": "shared/enums.js",
-      "symbol": "ROOM_TAG_ALPHABET",
-      "reason": "history",
-      "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
-      "note": "历史死导出：本批未列入删除清单，待后续批清理（清理后移除本项，判据会自动作废）"
-    },
-    {
-      "file": "shared/enums.js",
-      "symbol": "ROOM_TAG_MIN_SEQ",
-      "reason": "history",
-      "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
-      "note": "历史死导出：本批未列入删除清单，待后续批清理（清理后移除本项，判据会自动作废）"
-    },
-    {
-      "file": "shared/enums.js",
-      "symbol": "URGENT_SERVICE_CODE",
-      "reason": "history",
-      "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
-      "note": "历史死导出：本批未列入删除清单，待后续批清理（清理后移除本项，判据会自动作废）"
-    },
-    {
-      "file": "shared/enums.js",
       "symbol": "VIEW_MODE_TEXT",
       "reason": "test-only",
       "evidence": "tools/selftest-state.js:216",
       "note": "仅测试引用（生产端 0 调用、文件内不自用）；按 AGENTS §5.4 保留并由基线登记，删除前须先移测试断言"
-    },
-    {
-      "file": "shared/error-codes.js",
-      "symbol": "ERROR_CODE_MAP",
-      "reason": "history",
-      "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
-      "note": "历史死导出：本批未列入删除清单，待后续批清理（清理后移除本项，判据会自动作废）"
     },
     {
       "file": "shared/format.js",
@@ -358,34 +267,6 @@
       "reason": "test-only",
       "evidence": "tools/selftest-state.js:300",
       "note": "仅测试引用（生产端唯一消费是 orderView.bucketOf；本排序/文案簇已被 workbench group-view.sortForRoute 取代，TD-082 待收敛）"
-    },
-    {
-      "file": "shared/stations.js",
-      "symbol": "DEFAULT_STATIONS",
-      "reason": "history",
-      "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
-      "note": "历史死导出：本批未列入删除清单，待后续批清理（清理后移除本项，判据会自动作废）"
-    },
-    {
-      "file": "store/index.js",
-      "symbol": "isCustomerActiveRole",
-      "reason": "history",
-      "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
-      "note": "历史死导出（S0 Lead 域）：批 16 死代码专项只清任务卡清单内的符号，本项未动、待该域收口时删除"
-    },
-    {
-      "file": "store/index.js",
-      "symbol": "isPartnerActiveRole",
-      "reason": "history",
-      "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
-      "note": "历史死导出（S0 Lead 域）：批 16 死代码专项只清任务卡清单内的符号，本项未动、待该域收口时删除"
-    },
-    {
-      "file": "utils/avatar.js",
-      "symbol": "SIZE_RPX",
-      "reason": "history",
-      "evidence": "全仓 .js 去注释后 0 引用（2026-11-01 复核）",
-      "note": "历史死导出（S6 头像域（批 16 未排期））：批 16 死代码专项只清任务卡清单内的符号，本项未动、待该域收口时删除"
     },
     {
       "file": "utils/ids.js",

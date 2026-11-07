@@ -15,6 +15,7 @@ const AI_ERROR_LABELS = {
   QUOTA_EXCEEDED: '智能识别配额已用完，已按识别失败入队。',
   PARSE_ERROR: '智能识别返回格式不可解析，已按识别失败入队。',
   DISABLED: '智能识别兜底已关闭，已按识别失败入队。',
+  AUTH_FAILED: '智能识别密钥无效或权限不足，已按识别失败入队。',
   CIRCUIT_OPEN: '智能识别连续失败已熔断，已按识别失败入队。'
 };
 
@@ -40,7 +41,7 @@ function decorateRow(item, expandedNo) {
   const row = item || {};
   return {
     failureNo: row.failureNo || '—',
-    failureCodeText: C.FAILURE_CODE_LABELS[row.failureCode] || '识别失败',
+    failureCodeText: C.failureCodeTextOf(row),
     sourceRoleText: C.ROLE_LABELS[row.sourceRole] || '—',
     uploaderText: F.joinParts([row.uploaderNo, row.uploaderDisplayName], ' '),
     createdAtText: F.formatTime(row.createdAt),
@@ -111,7 +112,7 @@ function decorateDetail(data) {
   const resolution = row.resolution || {};
   return {
     failureNo: row.failureNo || '',
-    failureCodeText: C.FAILURE_CODE_LABELS[row.failureCode] || '识别失败',
+    failureCodeText: C.failureCodeTextOf(row),
     sourceRoleText: C.ROLE_LABELS[row.sourceRole] || '—',
     uploaderText: F.joinParts([row.uploaderNo, row.uploaderDisplayName], ' '),
     orderNo: row.orderNo || '',

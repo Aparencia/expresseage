@@ -71,10 +71,38 @@
   border-bottom: 1rpx solid #EEEEEE;
 }
 
-/* D65：操作条固定底盘/env 底垫由 components/bottom-bar 统一提供，本文件只保留条内按钮布局 */
-.action-btn {
+/* D65：操作条固定底盘/env 底垫由 components/bottom-bar 统一提供，本文件只保留条内按钮布局。
+   2026-11-05：主操作独占一行（整宽实心），异常/改码/留言/取消 在上一行等宽小号按钮；
+   bottom-bar 的 .bb-bar 不是 flex 容器，旧 .action-btn{flex:1} 从未生效——这里显式给行容器 flex。 */
+.action-secondary-row {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  margin-bottom: 12rpx;
+}
+
+.action-secondary-btn {
   flex: 1;
-  margin: 0 8rpx;
+  min-width: 0;
+  min-height: 72rpx;
+  padding: 0 12rpx;
+  font-size: 26rpx;
+  margin-right: 12rpx;
+}
+
+.action-secondary-btn:last-child {
+  margin-right: 0;
+}
+
+.action-primary-btn {
+  width: 100%;
+}
+
+/* 危险但非主操作（取消订单/拒单）：白底红字红边——可识别、不与主操作抢视觉重量，也避免误触即执行 */
+.btn-ghost-danger {
+  background: #FFFFFF;
+  color: var(--v4-danger);
+  border: 2rpx solid var(--v4-danger);
 }
 
 /* 撤销条：token 组合定位；操作条同时存在时上抬一档，不互相遮挡 */
@@ -93,8 +121,10 @@
   font-size: 26rpx;
 }
 
+/* 操作条两行时实际高约 196rpx（次操作 72 + 12 + 主操作 88 + 上下 padding 24），
+   比 token --v4-inset-bar（160rpx+safe）高——撤销条上抬一档避免压住主操作。 */
 .undo-bar-above-actions {
-  bottom: calc(var(--v4-inset-bar) + 16rpx);
+  bottom: calc(var(--v4-inset-bar) + 48rpx);
 }
 
 /* 面板遮罩：全屏遮罩把 safe-area 让给底部面板（面板自身只留内容内边距，避免双层安全区叠加） */

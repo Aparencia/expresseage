@@ -278,7 +278,7 @@
 - 原图可见性：仅白名单开发者在复核页、临时 URL、单次审计；不进顾客/兼职页面；**不提供批量/下载/导出**。
 - 保留期：`config.recognitionFailureRetentionDays`（7~30，默认 30）；到期 `cleanup` 删原图引用并把记录置 `IGNORED`（备注 `EXPIRED`）；同一 fileId 若仍被订单引用，按订单截图规则（§4.1）处理。
 
-**失败码（`failureCode`）**：`NO_TEXT`（OCR 无文本）/ `PARSE_MISS`（有文本但规则+AI 均缺站点或码）/ `LOW_CONFIDENCE`（AI 低置信）/ `LLM_ERROR`（AI 不可用/超限/解析失败）/ `IMAGE_UNREADABLE`（图片打不开/压缩失败）。
+**失败码（`failureCode`）**：`NO_TEXT`（OCR 无文本）/ `PARSE_MISS`（有文本但规则+AI（含 AI 未开启）均缺站点或码）/ `LOW_CONFIDENCE`（AI 低置信）/ `LLM_ERROR`（**AI 已尝试**但不可用/超限/解析失败）/ `IMAGE_UNREADABLE`（图片打不开/压缩失败）。**开关关闭/Key 缺失属「AI 未尝试」，按规则结果归 `PARSE_MISS`/`LOW_CONFIDENCE`，不记 `LLM_ERROR`**（2026-11-07 归因修正）。
 
 **审计与错误码**：`admin_audit.action` 增 `FAILURE_IMAGE_VIEW / FAILURE_FIX / FAILURE_IGNORE`；不新增业务错误码（错误码维持 §5.3 的 13 个），兜底失败一律以 `recognized=false` 降级返回。
 

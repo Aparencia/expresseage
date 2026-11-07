@@ -218,6 +218,21 @@ function registerF(t) {
   t.notEmpty(scanned, 'F 组样本非空');
 }
 
+// 2026-11-05 真机缺陷回归：多张取件截图只能看第一张、无法左右滑。
+// 预览计划 = 一次给全部成功 URL + current 指向用户点的那张；全失败返回 null（页面走错误态）。
+const PREVIEW_ASSERTIONS = 2;
+
+function previewChecks(t, parcelView) {
+  const plan = parcelView.previewOf(2, [
+    { index: 0, url: 'https://a' },
+    { index: 1, url: '' },
+    { index: 2, url: 'https://c' }
+  ]);
+  t.eq([plan.urls, plan.current], [['https://a', 'https://c'], 'https://c'],
+    'I8 多图预览：一次给全部成功 URL（可左右滑），current = 用户点的那张；单张失败不拖垮整组');
+  t.eq(parcelView.previewOf(0, [{ index: 0, url: '' }]), null,
+    'I9 全部签发失败 → null（页面走截图错误态，不弹空预览）');
+}
 
 module.exports = {
   ROOT: ROOT,
@@ -234,5 +249,7 @@ module.exports = {
   orderDoc: orderDoc,
   FAKE_DTO_CTX: FAKE_DTO_CTX,
   layerHits: layerHits,
-  registerF: registerF
+  registerF: registerF,
+  PREVIEW_ASSERTIONS: PREVIEW_ASSERTIONS,
+  previewChecks: previewChecks
 };

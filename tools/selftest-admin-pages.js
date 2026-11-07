@@ -33,7 +33,7 @@ const accountSwitchVm = require(path.join(ROOT, 'pkg-admin/pages/account-switch/
 const reviewVm = require(path.join(ROOT, 'pkg-admin/pages/recognition-review/parts/view-model.js'));
 const messagesVm = require(path.join(ROOT, 'pkg-admin/pages/messages/parts/view-model.js'));
 
-const EXPECTED_ASSERTIONS = 146 + 22 + 3 + 11 + 5 + adminOrdersCases.CLIENT_ASSERTIONS + adminInviteCases.CLIENT_ASSERTIONS; // 146+…=C 组 8 条移入 tools/lib/admin-invite-cases.js（含原 8 + D59 新增 15，合计 CLIENT_ASSERTIONS）；+5：批26-D58 后台转派留痕（P 组，D58 真实 DTO 驱动后 3→5）；+11：D43 自动完成时间用例表；+6：订单行/消息行「称呼（编号）」；余同批 16 前：v1.1/D32 站点卡 16 + 反馈④ 6 + D41 目录 3
+const EXPECTED_ASSERTIONS = 146 + 22 + 3 + 11 + 5 + 2 + adminOrdersCases.CLIENT_ASSERTIONS + adminInviteCases.CLIENT_ASSERTIONS; // 146+…=C 组 8 条移入 tools/lib/admin-invite-cases.js（含原 8 + D59 新增 15，合计 CLIENT_ASSERTIONS）；+5：批26-D58 后台转派留痕（P 组，D58 真实 DTO 驱动后 3→5）；+11：D43 自动完成时间用例表；+6：订单行/消息行「称呼（编号）」；余同批 16 前：v1.1/D32 站点卡 16 + 反馈④ 6 + D41 目录 3
 
 const ADMIN_PAGES = ['overview', 'invite-codes', 'customers', 'customer-detail', 'partners', 'orders', 'order-detail', 'config', 'account-switch', 'messages', 'recognition-review'];
 const STATUS_LITERALS = ['SUBMITTED', 'ACCEPTED', 'PICKED', 'DELIVERED', 'COMPLETED', 'CANCELLED', 'EXCEPTION'];
@@ -609,6 +609,10 @@ function register(h) {
     t.check(row.uploaderText.indexOf('C-7K2M-9QX4') >= 0 && row.uploaderText.indexOf('小**') >= 0
       && row.failureCodeText === C.FAILURE_CODE_LABELS.NO_TEXT && row.expanded === true,
     '上传人只给编号+脱敏昵称、失败码中文、行展开状态回写');
+    t.eq(C.failureCodeTextOf({ failureCode: 'LLM_ERROR', aiErrorCode: 'DISABLED' }), '兜底未开启（规则未认出）',
+      '存量 DISABLED 记录失败码显示「兜底未开启」而非「服务不可用」（2026-11-07）');
+    t.eq(C.failureCodeTextOf({ failureCode: 'LLM_ERROR', aiErrorCode: 'TIMEOUT' }), C.FAILURE_CODE_LABELS.LLM_ERROR,
+      '真实 AI 失败仍显示「智能识别服务不可用」（仅 DISABLED 改写）');
     const detail = reviewVm.decorateDetail({
       failureNo: 'F-1', failureCode: 'LOW_CONFIDENCE', sourceRole: 'PARTNER', uploaderNo: 'P-7K2-M9X',
       uploaderDisplayName: '小**', status: 'PENDING', ocrTextMasked: 'x'.repeat(1300),

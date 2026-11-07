@@ -24,7 +24,6 @@ Page({
     loading: true,
     loadingMore: false,
     error: '',
-    errorAt: '',
     forbidden: false,
     emptyText: vm.emptyTextOf('', ''),
     showCreate: false,
@@ -45,11 +44,7 @@ Page({
   },
 
   onPullDownRefresh() {
-    this.loadList(true).then(function () {
-      wx.stopPullDownRefresh();
-    }).catch(function () {
-      wx.stopPullDownRefresh();
-    });
+    return feedback.refresh(this, 'loadList', true);
   },
 
   onReachBottom() {

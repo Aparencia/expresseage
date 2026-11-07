@@ -43,7 +43,6 @@ Page({
   data: {
     vm: pickVm(),
     suggestedRole: readSuggestedRole(pickVm()),
-    bindNo: '',
     bindLoading: false,
     bindCard: null,
     bindError: '',
@@ -53,8 +52,7 @@ Page({
     bindBlocked: false,
     // 朋友圈单页模式（scene=1154）：只渲染静态介绍，点底部「前往小程序」后走正常登录/分流
     singlePage: false,
-    singlePageHint: '',
-    shareTip: ''
+    singlePageHint: ''
   },
 
   onLoad(options) {
@@ -64,10 +62,8 @@ Page({
     const singlePage = sharePlatform.singlePageNow();
     this._bindNo = bindNo;
     this.setData({
-      bindNo: bindNo,
       singlePage: singlePage,
-      singlePageHint: singlePage ? share.SINGLE_PAGE_HINT : '',
-      shareTip: share.SHARE_TIP
+      singlePageHint: singlePage ? share.SINGLE_PAGE_HINT : ''
     });
     this.sync();
     if (singlePage) {

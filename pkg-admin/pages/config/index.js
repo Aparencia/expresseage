@@ -9,7 +9,6 @@ Page({
   data: {
     loading: true,
     error: '',
-    errorAt: '',
     forbidden: false,
     saving: false,
     dirty: false,
@@ -33,11 +32,7 @@ Page({
   },
 
   onPullDownRefresh() {
-    this.loadConfig().then(function () {
-      wx.stopPullDownRefresh();
-    }).catch(function () {
-      wx.stopPullDownRefresh();
-    });
+    return feedback.refresh(this, 'loadConfig');
   },
 
   loadConfig() {

@@ -13,7 +13,6 @@ Page({
     loading: true,
     loadingMore: false,
     error: '',
-    errorAt: '',
     counts: {
       todayOrders: 0,
       exceptions: 0,
@@ -39,11 +38,7 @@ Page({
   },
 
   onPullDownRefresh() {
-    this.loadAll().then(function () {
-      wx.stopPullDownRefresh();
-    }).catch(function () {
-      wx.stopPullDownRefresh();
-    });
+    return feedback.refresh(this, 'loadAll');
   },
 
   loadAll() {

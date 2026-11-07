@@ -201,6 +201,23 @@ function imagesView(order) {
 }
 
 /**
+ * 多图预览计划（2026-11-05 真机缺陷回归）：一次把「全部签名成功的截图」交给 wx.previewImage，
+ * 可左右滑动；current = 用户点的那一张（该张失败则退第一张成功图）。
+ * @param {number} tappedIndex 用户点击的下标（image.list[].index）
+ * @param {Array<{index:number,url:string}>} results 逐张签发结果（失败项 url 为空）
+ * @returns {null|{urls:string[],current:string}} 全失败返回 null（页面据此走错误态，不弹空预览）
+ */
+function previewOf(tappedIndex, results) {
+  const ok = (Array.isArray(results) ? results : []).filter(function usable(row) {
+    return row && typeof row.url === 'string' && row.url !== '';
+  });
+  if (!ok.length) return null;
+  const urls = ok.map(function urlOf(row) { return row.url; });
+  const hit = ok.filter(function same(row) { return row.index === tappedIndex; })[0];
+  return { urls: urls, current: (hit || ok[0]).url };
+}
+
+/**
  * 服务类型展示（D41/D49）：名称取订单快照；历史已停用类型（服务端 DTO.service.deprecated=true，如 PICKUP_DOOR）
  * 按 shared/enums 名称单源渲染「送寝上门（已停用）」，不新造名称。说明=公开配置 serviceCatalog 的 desc 单源
  * （标准代取＝送到寝室门口（上楼）/ 送至楼下＝宿舍楼下/约定地点（不上楼））；停用类型/目录外 code 无说明。
@@ -244,7 +261,6 @@ function pageExtras(order, config, nowMs) {
     parcelCount: parcels.length,
     pickupSummary: pickup.summaryText,
     pickupPartialHint: pickup.partialHint,
-    pickupCodeText: parcels.length === 1 ? parcels[0].codeText : '',
     deliveryText: delivery.text,
     deliveryRecipient: delivery.recipientName,
     deliveryIsOther: delivery.isOther,
@@ -265,6 +281,7 @@ module.exports = {
   addressTextOf,
   deliveryView,
   imagesView,
+  previewOf,
   serviceView,
   appointView,
   pageExtras

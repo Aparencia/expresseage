@@ -247,4 +247,4 @@ function registerP(t) {
   'P39 D66 角色页副标题 + 帮助页首段同步「下单」表述（功能/链路不变）');
 }
 
-module.exports = { leakHits, missingHandlers, pngSize, registerP };
+module.exports = { pngSize, registerP };

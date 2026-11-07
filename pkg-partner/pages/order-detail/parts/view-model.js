@@ -1,6 +1,7 @@
 // pkg-partner/pages/order-detail/parts/view-model.js · 详情页视图装配（真实 DTO + 事件 → 一次 setData 的稳定快照）
 // 边界：本文件只组合纯件输出（动作/凭证/面板/撤销条/编号小字），不调 wx、不发请求、不判断状态机。
 const actionsPart = require('./actions');
+const actionBarPart = require('./action-bar');
 const correctPanel = require('./correct-panel');
 const deliveryPanel = require('./delivery-panel');
 const exceptionPanel = require('./exception-panel');
@@ -51,6 +52,8 @@ function buildView(order, events, options) {
   return {
     order: Object.assign({}, item, detail),
     actions: actions,
+    // 2026-11-05：动作条改「主操作一行 + 次操作/危险动作一行」——分组是纯展示，actions 原样保留。
+    actionBar: actionBarPart.planOf(actions),
     canCorrect: canCorrect,
     canMessage: canMessage,
     transferCard: transferCard,

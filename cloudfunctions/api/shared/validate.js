@@ -211,10 +211,6 @@ function validateReleaseNote(value) {
   return validateText(value, TEXT_LIMITS.releaseNote, 'note', false);
 }
 
-function validateFailureNote(value) {
-  return validateText(value, TEXT_LIMITS.failureNote, 'note', false);
-}
-
 // 手机尾号：'' 或恰好 4 位数字（永不收集完整手机号）
 function validatePhoneTail(value) {
   if (value === undefined || value === null || value === '') {

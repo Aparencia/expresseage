@@ -5,8 +5,7 @@
  * G 静态纪律 / H 激活页邀请码 / I 代客缺陷回归 / J 服务类型目录 / K D42 头像 / N D44 站点按件+多图+识别预填 /
  * O T5-A TD-084 逐件识别兜底·幂等键按件·超限请分单·预约请求时校时（TD-083 结果块配置化在 D 段）；
  * Q 批27/D59 团队页（主兼职成员/子码批次作废/移除/名额 + 子队员队伍摘要 + 零判据静态扫）。
- * 纪律：纯件 + api 层 fake transport（禁 mock 全局 wx、不连网络）；先合法基线再反例；样本非空；EXPECTED_ASSERTIONS 与实际精确相等。
- * 取数：node tools/selftest-partner-pages.js | Select-Object -Last 2
+ * 纪律：纯件 + api 层 fake transport（禁 mock 全局 wx、不连网络）；先合法基线再反例；样本非空；EXPECTED_ASSERTIONS 与实际精确相等。取数：node tools/selftest-partner-pages.js | Select-Object -Last 2
  */
 const path = require('path');
 const { createHarness, installCrashGuard, ROOT } = require('./selftest');
@@ -42,7 +41,7 @@ const cases = require(path.join(__dirname, 'lib', 'partner-pages-cases.js'));
 // TD-083/T5-A 拆件：夹具/静态扫描样本拆到 tools/lib/partner-pages-cases.js（控测试文件 ≤950 行，门禁 #18；
 // tools/lib 不参与 tools/selftest.js 注册完整性闸，先例 tools/lib/workbench-cases.js）。
 const D67_PAGE_ASSERTIONS = 12;
-const EXPECTED_ASSERTIONS = 243 + cases.PERF_EXPECTED_ASSERTIONS + D67_PAGE_ASSERTIONS + cases.TEAM_PAGE_ASSERTIONS;
+const EXPECTED_ASSERTIONS = 243 + cases.PERF_EXPECTED_ASSERTIONS + D67_PAGE_ASSERTIONS + cases.TEAM_PAGE_ASSERTIONS + cases.CURSOR_ASSERTIONS;
 
 const {
   CONFIG, PARTNER, NOW, DAY, ROW_1, ROW_2, STATUS_LITERALS, bindingRow, orderRow,
@@ -56,12 +55,12 @@ function register(h) {
   h.section('A. 客户列表：服务端 keyword/游标分页/空态/错误保留旧数据（§3.5、§7.4 listBindings）', (t) => {
     const state = listModel.createState();
     t.eq([state.rows, state.keyword, state.loading, state.nextCursor, state.hasLoaded],
-      [[], '', true, '', false], 'A1 初始状态：无本地缓存行、loading、无游标（首屏走服务端）');
+      [[], '', true, null, false], 'A1 初始状态：无本地缓存行、loading、无游标（首屏走服务端）');
     t.eq(listModel.refreshQuery(state), { keyword: '', limit: 20 }, 'A2 首屏查询只带 {keyword,limit=20}（无 cursor；§7.4）');
     t.eq(listModel.nextQuery(state), null, 'A3 无游标时触底不请求下一页（不空转）');
     const keywordState = listModel.applyKeyword(state, '  小王 ');
     t.eq([keywordState.keyword, keywordState.rows, keywordState.loading, keywordState.nextCursor],
-      ['小王', [], true, ''], 'A4 关键词变化：清空旧行与游标，交服务端搜索（客户端不本地过滤）');
+      ['小王', [], true, null], 'A4 关键词变化：清空旧行与游标，交服务端搜索（客户端不本地过滤）');
     t.eq(customerView.normalizeKeyword('A'.repeat(40)).length, 30, 'A5 关键词归一化上限 30 字（防超长请求）');
     t.eq(listModel.applyKeyword(keywordState, '小王'), keywordState, 'A6 关键词未变不重置列表（避免输入抖动清空）');
     const first = listModel.applyResponse(listModel.createState(), { list: [ROW_2, ROW_1], nextCursor: 'cur-1' }, { nowMs: NOW });
@@ -82,6 +81,7 @@ function register(h) {
       4, 'A15 触底追加：跨页去重后 4 行（b1 重复不重复显示）');
     t.eq(listModel.nextQuery(listModel.applyMoreResponse(first, { list: [], nextCursor: 'cur-9' })), { keyword: '', limit: 20, cursor: 'cur-9' },
       'A16 触底查询透传服务端 nextCursor（游标分页，不本地切片）');
+    cases.cursorListChecks(t);
     const skeleton = customerView.listStateOf({ rows: [], loading: true, error: '', keyword: '', nextCursor: '' });
     t.check(skeleton.mode === 'skeleton' && skeleton.showSkeleton === true && skeleton.skeletonRows.length === 6,
       'A17 首屏骨架态：6 张灰色占位卡（loading 且无行；批20-C 由 3 张加到 6 张）');
@@ -135,7 +135,7 @@ function register(h) {
     t.eq([zoneNoPick.rows.length, zoneNoPick.nextCursor], [1, 'cur-1'],
       'A2.7 刚进「按苑」未选苑：查询未变 → 不清空已加载行/游标（不闪骨架）');
     const filtered = listModel.applyFilterChip(withRows, 'note');
-    t.eq([filtered.rows, filtered.nextCursor, filtered.loading], [[], '', true],
+    t.eq([filtered.rows, filtered.nextCursor, filtered.loading], [[], null, true],
       'A2.8 生效筛选变化：清空旧行+游标并置 loading → 首屏重新流式加载（D54 骨架/分片/行级 diff 不变）');
     t.eq([filtered.filters, listModel.nextQuery(Object.assign({}, filtered, { nextCursor: 'c1' }))], [{ mode: 'note', zone: '', buildingNo: 0 }, { keyword: '', limit: 20, cursor: 'c1', hasNote: true }],
       'A2.9 触底翻页带同一套筛选参数（游标分页与筛选同链，不丢筛选）');
@@ -192,6 +192,7 @@ function register(h) {
     t.eq(detailView.buildOrdersQuery('b1', 'cursor-2'), { view: 'customer', bindingId: 'b1', limit: 20, cursor: 'cursor-2' },
       'B18 更早查询透传 listPartner 的 nextCursor（同一接口同一排序/扫描窗口径）');
     t.check(snapshot.showMore === true && snapshot.nextCursor === 'cursor-2', 'B19 有 nextCursor 才显示「查看更早」');
+    cases.cursorDetailChecks(t, data, orders);
     t.check(detailView.buildSnapshot(data, { orders: orders, nextCursor: 'cursor-2', nowMs: NOW, loadingMore: true }).moreText === '正在加载…',
       'B20 加载中按钮文案「正在加载…」');
     t.check(snapshot.unbind.disabled === true && snapshot.unbind.lockText === '还有 2 单未完成，完成后才能解绑',

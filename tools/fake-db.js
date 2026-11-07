@@ -410,4 +410,4 @@ function createFakeDb(options) {
   return db;
 }
 
-module.exports = { createFakeDb, cmd, command, matchDoc, matchValue, getPath };
+module.exports = { createFakeDb, cmd, command };

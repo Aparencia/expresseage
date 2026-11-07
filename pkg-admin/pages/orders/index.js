@@ -2,12 +2,28 @@
 const admin = require('../../../api/modules/admin');
 const C = require('../../common/constants');
 const feedback = require('../../common/feedback');
+const flow = require('../../common/list-flow');
 const vm = require('./parts/view-model');
 
-const PAGE_SIZE = 20;
-const DEBOUNCE_MS = 300;
+const LIST = {
+  withStatus: true,
+  request(page, params) {
+    return admin.listOrders(params);
+  },
+  decorate(page, result) {
+    return vm.decorateList((result && result.list) || []);
+  },
+  patch(page, result) {
+    const counts = (result && result.counts) || null;
+    return {
+      counts: counts,
+      statusTabs: vm.buildTabs(page.data.activeStatus, counts || page.data.counts),
+      emptyText: vm.buildEmptyText({ keyword: page.data.keyword, activeStatus: page.data.activeStatus })
+    };
+  }
+};
 
-Page({
+Page(Object.assign(flow.methods(LIST), {
   data: {
     statusTabs: vm.buildTabs('', null),
     activeStatus: '',
@@ -20,7 +36,6 @@ Page({
     loadingMore: false,
     searching: false,
     error: '',
-    errorAt: '',
     forbidden: false,
     searched: false,
     emptyText: vm.buildEmptyText({})
@@ -35,90 +50,12 @@ Page({
     this.loadList(true);
   },
 
-  onUnload() {
-    if (this.timer) {
-      clearTimeout(this.timer);
-      this.timer = null;
-    }
-  },
-
   onPullDownRefresh() {
-    this.loadList(true).then(function () {
-      wx.stopPullDownRefresh();
-    }).catch(function () {
-      wx.stopPullDownRefresh();
-    });
-  },
-
-  onReachBottom() {
-    this.loadMore();
+    return feedback.refresh(this, 'loadList', true);
   },
 
   loadList(reset) {
-    if (reset) {
-      this.setData({ loading: !this.data.searched, searching: this.data.searched, error: '' });
-    }
-    return admin.listOrders({
-      status: this.data.activeStatus,
-      keyword: this.data.keyword,
-      includeTest: this.data.includeTest,
-      limit: PAGE_SIZE
-    }).then((result) => {
-      const rows = vm.decorateList((result && result.list) || []);
-      const counts = (result && result.counts) || null;
-      this.setData({
-        list: reset ? rows : this.data.list.concat(rows),
-        nextCursor: (result && result.nextCursor) || '',
-        counts: counts,
-        statusTabs: vm.buildTabs(this.data.activeStatus, counts || this.data.counts),
-        emptyText: vm.buildEmptyText({ keyword: this.data.keyword, activeStatus: this.data.activeStatus }),
-        loading: false,
-        searching: false,
-        loadingMore: false,
-        searched: true
-      });
-    }).catch((err) => {
-      feedback.handleError(this, err);
-      throw err;
-    });
-  },
-
-  loadMore() {
-    if (this.data.loading || this.data.searching || this.data.loadingMore || !this.data.nextCursor) return;
-    this.setData({ loadingMore: true });
-    admin.listOrders({
-      status: this.data.activeStatus,
-      keyword: this.data.keyword,
-      includeTest: this.data.includeTest,
-      cursor: this.data.nextCursor,
-      limit: PAGE_SIZE
-    }).then((result) => {
-      const rows = vm.decorateList((result && result.list) || []);
-      this.setData({
-        list: this.data.list.concat(rows),
-        nextCursor: (result && result.nextCursor) || '',
-        loadingMore: false
-      });
-    }).catch((err) => {
-      this.setData({ loadingMore: false });
-      feedback.toast(err && err.message);
-    });
-  },
-
-  onKeywordInput(event) {
-    const keyword = String(event.detail.value || '');
-    this.setData({ keyword: keyword });
-    if (this.timer) {
-      clearTimeout(this.timer);
-    }
-    this.timer = setTimeout(() => {
-      this.timer = null;
-      this.loadList(true).catch(function () {});
-    }, DEBOUNCE_MS);
-  },
-
-  onSearchConfirm() {
-    this.loadList(true).catch(function () {});
+    return flow.loadList(this, reset, LIST);
   },
 
   onTabChange(event) {
@@ -132,18 +69,9 @@ Page({
     this.loadList(true).catch(function () {});
   },
 
-  onIncludeTestChange(event) {
-    this.setData({ includeTest: event.detail.value === true });
-    this.loadList(true).catch(function () {});
-  },
-
-  onRetry() {
-    this.loadList(true).catch(function () {});
-  },
-
   onOpenDetail(event) {
     const no = event.currentTarget.dataset.no;
     if (!no) return;
     feedback.go(C.PAGE_URLS.orderDetail + '?orderNo=' + encodeURIComponent(no));
   }
-});
+}));

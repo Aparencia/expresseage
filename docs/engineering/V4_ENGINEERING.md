@@ -210,7 +210,7 @@ expressage_college_v4/
 | | `lib/ai/*`（v0.8） | DeepSeek 外呼适配（`fetch` 传输可注入）+ prompt 构造 + JSON 解析 + **payload 白名单**纯件；**不访问 DB、不感知身份**；全仓唯一允许出现 `api.deepseek.com`/`DEEPSEEK_API_KEY` 的云函数文件 |
 | | `handlers/admin/{accountSwitch,testAccounts}.js`（v0.9） | 切换会话开启/结束（两模式共用 `admin_view_sessions`）、测试账号创建/删除/清数据（合成 `openid='TEST-<random>'` + 级联）；只解决"以谁的身份、是否可写"，不写业务规则 |
 | `cloudfunctions/cleanup` | `index.js` + `sweeps/*` | `cleanup.*` 定时入口；每个 sweep 注入 `now/db/cloud`，返回 `{scanned, acted, failed}` 日志 |
-| 共享代码 | `tools/sync-cloud-shared.js` | `shared/**` + **`utils/ids.js → shared/ids.js`** + **`utils/room-tag.js → shared/room-tag.js`** 复制到两云函数；**副本逐字节 hash 对帐**（check.js #17）；上传前必跑 |
+| 共享代码 | `tools/sync-cloud-shared.js` | `shared/**` + **`utils/ids.js → shared/ids.js`** + **`utils/room-tag.js → shared/room-tag.js`** + **`config/defaults.js → shared/defaults.js`** 按各云函数**静态 require 闭包**复制最小子集到两云函数（清单唯一源 = `SHARED_MANIFEST`）；**副本逐字节 hash 对帐**（check.js #17 逐目标；缺件/漂移/多余文件三向判红）；上传前必跑 |
 - 云函数目录各自独立部署（不能 require 兄弟目录）⇒ 共享代码复制 + hash 门禁，禁止"服务端引用仓库根"。
 - 依赖：每个 `package.json` **只有 `wx-server-sdk`**（版本 `npm view wx-server-sdk version` 实测后锁定并回填 `.tool-versions`）；不引第三方库。AI 外调用运行时内置 `fetch`（Node 18+）或 `https` 模块，**不新增 npm 依赖**；批 1 实测运行时能力并回填 RUNBOOK。
 - 超时/内存/环境变量按控制台配置，全部记录进 `docs/delivery/V4_RUNBOOK.md`。
@@ -464,7 +464,7 @@ expressage_college_v4/
 - 写入字段：`failureNo(唯一)/requestKey(唯一：{uploaderOpenid}:{clientRequestId})/failureCode/sourceRole/uploaderOpenid/uploadTicketId/fileId/orderId?(未建单为 '')/ocrTextMasked/ruleResult/aiTried/aiModel/aiResult/aiErrorCode/status='PENDING'/createdAt`。
 - **写入幂等**：`requestKey` 唯一；同键重放返回已有 `failureId`（客户端重试/连点必须复用同一 `clientRequestId`，不重复入队）；不同 `clientRequestId` 各自成记录（**同图多单逐单调用即不同 `clientRequestId`**，服务端不按文本相似度合并、也不在 `order.create` 时补建记录）。
 - **`fileId` 入站校验（v1.1/D33）**：`resolveTicketFileId` 只接受 `cloud://` 且路径与票据 `cloudPath` 逐字相等，并先过 `ticketStatusOf`（openid/purpose/有效期/未消费）；任一不满足静默 `''`、不拒绝降级；历史已入队 `fileId=''` 记录仍无原图（仅新记录受益）；复核页以 `hasImage` 决定是否可查看。
-- 降级矩阵（`aiErrorCode` 值域以 `DATA_MODEL §2.14` 为唯一单源）：开关关闭 → `LLM_ERROR`（`aiTried=false`，`aiErrorCode='DISABLED'`）；Key 缺失 → `LLM_ERROR`（`DISABLED`）；超时 → `LLM_ERROR`（`TIMEOUT`）；网络/5xx → `LLM_ERROR`（`HTTP_5XX`）；熔断 → `LLM_ERROR`（`CIRCUIT_OPEN`）；配额超限 → `LLM_ERROR`（`QUOTA_EXCEEDED`，**不外呼**）；解析失败 → `LLM_ERROR`（`PARSE_ERROR`）/`PARSE_MISS`。全部返回 `ok:true + recognized:false`，对用户静默。
+- 降级矩阵（`aiErrorCode` 值域以 `DATA_MODEL §2.14` 为唯一单源）：**开关关闭 / Key 缺失（未外呼）→ 按规则结果归因 `PARSE_MISS`（规则未认出）或 `LOW_CONFIDENCE`（规则已认出但低置信），`aiTried=false`、`aiErrorCode='DISABLED'`，不再记 `LLM_ERROR`**；超时 → `LLM_ERROR`（`TIMEOUT`）；网络/5xx → `LLM_ERROR`（`HTTP_5XX`）；熔断 → `LLM_ERROR`（`CIRCUIT_OPEN`）；**鉴权失败（401/403）→ `LLM_ERROR`（`AUTH_FAILED`，不计入熔断，避免把 Key 配置错误显示成「兜底关闭」）**；配额超限 → `LLM_ERROR`（`QUOTA_EXCEEDED`，**不外呼**）；解析失败 → `LLM_ERROR`（`PARSE_ERROR`）/`PARSE_MISS`。全部返回 `ok:true + recognized:false`，对用户静默。外呼失败日志只记 `status/code/latencyMs`（不记 Key/正文）。
 
 **4.10.6 复核队列与后台动作（开发者）**
 - `admin.listRecognitionFailures`：按 `status/failureCode/时间` 筛选分页（`limit ≤100`）；`admin.getRecognitionFailure`：返回**原图临时 URL（5 分钟）+ 审计 `FAILURE_IMAGE_VIEW`（每次查看一条）**、脱敏上传人、`ocrTextMasked`、AI 尝试结果、关联订单。
@@ -832,7 +832,7 @@ expressage_college_v4/
 | 14 | 客户端禁直连：`wx.cloud.database` 全仓零命中；`callFunction` 仅 `api/client.js`；`uploadFile` 仅 `api/upload.js` | 绕过服务端鉴权 | v4 新增（CONTRACT §4 铁律） |
 | 15 | 本地存储唯一写口：`wx.*Storage*` 仅在 `utils/storage.js`（剥注释后比对；空集判红）；**`viewTicket`/`viewContext`/`viewMode`/`targetIsTest` 不得出现在 storage**；**D57 例外（2026-11-01 用户拍板）**：允许 `ex_college_v4.pickcodes`（顾客本机取件码清单，L3 明文）由 `utils/storage.js` 读写，且该键字面量只允许出现在 `utils/storage.js`（其它客户端文件出现即红）；清洗/上限/去重/清空由 storage 归一化保证 | 第二份写盘/票据落盘；L3 例外失控 | v3 第 11 条改造 + v0.9 + 批 21/D57 |
 | 16 | 云函数依赖白名单：两 `package.json` 依赖只允许 `wx-server-sdk`；非相对 require 只允许 sdk | 引第三方/部署失败 | v4 新增 |
-| 17 | shared 副本对帐：`shared/**` + **`utils/ids.js → shared/ids.js`** + **`utils/room-tag.js → shared/room-tag.js`** + **`config/defaults.js → shared/defaults.js`** 与两云函数 `shared/` 逐字节 hash 相等 | 两端口径漂移（编号/roomTag/错误码/默认配置） | v4 新增（v0.9 扩围） |
+| 17 | shared 副本对帐：按 `tools/sync-cloud-shared.js` 的 `SHARED_MANIFEST` **逐目标**对帐——每个云函数 `shared/` 必须**恰好等于**其静态 require 闭包子集且逐字节 hash 相等（源 = `shared/**` + `utils/ids.js` + `utils/room-tag.js` + `config/defaults.js`）；缺件/漂移/多余副本文件三向判红 | 两端口径漂移（编号/roomTag/错误码/默认配置）；副本只增不减 | v4 新增（v0.9 扩围；2026-11-07 改按闭包最小子集） |
 | 18 | 行数：小程序源码（pages/pkg/api/shared/utils/store/config/cloudfunctions）≤500；`tools/*.js` 与测试文件 ≤1000（**全文本口径**；docs 由 check-docs 管） | 文件过长难审/超预算 | v3 AGENTS §11.1 + 修 TD-062 |
 | 19 | 敏感字面量：openid 形态 `o[A-Za-z0-9_-]{27}` 生产代码零命中；云环境 ID 只在 `config/env.js`；`ADMIN_OPENIDS` 只读 `process.env`、不落库/不进前端 | 凭证/身份硬编码 | v4 新增 |
 | 20 | 错误码注册表：代码引用的 code 与 `shared/error-codes.js` 双向相等，且**恰好 = CONTRACT v0.9 §5.3 的 13 码**（旧码 UNAUTHENTICATED/UNKNOWN_ACTION/INVALID_PARAM/VERSION_CONFLICT/CODE_EXPIRED/CODE_USED 等零残留；AI 兜底失败、账号切换/测试账号均不新增码）；`error-copy` 每码有文案 | 未知码上屏/裸英文报错 | v4 新增（v0.9 修） |

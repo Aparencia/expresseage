@@ -16,9 +16,9 @@ async function clockChecks(t, deps) {
   t.eq(defaultsLib.DEFAULT_CONFIG.autoCompleteAt, '22:00', '出厂默认 autoCompleteAt=22:00（UTC+8 日结批时刻，D51）');
   t.eq(Object.prototype.hasOwnProperty.call(defaultsLib.DEFAULT_CONFIG, deps.legacyHoursKey), false,
     '出厂默认不再含旧小时数键（不作半死兼容键）');
-  t.eq(configLib.PUBLIC_CONFIG_KEYS.indexOf('autoCompleteAt') >= 0, true,
+  t.eq(defaultsLib.PUBLIC_CONFIG_KEYS.indexOf('autoCompleteAt') >= 0, true,
     'config.getPublic 公开子集含 autoCompleteAt（端侧文案要按配置时刻展示）');
-  t.eq(configLib.PUBLIC_CONFIG_KEYS.indexOf(deps.legacyHoursKey), -1, '公开子集不再含旧小时数键');
+  t.eq(defaultsLib.PUBLIC_CONFIG_KEYS.indexOf(deps.legacyHoursKey), -1, '公开子集不再含旧小时数键');
   const pub = configLib.publicConfig(configLib.cloneDefault());
   t.eq(pub.autoCompleteAt, '22:00', '公开子集 autoCompleteAt=出厂默认 22:00');
   t.eq(['orderMergeWindowMinutes', 'aiFallback', deps.legacyHoursKey].filter((key) => pub[key] !== undefined), [],

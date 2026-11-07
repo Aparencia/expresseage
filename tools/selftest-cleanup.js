@@ -196,30 +196,25 @@ function staticAssertions(t) {
   const indexSource = readText('cloudfunctions/cleanup/index.js');
   t.check(indexSource.indexOf("require('./run')") !== -1 && indexSource.indexOf('runAll') !== -1,
     '§A index.js 只做装配，执行器在 run.js（可注入 now/fake DB 测试）');
-  // shared 副本逐字节 hash：cleanup ↔ api ↔ 根 shared/utils/config 源
-  const sharedNames = fs.readdirSync(path.join(ROOT, 'shared')).filter((name) => name.endsWith('.js'));
+  // shared 副本逐字节 hash：按 SHARED_MANIFEST 逐目标（与同步器/门禁 #17 同源），多余文件同判
+  const sync = require('./sync-cloud-shared');
   const mismatch = [];
-  sharedNames.forEach((name) => {
-    const source = fs.readFileSync(path.join(ROOT, 'shared', name));
-    ['cloudfunctions/api/shared', 'cloudfunctions/cleanup/shared'].forEach((dir) => {
-      const target = path.join(ROOT, dir, name);
+  let checked = 0;
+  sync.SHARED_MANIFEST.forEach((entry) => {
+    const needed = entry.needed || [];
+    needed.forEach((name) => {
+      const source = fs.readFileSync(path.join(ROOT, sync.sourceRelOf(name)));
+      const target = path.join(ROOT, entry.dir, name);
+      checked += 1;
       if (!fs.existsSync(target) || sha256(source) !== sha256(fs.readFileSync(target))) {
-        mismatch.push(dir + '/' + name);
+        mismatch.push(entry.dir + '/' + name);
       }
     });
+    fs.readdirSync(path.join(ROOT, entry.dir))
+      .filter((name) => name.endsWith('.js') && needed.indexOf(name) < 0)
+      .forEach((name) => mismatch.push(entry.dir + '/' + name + '（多余）'));
   });
-  [['utils/ids.js', 'ids.js'], ['utils/room-tag.js', 'room-tag.js'], ['config/defaults.js', 'defaults.js']]
-    .forEach((pair) => {
-      const source = fs.readFileSync(path.join(ROOT, pair[0]));
-      ['cloudfunctions/api/shared', 'cloudfunctions/cleanup/shared'].forEach((dir) => {
-        const target = path.join(ROOT, dir, pair[1]);
-        if (!fs.existsSync(target) || sha256(source) !== sha256(fs.readFileSync(target))) {
-          mismatch.push(dir + '/' + pair[1]);
-        }
-      });
-    });
-  t.eq(mismatch, [], '§A cleanup/api shared 副本与根源逐字节 hash 一致（' + sharedNames.length
-    + ' 份 shared + ids/room-tag/defaults）');
+  t.eq(mismatch, [], '§A 每个云函数 shared 副本 = SHARED_MANIFEST 逐字节一致且无多余文件（' + checked + ' 件次）');
   const tooLong = codeFiles.filter((full) => {
     const lines = fs.readFileSync(full, 'utf8').split('\n').length;
     return lines > 500;

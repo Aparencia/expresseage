@@ -217,6 +217,7 @@ const PAGE_FILES = [
 // ── 批20-C：客户页首屏流式/占位/刷新 diff/空 dormKey 置底/底部安全区（P 组；拆出控主套件 ≤950 行）──
 const customerView = require(path.join(ROOT, 'utils/customer-view.js'));
 const listModel = require(path.join(ROOT, 'pages/partner/customers/parts/list-model.js'));
+const detailView = require(path.join(ROOT, 'pkg-partner/pages/customer-detail/parts/detail-view.js'));
 const PERF_EXPECTED_ASSERTIONS = 39;
 
 async function perfChecks(t) {
@@ -649,6 +650,32 @@ async function teamChecks(t) {
   t.notEmpty(view.members, 'Q 组样本非空（防止空集全绿）');
 }
 
+// ── 2026-11-05 真机缺陷回归：服务端游标是**对象**（listBindings {dormKey,allocSeq}、
+// listPartner {sortValue,tie}）。客户端曾用 textOf() 字符串化 → 恒 '' → 客户列表只出第一页 20 条、
+// 「查看更早」永不出现。以下断言锁「原样透传」，任何字符串化都会首红。────────────────────────
+const CURSOR_ASSERTIONS = 5;
+
+function cursorListChecks(t) {
+  const objCursor = { dormKey: 'D4-522A', allocSeq: 3 };
+  const withObjCursor = listModel.applyResponse(listModel.createState(),
+    { list: [ROW_1], nextCursor: objCursor }, { nowMs: NOW });
+  t.eq(withObjCursor.nextCursor, objCursor,
+    'A16b 服务端对象游标原样保留（禁字符串化，防「只有 20 个客户」复发）');
+  t.eq(listModel.nextQuery(withObjCursor), { keyword: '', limit: 20, cursor: objCursor },
+    'A16c 触底请求原样回传对象游标（同一对象，不改写/不丢字段）');
+  const listState = customerView.listStateOf({ rows: [ROW_1], loading: false, error: '', keyword: '', nextCursor: objCursor });
+  t.check(listState.hasMore === true && listState.footerText === '上滑加载更多',
+    'A16d 对象游标 → hasMore=true + 页脚「上滑加载更多」（不再误判末页）');
+}
+
+function cursorDetailChecks(t, data, orders) {
+  const orderCursor = { sortValue: NOW, tie: '20261022-0001' };
+  t.eq(detailView.buildOrdersQuery('b1', orderCursor), { view: 'customer', bindingId: 'b1', limit: 20, cursor: orderCursor },
+    'B19b 对象订单游标原样进 listPartner 入参（「查看更早」可分页）');
+  t.check(detailView.buildSnapshot(data, { orders: orders, nextCursor: orderCursor, nowMs: NOW }).showMore === true,
+    'B19c 对象订单游标 → showMore=true（有更早的单才显示入口）');
+}
+
 module.exports = {
   CONFIG,
   DAY,
@@ -676,5 +703,8 @@ module.exports = {
   stubTransport,
   textOfRel,
   ticketFile,
-  withStation
+  withStation,
+  CURSOR_ASSERTIONS,
+  cursorListChecks,
+  cursorDetailChecks
 };

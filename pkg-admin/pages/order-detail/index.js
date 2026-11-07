@@ -10,7 +10,6 @@ Page({
     orderNo: '',
     loading: true,
     error: '',
-    errorAt: '',
     forbidden: false,
     notFound: false,
     submitting: false,
@@ -31,11 +30,7 @@ Page({
   },
 
   onPullDownRefresh() {
-    this.load().then(function () {
-      wx.stopPullDownRefresh();
-    }).catch(function () {
-      wx.stopPullDownRefresh();
-    });
+    return feedback.refresh(this, 'load');
   },
 
   load() {

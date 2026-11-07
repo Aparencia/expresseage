@@ -34,7 +34,7 @@ function decorateFailure(item) {
   const row = item || {};
   return {
     failureNo: row.failureNo || '—',
-    failureCodeText: C.FAILURE_CODE_LABELS[row.failureCode] || '识别失败',
+    failureCodeText: C.failureCodeTextOf(row),
     sourceRoleText: C.ROLE_LABELS[row.sourceRole] || '—',
     uploaderText: F.joinParts([row.uploaderNo, row.uploaderDisplayName], ' '),
     createdAtText: F.formatTime(row.createdAt),

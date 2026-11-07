@@ -269,19 +269,6 @@
   color: #999999;
 }
 
-.badge-num {
-  min-width: 32rpx;
-  height: 32rpx;
-  line-height: 32rpx;
-  text-align: center;
-  border-radius: 16rpx;
-  background: #E54D42;
-  color: #FFFFFF;
-  font-size: 22rpx;
-  margin-left: 12rpx;
-  padding: 0 8rpx;
-}
-
 /* ── 解绑确认层 ─────────────────────────────────────────── */
 .mask {
   position: fixed;

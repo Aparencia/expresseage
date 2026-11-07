@@ -20,9 +20,6 @@ const STATIONS = [
   { id: 'P8', name: '东苑一栋邮政' }
 ];
 
-// DEFAULT_STATIONS 与 STATIONS 同一份数据（历史调用方继续拿 STATIONS，不复制第二张表）
-const DEFAULT_STATIONS = STATIONS;
-
 // 别名只给识别/手输归一用（出处见 v3 STATION_MAP：真机卡片与用户澄清的既有写法）
 const STATION_ALIASES = [
   { alias: '湖工大西苑一栋南面菜鸟驿站', id: 'P3' },
@@ -459,7 +456,6 @@ function validateStation(stationId, stationName, options) {
 
 module.exports = {
   STATIONS,
-  DEFAULT_STATIONS,
   STATION_ALIASES,
   STATION_IDS,
   STATION_COUNT,

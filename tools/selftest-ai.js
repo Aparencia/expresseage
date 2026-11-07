@@ -11,6 +11,7 @@ const path = require('path');
 const fsutil = require('./lib/fsutil');
 const { createHarness, installCrashGuard } = require('./selftest');
 const { createFakeDb } = require('./fake-db');
+const { failuresOf, lastFailure, buildDegradedKeys } = require('./lib/ai-assert-helpers');
 
 const ROOT = path.resolve(__dirname, '..');
 const API = path.join(ROOT, 'cloudfunctions/api');
@@ -29,7 +30,7 @@ const ocrFlow = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/o
 const orderModel = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/model.js'));
 const reviewVm = require(path.join(ROOT, 'pkg-admin/pages/recognition-review/parts/view-model.js'));
 
-const EXPECTED_ASSERTIONS = 251; // 255 − 4：D40 彻底不按人拦截（per-user 边界/降级队列断言合并为残留 5 仍放行 4 条）
+const EXPECTED_ASSERTIONS = 255; // 253 + 2：401/403 归因 AUTH_FAILED + 鉴权失败不计熔断（2026-11-07）
 
 const NOW = Date.parse('2026-10-21T12:00:00+08:00');
 const CUSTOMER_OPENID = 'openid-customer-ai';
@@ -284,14 +285,6 @@ function sessionDoc(id, viewMode, targetId, targetNo, targetIsTest) {
   };
 }
 
-function failuresOf(db) {
-  return db.dump('recognition_failures');
-}
-
-function lastFailure(db) {
-  return failuresOf(db).slice(-1)[0] || {};
-}
-
 function quotaKey(subject, nowMs) {
   return 'rl:ai:' + subject + ':d' + time.dayKey(nowMs);
 }
@@ -314,10 +307,6 @@ function apiFiles(relDir) {
 
 function filesContaining(files, needle) {
   return files.filter((file) => file.code.indexOf(needle) !== -1).map((file) => file.rel).sort();
-}
-
-function buildDegradedKeys(dto) {
-  return Object.keys(dto).sort().join(',');
 }
 
 // ---------------------------------------------------------------- §7.3.20 外发白名单与去敏
@@ -454,7 +443,7 @@ function registerStaticSection(h) {
 async function gateConfigGroup(t) {
   t.eq(deepseek.ENDPOINT, 'https://api.deepseek.com/chat/completions', '唯一外呼端点');
   t.eq(deepseek.KEY_ENV_NAME, 'DEEPSEEK_API_KEY', 'Key 只从该环境变量读');
-  t.eq(Object.keys(deepseek.AI_ERROR_CODES).length, 6, '内部排障码 6 个（不占业务错误码）');
+  t.eq(Object.keys(deepseek.AI_ERROR_CODES).length, 7, '内部排障码 7 个（不占业务错误码；含 AUTH_FAILED）');
   const def = deepseek.normalizeAiConfig(undefined);
   t.eq({ enabled: def.enabled, model: def.model, timeoutMs: def.timeoutMs }, { enabled: false, model: 'deepseek-chat', timeoutMs: 8000 }, '缺省关闭 + 默认模型 + 8s 超时（应用可正常启动）');
   t.eq({ maxPerUserPerDay: def.maxPerUserPerDay, dailyQuota: def.dailyQuota, cooldownMinutes: def.cooldownMinutes }, { maxPerUserPerDay: 0, dailyQuota: 200, cooldownMinutes: 10 }, 'D40 缺省 per-user 归一 0（字段保留、不参与拦截）+ 全局配额/熔断参数对齐');
@@ -521,7 +510,12 @@ async function gateErrorMappingGroup(t) {
   const unauthorizedFetch = statusFetch(401);
   const unauthorizedClient = deepseek.createDeepSeekClient({ fetchImpl: unauthorizedFetch, env: { DEEPSEEK_API_KEY: 'test-key' }, config: aiConfig(), now: () => NOW });
   const unauthorizedResult = await unauthorizedClient.complete({ ocrTextMasked: 'P3 A123', role: 'CUSTOMER' }, {});
-  t.eq({ code: unauthorizedResult.errorCode, calls: unauthorizedFetch.callCount() }, { code: 'DISABLED', calls: 1 }, '上游 401 不重试并归因 DISABLED');
+  t.eq({ code: unauthorizedResult.errorCode, calls: unauthorizedFetch.callCount() }, { code: 'AUTH_FAILED', calls: 1 }, '上游 401 不重试并归因 AUTH_FAILED（不再误标 DISABLED）');
+  const forbiddenFetch = statusFetch(403);
+  const forbiddenClient = deepseek.createDeepSeekClient({ fetchImpl: forbiddenFetch, env: { DEEPSEEK_API_KEY: 'test-key' }, config: aiConfig(), now: () => NOW });
+  const forbiddenResult = await forbiddenClient.complete({ ocrTextMasked: 'P3 A123', role: 'CUSTOMER' }, {});
+  t.eq(forbiddenResult.errorCode, 'AUTH_FAILED', '上游 403 同样归因 AUTH_FAILED（密钥/权限问题）');
+  t.eq(deepseek.breakerSnapshot().consecutiveFailures, 0, '鉴权失败不计入熔断（配置错误不打断后续请求）');
 
   deepseek.resetCircuitBreaker();
   const netFetch = networkErrorFetch();
@@ -707,8 +701,10 @@ async function degradedGroup(t) {
     t.check(AI_SOURCE_DOMAIN.indexOf(data.source) >= 0, cases[i][0] + '：source∈{RULE,DEEPSEEK,NONE}');
     t.check(FAILURE_NO_RE.test(data.failureId || ''), cases[i][0] + '：failureId 形态合法');
   }
-  const data = (await cases[2][1]()).data;
-  t.eq(['code', 'message', 'stack', 'ocrText', 'ocrTextMasked', 'duplicated'].filter((key) => key in data), [], '降级响应不返回错误码/堆栈/原始 ocrText/幂等内部字段');
+  const disabledRecord = failuresOf(db).filter((row) => row.aiErrorCode === 'DISABLED')[0] || {};
+  t.eq(disabledRecord.failureCode, 'PARSE_MISS', '开关关闭：入队归因 PARSE_MISS（不再记 LLM_ERROR，避免复核页显示「服务不可用」）');
+  t.eq({ tried: disabledRecord.aiTried, code: disabledRecord.aiErrorCode }, { tried: false, code: 'DISABLED' }, '开关关闭：aiTried=false + aiErrorCode=DISABLED 保留');
+  const data = (await cases[2][1]()).data;  t.eq(['code', 'message', 'stack', 'ocrText', 'ocrTextMasked', 'duplicated'].filter((key) => key in data), [], '降级响应不返回错误码/堆栈/原始 ocrText/幂等内部字段');
   t.eq(Object.keys(data).every((key) => DTO_KEYS.indexOf(key) >= 0), true, '降级响应无 DTO 白名单外键');
   const dto = parseLib.buildDegradedDto({ failureNo: 'F-20261021-ABCDEF', duplicated: true }, {}, { source: 'NONE' });
   t.eq({ duplicated: 'duplicated' in dto, failureId: dto.failureId, confidence: dto.confidence }, { duplicated: false, failureId: 'F-20261021-ABCDEF', confidence: 'LOW' }, 'buildDegradedDto：duplicated 不进 DTO、failureId/failureNo 映射');
