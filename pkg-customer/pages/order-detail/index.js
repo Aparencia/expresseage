@@ -24,7 +24,6 @@ Page({
     requestCount: 0,
     order: null,
     loading: true,
-    writing: false,
     error: '',
     pollError: '',
     lastUpdatedText: '',
@@ -47,7 +46,6 @@ Page({
     waitingHint: '',
     // 批 26-D58：转派完成（新兼职接手）只读提示「由 P-XXX-XXX 接手履约」，只显示编号（D19/D42）
     transferHint: '',
-    pickupCodeText: '—',
     messages: [],
     message: { inputVisible: false, archiveText: '' },
     messageText: '',
@@ -368,10 +366,8 @@ Page({
     const session = this._session || flow.createSession();
     const order = session.order || {};
     const version = typeof order.version === 'number' ? order.version : undefined;
-    this.setData({ writing: true });
     return apiCall(Object.assign({ orderNo: this.data.orderNo }, payload || {}), { expectedVersion: version })
       .then((data) => {
-        this.setData({ writing: false });
         const next = data && data.order;
         if (next) {
           this._session = flow.applyOrder(this._session, next, {
@@ -384,7 +380,6 @@ Page({
         return true;
       })
       .catch((err) => {
-        this.setData({ writing: false });
         const text = (err && err.message) || '操作失败，请重试';
         wx.showToast({ title: text, icon: 'none' });
         // CONFLICT：数据已被别人更新 → 人话在 error-copy，刷新详情让操作者基于最新状态再来一次

@@ -17,7 +17,6 @@ Page({
     loadingMore: false,
     searching: false,
     error: '',
-    errorAt: '',
     forbidden: false,
     searched: false,
     emptyText: '还没有顾客资料。'

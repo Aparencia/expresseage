@@ -32,12 +32,6 @@ function formatTime(value) {
     ' ' + pad2(date.getHours()) + ':' + pad2(date.getMinutes());
 }
 
-function formatClock(value) {
-  const date = toDate(value);
-  if (!date) return '—';
-  return pad2(date.getHours()) + ':' + pad2(date.getMinutes());
-}
-
 function textOrDash(value) {
   if (value === undefined || value === null || value === '') return '—';
   return String(value);
@@ -63,7 +57,6 @@ function joinParts(parts, separator) {
 
 module.exports = {
   formatTime,
-  formatClock,
   textOrDash,
   numOrZero,
   maskInvitationCode,

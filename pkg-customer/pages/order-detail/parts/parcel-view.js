@@ -261,7 +261,6 @@ function pageExtras(order, config, nowMs) {
     parcelCount: parcels.length,
     pickupSummary: pickup.summaryText,
     pickupPartialHint: pickup.partialHint,
-    pickupCodeText: parcels.length === 1 ? parcels[0].codeText : '',
     deliveryText: delivery.text,
     deliveryRecipient: delivery.recipientName,
     deliveryIsOther: delivery.isOther,

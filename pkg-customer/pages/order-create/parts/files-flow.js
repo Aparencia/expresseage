@@ -166,7 +166,6 @@ function alignToFiles(page, files) {
 /** 识别结果 → 页面 patch（成功进 Step2；失败停在 Step1 给失败卡） */
 function resultPatchOf(result, merged) {
   const patch = {
-    failureId: (result && result.failureId) || '',
     imageFailures: (result && result.failures) || [],
     aiHint: result && result.aiUsed === true ? ocrFlow.AI_SUGGESTION_HINT : '',
     ocrText: (result && result.ocrText) || '',
@@ -180,7 +179,6 @@ function resultPatchOf(result, merged) {
   }
   const copy = (result && result.failureCopy) || { text: '没识别出来。', next: '可以手动填写。' };
   patch.ocrState = 'failed';
-  patch.failureCode = (result && result.failureCode) || 'NO_TEXT';
   patch.failureText = copy.text;
   patch.failureNext = copy.next;
   return patch;

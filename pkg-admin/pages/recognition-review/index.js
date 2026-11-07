@@ -26,7 +26,6 @@ Page({
     loading: true,
     loadingMore: false,
     error: '',
-    errorAt: '',
     forbidden: false,
     searched: false,
     statusTabs: vm.buildStatusTabs(C.FAILURE_STATUS_PENDING, null),

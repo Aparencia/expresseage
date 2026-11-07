@@ -14,7 +14,6 @@ Page({
   data: {
     loading: true,
     error: '',
-    errorAt: '',
     forbidden: false,
     submitting: false,
     activeTab: C.ACCOUNT_TAB_REAL,

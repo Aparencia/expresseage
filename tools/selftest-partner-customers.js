@@ -50,14 +50,6 @@ const TOTAL_ASSERTIONS = EXPECTED_ASSERTIONS + D67_A2_ASSERTIONS;
 
 const ACTIVE = 'ACTIVE';
 
-function boundPartners(db) {
-  return rowsOf(db, 'bindings').map((row) => row._id + ':' + row.status + ':' + row.activeKey);
-}
-
-function keySetsOf(list) {
-  return (list || []).map((row) => Object.keys(row).sort());
-}
-
 function sortedKeys(value) {
   return Object.keys(value || {}).sort();
 }

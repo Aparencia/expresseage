@@ -8,7 +8,6 @@ Page({
   data: {
     loading: true,
     error: '',
-    errorAt: '',
     forbidden: false,
     exceptions: [],
     failures: [],

@@ -12,7 +12,6 @@ const PAGE_LIMIT = 20;
 // 批20-C：首屏流式——数据到达后首片（≤10 行）立即 setData，其余片按帧以 rows[n] 路径追加。
 const STREAM_CHUNK_ROWS = 10;
 const SKELETON_ROWS = [1, 2, 3, 4, 5, 6];
-const MINUTE_MS = 60 * 1000;
 
 function textOf(value) {
   return typeof value === 'string' ? value.trim() : '';

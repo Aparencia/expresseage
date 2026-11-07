@@ -10,7 +10,6 @@ Page({
     orderNo: '',
     loading: true,
     error: '',
-    errorAt: '',
     forbidden: false,
     notFound: false,
     submitting: false,

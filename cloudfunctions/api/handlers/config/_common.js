@@ -8,13 +8,6 @@
 
 const { readConfig, publicConfig, DEFAULT_CONFIG } = require('../../db/config');
 
-let sharedDefaults = null;
-try {
-  sharedDefaults = require('../../shared/defaults');
-} catch (error) {
-  sharedDefaults = null;
-}
-
 const SERVICE_NAME_MAX = 20;
 const SERVICE_DESC_MAX = 60;
 
@@ -79,9 +72,7 @@ async function loadRuntimeConfig(ctx) {
 
 function buildPublicConfig(config) {
   const source = config && typeof config === 'object' ? config : {};
-  const out = sharedDefaults && typeof sharedDefaults.pickPublicConfig === 'function'
-    ? sharedDefaults.pickPublicConfig(source)
-    : publicConfig(source);
+  const out = publicConfig(source);
   // D41：目录固定 5 类（旧目录自动迁移），客户端选择器/兼职服务配置页都按这一个出口渲染
   out.serviceCatalog = serviceCatalogOf(source);
   out.subscribeEnabled = !!(source.subscribeTemplates && source.subscribeTemplates.enabled === true);

@@ -178,15 +178,6 @@ async function errorCodeOf(fn) {
   }
 }
 
-async function errorCodeSync(fn) {
-  try {
-    fn();
-    return '';
-  } catch (error) {
-    return error && error.code ? error.code : 'UNKNOWN_THROW';
-  }
-}
-
 function adminCtx(dao, clientRequestId, config) {
   return makeCtx(dao, {
     openid: ADMIN_OPENID,

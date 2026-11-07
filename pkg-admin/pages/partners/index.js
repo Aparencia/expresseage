@@ -21,7 +21,6 @@ Page({
     searching: false,
     submitting: false,
     error: '',
-    errorAt: '',
     forbidden: false,
     searched: false
   },

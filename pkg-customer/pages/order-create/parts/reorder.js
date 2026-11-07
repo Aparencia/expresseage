@@ -6,8 +6,6 @@
 
 const stations = require('../../../../shared/stations');
 
-const PREFILL_KEYS = ['serviceCode', 'stationId', 'stationName'];
-
 function textOf(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
@@ -99,7 +97,6 @@ async function load(deps) {
 }
 
 module.exports = {
-  PREFILL_KEYS,
   orderNoOf,
   prefillFromOrder,
   serviceCodeOf,

@@ -174,14 +174,6 @@ function isDeveloper() {
   return !!state.isDeveloper;
 }
 
-function isCustomerActiveRole() {
-  return state.activeRole === 'CUSTOMER';
-}
-
-function isPartnerActiveRole() {
-  return state.activeRole === 'PARTNER';
-}
-
 function reset() {
   state.roles = [];
   state.activeRole = null;
@@ -210,7 +202,5 @@ module.exports = {
   getViewContext,
   clearViewContext,
   isDeveloper,
-  isCustomerActiveRole,
-  isPartnerActiveRole,
   reset
 };

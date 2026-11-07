@@ -59,16 +59,6 @@ function cursorOf(record, sortField, idField) {
   return { sortValue: sortValueOf(record, sortField), id: idOf(record, idField) };
 }
 
-function compareCursor(left, right) {
-  if (left.sortValue !== right.sortValue) {
-    return left.sortValue < right.sortValue ? -1 : 1;
-  }
-  if (left.id === right.id) {
-    return 0;
-  }
-  return left.id < right.id ? -1 : 1;
-}
-
 // 归并多路有序结果（每路已按 sortField + idField 排序）；desc 时主序倒序、平局按 idOrder 方向。
 function mergeOrdered(lists, order, idOrder) {
   const out = [];

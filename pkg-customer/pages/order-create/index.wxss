@@ -110,15 +110,6 @@
   font-size: 28rpx;
 }
 
-.result-row {
-  min-height: 72rpx;
-  border-bottom: 1rpx solid var(--v4-line);
-}
-
-.result-row .small {
-  color: var(--v4-brand);
-}
-
 .summary-row {
   padding: 12rpx 0;
 }

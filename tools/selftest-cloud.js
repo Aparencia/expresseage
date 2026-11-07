@@ -415,7 +415,7 @@ function register(h) {
   asyncSection('§7.3 编号生成与公开配置（shared/defaults 委托）', async (t) => {
     const configLib = require(path.join(API, 'db/config.js'));
     const idGenerator = require(path.join(API, 'lib/id-generator.js'));
-    t.check(configLib.PUBLIC_CONFIG_KEYS.indexOf('viewTicketTtlMinutes') >= 0,
+    t.check(require(path.join(ROOT, 'config/defaults.js')).PUBLIC_CONFIG_KEYS.indexOf('viewTicketTtlMinutes') >= 0,
       '公开配置子集含 viewTicketTtlMinutes（切换会话倒计时用）');
     const pub = configLib.publicConfig(configLib.cloneDefault());
     t.eq(pub.viewTicketTtlMinutes, 30, 'config.getPublic 公开子集 viewTicketTtlMinutes=30');

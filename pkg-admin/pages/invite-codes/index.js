@@ -24,7 +24,6 @@ Page({
     loading: true,
     loadingMore: false,
     error: '',
-    errorAt: '',
     forbidden: false,
     emptyText: vm.emptyTextOf('', ''),
     showCreate: false,

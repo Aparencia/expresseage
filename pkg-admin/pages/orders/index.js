@@ -20,7 +20,6 @@ Page({
     loadingMore: false,
     searching: false,
     error: '',
-    errorAt: '',
     forbidden: false,
     searched: false,
     emptyText: vm.buildEmptyText({})

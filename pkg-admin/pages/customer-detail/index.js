@@ -9,7 +9,6 @@ Page({
     customerNo: '',
     loading: true,
     error: '',
-    errorAt: '',
     forbidden: false,
     notFound: false,
     customer: null,

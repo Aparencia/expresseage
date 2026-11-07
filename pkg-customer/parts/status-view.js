@@ -264,16 +264,6 @@ function statusDesc(order) {
   return STATUS_DESC[status] || '';
 }
 
-/** 取件码展示：码 / 需查明 / 仅尾号 / 空 */
-function pickupCodeText(order) {
-  const parcel = (order && order.parcel) || {};
-  if (parcel.codeStatus === enums.CODE_STATUS.NEED_CODE) return '需查明（兼职正在查码）';
-  const code = textOf(parcel.pickupCode);
-  if (code) return code;
-  const tail = textOf(parcel.trackingTail);
-  return tail ? '尾号 ' + tail : '—';
-}
-
 /** 不可取消时的引导（AC-C-24/UX §3.8）：已取件起不能单方取消，给下一步而不是死路 */
 function cancelGuide(order, readonly) {
   if (!order || readonly === true || hasAction(order, 'cancel')) return '';
@@ -396,7 +386,6 @@ module.exports = {
   progressSteps,
   progressView,
   statusDesc,
-  pickupCodeText,
   messageView,
   cancelGuide,
   noticeText,

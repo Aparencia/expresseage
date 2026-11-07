@@ -13,7 +13,6 @@ Page({
     loading: true,
     loadingMore: false,
     error: '',
-    errorAt: '',
     counts: {
       todayOrders: 0,
       exceptions: 0,

@@ -7,13 +7,9 @@ const sharedDefaults = require('../shared/defaults');
 const sharedStations = require('../shared/stations');
 
 const DEFAULT_CONFIG = sharedDefaults.DEFAULT_CONFIG;
-const PUBLIC_CONFIG_KEYS = sharedDefaults.PUBLIC_CONFIG_KEYS;
 
 function cloneDefault() {
-  if (typeof sharedDefaults.createDefaultConfig === 'function') {
-    return sharedDefaults.createDefaultConfig();
-  }
-  return JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+  return sharedDefaults.createDefaultConfig();
 }
 
 // 读取全局配置种子；未初始化时返回默认值并标记 seeded=false（health.check / admin.bootstrap 用）。
@@ -30,23 +26,11 @@ async function readConfig(dao) {
 
 // 公开子集：委托 shared/defaults 的 pickPublicConfig，保证客户端/云端字段一致。
 function publicConfig(config) {
-  const source = Object.assign(cloneDefault(), config || {});
-  if (typeof sharedDefaults.pickPublicConfig === 'function') {
-    return sharedDefaults.pickPublicConfig(source);
-  }
-  const out = {};
-  PUBLIC_CONFIG_KEYS.forEach((key) => {
-    if (source[key] !== undefined) {
-      out[key] = source[key];
-    }
-  });
-  out.stations = sharedStations.stationsFromConfig(source);
-  return out;
+  return sharedDefaults.pickPublicConfig(Object.assign(cloneDefault(), config || {}));
 }
 
 module.exports = {
   DEFAULT_CONFIG,
-  PUBLIC_CONFIG_KEYS,
   cloneDefault,
   readConfig,
   publicConfig

@@ -9,7 +9,6 @@ Page({
   data: {
     loading: true,
     error: '',
-    errorAt: '',
     forbidden: false,
     saving: false,
     dirty: false,

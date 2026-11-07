@@ -135,9 +135,6 @@ Object.keys(INTERNAL_RULES).forEach((action) => {
 
 const CLIENT_ACTIONS = Object.keys(CLIENT_RULES);
 const INTERNAL_ACTIONS = Object.keys(INTERNAL_RULES);
-const ALL_ACTIONS = Object.keys(ACTION_MAP);
-
-const ACTION_COUNT = ALL_ACTIONS.length;
 
 function actionMeta(action) {
   return ACTION_MAP[action] || null;
@@ -164,8 +161,6 @@ module.exports = {
   ACTION_MAP,
   CLIENT_ACTIONS,
   INTERNAL_ACTIONS,
-  ALL_ACTIONS,
-  ACTION_COUNT,
   actionMeta,
   isRegisteredAction,
   isClientAction,

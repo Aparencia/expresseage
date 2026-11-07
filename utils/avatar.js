@@ -12,7 +12,6 @@ const TARGET_SIDE = 200;
 const ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png'];
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png'];
 const QUALITY_STEPS = [85, 75, 65];
-const SIZE_RPX = { LIST: 64, DETAIL: 96 };
 const FALLBACK_INITIAL = '?';
 const PALETTE = [
   { backgroundColor: '#E8F0FF', color: '#2F5D9E' },
@@ -479,7 +478,6 @@ module.exports = {
   ALLOWED_EXTENSIONS,
   ALLOWED_MIME_TYPES,
   QUALITY_STEPS,
-  SIZE_RPX,
   resolveMaxBytes,
   extensionOf,
   validatePicked,
