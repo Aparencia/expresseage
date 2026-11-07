@@ -16,7 +16,7 @@ cloudfunctions/api（index → app → router → middleware → handlers → db
 cloudfunctions/cleanup（index → sweeps/*）
                 │
                 ▼
-cloudfunctions/*/shared/（由 shared/** 与 utils/ids.js、utils/room-tag.js、config/defaults.js 逐字节同步的副本）
+cloudfunctions/*/shared/（按各云函数静态 require 闭包，从 shared/** 与 utils/ids.js、utils/room-tag.js、config/defaults.js 逐字节同步的**最小子集**副本；清单唯一源 = tools/sync-cloud-shared.js 的 SHARED_MANIFEST）
 ```
 
 铁律：客户端不出现集合名与 action 字面量（只允许在 `api/` 与 `shared/`）；云函数不出现 `db.collection`（只允许 `db/dao.js`）；身份只来自服务端（真实 `OPENID` 或切换会话票据解析结果）。
@@ -38,7 +38,7 @@ cloudfunctions/*/shared/（由 shared/** 与 utils/ids.js、utils/room-tag.js、
 | S9 云后台 | cloud-admin（新） | `cloudfunctions/api/handlers/admin/**` `cloudfunctions/api/handlers/admin/dto/**`（如需要） |
 | S10 组件与资产 | ui-components（新） | `components/**` `custom-tab-bar/**` `assets/**` |
 
-- 云函数 `shared/` 副本**任何人不得手写**：由 `node tools/sync-cloud-shared.js` 生成（S2 提供脚本，S1 完成后 Lead 先跑一次）。
+- 云函数 `shared/` 副本**任何人不得手写**：由 `node tools/sync-cloud-shared.js` 生成（S2 提供脚本，S1 完成后 Lead 先跑一次）。副本按各云函数的**静态 require 闭包**生成最小子集（清单唯一源 = 脚本导出的 `SHARED_MANIFEST`）：闭包 ⊄ 清单（漏同步）或清单 ⊄ 闭包（陈旧清单）均 fail-closed 中止；门禁 #17 按同一清单逐目标对帐，多余副本文件同样判红。
 - **批 16 组件删减（S10 域说明）**：`components/customer-row/`、`components/form-field/`、`components/role-switch/`、`components/section-card/` 四个全局注册组件在全仓 WXML 零使用，批 16 删除目录并从 `app.json` 全局 `usingComponents` 移除（`app.json` 该次改动由 Lead 授权 S2 执行）。S10 写作用域（`components/**`、`custom-tab-bar/**`、`assets/**`）不变；后续新增全局组件仍须登记本节 §3.5 组件表 + ENGINEERING §5.7，并同时进 `app.json` 注册与门禁 #36 扫描范围。
 - 公共文件一旦冻结（`app.json`、`app.wxss`、`shared/**`、`api/**`、`store/**`）：需要改动先发 Lead，由单写者合并。
 - 新增文件必须落在自己的写作用域内；跨域引用只读或走 `require`，不得改他人文件。

@@ -4,10 +4,12 @@
  * 口径：docs/engineering/V4_ENGINEERING.md §8.2；PASS 条件/扫描范围/期望值一律与拆分前一致（批 T5-C 纯拆件）。
  * 每个导出 = 一条判据的函数体：返回 null / 问题数组 / { skip }，由 tools/check.js 的 check() 统一装配与打印。
  */
+const fs = require('fs');
+const path = require('path');
 const F = require('./fsutil');
 const P = require('./project');
 const {
-  RELS, exists, raw, rels, js, pagesJs, text, shortList, requireRegistry,
+  RELS, exists, raw, rels, js, pagesJs, text, shortList, requireRegistry, ROOT,
   findActionMap, visibilityOf, hasWriteFlag, valuesOf
 } = require('./check-helpers');
 
@@ -94,31 +96,42 @@ function actionRegistry() {
   return out.length ? shortList(out, 12) : null;
 }
 
-/** 门禁 #17 shared 副本对帐（原 tools/check.js 判据体，逐字搬移）。 */
+/** 门禁 #17 shared 副本对帐（按 SHARED_MANIFEST 逐目标；缺件/漂移/多余三向判红）。 */
 function sharedCopies() {
-  const out = [];
-  const src = [];
-  RELS.filter((r) => r.startsWith('shared/') && r.endsWith('.js')).forEach((r) => src.push({ rel: r, target: r.slice('shared/'.length) }));
-  [['utils/ids.js', 'ids.js'], ['utils/room-tag.js', 'room-tag.js'], ['config/defaults.js', 'defaults.js']].forEach((pair) => {
-    if (!exists(pair[0])) out.push('缺失源文件: ' + pair[0]);
-    else src.push({ rel: pair[0], target: pair[1] });
-  });
-  if (src.length === 0) return ['shared 源文件为空（空集不得判绿）'];
-  const missingTargets = [];
-  for (const cfRoot of ['cloudfunctions/api', 'cloudfunctions/cleanup']) {
-    if (!exists(cfRoot)) { missingTargets.push(cfRoot + '/shared（云函数目录待建）'); continue; }
-    for (const item of src) {
-      const target = cfRoot + '/shared/' + item.target;
-      if (!exists(target)) { out.push('缺副本: ' + target); continue; }
-      const a = raw(item.rel);
-      const b = raw(target);
-      if (!a || !b) continue;
-      if (F.sha256(a) !== F.sha256(b)) out.push('漂移: ' + target + ' ≠ ' + item.rel);
-    }
+  let sync;
+  try {
+    sync = require('../sync-cloud-shared');
+  } catch (e) {
+    return ['无法加载 shared 清单 tools/sync-cloud-shared.js: ' + (e && e.message)];
   }
-  const miss = missingTargets.length ? { skip: missingTargets.join('；') + '（目录存在后必须真红）' } : null;
-  if (out.length) return shortList(out, 10);
-  return miss;
+  const manifest = sync.SHARED_MANIFEST;
+  if (!Array.isArray(manifest) || manifest.length === 0) return ['SHARED_MANIFEST 为空（空集不得判绿）'];
+  const out = [];
+  manifest.forEach((entry) => {
+    const dir = entry.dir;
+    const needed = entry.needed || [];
+    if (!exists(dir)) { out.push('缺副本目录: ' + dir); return; }
+    if (needed.length === 0) { out.push(dir + ' 清单为空（空集不得判绿）'); return; }
+    const neededSet = new Set(needed);
+    needed.forEach((name) => {
+      const srcRel = sync.sourceRelOf(name);
+      const target = dir + '/' + name;
+      if (!exists(srcRel)) { out.push('缺失源文件: ' + srcRel); return; }
+      if (!exists(target)) { out.push('缺副本: ' + target); return; }
+      const a = raw(srcRel);
+      const b = raw(target);
+      if (!a || !b) return;
+      if (F.sha256(a) !== F.sha256(b)) out.push('漂移: ' + target + ' ≠ ' + srcRel);
+    });
+    let extras = [];
+    try {
+      extras = fs.readdirSync(path.join(ROOT, dir)).filter((f) => f.endsWith('.js') && !neededSet.has(f)).sort();
+    } catch (e) {
+      out.push('无法读取副本目录: ' + dir);
+    }
+    extras.forEach((f) => out.push('多余副本: ' + dir + '/' + f));
+  });
+  return out.length ? shortList(out, 12) : null;
 }
 
 /** 门禁 #20 错误码注册表（原 tools/check.js 判据体，逐字搬移）。 */
