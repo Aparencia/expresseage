@@ -5,7 +5,7 @@
 > 更新时机：每批开工/收口、用户裁决变化、风险新增或关闭、HEAD 变化需回读。
 > 本文只记**状态、待办与下一步**，不重复设计口径（口径看 CONTRACT，工程规则看 ENGINEERING，接口看 ARCHITECTURE）。
 
-**快照时间：2026-11-05（HEAD `84acab0` 批 28 真机缺陷修复提交；上一快照 2026-11-03 `0978b6a`）：check.js 39/39 条、check-docs 12/12 条、selftest **38 套** 0 失败、零金额 0 命中（白名单 108 项）；`check.ps1` 4 步退出码 0；**批 28 修 ①兼职客户列表只出 20 人（游标对象化透传）②订单详情动作条分级（主操作一行/次操作一行/危险末位）③多图截图一次打开可左右滑（顾客端同修，TD-066 关闭）**，变异电池 M38~M41 **4/4** 首红 + SHA256 还原；`gate.ps1 -Anchor 8259e13` 红 0/黄 0（24 件/体量 456≤900），证据 §23；隐私文本 **v1.10 定稿（2026-11-03 用户确认，`privacyVersion` 保持 `v4.0.0` 不升版）**、审核材料包 **v2.1 重做**（备案已完成、体验版→可发布口径、32 张截图/4 示意图清单）；批 24~27 已推送远端 `origin/main`（`9526e37..0978b6a`），批 28 未推送、未 tag/提审/发布；证据 §19~§23，批 16~27 内容见 §2）
+**快照时间：2026-11-07（HEAD `2138f43` 代码精简批 P1/P2a/P3 收口；上一快照 2026-11-05 `84acab0`）：check.js 39/39 条、check-docs 12/12 条、selftest **38 套** 0 失败、零金额 0 命中（白名单 108 项）；`check.ps1` 4 步退出码 0；**批 28 修 ①兼职客户列表只出 20 人（游标对象化透传）②订单详情动作条分级（主操作一行/次操作一行/危险末位）③多图截图一次打开可左右滑（顾客端同修，TD-066 关闭）**，变异电池 M38~M41 **4/4** 首红 + SHA256 还原；`gate.ps1 -Anchor 8259e13` 红 0/黄 0（24 件/体量 456≤900），证据 §23；隐私文本 **v1.10 定稿（2026-11-03 用户确认，`privacyVersion` 保持 `v4.0.0` 不升版）**、审核材料包 **v2.1 重做**（备案已完成、体验版→可发布口径、32 张截图/4 示意图清单）；批 24~27 已推送远端 `origin/main`（`9526e37..0978b6a`），批 28 与代码精简三批（P1/P3/P2a，净 −2,566 行）本地已提交、**未推送**、未 tag/提审/发布；证据 §19~§24，批 16~27 内容见 §2）
 > 临时总体说明（全局汇总，非状态源）：[`docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md`](docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md)（版本与取数快照由 Lead 统一维护；状态仍以本文件为准、口径以 CONTRACT 为准）。
 
 ## 1. 一句话状态
@@ -1353,4 +1353,37 @@ check-docs（--batch 1）：通过 12 项；失败 0 项（文档范围 83 份�
 - 代码/判据/文档提交：`84acab0`（fix，24 件）。
 - 证据回填提交：本节读数与顶部快照行 HEAD 回填（chore，本提交）。
 - 未推送远端、未 tag、未提审、未发布（推送由用户确认后执行）。
+
+## 24. 2026-11-07 代码库精简批（P1/P3/P2a，用户指令「不改变功能前提下精简代码库」）
+
+### 24.1 交付范围
+
+- **P1 真死代码（提交 `ad82879`，52 件 +11/−418）**：删 17 条 `history` 死导出（`shared/enums.js` 8 条、`shared/error-codes.js` `ERROR_CODE_MAP`、`shared/actions.js` `ACTION_COUNT`、`shared/stations.js` `DEFAULT_STATIONS`、`utils/avatar.js` `SIZE_RPX`、`store/index.js` 2 条、`api/upload.js`、`pkg-admin/common/format.js` `formatClock`、`pkg-customer/.../reorder.js` `PREFILL_KEYS`）；`ACTION_COUNT` 删除后 `ALL_ACTIONS` 失去唯一引用，连带删除；3 个模块内死函数 `compareCursor`/`validateFailureNote`/`MINUTE_MS`；页面死键 `writing`/`bindNo`/`shareTip`/`failureCode`/`failureId` 与 11 个后台页 `errorAt`；死样式 `.badge-num`/`.result-row`；`pickupCodeText` 四文件传递死链；测试死资产 3 函数 + 6 个 stale 导出（函数保留、只摘导出）；`db/config.js` 与 `config/_common.js` 两处不可达降级分支（2 条断言改指 `shared/defaults`，数量不变）。`tools/dead-export-baseline.json` 71→54。
+- **P3 云函数 shared 生成副本最小化（提交 `5f9b5f8`，19 件 +238/−2,304）**：`tools/sync-cloud-shared.js` 新增并导出 `SHARED_MANIFEST`（api 17 件 / cleanup 6 件），按各云函数**静态 require 闭包**生成最小子集；闭包 ⊄ 清单（漏同步）或清单 ⊄ 闭包（陈旧清单）均 **fail-closed 不写盘**；门禁 `#17` 改为逐目标**缺件/漂移/多余副本**三向对帐；`selftest-cleanup` §A 读同一清单；删除 13 个副本文件（cleanup 12 + api `format.js`）共 **2,236 行生成物**。文档先改后动代码：ARCHITECTURE §1/§2、ENGINEERING §4 表与 §8.2 #17。
+- **P2a 确定性重复收敛（提交 `2138f43`，12 件 +28/−121）**：`pkg-customer/parts/format.js` 79 行重复实现改为 14 行薄封装（主包 `pages/customer/parts/format.js` 单源 + `clock()`）；后台 10 页下拉刷新收口到 `pkg-admin/common/feedback.refresh(page, method, arg)`。
+- **用户可见行为零变化**：页面/文案/action/DTO/错误码/状态机/事件/集合/索引/触发器/云函数入口均未改；断言 38 套 0 失败，仅随死符号删除其专属断言并同步基线。
+
+### 24.2 门禁真实输出
+
+```text
+$ powershell -File check.ps1
+PASS  check.js 代码/配置门禁（39 条）
+PASS  check-docs.js 设计文档门禁（--batch 1）
+PASS  zero-money-scan.js 零金额扫描（源码+页面+文档）
+PASS  selftest.js 全部断言 suite（EXPECTED_ASSERTIONS 闸）
+selftest：运行 38 套；失败 0 套；SKIP 0 套（无）；完整性 0 项；非聚合辅助文件 4 件（已声明）
+check.ps1：全部通过（4 步，退出码 0）
+
+通过 39 项；失败 0 项
+check-docs（--batch 1）：通过 12 项；失败 0 项
+零金额扫描：0 命中（白名单 108 项）
+
+$ node tools/sync-cloud-shared.js --check
+同步完成：写 0 件、删 0 件、已一致 23 件；hash 对帐 OK（23 件次 / 2 套）
+```
+
+### 24.3 提交
+
+- `ad82879`（P1）、`5f9b5f8`（P3）、`2138f43`（P2a），均为本地提交，**未推送**；工作树仅 `project.config.json`（用户 devtools 改动，未纳入提交）。
+- 后续批次（P2b 后台列表壳 / P5 测试夹具去重 / P4 结构）未开工；本轮未改 CONTRACT/口径。
 
