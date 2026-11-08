@@ -40,3 +40,178 @@
 .link {
   color: var(--v4-brand);
 }
+
+/* ── 站点列表（D70/D71）：8 行紧凑展示 + 底部浮层编辑 ───────────────────── */
+.station-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 104rpx;
+  border-bottom: 1rpx solid var(--v4-line);
+}
+
+.station-main {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+
+.station-no {
+  flex-shrink: 0;
+  width: 64rpx;
+  font-size: 24rpx;
+  font-weight: 600;
+  color: var(--v4-brand);
+}
+
+.station-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.station-name {
+  font-size: 30rpx;
+  color: var(--v4-text);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.station-sub {
+  margin-top: 4rpx;
+  font-size: 22rpx;
+  color: var(--v4-text-3);
+}
+
+.station-ops {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 16rpx;
+  margin-left: 16rpx;
+}
+
+.station-ops .mini-btn {
+  margin: 0;
+  padding: 0 20rpx;
+  height: 60rpx;
+  line-height: 60rpx;
+  font-size: 24rpx;
+}
+
+.station-ops .mini-btn[disabled] {
+  opacity: 0.35;
+  border-color: transparent;
+  background: transparent;
+  color: var(--v4-text-3);
+}
+
+/* ── 站点编辑浮层（底部半屏；遮罩拦截背景滚动）─────────────────────────── */
+.sheet-mask {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  padding-bottom: env(safe-area-inset-bottom);
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 1000;
+}
+
+.sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  box-sizing: border-box;
+  max-height: 85vh;
+  padding: 28rpx 28rpx calc(24rpx + env(safe-area-inset-bottom));
+  overflow-y: auto;
+  background: #FFFFFF;
+  border-radius: 24rpx 24rpx 0 0;
+}
+
+.sheet-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 8rpx;
+}
+
+.sheet-title {
+  font-size: 34rpx;
+  font-weight: 600;
+  color: var(--v4-text);
+}
+
+.sheet-pos {
+  font-size: 22rpx;
+  color: var(--v4-text-3);
+}
+
+.sheet-field {
+  padding: 18rpx 0;
+  border-bottom: 1rpx solid var(--v4-line);
+}
+
+.sheet-field-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.sheet-label {
+  font-size: 24rpx;
+  color: var(--v4-text-3);
+}
+
+.sheet-count {
+  font-size: 22rpx;
+  color: var(--v4-text-3);
+}
+
+.sheet-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 68rpx;
+  margin-top: 8rpx;
+  padding: 0 16rpx;
+  border-radius: 8rpx;
+  background: #F6F7F9;
+  font-size: 30rpx;
+}
+
+.sheet-help {
+  display: block;
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  line-height: 1.5;
+  color: var(--v4-text-3);
+}
+
+.sheet-err {
+  margin-top: 16rpx;
+  font-size: 24rpx;
+  color: #E54D42;
+}
+
+.sheet-actions {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 24rpx;
+}
+
+.sheet-btn {
+  flex: 1;
+}
+
+.sheet-tip {
+  margin-top: 12rpx;
+  font-size: 22rpx;
+  color: var(--v4-text-3);
+  text-align: center;
+}
+

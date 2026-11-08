@@ -82,9 +82,9 @@ function register(h, deps) {
       '站点未变更时变更清单不含站点名称');
     const wxml = pageText(PAGE_WXML);
     const pageJs = pageText(PAGE_JS);
-    t.check(wxml.indexOf('站点名称') >= 0 && wxml.indexOf('bindinput="onStationInput"') >= 0
+    t.check(wxml.indexOf('站点配置') >= 0 && wxml.indexOf('bindinput="onStationInput"') >= 0
       && wxml.indexOf('maxlength="{{limits.stationNameMax}}"') >= 0,
-    '配置页渲染站点名称卡片：8 行输入 + 长度上限来自常量');
+    '配置页渲染站点名称编辑（浮层输入，长度上限来自常量）');
     t.check(pageJs.indexOf('onStationInput') >= 0 && pageJs.indexOf('form.stations') >= 0,
       '配置页事件转发 onStationInput 更新 form.stations（页面零业务判据，名称校验在纯件）');
     t.eq(C.LIMITS.stationNameMax, 20, '后台常量站点名称上限 20（与 CONTRACT D32 一致）');
@@ -205,10 +205,43 @@ function register(h, deps) {
       aliasTextMax: stationRules.STATION_ALIAS_MAX * (stationRules.STATION_ALIAS_LEN_MAX + 1) - 1,
       patternTextMax: stationRules.STATION_PATTERN_MAX * (stationRules.STATION_PATTERN_LEN_MAX + 1) - 1
     }, '编辑框文本上限由 shared/station-rules 单项上限推导（N 项 + N-1 个分隔符）');
+
+    // 浮层编辑（列表只展示；点行出草稿；确定才回写；单站即时校验）
+    t.eq([orderedForm.stations[0].aliasCount, orderedForm.stations[0].patternCount], [2, 2],
+      'D71 列表行带别名/格式计数摘要（n 个别名 · n 个格式）');
+    t.eq(configVm.emptySheet().open, false, 'D71 浮层初始关闭（页面 data 初值）');
+    const sheetDraft = configVm.stationDraftOf(orderedForm.stations[0], 0, orderedForm.stations.length);
+    t.eq([sheetDraft.open, sheetDraft.title, sheetDraft.position, sheetDraft.aliasCount],
+      [true, 'P3', '第 1 位 / 共 8 位', 2], 'D71 点行生成草稿：标题只显示 P#，位次单独弱化展示');
+    t.eq([configVm.stationTextCount('甲、乙，丙 丁'), configVm.stationTextCount('')], [4, 0],
+      'D71 输入实时计数（顿号/逗号/空格拆分）');
+    const applied = configVm.applyStationDraft(orderedForm.stations[0], Object.assign({}, sheetDraft, {
+      name: ' 新名字 ', aliasesText: ' 甲 、 乙 ', codePatternsText: ' A-**** '
+    }));
+    t.eq([applied.name, applied.aliasCount, applied.patternCount], ['新名字', 2, 1],
+      'D71 确定草稿回写：名称去空白、多项计数更新（数组拆分仍交给 buildPayload）');
+    t.eq(configVm.validateStationDraft(sheetDraft, orderedForm.stations, 0), '',
+      'D70/D71 浮层草稿基线合法（同一站点自己的别名/格式不与自己冲突）');
+    const draftWith = (patch) => Object.assign({}, sheetDraft, patch);
+    t.eq([
+      configVm.validateStationDraft(draftWith({ name: orderedForm.stations[1].name }), orderedForm.stations, 0).indexOf('不能重复') >= 0,
+      configVm.validateStationDraft(draftWith({ aliasesText: orderedForm.stations[1].name }), orderedForm.stations, 0).indexOf('不能与其他') >= 0,
+      configVm.validateStationDraft(draftWith({ codePatternsText: '1234' }), orderedForm.stations, 0).indexOf('必须包含 *') >= 0,
+      configVm.validateStationDraft(draftWith({ aliasesText: '甲、乙、丙、丁、戊、己' }), orderedForm.stations, 0).indexOf('最多 5 个') >= 0
+    ], [true, true, true, true], 'D71 浮层即时校验：重名/别名撞名/格式无 * /别名超量在确定前就拦');
+    const sheetWxml = pageText(PAGE_WXML);
+    const sheetJs = pageText(PAGE_JS);
+    t.check(sheetWxml.indexOf('class="sheet-mask"') >= 0 && sheetWxml.indexOf('bindtap="onStationOpen"') >= 0
+      && sheetWxml.indexOf('bindtap="onSheetConfirm"') >= 0 && sheetWxml.indexOf('bindtap="onSheetClose"') >= 0
+      && sheetWxml.indexOf('catchtouchmove="onSheetNoop"') >= 0,
+    'D71 站点改为列表 + 底部浮层：点行打开、遮罩/取消关闭、确定回写（背景滚动被遮罩拦截）');
+    t.check(sheetJs.indexOf('onSheetConfirm(') >= 0 && sheetJs.indexOf('onSheetClose(') >= 0
+      && sheetJs.indexOf('onStationOpen(') >= 0 && sheetJs.indexOf('closeSheet(') >= 0,
+    'D71 浮层事件齐备（页面只转发；校验/回写在 parts 纯件）');
   });
 }
 
-const CLIENT_ASSERTIONS = 16 + 22;
+const CLIENT_ASSERTIONS = 16 + 22 + 9;
 
 module.exports = {
   CLIENT_ASSERTIONS,

@@ -42,28 +42,56 @@
         <text class="muted">从取件码推断站点</text>
         <switch checked="{{form.stationInfer.fromCode}}" color="#1F7A5C" data-field="fromCode" bindchange="onStationInferToggle" />
       </view>
-      <view class="form-block" wx:for="{{form.stations}}" wx:key="id">
-        <view class="row between">
-          <text class="strong">{{item.id}} · 第 {{index + 1}} 位（共 {{form.stations.length}} 位）</text>
-          <view class="row">
-            <button class="btn btn-ghost mini-btn" size="mini" disabled="{{index === 0}}" data-index="{{index}}" data-dir="-1" bindtap="onStationMove">上移</button>
-            <button class="btn btn-ghost mini-btn" size="mini" disabled="{{index === form.stations.length - 1}}" data-index="{{index}}" data-dir="1" bindtap="onStationMove">下移</button>
+      <view class="station-row" wx:for="{{form.stations}}" wx:key="id" data-index="{{index}}" bindtap="onStationOpen">
+        <view class="station-main">
+          <text class="station-no">{{item.id}}</text>
+          <view class="station-info">
+            <text class="station-name">{{item.name}}</text>
+            <text class="station-sub">{{item.aliasCount}} 个别名 · {{item.patternCount}} 个取件码格式</text>
           </view>
         </view>
-        <view class="form-row">
-          <text class="form-label">名称</text>
-          <input class="form-input" value="{{item.name}}" maxlength="{{limits.stationNameMax}}" placeholder="{{item.defaultName}}" data-index="{{index}}" bindinput="onStationInput" />
-        </view>
-        <view class="form-row">
-          <text class="form-label">别名</text>
-          <input class="form-input" value="{{item.aliasesText}}" maxlength="{{stationLimits.aliasTextMax}}" placeholder="识别用，多个用顿号或逗号分隔，如：西苑一栋南面" data-index="{{index}}" bindinput="onStationAliasInput" />
-        </view>
-        <view class="form-row">
-          <text class="form-label">取件码格式</text>
-          <input class="form-input" value="{{item.codePatternsText}}" maxlength="{{stationLimits.patternTextMax}}" placeholder="如 *-*-****，多个用顿号分隔；* 代表任意字母数字" data-index="{{index}}" bindinput="onStationPatternInput" />
+        <view class="station-ops">
+          <button class="btn btn-ghost mini-btn" size="mini" data-index="{{index}}" data-dir="-1" disabled="{{index === 0}}" catchtap="onStationMove">上移</button>
+          <button class="btn btn-ghost mini-btn" size="mini" data-index="{{index}}" data-dir="1" disabled="{{index === form.stations.length - 1}}" catchtap="onStationMove">下移</button>
         </view>
       </view>
-      <view class="small">站点编号固定 P1~P8，不能自建/删除；上下移动决定展示顺序（顾客端选择器与兼职端分组按此顺序）。站点名称 1~20 字且不能重复；别名 0~5 个（每个 1~20 字）仅用于识别与手输归一，不展示、不产生新站点，兼职端仍按主站点归类；取件码格式 0~3 个，`*` 代表 1 位以上字母/数字、其余字符按字面量（允许 `-`）、整串匹配（如 *-*-**** 命中 64-4-4033）。关闭「从截图识别站点」/「从取件码推断站点」后，对应判据不再自动带出站点，仍可手动选择站点。</view>
+      <view class="small">点站点行编辑名称/别名/取件码格式；上下移动决定展示顺序（顾客端选择器与兼职端分组按此顺序）。站点编号固定 P1~P8，不能自建/删除；别名仅用于识别与手输归一、不展示，兼职端仍按主站点归类；取件码格式中 `*` 代表任意字母数字（如 *-*-**** 命中 64-4-4033）。</view>
+    </view>
+
+    <view class="sheet-mask" wx:if="{{sheet.open}}" catchtap="onSheetClose" catchtouchmove="onSheetNoop">
+      <view class="sheet" catchtap="onSheetNoop">
+        <view class="sheet-head">
+          <text class="sheet-title">{{sheet.title}} 站点设置</text>
+          <text class="sheet-pos">{{sheet.position}}</text>
+        </view>
+        <view class="sheet-field">
+          <text class="sheet-label">名称</text>
+          <input class="sheet-input" value="{{sheet.name}}" maxlength="{{limits.stationNameMax}}" placeholder="{{sheet.defaultName}}" data-index="{{sheet.index}}" bindinput="onStationInput" />
+          <text class="sheet-help">1~20 字，不能与其他站点重复</text>
+        </view>
+        <view class="sheet-field">
+          <view class="sheet-field-head">
+            <text class="sheet-label">别名</text>
+            <text class="sheet-count">{{sheet.aliasCount}}/5</text>
+          </view>
+          <input class="sheet-input" value="{{sheet.aliasesText}}" maxlength="{{stationLimits.aliasTextMax}}" data-index="{{sheet.index}}" placeholder="如 西苑一栋南面，多个用顿号或逗号分隔" bindinput="onStationAliasInput" />
+          <text class="sheet-help">仅用于识别与手输归一；兼职端仍按主站点归类</text>
+        </view>
+        <view class="sheet-field">
+          <view class="sheet-field-head">
+            <text class="sheet-label">取件码格式</text>
+            <text class="sheet-count">{{sheet.patternCount}}/3</text>
+          </view>
+          <input class="sheet-input" value="{{sheet.codePatternsText}}" maxlength="{{stationLimits.patternTextMax}}" data-index="{{sheet.index}}" placeholder="如 *-*-****，多个用顿号分隔" bindinput="onStationPatternInput" />
+          <text class="sheet-help">`*` 代表任意字母数字、整串匹配；命中唯一站点时作为站点依据</text>
+        </view>
+        <view class="sheet-err" wx:if="{{sheet.error}}">{{sheet.error}}</view>
+        <view class="sheet-actions">
+          <view class="btn btn-ghost sheet-btn" bindtap="onSheetClose">取消</view>
+          <view class="btn btn-primary sheet-btn" bindtap="onSheetConfirm">确定</view>
+        </view>
+        <view class="sheet-tip">「确定」只改本页草稿；点页面底部「保存配置」后才生效。</view>
+      </view>
     </view>
 
     <view class="card">

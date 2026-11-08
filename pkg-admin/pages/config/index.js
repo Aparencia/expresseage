@@ -20,7 +20,9 @@ Page({
     },
     ranges: C.CONFIG_RANGE,
     limits: C.LIMITS,
-    stationLimits: vm.stationInputLimits()
+    stationLimits: vm.stationInputLimits(),
+    // 站点编辑浮层（点行打开；只改草稿，点「确定」才回写 form.stations）
+    sheet: vm.emptySheet()
   },
 
   onLoad() {
@@ -78,8 +80,21 @@ Page({
     this.markDirty();
   },
 
-  // v1.1（D32）站点正式名：8 行固定 P1~P8，只改名称，不增删站点
+  // 站点行点击 → 底部浮层编辑（列表只留名称/别名格式计数/排序按钮，避免 8 行×3 输入把页面拉长）
+  onStationOpen(event) {
+    const index = Number(event.currentTarget.dataset.index);
+    const row = (this.data.form.stations || [])[index];
+    if (!row) return;
+    this._sheetBase = { name: row.name, aliasesText: row.aliasesText, codePatternsText: row.codePatternsText };
+    this.setData({ sheet: vm.stationDraftOf(row, index, this.data.form.stations.length) });
+  },
+
+  // v1.1（D32）站点正式名：浮层打开时改草稿；关闭态（旧入口/防御）仍直接改表单行
   onStationInput(event) {
+    if (this.data.sheet.open) {
+      this.setData({ 'sheet.name': event.detail.value, 'sheet.error': '' });
+      return;
+    }
     const index = Number(event.currentTarget.dataset.index);
     const stations = this.data.form.stations.slice();
     if (!stations[index]) return;
@@ -90,21 +105,83 @@ Page({
 
   // D71 站点别名（仅识别归一用；拆项/校验在 parts 纯件，页面只转发）
   onStationAliasInput(event) {
+    if (this.data.sheet.open) {
+      const text = event.detail.value;
+      this.setData({ 'sheet.aliasesText': text, 'sheet.aliasCount': vm.stationTextCount(text), 'sheet.error': '' });
+      return;
+    }
     const index = Number(event.currentTarget.dataset.index);
     const stations = this.data.form.stations.slice();
     if (!stations[index]) return;
     stations[index].aliasesText = event.detail.value;
+    stations[index].aliasCount = vm.stationTextCount(event.detail.value);
     this.setData({ 'form.stations': stations });
     this.markDirty();
   },
 
   // D70 站点取件码格式（`*`=任意字母数字，整串匹配；拆项/校验在 parts 纯件）
   onStationPatternInput(event) {
+    if (this.data.sheet.open) {
+      const text = event.detail.value;
+      this.setData({ 'sheet.codePatternsText': text, 'sheet.patternCount': vm.stationTextCount(text), 'sheet.error': '' });
+      return;
+    }
     const index = Number(event.currentTarget.dataset.index);
     const stations = this.data.form.stations.slice();
     if (!stations[index]) return;
     stations[index].codePatternsText = event.detail.value;
+    stations[index].patternCount = vm.stationTextCount(event.detail.value);
     this.setData({ 'form.stations': stations });
+    this.markDirty();
+  },
+
+  // 浮层：遮罩/取消（有改动先二次确认放弃）；内容区点击不穿透
+  onSheetNoop() {},
+
+  onSheetClose() {
+    const sheet = this.data.sheet;
+    if (!sheet.open) return;
+    const base = this._sheetBase || {};
+    const changed = sheet.name !== base.name
+      || sheet.aliasesText !== base.aliasesText
+      || sheet.codePatternsText !== base.codePatternsText;
+    if (!changed) {
+      this.closeSheet();
+      return;
+    }
+    feedback.confirm({
+      title: '放弃修改',
+      content: '本次对 ' + sheet.title + ' 的修改尚未确定，确定放弃？',
+      confirmText: '放弃',
+      danger: true
+    }).then((res) => {
+      if (res.confirm) this.closeSheet();
+    });
+  },
+
+  closeSheet() {
+    this._sheetBase = null;
+    this.setData({ sheet: vm.emptySheet() });
+  },
+
+  // 浮层确定：单站即时校验 → 回写该行（页面「保存配置」仍负责整表严格校验与落库）
+  onSheetConfirm() {
+    const sheet = this.data.sheet;
+    if (!sheet.open) return;
+    const stations = this.data.form.stations.slice();
+    const index = Number(sheet.index);
+    if (!stations[index]) {
+      this.closeSheet();
+      return;
+    }
+    const error = vm.validateStationDraft(sheet, stations, index);
+    if (error) {
+      this.setData({ 'sheet.error': error });
+      return;
+    }
+    stations[index] = vm.applyStationDraft(stations[index], sheet);
+    this.setData({ 'form.stations': stations });
+    this.closeSheet();
     this.markDirty();
   },
 

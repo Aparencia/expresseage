@@ -55,16 +55,153 @@ function splitStationText(text) {
 }
 
 // 站点编辑行：当前配置名/别名/取件码格式 + 默认名占位提示；行顺序 = 配置顺序 = 展示顺序（D71）
+// aliasCount/patternCount 供列表行摘要（浮层编辑前的概览），保存/应用草稿后同步更新
 function stationRowsOf(stations) {
   return stationsLib.stationsFromConfig({ stations: stations }).map(function mapStation(item) {
+    const aliasesText = joinStationText(item.aliases);
+    const codePatternsText = joinStationText(item.codePatterns);
     return {
       id: item.id,
       name: item.name,
-      aliasesText: joinStationText(item.aliases),
-      codePatternsText: joinStationText(item.codePatterns),
-      defaultName: stationsLib.stationNameOf(item.id)
+      aliasesText: aliasesText,
+      codePatternsText: codePatternsText,
+      defaultName: stationsLib.stationNameOf(item.id),
+      aliasCount: splitStationText(aliasesText).length,
+      patternCount: splitStationText(codePatternsText).length
     };
   });
+}
+
+// 浮层关闭态（页面 data 初值/关闭时复用，避免行内字段不同步）
+function emptySheet() {
+  return {
+    open: false,
+    index: -1,
+    title: '',
+    position: '',
+    name: '',
+    defaultName: '',
+    aliasesText: '',
+    codePatternsText: '',
+    aliasCount: 0,
+    patternCount: 0,
+    error: ''
+  };
+}
+
+// 站点浮层草稿（点列表行打开）：不改 form，确定时才回写；title=P#，position 只作顺序说明（不与 P# 混读）
+function stationDraftOf(row, index, total) {
+  const item = row || {};
+  return Object.assign(emptySheet(), {
+    open: true,
+    index: Number(index),
+    title: item.id || '',
+    position: '第 ' + (Number(index) + 1) + ' 位 / 共 ' + Number(total) + ' 位',
+    name: item.name || '',
+    defaultName: item.defaultName || '',
+    aliasesText: item.aliasesText || '',
+    codePatternsText: item.codePatternsText || '',
+    aliasCount: splitStationText(item.aliasesText).length,
+    patternCount: splitStationText(item.codePatternsText).length
+  });
+}
+
+// 多项文本的实时计数（输入时更新 n/5、n/3）
+function stationTextCount(text) {
+  return splitStationText(text).length;
+}
+
+// 草稿 → 行：只 trim 与计数，拆项/清洗仍交给 buildPayload 与 shared 严格校验（不静默改用户输入）
+function applyStationDraft(row, draft) {
+  const value = draft || {};
+  const aliasesText = String(value.aliasesText || '').trim();
+  const codePatternsText = String(value.codePatternsText || '').trim();
+  return Object.assign({}, row || {}, {
+    name: String(value.name || '').trim(),
+    aliasesText: aliasesText,
+    codePatternsText: codePatternsText,
+    aliasCount: splitStationText(aliasesText).length,
+    patternCount: splitStationText(codePatternsText).length
+  });
+}
+
+// 浮层内即时校验（与写层同口径，单站范围）：名称/别名/格式分别校验，返回首个中文错误或 ''
+function validateStationDraft(draft, rows, index) {
+  const value = draft || {};
+  const list = Array.isArray(rows) ? rows : [];
+  const current = Number(index);
+  return stationNameErrorOf(value, list, current)
+    || stationAliasErrorOf(value, list, current)
+    || stationPatternErrorOf(value, list, current);
+}
+
+function stationNameErrorOf(value, list, current) {
+  const name = String(value.name || '').trim();
+  if (name.length < stationsLib.STATION_NAME_MIN || name.length > stationsLib.STATION_NAME_MAX) {
+    return '站点名称需填 1~20 字。';
+  }
+  if (list.some(function other(row, position) {
+    return position !== current && String(row.name || '').trim() === name;
+  })) {
+    return '站点名称不能重复。';
+  }
+  return '';
+}
+
+// 其他站点的名称与别名集合（跨站唯一用；当前站自己的历史值不参与）
+function takenNamesOf(list, current) {
+  const taken = {};
+  list.forEach(function collect(row, position) {
+    if (position === current) return;
+    taken[String(row.name || '').trim()] = true;
+    splitStationText(row.aliasesText).forEach(function mark(alias) { taken[alias] = true; });
+  });
+  return taken;
+}
+
+function stationAliasErrorOf(value, list, current) {
+  const aliases = splitStationText(value.aliasesText);
+  if (aliases.length > stationRules.STATION_ALIAS_MAX) {
+    return '每个站点最多 ' + stationRules.STATION_ALIAS_MAX + ' 个别名。';
+  }
+  const taken = takenNamesOf(list, current);
+  const seen = {};
+  for (let i = 0; i < aliases.length; i += 1) {
+    const alias = aliases[i];
+    if (alias.length > stationRules.STATION_ALIAS_LEN_MAX) return '站点别名需填 1~20 字。';
+    if (seen[alias] || taken[alias]) return '站点别名不能与其他名称或别名重复。';
+    seen[alias] = true;
+  }
+  return '';
+}
+
+// 其他站点已用的取件码格式（归一后比较；同一格式跨站会歧义，故写层也拒绝）
+function takenPatternsOf(list, current) {
+  const used = {};
+  list.forEach(function collect(row, position) {
+    if (position === current) return;
+    splitStationText(row.codePatternsText).forEach(function mark(pattern) {
+      const normalized = stationRules.cleanCodePattern(pattern);
+      if (normalized) used[normalized] = true;
+    });
+  });
+  return used;
+}
+
+function stationPatternErrorOf(value, list, current) {
+  const patterns = splitStationText(value.codePatternsText);
+  if (patterns.length > stationRules.STATION_PATTERN_MAX) {
+    return '每个站点最多 ' + stationRules.STATION_PATTERN_MAX + ' 个取件码格式。';
+  }
+  const used = takenPatternsOf(list, current);
+  const seen = {};
+  for (let i = 0; i < patterns.length; i += 1) {
+    const normalized = stationRules.cleanCodePattern(patterns[i]);
+    if (!normalized) return '取件码格式只能用字母/数字/-/*，且必须包含 *（例：*-*-****）。';
+    if (used[normalized] || seen[normalized]) return '取件码格式不能与其他站点重复。';
+    seen[normalized] = true;
+  }
+  return '';
 }
 
 // 别名/格式输入框上限（单源 = shared/station-rules）：N 项 × 单项上限 + (N-1) 个分隔符
@@ -335,6 +472,11 @@ module.exports = {
   emptyForm,
   buildForm,
   stationInputLimits,
+  emptySheet,
+  stationDraftOf,
+  stationTextCount,
+  applyStationDraft,
+  validateStationDraft,
   moveStation,
   serviceRowsOf,
   buildReadonlyInfo,
