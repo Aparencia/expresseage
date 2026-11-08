@@ -92,9 +92,11 @@ function emptyState() {
   };
 }
 
-// 站点 picker 值域：P1~P8 直接取 shared/stations（不自建）；D44 去掉「暂不指定」——每件必须选站点
-function stationOptionsOf() {
-  return stations.listStations().map(function map(item) { return { id: item.id, name: item.name }; });
+// 站点 picker 值域：取 shared/stations，D44 每件必选；D71 名称/顺序以 config.stations 为唯一来源，缺配置回退出厂默认。
+function stationOptionsOf(config) {
+  const source = config || {};
+  const options = Array.isArray(source.stations) ? { stations: source.stations } : undefined;
+  return stations.listStations(options).map(function map(item) { return { id: item.id, name: item.name }; });
 }
 
 function stationIndexOf(options, stationId) {
@@ -147,21 +149,36 @@ function zoneOptionsOf(config, partner) {
   return keys.map(function map(key) { return { key: key, label: labels[key] || zones.ZONE_LABELS[key] || key }; });
 }
 
-// 绑定档案 → 选项（代客单只带 bindingId；顾客身份/编号/宿舍由服务端按绑定反查，端侧不透传）
+// 绑定档案 → 选项（只带 bindingId，身份由服务端反查）；D68 停用/注销顾客标状态且禁止选（服务端仍兜底拒绝）。
 function buildBindingOptions(bindingList) {
   return listOf(bindingList)
     .map(function map(item) {
       const row = item || {};
       const bindingId = textOf(row.bindingId);
       if (!bindingId) return null;
+      const rawStatus = textOf(row.status).toUpperCase();
+      const account = rawStatus === enums.USER_STATUS.SUSPENDED || rawStatus === enums.USER_STATUS.DEACTIVATED
+        ? rawStatus : '';
+      const statusText = account ? (enums.USER_STATUS_LABELS[account] || '') : '';
+      const label = textOf(row.displayName) || '未填称呼';
       return {
         bindingId: bindingId,
-        label: textOf(row.displayName) || '未填称呼',
+        label: statusText ? label + '（' + statusText + '）' : label,
         sub: [textOf(row.dormKey) + textOf(row.roomTag).toUpperCase(), textOf(row.phoneTail)]
-          .filter(function part(value) { return !!value; }).join(' · ')
+          .filter(function part(value) { return !!value; }).join(' · '),
+        status: account || enums.USER_STATUS.ACTIVE,
+        statusText: statusText,
+        disabled: !!account
       };
     })
     .filter(function keep(item) { return item !== null; });
+}
+
+// 默认选中项：第一个可选的（跳过停用/注销顾客）；全都不可选返回 0（由校验兜底拦）
+function firstSelectableIndex(options) {
+  const list = listOf(options);
+  const index = list.findIndex(function pick(item) { return item && item.disabled !== true; });
+  return index >= 0 ? index : 0;
 }
 
 // 页面初始状态：有档案优先走已绑定路径，否则默认新顾客路径
@@ -173,9 +190,10 @@ function createInitialState(input) {
   return Object.assign(state, {
     customerMode: bindingOptions.length ? 'BOUND' : 'GUEST',
     bindingOptions: bindingOptions,
+    bindingIndex: bindingOptions.length ? firstSelectableIndex(bindingOptions) : 0, // D68：默认跳过停用顾客
     zones: zoneOptionsOf(source.config, source.partner),
     services: services,
-    stationOptions: stationOptionsOf(),
+    stationOptions: stationOptionsOf(source.config), // D71：名称/顺序取 config.stations
     appoint: createAppointState(numberOr(source.nowMs, 0) || Date.now()),
     nowMs: numberOr(source.nowMs, 0) || Date.now()
   });
@@ -219,7 +237,7 @@ function applyItemStation(state, itemIndex, optionIndex) {
   if (!option || index < 0 || index >= items.length || !stations.isStationId(textOf(option.id))) {
     return { items: items };
   }
-  const chosen = { stationId: option.id, stationName: textOf(option.name), stationIndex: pickedIndex };
+  const chosen = { stationId: option.id, stationName: textOf(option.name), stationIndex: pickedIndex, stationBy: 'manual' };
   const next = Object.assign({}, items[index], chosen, { stationTouched: true });
   items[index] = next;
   if (index === 0) {
@@ -293,7 +311,15 @@ function validateStation(item, index) {
 // 顾客路径校验：BOUND 只需选中档案（身份由服务端反查）；GUEST 必须齐 dormKey 四要素
 function validateCustomer(state) {
   if (state.customerMode === 'BOUND') {
-    return currentBinding(state) ? '' : '请选择一位已绑定的顾客';
+    const binding = currentBinding(state);
+    if (!binding) {
+      return '请选择一位已绑定的顾客';
+    }
+    // D68：停用/注销顾客禁止代客下单（本地先拦，服务端 order.create 仍兜底 INVALID_STATE）
+    if (binding.disabled === true) {
+      return (binding.statusText || '该顾客已停用') + '，不能代客下单';
+    }
+    return '';
   }
   const guest = state.guest || emptyGuest();
   const name = textOf(guest.displayName);

@@ -229,6 +229,11 @@ function register(h, deps) {
       configVm.validateStationDraft(draftWith({ codePatternsText: '1234' }), orderedForm.stations, 0).indexOf('必须包含 *') >= 0,
       configVm.validateStationDraft(draftWith({ aliasesText: '甲、乙、丙、丁、戊、己' }), orderedForm.stations, 0).indexOf('最多 5 个') >= 0
     ], [true, true, true, true], 'D71 浮层即时校验：重名/别名撞名/格式无 * /别名超量在确定前就拦');
+    // P2-A5 反例（判据有牙）：别名=本站正式名 / 名称撞其他站别名都必须行内红字（与写层 ALIAS_DUP 同判）
+    t.eq([
+      configVm.validateStationDraft(draftWith({ aliasesText: sheetDraft.name }), orderedForm.stations, 0).indexOf('不能重复') >= 0,
+      configVm.validateStationDraft(draftWith({ name: '一栋南面' }), orderedForm.stations, 0).length > 0
+    ], [true, true], 'P2-A5 浮层即时校验：别名=本站正式名 / 名称撞其他站别名均在确定前拦（与写层同判）');
     const sheetWxml = pageText(PAGE_WXML);
     const sheetJs = pageText(PAGE_JS);
     t.check(sheetWxml.indexOf('class="sheet-mask"') >= 0 && sheetWxml.indexOf('bindtap="onStationOpen"') >= 0
@@ -241,7 +246,7 @@ function register(h, deps) {
   });
 }
 
-const CLIENT_ASSERTIONS = 16 + 22 + 9;
+const CLIENT_ASSERTIONS = 16 + 22 + 10; // +1：P2-A5 浮层别名/名称跨站冲突反例（一条 t.eq 两个反例）
 
 module.exports = {
   CLIENT_ASSERTIONS,

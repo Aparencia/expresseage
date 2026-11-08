@@ -175,9 +175,11 @@ module.exports = async function aiParseParcel(ctx, payload) {
   }
 
   // ⑥ 字段裁剪 + 规则优先合并（AI 只补空位，不覆盖规则已确认字段）
+  // D70 双判据开关：与规则快照同源（fromImage 门控识图站点、fromCode 门控码反推，缺省两项均开）
   const aiFields = common.aiParse.normalizeAiFields(rawResult, {
     stationIds: stations.STATION_IDS,
-    stations: stationTable
+    stations: stationTable,
+    stationInfer: stations.stationInferOf(config)
   });
   const mergedResult = common.aiParse.mergeFields(ruleResult, aiFields);
   const merged = mergedResult.fields;

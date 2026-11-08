@@ -218,6 +218,13 @@
             <text>{{isCustomer ? '切换到兼职身份' : '切换到顾客身份'}}</text>
             <text class="row-arrow">›</text>
           </view>
+          <view wx:if="{{subscribeVisible}}" class="row-item" bindtap="onSubscribeTap">
+            <view class="row">
+              <text>微信提醒</text>
+              <text class="muted subscribe-state">{{subscribeStatusText}}</text>
+            </view>
+            <text class="row-arrow">›</text>
+          </view>
           <view class="row-item" data-doc="privacy" bindtap="onDocTap">
             <text>隐私与协议</text>
             <text class="row-arrow">›</text>

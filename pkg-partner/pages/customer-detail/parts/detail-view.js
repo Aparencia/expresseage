@@ -175,7 +175,13 @@ function identityOf(customer) {
     zoneText: dorm.zoneText,
     buildingText: dorm.buildingText,
     roomText: dorm.roomText,
-    boundAtText: boundMs ? customerView.timeText(boundMs) + ' ' + customerView.timeHM(boundMs) : ''
+    boundAtText: boundMs ? customerView.timeText(boundMs) + ' ' + customerView.timeHM(boundMs) : '',
+    // D68：停用/注销顾客详情同样标状态并禁止代客下单（入口隐藏 + 页面方法兜底）
+    status: row.status,
+    statusText: row.statusText,
+    isSuspended: row.isSuspended,
+    isDeactivated: row.isDeactivated,
+    canCreateOnBehalf: row.canCreateOnBehalf
   };
 }
 

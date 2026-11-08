@@ -30,7 +30,7 @@ const ocrFlow = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/o
 const orderModel = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/model.js'));
 const reviewVm = require(path.join(ROOT, 'pkg-admin/pages/recognition-review/parts/view-model.js'));
 
-const EXPECTED_ASSERTIONS = 262; // 253 + 2：401/403 归因 AUTH_FAILED + 鉴权失败不计熔断（2026-11-07）；+7：D70 取件码反推站点/手机号不当码
+const EXPECTED_ASSERTIONS = 272; // 253 + 2：401/403 归因 AUTH_FAILED + 鉴权失败不计熔断（2026-11-07）；+7：D70 取件码反推站点/手机号不当码；+10：D70 双判据开关负向（规则快照/AI 输出各 4 条 + 透传接线 2 条）
 
 const NOW = Date.parse('2026-10-21T12:00:00+08:00');
 const CUSTOMER_OPENID = 'openid-customer-ai';
@@ -225,8 +225,8 @@ const REAL_FILE_ID = 'cloud://test-env.1234/orders/' + REAL_TICKET + '/image.jpg
 const OK_TICKET_STATUS = { valid: true, reason: '' };
 const CLIENT_RID_RE = /^[A-Za-z0-9]{16,32}$/;
 
-function ruleOf(text, tail) {
-  return aiCommon.buildRuleResult(text, tail || '', OK_TICKET_STATUS, {});
+function ruleOf(text, tail, config) {
+  return aiCommon.buildRuleResult(text, tail || '', OK_TICKET_STATUS, config || {});
 }
 
 function tempCloudStub() {

@@ -121,8 +121,8 @@
 | 双角色唯一编号 | 无编号概念（`id` 不上屏，负向判据在 v3 自测） | `utils/ids.js` + 云端 `lib/id-generator`；`customerNo`/`partnerNo`/`developerNo` | 新增 | `selftest-core`、check #8/#19；QA §B | C+8 / P+6 / DEV-01（D15）；服务端随机生成 + 唯一索引 + 碰撞重试；客户端只校验/展示、不作鉴权 |
 | 头像/昵称 | 无采集 | `pkg-customer/pages/order-create` 资料段、`pages/profile`、`pkg-partner/pages/customer-detail`；`upload.prepare({purpose:'AVATAR'})`、`customer.saveProfile`/`partner.saveProfile` | 新增 | `selftest-profile`、check #29；QA §P/§T | `chooseAvatar` + `nickname` 输入；头像可拒绝→默认头像；仅绑定对方可见；后台/卡片/通知不展示；注销删文件（D19） |
 | 后台与切换会话/测试账号 | 无后台（v3 仅本地工具链） | `pkg-admin` 11 页；`admin.*` 23 动作；`switch-session` 中间件；集合 `admin_view_sessions`/`admin_audit` | 新增 | `selftest-admin`、`selftest-admin-pages`、`selftest-switch`、`selftest-testaccount`；check #30/#31；QA §G/§V/§T | READONLY（真实账号只读）/ TEST_WRITE（测试账号可写）；测试数据隔离/标记/排除统计/30 天清理（D14/D18） |
-| 消息与通知 | 无（v3 无站内消息、无订阅） | `pkg-customer/pages/messages`、`pkg-partner/pages/messages`、`pkg-admin/pages/messages`；`message.list`/`send`/`markRead`；集合 `order_messages`；10s/30s 轮询 + 红点 | 新增 | `selftest-messages`、`selftest-message-pages`；QA §E | 订阅消息 P1（D10）；通知/日志不带 L3 敏感值；终态订单留言只读归档 |
-| 隐私与同意 | `utils/privacy.js`（`ensureMediaAccess`/`ensureCameraAccess`）；`docs/privacy/隐私保护指引.md` | `api/privacy.js`（三类隐私接口/拒绝降级）、launch 同意弹窗、`pkg-customer/pages/help` 隐私全文；`user.acceptPrivacy`；`config.getPublic.privacyVersion` | 改进 | `selftest-privacy-text`、`selftest-profile`；check #24 窄豁免；QA §P | 相册/摄像头/头像/昵称逐项声明；隐私文本定稿 v1.10（2026-11-03 用户确认；历史 v1.0、定稿候选 v1.3 留痕）；版本升级可重同意 |
+| 消息与通知 | 无（v3 无站内消息、无订阅） | `pkg-customer/pages/messages`、`pkg-partner/pages/messages`、`pkg-admin/pages/messages`；`message.list`/`send`/`markRead`；集合 `order_messages`；10s/30s 轮询 + 红点；**D73 一次性订阅消息（顾客送达/兼职新单，默认关闭）** | 新增 | `selftest-messages`、`selftest-message-pages`；QA §E/§AJ | 订阅消息 D73（原 P1/D10 已收敛实现）；通知/日志不带 L3 敏感值；终态订单留言只读归档 |
+| 隐私与同意 | `utils/privacy.js`（`ensureMediaAccess`/`ensureCameraAccess`）；`docs/privacy/隐私保护指引.md` | `api/privacy.js`（三类隐私接口/拒绝降级）、launch 同意弹窗、`pkg-customer/pages/help` 隐私全文；`user.acceptPrivacy`；`config.getPublic.privacyVersion` | 改进 | `selftest-privacy-text`、`selftest-profile`；check #24 窄豁免；QA §P | 相册/摄像头/头像/昵称逐项声明；隐私文本定稿 v1.11（2026-11-08 用户确认；历史 v1.10 / v1.0、定稿候选 v1.3 留痕）；版本升级可重同意 |
 | 注销与数据删除 | 无（本机档案可恢复/彻底删除；件级硬删 `utils/parcel-remove.js`） | `user.deleteAccount` + `cleanup.accountDeletion`（两阶段匿名化）；兼职 `admin.setPartnerStatus(CLOSED)`（匿名化+删头像文件+邀请码 `usedBy` 置空）；头像文件删除；订单 `order.deleteRecord`（只软删记录，不删单） | 新增 | `selftest-deletion`（批 9 端到端 89 断言，含 14 条缺陷首红修复）、`selftest-cleanup`、`selftest-cloud`；QA §P/§E15 | v3 数据不迁（D11）；注销后双方互不可见；订单/事件按留存策略清理；两阶段时点见 DATA_MODEL §10.4 |
 | cleanup 定时清理 | 无（无服务端，无定时任务） | 独立云函数 `cleanup` + 单定时触发器；13 个幂等 sweep（邀请码过期、票据、截图 7 天、自动完成、注销、测试数据等） | 新增 | `selftest-cleanup`；运行项在云控制台（用户执行） | 可注入执行器 + 部分失败隔离 + 每轮 `CLEANUP` 汇总审计（E8 口径） |
 | 分享 | `pages/recognize/share-flow.js:shareCard`（中性封面、零业务值） | 19 个顾客/兼职业务页好友转发（卡片构造单源 `utils/share/index.js`：兼职绑定卡只带 `partnerNo`、其余通用邀请卡零 query；固定中性封面、禁止页面截图）；朋友圈仅 `pages/role`、`pages/customer/home`、`pkg-customer/pages/help` 三页（单页模式静态降级）；切换会话隐藏转发/朋友圈入口（`wx.hideShareMenu`） | 改进 | `selftest-share`（断言数以 `node tools/selftest-share.js` 真实输出为准）、`selftest-bind`、`selftest-switch`；check #33；QA §V/§X | 分享面=邀请顾客自己绑定 + 通用邀请；卡片零 L3、禁止页面截图；朋友圈 Beta 只能右上角菜单触发；只读/测试会话禁分享（O3/M-33 关闭，D36） |
@@ -194,11 +194,11 @@
 | 7 | 云存储安全规则与分包形态实测 | E5 | 上传链路 | 用户 + Lead 实测 |
 | 8 | 头像/昵称隐私接口与基础库能力 | E12 | 头像/昵称可能降级 | 用户真机实测 |
 | 9 | DeepSeek 账号/条款/配额合规 | E11 | 识别兜底不能上线 | 用户 + Lead |
-| 10 | VisionKit 真机吐字、上传链路、订阅消息模板 | R3/R2/R6 | 识别形态/通知增强 | 用户真机/申请 |
+| 10 | VisionKit 真机吐字、上传链路、订阅消息真机点检（D73 已实现，默认关闭） | R3/R2/R6 | 识别形态/通知增强 | 用户真机/申请 |
 | 11 | 校方/驿站线下要求、云配额与成本估算 | R9/R13 | 运营与成本 | 用户 |
 | 12 | `docs/delivery/V4_QA_CHECKLIST.md` 全部人点检项（§A~§Y） | R12 | 发布前置 | 用户点检 |
 | 13 | 隐私文本 13 项用户填写 + 微信后台声明 | D9/D16~D19 相关 | 阻塞提审 | 用户 |
-| 14 | P1 清单（订阅消息、提示音、送达照片/签名/二维码、趋势对比、站点动线序、搜索历史、guest 认领 `order.guestClaim`、后台批量作废/复核批量等） | P1 | 后续版本，不阻塞本轮 | 用户裁决排期 |
+| 14 | P1 清单（提示音、送达照片/签名/二维码、趋势对比、站点动线序、搜索历史、guest 认领 `order.guestClaim`、后台批量作废/复核批量等；**订阅消息已按 D73 实现并从 P1 移出**） | P1 | 后续版本，不阻塞本轮 | 用户裁决排期 |
 | 15 | P2 / 不做清单（评分评价等，见 `docs/ux/V4_UX_CUSTOMER.md` §2 与 `docs/ux/V4_UX_DEVELOPER.md` §10.3） | P2 / 不做 | 不在范围 | 用户确认 |
 | 16 | v3 6 类不迁项（本机存储、聊天工具、件级硬删、「未归类→归户」、3 天硬窗口、档案回收站） | 取舍确认 | 需用户确认取舍清单 | 用户勾选 |
 | 17 | 客户端重新上传体验版并复验隐私同意兜底（2026-10-30，D37 补强） | D37 | 真实用户可感知修复的前置 | 用户（未复验前按未修复对待） |

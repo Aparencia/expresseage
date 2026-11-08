@@ -161,10 +161,19 @@ function ticketStatusOf(ticket, scope, nowMs) {
   return { valid: true, reason: '' };
 }
 
+// D70/D71：站点双判据开关（缺省两项均开；单源 = shared/stations.stationInferOf，与客户端同判）
+function stationSwitchesOf(config) {
+  return stations.stationInferOf(config);
+}
+
 // 服务端规则快照（入队 ruleResult）：输入只有去敏文本与尾号提示，故由服务端在同一文本上重跑规则归一。
+// D70 开关：fromImage 门控「截图文本 → 站点」归一、fromCode 门控「取件码格式 → 站点」反推（码抽取不受影响）。
 function buildRuleResult(maskedText, hintTrackingTail, ticketStatus, config) {
+  const switches = stationSwitchesOf(config);
   const conflicts = [];
-  const textStation = normalizeStationFromText(maskedText, config);
+  const textStation = switches.fromImage
+    ? normalizeStationFromText(maskedText, config)
+    : { id: '', name: '', conflict: false };
   if (textStation.conflict) {
     conflicts.push(CONFLICT_STATION_MISMATCH);
   }
@@ -173,8 +182,10 @@ function buildRuleResult(maskedText, hintTrackingTail, ticketStatus, config) {
     conflicts.push(CONFLICT_CODE_CONFLICT);
   }
   const pickupCode = code.value;
-  // D70：取件码格式反推站点为权威（唯一命中才采信；未命中才回退识图站点）
-  const codeStation = inferStationFromCodeOf(code.raw || pickupCode, config);
+  // D70：取件码格式反推站点为权威（唯一命中才采信；未命中才回退识图站点）；fromCode=false 时不做反推
+  const codeStation = switches.fromCode
+    ? inferStationFromCodeOf(code.raw || pickupCode, config)
+    : null;
   const station = codeStation
     ? { id: codeStation.id, name: codeStation.name }
     : { id: textStation.id, name: textStation.name };

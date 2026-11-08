@@ -34,7 +34,7 @@ const accountSwitchVm = require(path.join(ROOT, 'pkg-admin/pages/account-switch/
 const reviewVm = require(path.join(ROOT, 'pkg-admin/pages/recognition-review/parts/view-model.js'));
 const messagesVm = require(path.join(ROOT, 'pkg-admin/pages/messages/parts/view-model.js'));
 
-const EXPECTED_ASSERTIONS = 146 - 16 + adminStationCases.CLIENT_ASSERTIONS + 22 + 3 + 11 + 5 + 2 + adminOrdersCases.CLIENT_ASSERTIONS + adminInviteCases.CLIENT_ASSERTIONS + adminCustomerUiCases.CLIENT_ASSERTIONS; // 146-16+…：v1.1/D32 站点卡 16 条随 D70/D71 新增断言移入 tools/lib/admin-config-station-cases.js（合计 CLIENT_ASSERTIONS）；146+…=C 组 8 条移入 tools/lib/admin-invite-cases.js（含原 8 + D59 新增 15，合计 CLIENT_ASSERTIONS）；+5：批26-D58 后台转派留痕（P 组，D58 真实 DTO 驱动后 3→5）；+11：D43 自动完成时间用例表；+6：订单行/消息行「称呼（编号）」；+6：D68 顾客状态界面（用例表拆出 admin-customer-ui-cases.js）；余同批 16 前：反馈④ 6 + D41 目录 3
+const EXPECTED_ASSERTIONS = 146 - 16 + adminStationCases.CLIENT_ASSERTIONS + 22 + 3 + 11 + 5 + 2 + adminOrdersCases.CLIENT_ASSERTIONS + adminInviteCases.CLIENT_ASSERTIONS + adminCustomerUiCases.CLIENT_ASSERTIONS + 3; // 146-16+…：v1.1/D32 站点卡 16 条随 D70/D71 新增断言移入 tools/lib/admin-config-station-cases.js（合计 CLIENT_ASSERTIONS）；146+…=C 组 8 条移入 tools/lib/admin-invite-cases.js（含原 8 + D59 新增 15，合计 CLIENT_ASSERTIONS）；+5：批26-D58 后台转派留痕（P 组，D58 真实 DTO 驱动后 3→5）；+11：D43 自动完成时间用例表；+6：订单行/消息行「称呼（编号）」；+6：D68 顾客状态界面（用例表拆出 admin-customer-ui-cases.js）；+3：P2-B1 DISABLED 归因按 failureCode 分流断言；余同批 16 前：反馈④ 6 + D41 目录 3
 
 const ADMIN_PAGES = ['overview', 'invite-codes', 'customers', 'customer-detail', 'partners', 'orders', 'order-detail', 'config', 'account-switch', 'messages', 'recognition-review'];
 const STATUS_LITERALS = ['SUBMITTED', 'ACCEPTED', 'PICKED', 'DELIVERED', 'COMPLETED', 'CANCELLED', 'EXCEPTION'];
@@ -562,6 +562,13 @@ function register(h) {
       '存量 DISABLED 记录失败码显示「兜底未开启」而非「服务不可用」（2026-11-07）');
     t.eq(C.failureCodeTextOf({ failureCode: 'LLM_ERROR', aiErrorCode: 'TIMEOUT' }), C.FAILURE_CODE_LABELS.LLM_ERROR,
       '真实 AI 失败仍显示「智能识别服务不可用」（仅 DISABLED 改写）');
+    // P2-B1：DISABLED 只改写 LLM_ERROR；LOW_CONFIDENCE 说可信度低（不冒充「规则未认出」），其余码保持本码人话
+    t.eq(C.failureCodeTextOf({ failureCode: 'LOW_CONFIDENCE', aiErrorCode: 'DISABLED' }), '可信度低（兜底未开启）',
+      'DISABLED+LOW_CONFIDENCE 显示「可信度低（兜底未开启）」而非「规则未认出」');
+    t.eq(C.failureCodeTextOf({ failureCode: 'PARSE_MISS', aiErrorCode: 'DISABLED' }), C.FAILURE_CODE_LABELS.PARSE_MISS,
+      'DISABLED 不改写其它失败码（PARSE_MISS 仍显示本码人话）');
+    t.eq(C.failureCodeTextOf({ failureCode: 'LOW_CONFIDENCE', aiErrorCode: 'TIMEOUT' }), C.FAILURE_CODE_LABELS.LOW_CONFIDENCE,
+      '非 DISABLED 的 LOW_CONFIDENCE 走正常标签（不误改兜底归因）');
     const detail = reviewVm.decorateDetail({
       failureNo: 'F-1', failureCode: 'LOW_CONFIDENCE', sourceRole: 'PARTNER', uploaderNo: 'P-7K2-M9X',
       uploaderDisplayName: '小**', status: 'PENDING', ocrTextMasked: 'x'.repeat(1300),

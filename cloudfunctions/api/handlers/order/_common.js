@@ -6,6 +6,7 @@ const orderState = require('../../shared/order-state');
 const { errors } = require('../../lib/errors');
 const store = require('./_store');
 const transfer = require('./_transfer');
+const subscribe = require('../../lib/subscribe-message');
 
 const {
   enums,
@@ -221,7 +222,12 @@ async function runOrderAction(ctx, payload, spec) {
     throw error;
   }
   const fresh = await getOrderById(ctx, order._id);
-  const result = { order: await buildCurrentOrderView(ctx, fresh || order) };
+  const latest = fresh || order;
+  // 批 31（D73）：送达通知只在事务提交后发；失败不影响业务（lib 内 catch + 日志）。
+  if (eventDoc.type === 'DELIVERED') {
+    await subscribe.notifyDelivered(ctx, latest);
+  }
+  const result = { order: await buildCurrentOrderView(ctx, latest) };
   if (typeof spec.extraResult === 'function') {
     Object.assign(result, spec.extraResult({ built, actorRole }) || {});
   }

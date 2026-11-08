@@ -30,6 +30,7 @@ const partnerApi = require(path.join(ROOT, 'api/modules/partner.js'));
 const enums = require(path.join(ROOT, 'shared/enums.js'));
 const stations = require(path.join(ROOT, 'shared/stations.js'));
 const formModel = require(path.join(ROOT, 'pkg-partner/pages/create-on-behalf/parts/form-model.js'));
+const recognize = require(path.join(ROOT, 'utils/recognize/index.js'));
 const teamModel = require(path.join(ROOT, 'pkg-partner/pages/team/parts/team-model.js'));
 const zeroMoney = require('../zero-money-scan');
 
@@ -676,6 +677,51 @@ function cursorDetailChecks(t, data, orders) {
     'B19c 对象订单游标 → showMore=true（有更早的单才显示入口）');
 }
 
+// ── 批31 T4-a 客户端缺口（D68 停用顾客代客下单闸 / D71 站点 picker 接公开配置 / P2-A9 手填码补站点）──
+const REVISE_ASSERTIONS = 12;
+
+function reviseChecks(t) {
+  const suspended = Object.assign({}, ROW_1, { status: 'SUSPENDED' });
+  const deactivated = Object.assign({}, ROW_2, { status: 'DEACTIVATED' });
+  const rows = [ROW_1, suspended, deactivated].map((row) => customerView.buildListRow(row));
+  t.eq(rows.map((row) => [row.status, row.statusText, row.isSuspended, row.canCreateOnBehalf]),
+    [['ACTIVE', '', false, true], ['SUSPENDED', '已停用', true, false], ['DEACTIVATED', '已注销', false, false]],
+    'R1 客户行 D68 三态：ACTIVE 可代客下单；SUSPENDED/DEACTIVATED 标状态且禁止');
+  const detailSuspended = detailView.identityOf(suspended);
+  t.check(detailSuspended.statusText === '已停用' && detailSuspended.canCreateOnBehalf === false,
+    'R2 顾客详情身份行同步状态并禁止代客下单');
+  t.check(textOfRel('pages/partner/customers/index.wxml').indexOf('showCreateEntry && item.canCreateOnBehalf') >= 0,
+    'R3 客户列表 WXML：停用/注销行隐藏「代客下单」入口');
+  t.check(textOfRel('pkg-partner/pages/customer-detail/index.wxml').indexOf('view.canCreateOnBehalf') >= 0,
+    'R4 顾客详情 WXML：停用/注销入口隐藏（服务端仍兜底）');
+  const options = formModel.buildBindingOptions([ROW_1, Object.assign({}, ROW_2, { status: 'SUSPENDED' })]);
+  t.eq([options[1].label, options[1].statusText, options[1].disabled],
+    ['未填称呼（已停用）', '已停用', true], 'R5 代客下单绑定选项：停用顾客标注并 disabled');
+  const initState = formModel.createInitialState({
+    config: CONFIG, partner: PARTNER, bindingList: [suspended, ROW_1], nowMs: NOW
+  });
+  t.eq([initState.bindingIndex, initState.bindingOptions[initState.bindingIndex].disabled],
+    [1, false], 'R6 初始选中跳过停用顾客（不默认选中不可下单档案）');
+  t.eq(formModel.validate(mutate(boundState(), { bindingOptions: options, bindingIndex: 1 })),
+    '已停用，不能代客下单', 'R7 选中停用顾客提交前本地拦（服务端 order.create 仍兜底）');
+  const renamedConfig = { stations: [{ id: 'P3', name: '东门旧驿站' }, { id: 'P1', name: '西门新驿站' }] };
+  t.eq(formModel.stationOptionsOf(renamedConfig).slice(0, 2),
+    [{ id: 'P3', name: '东门旧驿站' }, { id: 'P1', name: '西门新驿站' }],
+    'R8 D71 站点 picker 名称/顺序取 config.stations（不恒用内置默认表）');
+  t.eq(formModel.createInitialState({ config: renamedConfig, partner: PARTNER, bindingList: [], nowMs: NOW })
+    .stationOptions[0].name, '东门旧驿站', 'R9 createInitialState 把 config 传给站点 picker（同源）');
+  const parcel = Object.assign(formModel.emptyParcel(1), { pickupCode: '64-4-4033' });
+  const synced = recognize.syncStationFromCode(parcel, { stations: renamedConfig.stations });
+  t.eq([synced, parcel.stationId, parcel.stationName, parcel.stationBy],
+    [true, 'P3', '东门旧驿站', 'code'], 'R10 P2-A9 手填码唯一命中格式 → 按码补站点（名称取配置名）');
+  const createPage = textOfRel('pkg-partner/pages/create-on-behalf/index.js');
+  t.check(/onItemInput[\s\S]*?syncStationFromCode/.test(createPage) && createPage.indexOf('stationInfer') >= 0,
+    'R11 代客下单手填码补站点接线（页面已有 config；与顾客端 withManualEdit 同口径）');
+  t.check(textOfRel('pkg-partner/pages/create-on-behalf/index.wxml').indexOf('bindingDisabled') >= 0
+    && /onBindingPick[\s\S]*?disabled/.test(createPage),
+    'R12 代客下单停用顾客：选项标注 + 选择时拦截（不静默建单）');
+}
+
 module.exports = {
   CONFIG,
   DAY,
@@ -705,6 +751,8 @@ module.exports = {
   ticketFile,
   withStation,
   CURSOR_ASSERTIONS,
+  REVISE_ASSERTIONS,
   cursorListChecks,
-  cursorDetailChecks
+  cursorDetailChecks,
+  reviseChecks
 };

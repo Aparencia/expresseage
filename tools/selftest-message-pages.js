@@ -32,8 +32,10 @@ const messageApi = require(path.join(ROOT, 'api/modules/message.js'));
 const client = require(path.join(ROOT, 'api/client.js'));
 const store = require(path.join(ROOT, 'store/index.js'));
 const errorCopy = require(path.join(ROOT, 'shared/error-copy.js'));
+const subscribe = require(path.join(ROOT, 'utils/subscribe.js'));
+const subscribeRow = require(path.join(ROOT, 'pages/profile/parts/subscribe-row.js'));
 
-const EXPECTED_ASSERTIONS = 149; // 实际断言总数（运行后校准；少算/多算都判红）
+const EXPECTED_ASSERTIONS = 177; // 实际断言总数（运行后校准；少算/多算都判红）
 
 const NOW = Date.parse('2026-10-22T12:00:00+08:00');
 const WRITE_REJECTED = '系统维护中，暂时不能提交；急单请留言或联系开发者。';
@@ -90,6 +92,9 @@ const FILES = {
   workbenchJson: 'pages/partner/workbench/index.json',
   workbenchHook: 'pages/partner/workbench/parts/maintenance-hook.js',
   workbenchActions: 'pages/partner/workbench/parts/page-actions.js',
+  workbenchWiring: 'pages/partner/workbench/parts/subscribe-wiring.js',
+  submit: 'pkg-customer/pages/order-create/parts/submit.js',
+  profileRow: 'pages/profile/parts/subscribe-row.js',
   componentJs: 'components/maintenance-mask/index.js',
   componentJson: 'components/maintenance-mask/index.json',
   componentWxml: 'components/maintenance-mask/index.wxml',
@@ -553,6 +558,85 @@ function register(h) {
     t.check(/\.mm-mask/.test(componentWxss) && /\.mm-card/.test(componentWxss)
       && /\.mm-btn/.test(componentWxss) && /\.mm-title/.test(componentWxss),
     'F33 组件 wxss 定义 wxml 使用的全部类（#9 真机无样式静默失败）');
+  });
+
+  // ---------------------------------------------------------------- G 一次性订阅授权纯件（D73）
+  h.section('G. 一次性订阅授权纯件（D73：模板选择/关闭/缺 ID/无 wx 降级）', async (t) => {
+    const on = { subscribeEnabled: true, subscribeTemplateIds: { delivered: 'd1', newOrder: 'n1' } };
+    t.eq(subscribe.planForOrderSubmit(on), ['d1'], 'G1 顾客提交只带送达模板');
+    t.eq(subscribe.planForPartnerTap(on), ['n1'], 'G2 兼职点击只带新单模板');
+    t.eq(subscribe.planForOrderSubmit({ subscribeEnabled: false }), [], 'G3 关闭时不下发授权');
+    t.eq(subscribe.planForPartnerTap({ subscribeEnabled: true }), [], 'G4 缺模板 ID 时不请求');
+    t.eq(subscribe.idsOf({ subscribeTemplateIds: { delivered: 1, newOrder: '' } }),
+      { delivered: '', newOrder: '' }, 'G5 非字符串 ID 归一为空');
+    const empty = await subscribe.request([]);
+    t.eq([empty.ok, empty.skipped], [false, 'empty'], 'G6 空模板列表不调用');
+    const unsupported = await subscribe.request(['x']);
+    t.eq([unsupported.ok, unsupported.skipped], [false, 'unsupported'], 'G7 无 wx 环境安全降级');
+    t.eq(subscribe.enabledOf(null), false, 'G8 配置缺失按关闭');
+    t.eq(subscribe.isMainSwitchOff({ ok: false, error: { errCode: 20004 } }), true,
+      'G9 20004 识别为用户关闭订阅主开关');
+    t.eq(subscribe.isMainSwitchOff({ ok: false, error: { errCode: 43101 } }), false,
+      'G10 43101（无额度）不误判为主开关');
+    t.eq(subscribe.isMainSwitchOff({ ok: true }), false, 'G11 成功结果不触发主开关引导');
+    t.eq(subscribeRow.statusOf({ subscriptionsSetting: { mainSwitch: false } }, 't').state, 'blocked',
+      'G12 主开关关闭 → blocked（引导去设置）');
+    t.eq(subscribeRow.statusOf({ subscriptionsSetting: { mainSwitch: true, itemSettings: { t: 'accept' } } }, 't').state,
+      'on', 'G13 模板 accept → 已开启');
+    t.eq(subscribeRow.statusOf({ subscriptionsSetting: { mainSwitch: true, itemSettings: { t: 'reject' } } }, 't').state,
+      'off', 'G14 模板 reject → 未开启');
+    t.eq(subscribeRow.statusOf({ subscriptionsSetting: { mainSwitch: true } }, 't').state, 'off',
+      'G15 无模板记录 → 未开启（可点此开启）');
+  });
+
+  // ---------------------------------------------------------------- H 批 31 接线静态断言（D73）
+  h.section('H. 批 31 授权真相纯件与页面接线（D73：accept 才算开启/先授权后下单/入口条件）', (t) => {
+    const statuses = subscribe.statusesOf(['a', 'b'],
+      { a: 'accept', b: 'reject', errMsg: 'requestSubscribeMessage:ok', c: 'accept' });
+    t.eq(statuses, { a: 'accept', b: 'reject' }, 'H1 statusesOf 只取请求的模板键、忽略 errMsg 等其它键');
+    t.eq(subscribe.acceptedOf(subscribe.statusesOf(['a'], { a: 'accept' })), true,
+      'H2 全部 accept 才算用户允许（acceptedOf=true）');
+    const rejected = subscribe.statusesOf(['a'], { a: 'reject' });
+    t.eq([subscribe.acceptedOf(rejected), subscribe.resultText(rejected)],
+      [false, '没开启，可在小程序设置里修改'], 'H3 reject：acceptedOf=false，文案说没开启并给修改路径（不冒充成功）');
+    t.eq(subscribe.resultText(subscribe.statusesOf(['a'], { a: 'ban' })), '提醒被平台限制，可在小程序设置里修改',
+      'H4 ban：提示被平台限制（不给假成功）');
+    t.eq(subscribe.resultText(subscribe.statusesOf(['a'], { a: 'filter' })), '该提醒暂不可用，请稍后再试',
+      'H5 filter：提示该提醒暂不可用');
+    const unknown = subscribe.statusesOf(['a'], {});
+    t.eq([subscribe.acceptedOf(unknown), subscribe.resultText(unknown)], [false, ''],
+      'H6 缺键/未知状态：acceptedOf=false、resultText 空串（调用方给中性兜底）');
+    const mixed = subscribe.statusesOf(['a', 'b'], { a: 'accept', b: 'ban' });
+    t.eq([subscribe.acceptedOf(mixed), subscribe.resultText(mixed)],
+      [false, '提醒被平台限制，可在小程序设置里修改'],
+      'H7 多模板混合：任一非 accept 都不算开启，文案取该非 accept 原因');
+
+    const submitSrc = textOf(FILES.submit);
+    const onSubmitAt = submitSrc.indexOf('async function onSubmit(page)');
+    const subscribeAt = submitSrc.indexOf('await requestSubscribe(');
+    const createAt = submitSrc.indexOf('orderApi.create(');
+    t.check(onSubmitAt >= 0 && subscribeAt > onSubmitAt && createAt > subscribeAt
+      && /modeGuard\.isTestWrite\(\)/.test(submitSrc),
+    'H8 submit.js：授权调用在下单调用之前（同一手势）且 TEST_WRITE 会话跳过授权');
+
+    const actions = textOf(FILES.workbenchActions);
+    const wiringSrc = textOf(FILES.workbenchWiring);
+    t.check(/onRowAction\(event\)\s*\{[\s\S]*?actionKey === 'accept' \|\| actionKey === 'reject'[\s\S]*?requestNewOrderSubscribe\(\)[\s\S]*?this\.dispatch\(actionFlow\.rowActionIntent/.test(actions)
+      && /syncSubscribeVisible\(\)/.test(wiringSrc) && /requestNewOrderSubscribe\(\)/.test(wiringSrc),
+    'H9 page-actions：接单/拒单分支先补授权额度、再 dispatch（混入件提供入口可见性与续订方法）');
+
+    t.check(/wx:if="\{\{!readonly && !testWrite && subscribeEnabled\}\}"[\s\S]{0,120}bindtap="onSubscribeTap"/.test(textOf(FILES.workbenchWxml)),
+      'H10 工作台 wxml：开启新单提醒入口受 subscribeEnabled/!readonly/!testWrite 联合控制');
+
+    t.check(/wx:if="\{\{subscribeVisible\}\}"[\s\S]{0,160}bindtap="onSubscribeTap"/.test(textOf(FILES.profileWxml)),
+      'H11 我的页 wxml：微信提醒行受 subscribeVisible 控制（不可用时整行隐藏）');
+
+    const rowSrc = textOf(FILES.profileRow);
+    t.check(/modeGuard\.isTestWrite\(\)/.test(rowSrc) && /modeGuard\.isReadonly\(\)/.test(rowSrc),
+      'H12 我的页行对 READONLY/TEST_WRITE 一律隐藏（modeGuard 双判据）');
+
+    t.check(/envVersionOf\(\) === 'develop'/.test(rowSrc) && /console\.warn\('\[subscribe\] profile row failed'/.test(rowSrc),
+      'H13 订阅失败调试弹窗仅 develop；release/trial 只进 console（不向用户暴露 errCode）');
   });
 }
 

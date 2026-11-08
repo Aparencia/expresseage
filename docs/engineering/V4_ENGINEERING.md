@@ -194,8 +194,8 @@ expressage_college_v4/
 | `testDataRetentionDays`（v0.9） | **测试数据保留天数**（超期未使用清空业务数据、账号保留） | 30（范围 7~90） | admin.updateConfig |
 | `aiFallback`（v0.8） | **AI 兜底开关与限额**：`{enabled,model,timeoutMs,maxPerUserPerDay,dailyQuota,cooldownMinutes}` | 默认 `{enabled:false（实测后开）, model:'deepseek-chat', timeoutMs:8000, maxPerUserPerDay:5, dailyQuota:<按运营量定>, cooldownMinutes:10}`；值为次数/毫秒/布尔，**不含任何交易语义** | MVP **后台只读展示**（`admin.updateConfig` 白名单不含该键，P1 再开）；改值走部署配置脚本/控制台，且与隐私文本同步 |
 | `privacyVersion` | 隐私版本号 | 由隐私文本定稿回填（文本键，非空≤32） | admin.updateConfig（隐私定稿流程；后台 config 页不提供编辑入口） |
-| `subscribe`（P1） | 订阅消息 `{enabled,templates:{newOrder,status,exception}}` | 默认关闭 | admin.updateConfig |
-- 客户端只经 `config.getPublic` 取公开子集（不含 `subscribe.templates` 的模板 ID、不含 `aiFallback` 的任何密钥类信息；**公开子集含 `avatarMaxBytes`（压缩目标）与 `viewTicketTtlMinutes`（黄条/蓝条倒计时），均为只读非敏感值（并含  站点展示名，D32）**）；`config` 缓存 TTL 5 分钟 + onShow 刷新；AI 开关/限额变更仅服务端生效（客户端不依赖开关做安全判断）；**`aiFallback` 不经 `admin.updateConfig`**（MVP 后台只读），改值走部署配置脚本/控制台并与隐私文本同步。
+| `subscribeTemplates`（D73） | 服务通知 `{enabled,delivered:{templateId,page,fields},newOrder:{…}}` | 默认关闭；真实 ID 随默认值入库，控制台改 `enabled` | 控制台 `config/global`（后台暂无编辑页） |
+- 客户端只经 `config.getPublic` 取公开子集（**D73：订阅启用时含 `subscribeTemplateIds{delivered,newOrder}`（模板 ID 非凭证，客户端授权必需），仍不含字段映射**；不含 `aiFallback` 的任何密钥类信息；**公开子集含 `avatarMaxBytes`（压缩目标）与 `viewTicketTtlMinutes`（黄条/蓝条倒计时），均为只读非敏感值（并含  站点展示名，D32）**）；`config` 缓存 TTL 5 分钟 + onShow 刷新；AI 开关/限额变更仅服务端生效（客户端不依赖开关做安全判断）；**`aiFallback` 不经 `admin.updateConfig`**（MVP 后台只读），改值走部署配置脚本/控制台并与隐私文本同步。
 ---
 ## 4. 云开发资源设计
 ### 4.1 云函数与代码分层
@@ -211,6 +211,7 @@ expressage_college_v4/
 | | `handlers/admin/{accountSwitch,testAccounts}.js`（v0.9） | 切换会话开启/结束（两模式共用 `admin_view_sessions`）、测试账号创建/删除/清数据（合成 `openid='TEST-<random>'` + 级联）；只解决"以谁的身份、是否可写"，不写业务规则 |
 | `cloudfunctions/cleanup` | `index.js` + `sweeps/*` | `cleanup.*` 定时入口；每个 sweep 注入 `now/db/cloud`，返回 `{scanned, acted, failed}` 日志 |
 | 共享代码 | `tools/sync-cloud-shared.js` | `shared/**` + **`utils/ids.js → shared/ids.js`** + **`utils/room-tag.js → shared/room-tag.js`** + **`config/defaults.js → shared/defaults.js`** 按各云函数**静态 require 闭包**复制最小子集到两云函数（清单唯一源 = `SHARED_MANIFEST`）；**副本逐字节 hash 对帐**（check.js #17 逐目标；缺件/漂移/多余文件三向判红）；上传前必跑 |
+| `cloudfunctions/api/config.json`（D73 起） | 云调用权限声明 | `permissions.openapi` 必须含代码实际使用的 `subscribeMessage.send` 与 `security.msgSecCheck`（**必须入库**，不能只在控制台存在）；缺失时云函数调用 openapi 报 `-604101`，部署后约 10 分钟权限缓存生效；本地单测注入 cloud 桩、不读该文件 |
 - 云函数目录各自独立部署（不能 require 兄弟目录）⇒ 共享代码复制 + hash 门禁，禁止"服务端引用仓库根"。
 - 依赖：每个 `package.json` **只有 `wx-server-sdk`**（版本 `npm view wx-server-sdk version` 实测后锁定并回填 `.tool-versions`）；不引第三方库。AI 外调用运行时内置 `fetch`（Node 18+）或 `https` 模块，**不新增 npm 依赖**；批 1 实测运行时能力并回填 RUNBOOK。
 - 超时/内存/环境变量按控制台配置，全部记录进 `docs/delivery/V4_RUNBOOK.md`。
@@ -225,7 +226,7 @@ expressage_college_v4/
 | `order` | `order.create`、`order.get`、`order.listCustomer`、`order.listPartner`（返回列表+`counts`）、`order.accept`、`order.reject`、`order.markPicked`、`order.unmarkPicked`、`order.markDelivered`、`order.unmarkDelivered`、`order.reportException`、`order.resolveException`、`order.cancel`、`order.confirmDelivery`、`order.correct`、`order.undo`、`order.deleteRecord`、**`order.requestTransfer`/`order.acceptTransfer`/`order.declineTransfer`/`order.cancelTransfer`（D58 转派四写动作）**、`order.imageUrl` | `handlers/order/` | 状态动作见 4.2b；`listPartner` 返回列表 + `counts` **6 项**（**D58 增 `view='transfer'` 且顶层 +`transferPending`，`counts` 六项形状不变**）；**v1.0 单入口 `order.create`（一单多包裹），`order.createBatch` 已移除**；**无专用 batch 云函数**：批量=客户端循环+同一 `batchActionId`；**无任何费用类动作（v0.7）**；**guest 代客单路径不写 `bindings`**；TEST_WRITE 下 `orders.isTest` 服务端派生、事件/订单写 `impersonatedBy`；**D58：转派归属改写只在 `acceptTransfer` 事务；过期=惰性判定（不新增 sweep）；4 个 `TRANSFER_*` 私有事件由 `message.list` 过滤，仅 `TRANSFER_ACCEPTED` 可见** |
 | `message` | `message.send`、`message.list`、`message.markRead` | `handlers/message/` | 留言/消息中心聚合/已读水位；30 条/日/单；TEST_WRITE 下 `fromId=effectiveOpenid` |
 | `upload` | `upload.prepare`、`upload.cancel` | `handlers/upload/` | `purpose ∈ {TICKET, AVATAR}`；TICKET → `orders/{ticket}/image.jpg`，AVATAR → `avatars/{role}/{random}.jpg`（**不含 openid**）；ticket 5 分钟 + 服务端构建路径 + `draftId`；AVATAR ≤`config.avatarMaxBytes`、jpg/png；**TEST_WRITE 下票据归属 `effectiveOpenid`** |
-| `config` | `config.getPublic` | `handlers/config/` | 公开配置：zoneLabels、serviceCatalog（**仅 code/name/desc**）、announcement、maintenance、screenshotRetentionDays、orderTimeoutMinutes、autoCompleteAt（UTC+8 的 HH:MM，D43）、privacyVersion、`subscribeEnabled`（P1）、**`avatarMaxBytes` 与 `viewTicketTtlMinutes`（只读数值，v0.9）**；模板 ID/文案仅服务端使用、不下发客户端 |
+| `config` | `config.getPublic` | `handlers/config/` | 公开配置：zoneLabels、serviceCatalog（**仅 code/name/desc**）、announcement、maintenance、screenshotRetentionDays、orderTimeoutMinutes、autoCompleteAt（UTC+8 的 HH:MM，D43）、privacyVersion、`subscribeEnabled`、**`avatarMaxBytes` 与 `viewTicketTtlMinutes`（只读数值，v0.9）**；**D73：订阅启用时另下发 `subscribeTemplateIds{delivered,newOrder}`（仅模板 ID，客户端授权必需），仍不下发字段映射** |
 | `health` | `health.check` | `handlers/health/` | 部署自检（**内部动作**：仅部署者/云函数内部可调，不对客户端开放） |
 | `admin` | v0.8 全集（`createInvites/revokeInvite/listInvites/listCustomers/getCustomer/listPartners/setPartnerStatus/listOrders/getOrder/listAudit/updateConfig/stats/bootstrap` + **`viewAsStart/viewAsEnd`（`{role,targetNo,mode ∈ {READONLY, TEST_WRITE}}`，真实账号只允许 `READONLY`）** + 复核四动作）+ **v0.9 增 `createTestAccount`/`listTestAccounts`/`deleteTestAccount`/`purgeTestData`** | `handlers/admin/` | 仅 ADMIN_OPENIDS（JSON 映射 → `developerNo`）；逐动作写 `admin_audit`；后台 DTO 一律脱敏（§4.9，**不含头像、昵称脱敏**）；**`listCustomers/listPartners/listOrders` 默认排除测试账号与 `isTest` 数据**（显式切换才含，审计记 `includeTest`）；`viewAs*` 见 §4.8；测试账号四动作见 §4.11 |
 | `ai` | `ai.parseParcel`（**v0.8 受控兜底唯一外呼出口**） | `handlers/ai/` + `lib/ai/` | 入参 `{ocrTextMasked≤2000, hintTrackingTail?, uploadTicketId, role}`；须登录且 role ∈ CUSTOMER/PARTNER；**切换会话（READONLY/TEST_WRITE）一律 `FORBIDDEN`**（v0.9：切会话不外呼、不产生测试复核记录）；外呼失败/超时/熔断/超配额**静默降级**、**不新增错误码**；失败必写 `recognition_failures`（§4.10） |
@@ -870,12 +871,12 @@ expressage_college_v4/
 2. CONTRACT §7 页面路径全集 = app.json 声明（主包 8 + 分包 25 = **33 页**；批 1 后生效，v1.0 含 `pickup-list`→D64 迁主包 `pickcodes`；v1.4/D46 增 `pick-list`；**v1.10/D59 增 `pkg-partner/pages/team/index`（32→33）**）。
 3. CONTRACT §5.3 action 表 = `shared/actions.js`（双向；`visibility=internal` 单列，不对客户端开放；**`admin.createInvites/revokeInvite/listInvites/listCustomers/getCustomer/listPartners/setPartnerStatus/listOrders/getOrder/listAudit/updateConfig/stats/viewAsStart/viewAsEnd/createTestAccount/listTestAccounts/deleteTestAccount/purgeTestData/listRecognitionFailures/getRecognitionFailure/fixRecognitionFailure/ignoreRecognitionFailure`、`ai.parseParcel` 全部在册**）；DATA_MODEL §7 的 action 名 ⊆ CONTRACT 表，**且 CONTRACT 的客户端动作（`cleanup.*` 除外）必须反向出现在 §7**；§7 章节标题缺失或动作 token 解析为空集直接判红（TD-079①）。
 4. CONTRACT §4 集合表 = `shared/collections.js`（**14 集合**，含 `invitation_codes`、`admin_view_sessions`、`recognition_failures`）；`shared/error-codes.js` **恰好等于** CONTRACT §5.3 的 13 码（双向，旧码零命中；AI 兜底失败不入码）。
-5. D#/E# 引用可解析：CONTRACT §13 的 **D1~D42 连续**；本文 §13 的工程缺口 **E1~E12 全部已定义且连续**；文内**方括号显式引用 `[E#]` 未在定义集内即判红**（`docs/archive/**` 历史快照与 QA §E / 提审材料 §5 的另一命名空间不在本判据内）。
+5. D#/E# 引用可解析：CONTRACT §13 的 **D1~D73 连续**（上限单源 = `tools/check-docs.js` 的 `D_MAX`，随裁决扩展；引用编号超出该上限即判红）；本文 §13 的工程缺口 **E1~E12 全部已定义且连续**；文内**方括号显式引用 `[E#]` 未在定义集内即判红**（`docs/archive/**` 历史快照与 QA §E / 提审材料 §5 的另一命名空间不在本判据内）。
 6. 正文无未完成占位标记（英文待办缩写、\"以后再补\"类措辞、单字占位符）；`[E#]`、`[R#]`、`P1/P2`、`[D#]`、`⏳` 不算占位。
 7. **零金额文档扫描**：docs/ + 根 md 按 §7.6 词表命中 0（白名单精确项例外），失败输出 `file:line`。
 8. **编号规格一致性**：CONTRACT §3.1 表 = 本文 §5.3 表 = `utils/ids.js` 导出的字母表/长度/展示分组常量；错前缀三句文案在 `shared/error-copy.js` 存在且被引用；`developerNo` 只来自 `ADMIN_OPENIDS` 映射。
 9. **AI 兜底文档判据（v0.8）**：CONTRACT §4.3/§11.3/§12 与本文 §4.10 必须同时覆盖**三项语义**（外发字段 = 白名单、失败必写 `recognition_failures`、原图访问必落 `FAILURE_IMAGE_VIEW` 审计；按关键词集合匹配，不要求逐字同句）；`failureCode` 5 枚举两侧逐字一致；`config.aiFallback` 键名一致；复核页路径在 CONTRACT §7 = `pkg-admin/pages/recognition-review/index`；文档只出现 `DEEPSEEK_API_KEY` 键名、绝无明文 Key。
-10. **v0.9/v1.0 文档一致性**：①旧口径禁词表（旧头像采集声明、旧双机验收说法、旧单账号说明、小写 roomTag 后缀变量、旧视角页名）在 docs/ + 根 md 零命中——**词表唯一单源在 `tools/check-docs.js`，文档不重复字面量**；②D# 引用可全部解析到 CONTRACT §13 的 D1~D42；③审计枚举双向：`shared/audit-actions.js` = CONTRACT §4.2 列表（`ACCOUNT_SWITCH_*`/`TEST_ACCOUNT_*`/`TEST_DATA_PURGE` 在册，`VIEW_AS_*` 零残留）；④roomTag：CONTRACT D7/§3 = 本文 §5.3b/§4.12 = `utils/room-tag.js` 四端一致且大写；⑤切换会话：`viewMode ∈ {READONLY,TEST_WRITE}`、真实只读、测试可写、票据不落盘、删除测试账号结束会话五条同时覆盖；⑥QA_CHECKLIST 的 v0.9 点检项（账号切换/测试账号/头像/绑定方向）存在。
+10. **v0.9/v1.0 文档一致性**：①旧口径禁词表（旧头像采集声明、旧双机验收说法、旧单账号说明、小写 roomTag 后缀变量、旧视角页名）在 docs/ + 根 md 零命中——**词表唯一单源在 `tools/check-docs.js`，文档不重复字面量**；②D# 引用可全部解析到 CONTRACT §13 的 D1~D73（上限单源同上，随裁决扩展）；③审计枚举双向：`shared/audit-actions.js` = CONTRACT §4.2 列表（`ACCOUNT_SWITCH_*`/`TEST_ACCOUNT_*`/`TEST_DATA_PURGE` 在册，`VIEW_AS_*` 零残留）；④roomTag：CONTRACT D7/§3 = 本文 §5.3b/§4.12 = `utils/room-tag.js` 四端一致且大写；⑤切换会话：`viewMode ∈ {READONLY,TEST_WRITE}`、真实只读、测试可写、票据不落盘、删除测试账号结束会话五条同时覆盖；⑥QA_CHECKLIST 的 v0.9 点检项（账号切换/测试账号/头像/绑定方向）存在。
 11. **总览读数可复算（TD-078）**：`STATE.md` 的「快照时间」行必须带日期与 `HEAD` 锚点，不得裸写断言总数（改为引用 `node tools/selftest.js` 的汇总输出）；`STATE.md` 快照行与 `docs/README.md` 的 §6/§7 现行读数区中，`check.js N/N`、`check-docs N/N`、`selftest N 套`、`白名单 N 项` 必须等于 `tools/check-docs.js` 现场解析的真值（判据数/套数/白名单项数），且读数行必须带取数命令；`README.md` 若出现门禁读数必须带日期锚点或取数命令。
 12. **欠账台账结构（TD-031 教训）**：`docs/governance/V4_TECH_DEBT.md` 表头 6 列、每行 `TD-###` 列数一致（单元格内未转义 `|` 判红）、编号 1..最大号连续无重复、状态只允许 `开放/跟踪中/已关闭`；已关闭行必须有「关闭依据/已完成」结论，未关闭行不得提前写「关闭依据」。
 ### 8.4 `gate.ps1` 适配
@@ -1002,7 +1003,7 @@ expressage_college_v4/
 | R3 | VisionKit 在顾客机型真实吐字（v3 未取证） | 识别体验 | 保留手填兜底；真机取证后再扩规则（无样本不加规则） | 4 |
 | R4 | 云函数冷启动/弱网/超时 | 下单/刷新等待 | 加载态、读重试、写幂等、关键页预拉取；真机实测 | 4/5 |
 | R5 | 截图含姓名/手机号/地址 | 合规/信任 | 压缩、私有存储、7 天删除、日志脱敏、后台默认脱敏 | 4/8 |
-| R6 | 订阅消息模板审批（P1） | 通知体验 | 站内轮询兜底；模板 ID/开关/文案进 config，不进环境变量 | 9 |
+| R6 | 订阅消息模板与额度（D73） | 通知体验 | **模板已由用户提供（D73 收敛为顾客送达 + 兼职新单）**；仍需用户点检模板类型=2 与「总是保持」连续 3 条额度（P0-3）后再启用；站内轮询兜底；模板 ID/字段映射/开关进 config，不进环境变量，`enabled` 默认 false | 31 |
 | R7 | 兼职数据隔离漏洞 | 严重信任问题 | 服务端过滤 + 越权矩阵 + M1/M7 变异 | 3~8 |
 | R8 | 双端并发状态冲突 | 状态错乱 | 合法转移表 + `version` 乐观锁 + 幂等 + 刷新提示 | 5/6 |
 | R9 | 校园运营/校方/驿站要求 | 上线风险 | 用户线下确认；工具定位不承诺快递经营 | 9 |

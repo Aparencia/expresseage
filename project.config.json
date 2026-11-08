@@ -33,40 +33,40 @@
   "packOptions": {
     "ignore": [
       {
-        "type": "folder",
-        "value": "cloudfunctions"
+        "value": "cloudfunctions",
+        "type": "folder"
       },
       {
-        "type": "folder",
-        "value": "docs"
+        "value": "docs",
+        "type": "folder"
       },
       {
-        "type": "folder",
-        "value": "tools"
+        "value": "tools",
+        "type": "folder"
       },
       {
-        "type": "folder",
-        "value": ".git"
+        "value": ".git",
+        "type": "folder"
       },
       {
-        "type": "folder",
-        "value": "node_modules"
+        "value": "node_modules",
+        "type": "folder"
       },
       {
-        "type": "folder",
-        "value": ".dsh-code-index"
+        "value": ".dsh-code-index",
+        "type": "folder"
       },
       {
-        "type": "folder",
-        "value": "coverage"
+        "value": "coverage",
+        "type": "folder"
       },
       {
-        "type": "suffix",
-        "value": ".md"
+        "value": ".md",
+        "type": "suffix"
       },
       {
-        "type": "suffix",
-        "value": ".log"
+        "value": ".log",
+        "type": "suffix"
       }
     ],
     "include": []

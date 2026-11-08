@@ -15,7 +15,7 @@
 | 4 | `docs/engineering/V4_ARCHITECTURE.md` | 代码分层、写作用域 S0~S10、客户端/云函数冻结接口 | 结构接口以它为准 |
 | 5 | `docs/engineering/V4_ENGINEERING.md` | 工程结构/云资源/测试策略/门禁/部署/批次技术拆分 | 工程规则以它为准 |
 | 6 | `docs/ux/V4_UX_CUSTOMER.md` · `V4_UX_PARTNER.md` · `V4_UX_DEVELOPER.md` | 三端逐页交互、状态与验收清单 | 交互细节以 UX 为准，口径以 CONTRACT 为准 |
-| 7 | `docs/delivery/V4_QA_CHECKLIST.md` · `V4_RUNBOOK.md` · `V4_REVIEW_MATERIALS.md` · `V4_V3_PARITY.md` · `review/` | 人工点检、部署运维、提审材料、v3 对照、**提审材料包 v2.1（2026-11-03 重做：6 文档 + 32 张截图清单（沿用 14 / 重拍 11 / 新增 7）+ 4 示意图；备案已完成、隐私文本 v1.10 定稿）** | 执行步骤以 RUNBOOK 为准；验收勾选只能由人做 |
+| 7 | `docs/delivery/V4_QA_CHECKLIST.md` · `V4_RUNBOOK.md` · `V4_REVIEW_MATERIALS.md` · `V4_V3_PARITY.md` · `review/` | 人工点检、部署运维、提审材料、v3 对照、**提审材料包 v2.1（2026-11-03 重做：6 文档 + 32 张截图清单（沿用 14 / 重拍 11 / 新增 7）+ 4 示意图；备案已完成、隐私文本 v1.11 定稿、批 31 后 QA 380 条）** | 执行步骤以 RUNBOOK 为准；验收勾选只能由人做 |
 | 8 | 根 `STATE.md` / `CHANGELOG.md` / `docs/governance/V4_TECH_DEBT.md` / `docs/governance/lessons/` | 唯一状态源 / 版本演进 / 欠账台账 / 踩坑卡 | 状态以 STATE 为准；欠账以台账为准 |
 | 9 | `docs/contract/V4_REBUILD_SPEC.md` | **历史规格快照**（v1.0，2026-10-21）：产品/架构/权限/流程/批次/风险/裁决索引 | 与 CONTRACT 冲突处一律以 CONTRACT 为准（文内已加口径更新指针） |
 | 附 | 根 `AGENTS.md` · `README.md` · `docs/privacy/` · `docs/archive/` | 仓库 agent 纪律 / 对外入口 / 隐私文本与发布前清单 / 历史归档 | 纪律以 AGENTS 为准；隐私对外文本以 privacy 定稿候选为准 |
@@ -95,7 +95,7 @@ docs/
 
 | 文档 | 摘要 |
 | :-- | :-- |
-| `docs/contract/V4_CONTRACT.md` | 唯一口径卡 v1.10：角色与账号（含账号切换两模式）、术语与字段唯一拼写、14 集合摘要、订单状态机七态、action 表与 13 错误码、**33 页页面地图**（D64 起顾客第 3 格「取件码」伪 tab；D59 起第 33 页团队页）、权限矩阵、隐私与留存、裁决索引 D1~D67、写作纪律。门禁直接解析其 §4/§5.3/§7/§13 等章节。 |
+| `docs/contract/V4_CONTRACT.md` | 唯一口径卡 v1.13：角色与账号（含账号切换两模式）、术语与字段唯一拼写、14 集合摘要、订单状态机七态、action 表与 13 错误码、**33 页页面地图**（D64 起顾客第 3 格「取件码」伪 tab；D59 起第 33 页团队页）、权限矩阵、隐私与留存、裁决索引 D1~D73、写作纪律。门禁直接解析其 §4/§5.3/§7/§13 等章节。 |
 | `docs/contract/V4_DECISIONS.md` | D1~D42 裁决台账：每条含用户原文留痕、推荐与被否方案、代价与落点；是理解「为什么这样设计」的第一手材料。 |
 | `docs/contract/V4_REBUILD_SPEC.md` | 重建主规格（v1.0 / 2026-10-21）：产品定义、铁律、架构、角色权限、流程、批次验收、风险。**历史快照**：与 CONTRACT 冲突处按 CONTRACT，文内冲突点已加更新指针。 |
 
@@ -132,7 +132,7 @@ docs/
 | :-- | :-- |
 | `docs/governance/V4_TECH_DEBT.md` | 技术债台账 TD-###：已知偏差、待取证、临时方案、判据缺口；含状态/影响/计划/关闭依据。新条目只增不改语义，编号连续不复用。 |
 | `docs/governance/lessons/` | 踩坑卡（≤12 行/卡，先查重）：每条=现象/根因/修法/判据固化，按日期命名。 |
-| `docs/privacy/隐私保护指引.md` · `发布前填写清单.md` · `补充文档.txt` | 隐私文本**定稿 v1.10（2026-11-03 用户确认；历史 v1.0 / 定稿候选 v1.3 留痕）**，`privacyVersion` 出厂 v4.0.0 不升版；发布前 13 项用户填写；微信后台补充文档（端内全文派生物，随文本重新生成）。 |
+| `docs/privacy/隐私保护指引.md` · `发布前填写清单.md` · `补充文档.txt` | 隐私文本**定稿 v1.11（2026-11-08 用户确认；历史 v1.10 / v1.0 / 定稿候选 v1.3 留痕）**，`privacyVersion` 出厂 v4.0.0 不升版；发布前 13 项用户填写；微信后台补充文档（端内全文派生物，随文本重新生成）。 |
 | `STATE.md`（根） | **唯一状态源**：一句话状态、批次台账、用户待办、真机/实测项、收口证据（真实输出）、风险、最近更新、下一步。 |
 | `CHANGELOG.md`（根） | 用户可见变更 + 工程细节两段，按 Keep a Changelog；条目可追溯到 CONTRACT §/D#、ENGINEERING §/E# 或提交哈希。 |
 | `AGENTS.md`（根） | 仓库级 agent 纪律：口径优先级、分层铁律、写作用域与协作、编码文件纪律、测试与 DoD、提交回写、禁止清单、回报格式。 |
@@ -204,8 +204,8 @@ powershell -File tools/doctor.ps1
 | 范围 | 内容 | 时效与用法 |
 | :-- | :-- | :-- |
 | `docs/archive/overview/` | `V4_INTERIM_OVERVIEW_2026-10-23.md`（临时总览 v1.3，2026-10-23/28 快照） | 已由本文件取代；仅用于追溯当时的进度/门禁读数。 |
-| `docs/archive/research/` | `CONVENIENCE_2026-10-22.md`（便利性调研）、`LOCATION_2026-10-22.md` + `_v2`（D27 位置方案调研，**D27 仍待用户裁决**）、`PERFORMANCE_2026-10-22.md`（性能基线）、`PERFORMANCE_2026-11-01.md`（性能增量研究，HEAD `9526e37` 快照）、`2026-11-01_WORKBENCH_DATE_GROUPING.md`（工作台按日期分类设计研究，D45）、`_BRIEF.md`（调研简报） | 2026-10-22 基线；D27 未决前「不采集定位」口径不变；性能增量研究已按 Q10 并入批 16/17 实施；D45 研究推荐 M1（批 17 实施）。 |
-| `docs/archive/reviews/` | `CODE_2026-10-22_v4-full.md` + `_parts/`（10 份分域审查）、`2026-10-28_USER_FEEDBACK_TRIAGE.md`（用户反馈定位报告）、`2026-11-01_USER_FEEDBACK_PROPOSAL.md`（用户反馈方案探讨稿，**已裁决 D43~D50**） | 历史审查证据；P1×3 已修，M-03 无单独收口记录；反馈项多已由 c9af8cd / D37~D42 落地，遗留四项见 TECH_DEBT；本方案裁决后按 D43~D50 分批实施。 |
+| `docs/archive/research/` | `CONVENIENCE_2026-10-22.md`（便利性调研）、`LOCATION_2026-10-22.md` + `_v2`（D27 位置方案调研，**D27 仍待用户裁决**）、`PERFORMANCE_2026-10-22.md`（性能基线）、`PERFORMANCE_2026-11-01.md`（性能增量研究，HEAD `9526e37` 快照）、`2026-11-01_WORKBENCH_DATE_GROUPING.md`（工作台按日期分类设计研究，D45）、`2026-11-08_SERVICE_NOTIFICATION_FEASIBILITY.md`（「服务通知」可行性研究，**已裁决 D73 / 已实施、默认关闭**）、`_BRIEF.md`（调研简报） | 2026-10-22 基线；D27 未决前「不采集定位」口径不变；性能增量研究已按 Q10 并入批 16/17 实施；D45 研究推荐 M1（批 17 实施）；订阅消息研究结论=只能一次性订阅；模板已由用户提供、模板 ID 下发通道已按 D73 定（公开子集启用时下发 ID、不下发字段映射）。 |
+| `docs/archive/reviews/` | `CODE_2026-10-22_v4-full.md` + `_parts/`（10 份分域审查）、`2026-10-28_USER_FEEDBACK_TRIAGE.md`（用户反馈定位报告）、`2026-11-01_USER_FEEDBACK_PROPOSAL.md`（用户反馈方案探讨稿，**已裁决 D43~D50**）、`2026-11-08_BATCH31_SUBSCRIBE_NOTIFY_PLAN.md`（批 31 服务通知实行方案，**机器侧已收口、待部署与真机点检**）、`2026-11-08_REVIEW_FIX_REPORT.md`（11-07/08 变更独立审查与修复报告） | 历史审查证据；P1×3 已修，M-03 无单独收口记录；反馈项多已由 c9af8cd / D37~D42 落地，遗留四项见 TECH_DEBT；本方案裁决后按 D43~D50 分批实施；批 31 方案 P0-3 真机额度验证待用户。 |
 | `docs/governance/lessons/`（非归档，持续更新） | 28 张踩坑卡（2026-10-22 ~ 2026-10-30） | 按主题：口径/数据一致性、门禁与工具链、UI 与组件、平台能力（OCR/分享/编码）、清理与注销。新增前先查重。 |
 
 > 归档原则：归档文档只保留历史价值，**不参与验收、不冒充现行口径**；归档目录留在 `docs/` 内，继续受 `check-docs` 与零金额扫描覆盖（移出 `docs/` 会退出扫描，属门禁假绿，禁止）。

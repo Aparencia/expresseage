@@ -100,9 +100,14 @@ FAILURE_CODE_SHORT_LABELS[enums.FAILURE_CODE.IMAGE_UNREADABLE] = '图片无法�
 
 // 失败码展示单源：兜底关闭/Key 缺失的存量记录（failureCode 仍为 LLM_ERROR）不得显示成「服务不可用」，
 // 统一改为「兜底未开启」；新记录已由服务端归因 PARSE_MISS/LOW_CONFIDENCE（2026-11-07）。
+// P2-B1：只有「兜底关闭 + LLM_ERROR」才代表规则没认出而兜底又没开；LOW_CONFIDENCE 是识别可信度低
+// （与兜底无关），不能统一改写成「规则未认出」，否则归因失真。
 function failureCodeTextOf(row) {
   const item = row || {};
-  if (item.aiErrorCode === 'DISABLED') return '兜底未开启（规则未认出）';
+  if (item.aiErrorCode === 'DISABLED') {
+    if (item.failureCode === enums.FAILURE_CODE.LLM_ERROR) return '兜底未开启（规则未认出）';
+    if (item.failureCode === enums.FAILURE_CODE.LOW_CONFIDENCE) return '可信度低（兜底未开启）';
+  }
   return FAILURE_CODE_LABELS[item.failureCode] || '识别失败';
 }
 

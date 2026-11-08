@@ -12,6 +12,7 @@ const parcelUtil = require('./_parcel');
 const parcelsInput = require('./_parcels-input');
 const merge = require('./_merge');
 const dto = require('./_dto');
+const subscribe = require('../../lib/subscribe-message');
 
 // 入参白名单（DATA_MODEL §12 #12）：不认识字段一律 VALIDATION_FAILED 并回 data.field（不静默忽略）；v1.0 新增多包裹/配送/手填位。
 // ticket/image 为旧单图形态兼容位（内部折算为 images[0]/tickets[0]）。
@@ -401,6 +402,10 @@ async function createNewOrder(ctx, context, input, clientRequestId, associations
   await backfillFailureRecords(ctx, associations, created);
   const fresh = await common.getOrderById(ctx, created._id);
   const order = fresh || created;
+  // 批 31（D73）：新订单通知只发顾客本人下单（代客单/合并追加不发）；事务提交后 best-effort。
+  if (order.source === enums.ORDER_SOURCE.CUSTOMER) {
+    await subscribe.notifyNewOrder(ctx, order);
+  }
   return { orderNo: order.orderNo, order: await dto.buildOrderDto(ctx, order, { side: context.mode }), merged: false };
 }
 

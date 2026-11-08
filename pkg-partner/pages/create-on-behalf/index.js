@@ -8,6 +8,7 @@ const configApi = require('../../../api/modules/config');
 const client = require('../../../api/client');
 const store = require('../../../store/index');
 const modeGuard = require('../../../api/mode-guard');
+const recognize = require('../../../utils/recognize/index');
 const formModel = require('./parts/form-model');
 const payloadModel = require('./parts/payload-model');
 const presetModel = require('./parts/preset-model');
@@ -167,7 +168,15 @@ Page({
   },
 
   onBindingPick(event) {
-    this.update({ bindingIndex: Number(event.detail.value), presetMiss: false });
+    const index = Number(event.detail.value);
+    const option = (this.state && this.state.bindingOptions || [])[index];
+    // D68：停用/注销顾客选项禁止选中（保持原选择并明说原因；服务端仍兜底拒绝）
+    if (option && option.disabled === true) {
+      wx.showToast({ title: (option.statusText || '该顾客已停用') + '，不能代客下单', icon: 'none' });
+      this.render();
+      return;
+    }
+    this.update({ bindingIndex: index, presetMiss: false });
   },
 
   onGuestInput(event) {
@@ -200,6 +209,18 @@ Page({
       return;
     }
     items[index][field] = (event.detail && event.detail.value) || '';
+    // D70：手填取件码命中唯一站点格式且该件还没选站点 → 按码补站点（与顾客端 withManualEdit 同口径：
+    // 手选站点优先、只补空位）；stationIndex 取同一份 picker 值域（D71 config.stations）。
+    if (field === 'pickupCode' && !items[index].stationId) {
+      const config = this.config || {};
+      const filled = recognize.syncStationFromCode(items[index], {
+        stations: config.stations,
+        stationInfer: config.stationInfer
+      });
+      if (filled) {
+        items[index].stationIndex = formModel.stationIndexOf(this.state.stationOptions, items[index].stationId);
+      }
+    }
     this.update({ items: items, result: null });
   },
 

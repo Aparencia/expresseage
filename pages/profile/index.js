@@ -19,6 +19,7 @@ const avatarRefresh = require('./parts/avatar-refresh');
 const inviteFlow = require('./parts/invite-continuation');
 const deletion = require('./parts/delete-account');
 const logout = require('./parts/logout');
+const subscribeRow = require('./parts/subscribe-row');
 
 const BIND_PAGE = '/pkg-customer/pages/bind/index';
 const CUSTOMER_ORDERS_PAGE = '/pages/customer/orders/index';
@@ -55,6 +56,10 @@ Page({
     orderSummaryText: vm.DEFAULT_ORDER_SUMMARY,
     orderSummaryFromDto: false,
     messagesBadge: 0,
+    // 批 31（D73）：微信提醒（一次性订阅）状态行；viewSession/未启用时隐藏
+    subscribeVisible: false,
+    subscribeState: 'off',
+    subscribeStatusText: '',
     version: '开发版',
     zoneLabels: vm.ZONE_LABELS,
     buildingLabels: vm.BUILDING_LABELS,
@@ -88,6 +93,7 @@ Page({
       tabBar.setData({ selected: profileIndex >= 0 ? profileIndex : 2 });
     }
     this.refresh();
+    subscribeRow.refresh(this);
     this.maybeOpenEditForm();
     this.pullLatest();
     inviteFlow.prompt(this);
@@ -435,6 +441,11 @@ Page({
   // D69：退出登录（本机退出；清会话缓存，保留本机取件码清单）
   onLogout() {
     logout.confirmLogout();
+  },
+
+  // D73：微信提醒行（读取 wx.getSetting；开启走授权，关闭只能去小程序设置）
+  onSubscribeTap() {
+    subscribeRow.onTap(this);
   },
 
   // 分享卡判据全在 parts/share-card.js（D63：顾客带其 ACTIVE 绑定兼职编号）；零昵称/头像/宿舍/尾号/订单，纯件可单测。

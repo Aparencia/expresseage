@@ -1,11 +1,11 @@
 # STATE.md · v4 项目当前状态（唯一状态源）
 
-> 口径版本：与 `docs/contract/V4_CONTRACT.md` v1.4（D1~D50）同步。
+> 口径版本：与 `docs/contract/V4_CONTRACT.md` v1.13（D1~D73）同步。
 > 维护人：lead（其他 agent 只回报状态变化，不直接改本文件；每批收口时由 Lead 统一更新）。
 > 更新时机：每批开工/收口、用户裁决变化、风险新增或关闭、HEAD 变化需回读。
 > 本文只记**状态、待办与下一步**，不重复设计口径（口径看 CONTRACT，工程规则看 ENGINEERING，接口看 ARCHITECTURE）。
 
-**快照时间：2026-11-08（HEAD f06f33f + 批 30 站点双判据/顺序别名/识别修复）：check.js 39/39 条、check-docs 12/12 条、selftest **38 套** 0 失败、零金额 0 命中（白名单 108 项）；check.ps1 4 步退出码 0；**批 30：D70 站点双判据（识图 + 取件码格式反推，后台开关/格式可配）+ D71 站点顺序与别名 + D72 真实截图识别修复（手机号不当码/连字符码保留/尾号按标签）**；真机项交用户点检（QA §AI），证据 §29；批 24~29 基线见 §19~§28）
+**快照时间：2026-11-08（HEAD 964938f + 批 31 服务通知/独立审查修复）：check.js 39/39 条、check-docs 12/12 条、selftest **38 套** 0 失败、零金额 0 命中（白名单 108 项）；check.ps1 4 步退出码 0；**批 31：D73 服务通知（一次性订阅：顾客送达提醒 + 兼职新订单提醒，`enabled` 默认 false；「我的 → 微信提醒」状态行/20004 引导）+ 2026-11-07/08 变更独立审查修复（P0 1 / P1 13，P2 修掉 8 项、登记 TD-092~098）**；真实截图站点识别、D68 停用标注、授权真相、thing 字段预算等见 §29~§31；真机项 QA §AH/§AI/§AJ 交用户点检；批 24~30 基线见 §19~§29）
 > 临时总体说明（全局汇总，非状态源）：[`docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md`](docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md)（版本与取数快照由 Lead 统一维护；状态仍以本文件为准、口径以 CONTRACT 为准）。
 
 ## 1. 一句话状态
@@ -69,6 +69,8 @@
 | 批 28 | 真机缺陷修复批（2026-11-05 用户截图反馈）：客户列表只出 20 人 / 订单详情动作条 UI / 多图截图只能看一张 | **工程侧完成并收口（2026-11-05，HEAD `8259e13` + 本批修复提交）** | ①**游标对象化回归**（服务端 `{dormKey,allocSeq}`/`{sortValue,tie}` 被客户端 `textOf` 字符串化 → 恒 `''`）：`utils/customer-view.hasCursorOf` 单源 + `pages/partner/customers/parts/list-model`、`pkg-partner/pages/customer-detail/{index,parts/detail-view}` 原样透传（顺带修「查看更早」永不出现）；②**订单详情动作条**两层渲染：主操作独占整宽实心行、异常/改码/留言/取消·拒单进次行、危险动作末位白底红字、撤销动作不进条（纯件 `parts/action-bar.js`；根因 `.bb-bar` 非 flex 容器使旧 `flex:1` 从未生效）；③**多图预览**：兼职端 `parts/{image-view,image-actions}.js` 逐张签一次 `previewImage({urls,current})`，顾客端 `parts/parcel-view.previewOf` 同口径（关闭 **TD-066**）；判据 partner-pages +5 / order-detail-partner +13 / order-customer +2，变异电池 M38~M41 四组首红 + SHA256 逐字节还原；`check.ps1` 4 步退出码 0、check 39/39、check-docs 12/12、零金额 0 命中（白名单 108 项）、selftest 38 套 0 失败；**无服务端/契约变更，客户端需重新上传体验版**；真机项见 §23.4；证据 §23 |
 
 | 批 29 | 顾客停用/恢复 + 退出登录（D68/D69，2026-11-08） | **工程侧完成并收口（2026-11-08）** | D68：users.status 三态、admin.setCustomerStatus（只冻结登录与写）、后台顾客列表/详情状态与停用恢复、顾客端状态页、兼职端标签+代客下单闸、审计 CUSTOMER_SUSPEND/RESTORE；D69：本机退出登录（清会话缓存、保留本机取件码、启动页退出态/重新登录）；判据 selftest-admin +20、admin-pages +6、profile +7、partner-orders +1；文档 CONTRACT/DATA_MODEL/ARCHITECTURE/UX×2/QA §AH；证据 §28 |
+| 批 30 | 站点双判据/顺序别名/识别修复（D70~D72，2026-11-08）+ 后台站点配置列表+浮层（补件 `964938f`） | **工程侧完成并收口（2026-11-08，HEAD `964938f`；补件证据随本次收口回填）** | D70 站点双判据（识图 + 取件码格式反推、双开关、唯一命中以码为准、出厂 P3 `*-*-****`）、D71 站点顺序（数组序=展示序）+ 别名（仅识别归一）、D72 真实截图识别修复（手机号不当码/连字符码保留/尾号按标签）；补件 `964938f`：后台站点配置改「列表 + 底部浮层」编辑（草稿制/行内校验/上下移/安全区，`selftest-admin-pages` 246→255）；判据 core/recognize/ai/order-flow/admin-pages 同批扩展；`check.ps1` 4 步 0、check 39/39、check-docs 12/12、零金额 0（白名单 108 项）、selftest 38 套 0 失败；**无新增集合/索引/触发器/云函数单元，需重部署 `api`（shared 副本）**；真机项 QA §AI 待用户；证据 §29（含补件复跑） |
+| 批 31 | 服务通知（一次性订阅，D73，2026-11-08）+ 昨日/今日变更独立审查修复 | **工程侧完成并收口（2026-11-08）** | D73：顾客仅送达提醒（下单提交 tap 授权）、兼职仅新订单提醒（工作台/接单拒单授权 + 滚动额度）、「我的 → 微信提醒」状态行/20004 引导、配置 `subscribeTemplates`（默认关）、公开子集仅启用时下发模板 ID、发送闸/字段预算/skip 日志/失败静默；**审查修复**：thing24 静默丢通知、D70 服务端开关未接、采纳 AI 覆盖手选站点、D68 兼职端停用标注、D71 兼职站点选择器、授权假成功、D72「尾号」标签、后台浮层校验、AI 归因真话、注销页时限、隐私 v1.11 等；判据 messages 108→140、message-pages 149→177、ai 255→272、order-flow 277→286、recognize 295→308、partner-customers 129→140、partner-pages 347→359、admin-pages 246→259、profile 199→200、privacy-text 305→311，QA 362→380；文档 CONTRACT/DATA_MODEL/ENGINEERING/RUNBOOK/UX×2/ARCHITECTURE/DECISIONS/TECH_DEBT/隐私 v1.11/QA §AJ/CHANGELOG/STATE；**无新增集合/索引/触发器/云函数单元；需用户重部署 `api`（config.json 权限 + shared 副本）并在控制台 `config/global` 置 `enabled=true` 后生效（P0-3/模板类型=2 未确认前保持 false）**；真机项 QA §AJ 待用户；证据 §30~§31 |
 ## 3. 批 1 并行交付快照（全部收口）
 
 > 写作用域以 `docs/engineering/V4_ARCHITECTURE.md` §2 为准；实现细节见 CHANGELOG 批 1 条目与各 owner 回执。
@@ -211,7 +213,7 @@
 | R2 | `wx.cloud.uploadFile` + 私有存储"仅创建者可写"真机链路 | 批 1 / 批 4 | ENGINEERING §12 | 待实测 |
 | R3 | VisionKit 在目标机型真实吐字（识别形态闸依据） | 批 4 | ENGINEERING §12 | 待用户真机取证 |
 | E12 | `chooseAvatar` / `nickname` 输入 / 隐私弹窗 / 真机压缩到上限内 | 批 2 | ENGINEERING §13 | 待实测 |
-| R6 | 订阅消息模板审批（P1） | 批 9 | ENGINEERING §12 | 未申请 |
+| R6 | 订阅消息模板与额度（D73） | 批 31 | ENGINEERING §12 | 模板已由用户提供（顾客送达/兼职新单）；**模板类型=2 与「总是保持」连续 3 条额度待用户真机点检（QA §AJ）**；`enabled` 默认 false，确认前不得宣布生效 |
 | AC | 批 20 真机项（QA §AC1~AC6：今日流水/今日已送达汇总/客户页首屏与置底/兼职取件清单双阶段/后台列表称呼/D51 尾窗与跨 0 点） | 批 20 | CONTRACT D51~D56 | 待用户 |
 | R9 | 校园运营/校方/驿站要求（线下确认） | 批 9 | ENGINEERING §12 | 待用户确认 |
 | R13 | 云开发配额/成本按真实单量估算 | 批 9 | ENGINEERING §12 | 未估算 |
@@ -225,6 +227,7 @@
 | 批10 真机 | QA `D13`（多图合成一单）、`D14`（合并窗口六边界）、`D15`（无截图手填）、`D16`（配送地址不写回）、`L1`（取件清单只本人/本机勾选）、`G18`（后台多包裹/无截图/地址脱敏）、`C14`（换绑一次确认+单步恢复）、`E13`/`F30`（红点=留言+状态事件、订单角标不清零）、`R16`（AI 低置信建议条）；**A 批**：`A1`（资料未完善自动展开）、`A23`（三步引导首现/跳过/重看）、`B6`/`C4`（bind 自动查询 0 点击、落地 `getPublic` ≤1、防抖手感）、`C15`（服务范围 CTA 置灰+提交前本地拦）、`D1`/`D12`（相册不弹保存授权、拒绝后替代路径）、`D6`（其他代办备注行内+服务端）、`D9`（失败卡两路/重新识别/单图替换）、`P24`（相册授权与后台声明）、`P25`（头像 5 分钟边界自愈）；性能体感（冷启动/多件单 setData/滚动） | 批 10 | QA_CHECKLIST 附录 B | 待用户点检 |
 | 批11/12 真机 | QA §W（`W1`~`W10`：D30~D35 新要求、识别兜底、顾客端 UI/卡顿、安全基线、取件码四形态）与 §X（`X1`~`X8`：好友转发与朋友圈、切换会话隐藏、泄漏负向、机型与基础库） | 批 11/12 | QA_CHECKLIST §W/§X、§9 第 12 项 | 待用户点检 |
 | 2026-10-30 复验 | QA §Y1（旧卡直落 + 新卡各测一次：未同意必须先进隐私闸、同意后回到 `bind`/首页；体验版需用户重新「上传」才含 D37 与兜底修复）与 §Y2~Y6 | 2026-10-30 | §6n、§7 #30、§9 第 15 项 | 待用户真机复验 |
+| 批29/30/31 真机 | QA §AH（D68/D69 停用恢复/退出）、§AI（D70~D72 站点双判据/顺序别名/识别）、§AJ（D73 订阅消息授权/送达/新单/拒绝不阻断/模板类型/P0-3） | 批 29/30/31 | QA_CHECKLIST | 待用户点检 |
 
 ## 6. 批 1 收口证据（真实输出）
 
@@ -708,6 +711,8 @@ check.ps1：全部通过（4 步，退出码 0）
 13. **每批 DoD 不变**：`check.ps1` 退出码 0 + 真实输出 + 本批验收逐条打勾 + 文档回写；真机/控制台/提审/发布项只能用户执行，agent 不代勾、不代宣布通过。
 
 14. **2026-10-28 拍板批次（D37~D42）已实现并提交**：代码提交 `44e27cb`、证据回填提交 `44e27cb` 的下一提交（`git log` 可查）（门禁真实输出见 §6m）。①分享卡统一落 `launch`（绑定卡 `?bind=`、通用卡零 query；隐私同意闸后分流 `role` 邀请卡 / `orderNo` 深链 / 原分流）；②邀请新用户「隐私同意 → 资料补齐 → 保存后自动绑定」（`bind?auto=1`；已绑同号显示「已绑定·去下单」不重复 create、异号走 D28 一次确认换绑；失败单步恢复）；③绑定限流改 60 秒窗口（预览+提交合计 5 次/分钟，取消每日总量；查询/绑定按钮 loading 文案与禁用、同编号 60 秒去重；预览禁用自动重试防网络抖动放大计数）；④截图 0~10 张（清理槽位 `images[0..9]`、逐图「第 n/N 张」进度、`upload.prepare` 60/日）+ AI 兜底不按人计次（保留全局日配额/冷却/超时降级）；⑤服务类型：标准代取=送寝室门口、新增「送至楼下」、原「送寝上门」停用仅历史展示（读层归一，部署即生效；后台保存一次落库）；⑥头像：新增 `user.avatarUrl` 临时链接通道（本人；绑定对方随 `bind.getCurrent`/`bootstrap` 下发），`avatar-view` 失败可重试、换头像上传超时保留旧头像、修正 2 处 `file-id` 驼峰、两端「我的」onShow 重签。真机项 QA §Y1~Y6（用户点检，agent 不代勾）；收尾补充（同批）：兼职端看顾客头像已补临时 URL 通道（`partner.listBindings`/`partner.getCustomer`/`order.get` counterpart；`order.listPartner` 列表本不返回 counterpart，见 TD-077）；隐私文本三处与引用文档版本标签已统一「定稿候选 v1.3」（历史 v1.0 留痕；`privacyVersion` 保持 v4.0.0 不升版）。仍待用户：云存储权限截图确认私有（read=false）。风险：`pkg-partner/pages/order-detail/index.js` 已到 500 行上限（TD-076）。**收尾批次代码提交 `2873404`**（证据回填提交见 `git log` 的下一提交；门禁真实输出见 §6m 收尾块）。
+
+15. **批 29/30/31 部署与真机（只能用户）**：①按 RUNBOOK §8 重部署 `api`（含 `cloudfunctions/api/config.json` 的 `subscribeMessage.send` + `security.msgSecCheck` 权限；部署后约 10 分钟生效，`-604101` 属预期），确认 `cloudfunctions/cleanup/config.json` 与控制台触发器不重复；②控制台 `config/global` 保持 `subscribeTemplates.enabled=false`，待模板类型=2 与 P0-3 真机额度确认后再置 `true`；③按 QA §AH1~AH5、§AI1~AI7、§AJ1~AJ6 点检（D68/D69、D70~D72、D73）；④重部署后按 RUNBOOK §9 冒烟 `health.check`/`admin.bootstrap`/`config.getPublic`（应含 `subscribeEnabled`，启用后含 `subscribeTemplateIds`）；agent 只给步骤，不代勾、不代宣布通过。
 
 15. **2026-10-30 隐私同意兜底已修复并提交**（证据见 §6n）：真实用户仍反馈隐私同意异常的两层原因——①**体验版仍是修复前构建**（客户端改动只能由用户「上传」后生效；最近一次成功上传证据早于 2026-10-28 的 D37 修复）；②**修复前发出的分享卡 path 固化在聊天里**，上传新包后点旧卡仍直落 `role`、绕过隐私闸。已给 `role`/`customer/home` 补直落兜底（`utils/privacy-gate`）。**用户侧必须**：重新上传体验版 → 用「旧卡 + 新卡」各测一次新用户落地（QA §Y1 已补旧卡场景）→ 真机确认后回签；未复验前按未修复对待。
 
@@ -1523,3 +1528,44 @@ check.ps1：全部通过（4 步，退出码 0）
 - 部署/迁移：`node tools/sync-cloud-shared.js` 后重部署 `api`（shared 新增 `station-rules.js` 副本、`defaults.js` 新增 `stationInfer`/P3 格式）；**无新增集合/索引/触发器/云函数单元**；旧配置读层自动回退默认（不需先迁移库），后台保存一次即结构化落库。
 - 真机项（只能用户点检，agent 不代勾）：QA §AI1~AI7——取件码反推站点、识图站点多说法、手机号不当码、后台调序、站点别名、配置校验/回填、旧配置兼容。
 - 跨批未提交改动（非本批）：AGENTS.md、docs/README、docs/archive/README、研究文档与 `cloudfunctions/cleanup/config.json` 为前序工作树遗留，本批未纳入提交；`project.config.json` 仍为开发者工具重排键序（用户选择保留）。
+- **批 30 补件 `964938f`（2026-11-08 14:47）**：后台站点配置改「列表 + 底部浮层」编辑（页面本地遮罩、无新页面/组件/路由；草稿制、单站即时校验、取消/遮罩二次确认、上下移、计数 n/5 与 n/3、安全区/键盘避让；修复原 UI 三处缺陷）；`selftest-admin-pages` 246→**255**；`docs/ux/V4_UX_DEVELOPER.md` 同步。提交信息自述「全量 check.ps1 与 gate 待并行会话 D73 收口后统一复跑」——**本轮已复跑**（真实输出见 §30/§31），补件无服务端/契约变更。独立审查另修该页浮层校验洞（P2-A5，名称参与跨站唯一/名称不得撞他行别名），`selftest-admin-pages` 255→**259**（见 §31）。
+
+## 30. 批 31 服务通知（一次性订阅，D73，2026-11-08）收口证据（真实输出）
+
+```text
+$ powershell -File check.ps1
+PASS  check.js 代码/配置门禁（39 条）
+PASS  check-docs.js 设计文档门禁（--batch 1）
+PASS  zero-money-scan.js 零金额扫描（源码+页面+文档）
+PASS  selftest.js 全部断言 suite（EXPECTED_ASSERTIONS 闸）
+selftest：运行 38 套；失败 0 套；SKIP 0 套（无）；完整性 0 项；非聚合辅助文件 4 件（已声明）
+check.ps1：全部通过（4 步，退出码 0）
+```
+
+- 套件读数（本次真实输出）：`selftest-messages` **140/140**（108→140：发送闸/默认站点×楼栋字段预算/`order.create` 钩子/重放不重发/发错人/停用/无云/43101）、`selftest-message-pages` **177/177**（149→177：授权真值纯件 + 三处接线静态断言）、`selftest-privacy-text` **311/311**（305→311：D73 隐私披露 + QA §AJ）、`selftest-ai` **272/272**、`selftest-order-flow` **286/286**、`selftest-recognize` **308/308**、`selftest-partner-customers` **140/140**、`selftest-partner-pages` **359/359**、`selftest-admin-pages` **259/259**、`selftest-profile` **200/200**；其余套件读数与批 30 一致，全量断言合计以 `node tools/selftest.js` 汇总为准。
+- 变异电池（先红→回滚→复绿）：M1 去 `enabled` 闸 → H5 首红；M2 去 `isTest` 闸 → H6 首红；M3 去 `users.status` 闸 → H8 首红；M4 关闭时仍下发模板 ID → H16 首红；**审查补齐**：M5 关闭 `thing` 20 字预算 → `selftest-messages` I2/I3 首红（P4/10 栋、P5 各栋实际 null，精确复现原缺陷）；M6 D70 服务端 AI 去 `fromCode`/`fromImage` 门控 → `selftest-ai` 4+3 条首红；M7 `parse.normalizeAiFields` 去门控 → 3/2 条首红；M8 `adoptAiSuggestion` 去手选守卫 → `selftest-order-flow` 2 条首红（P2→P3）；逐条回滚后全部复绿，`sync-cloud-shared --check` 25 件一致。
+- 本批改动（代码/判据）：`config/defaults.js`（`subscribeTemplates` 两模板 + 字段映射 + `enabled:false`；公开子集启用时下发 `subscribeTemplateIds`）、`cloudfunctions/api/db/config.js`（一层深度合并且后台只写 enabled 不丢 ID）、`cloudfunctions/api/lib/subscribe-message.js`（新：发送闸/`thing` 20 字预算/失败降级/skip 日志）、`handlers/order/_common.js`（`DELIVERED` 事务后发顾客）、`handlers/order/_create.js`（`source=CUSTOMER` 事务后发兼职）、`cloudfunctions/api/config.json`（新：`subscribeMessage.send` + 既有 `security.msgSecCheck` 云调用权限）、`utils/subscribe.js`（新：真值判定/20004 场景引导/15s 兜底）、`pkg-customer/pages/order-create/parts/{model,submit}.js`（手选站点优先 + 提交 tap 内授权，TEST_WRITE 不请求）、`pages/profile/**` + `parts/subscribe-row.js`（新：「我的 → 微信提醒」状态行）、`pages/partner/workbench/{index.js,index.wxml,parts/{page-actions,subscribe-wiring}.js}`（开启新单提醒/接单拒单续订）、`tools/{selftest-messages,selftest-message-pages,selftest-cloud-fixtures,selftest-privacy-text}.js`、`cloudfunctions/cleanup/config.json`（入库：触发器 + openapi 空声明）。
+- 口径：CONTRACT §13 **D73**（D1~D73）+ §2/§9/§11.2；DATA_MODEL `config.subscribeTemplates` 行/公开子集/`config.getPublic`；ENGINEERING §3.6 config 行/公开子集、§4.1 云函数 config.json、§12 R6；UX_CUSTOMER §8.4/§9.2、UX_PARTNER §4.12/§3.5；RUNBOOK §8/§14；ARCHITECTURE §2；DECISIONS D73；隐私文本 v1.11；QA §AJ；CHANGELOG；TD-012 关闭、TD-092~098 登记。
+- 部署/启用（用户执行）：`node tools/sync-cloud-shared.js` 已跑（api/cleanup shared 副本一致）→ 重部署 `api`（新增 `config.json` 权限 + shared 副本；部署后约 10 分钟权限缓存生效，期间 `-604101` 属预期）→ 控制台 `config/global` 置 `subscribeTemplates.enabled=true`（模板 ID 已在默认值，勿删）→ 真机授权/送达/新单点检。**模板类型=2 与 P0-3 额度未确认前保持 `enabled:false`，不得宣布生效。**
+- 真机项（只能用户点检，agent 不代勾）：QA §AJ1~AJ6——模板类型=2/权限与公开子集、顾客下单授权（勾「总是保持」后不再弹窗）、送达通知内容与跳转、兼职新单提醒与接单续订、「我的 → 微信提醒」真实状态与 20004 引导、拒绝不阻断与 P0-3 连续 3 条额度。
+- 模板：商品送达通知 `zxQ_yQgray66bHuDXPGGYEQTd6Fn-iCndeW6ImPl6ZQ`（22224，3 字段）；新订单通知 `GP0_nOdr_hn-a2UD0LVgHRhsmCkeHDI11C9c5DnDRKc`（3988，3 字段）；模板 ID 非凭证，随默认值入库。
+- 提交口径：本批代码/判据/文档与 2026-11-07/08 审查修复由 Lead 统一提交（见 §31）；`AGENTS.md` 误删禁令已恢复；`project.config.json` 仅恢复结尾换行（键序按用户选择保留）；`cloudfunctions/{api,cleanup}/config.json` 已入库。
+
+## 31. 2026-11-07/08 变更独立审查修复（2026-11-08）收口证据（真实输出）
+
+```text
+$ powershell -File check.ps1
+PASS  check.js 代码/配置门禁（39 条）
+PASS  check-docs.js 设计文档门禁（--batch 1）
+PASS  zero-money-scan.js 零金额扫描（源码+页面+文档）
+PASS  selftest.js 全部断言 suite（EXPECTED_ASSERTIONS 闸）
+selftest：运行 38 套；失败 0 套；SKIP 0 套（无）；完整性 0 项；非聚合辅助文件 4 件（已声明）
+check.ps1：全部通过（4 步，退出码 0）
+```
+
+- 审查范围与方法：2026-11-07 00:00 起的 12 个提交（`ad82879`/`5f9b5f8`/`2138f43`/`2b626c0`/`6bf60e6`/`fabc8bb`/`81ef0a5`/`8382b63`/`f98187d`/`f06f33f`/`451c225`/`964938f`）+ 工作树（未提交批 31）；**5 组独立只读审查**（批 31 服务端、批 31 客户端、批 29/30 服务端与共享层、批 29/30 客户端+11-07 精简批回归、文档/门禁/治理）+ Lead 复核与修复实现；审查成员均独立会话、只读，未改文件/未 git 写/未真实外呼。
+- 结论与处置：**P0 1**（`AGENTS.md` 被误删「`git commit` / `git tag`」禁令 → 恢复）；**P1 13**（全部修复或文档回写）：thing24 超 20 字静默丢新单通知、D70 服务端 AI 链路未接双开关、采纳 AI 建议覆盖用户手选站点、D68 兼职端「已停用」标注/代客下单闸客户端未消费、D71 兼职代客下单站点选择器未接后台配置、授权结果未区分 accept/reject（拒绝误报「已开启」）、批 31 接线/重放/发错人判据缺失、QA 无 D73 真机条目、STATE/CHANGELOG 读数失真（message-pages 157 vs 实际 164/现 177）、CONTRACT §9 与 D73 冲突、隐私三处未回写兼职新单（用户裁定补写→v1.11）、「我的 → 微信提醒」行/20004 引导超范围无回写（用户裁定保留并补文档）、ARCHITECTURE/DECISIONS/TECH_DEBT 未回写；**P2 已修 8 项**（D72「尾号」标签优先、后台浮层「别名=本站名/名称撞他行别名」校验洞、AI 归因 DISABLED 条件缺 failureCode、注销页「按新用户重进」时限真话、停用/恢复按钮 loading 写在 `<view>`、工作台 enabled=false 死按钮、TEST_WRITE 下单页仍请求授权、`project.config.json` 结尾换行 + README 批号）；**未修 7 项登记 TD-092~098**（批量通知延迟叠加、云函数 config.json/闭包门禁缺口、站点写层 reserved 名、listCustomers 双读 users、配置变更清单旧→新、取件码格式语义重叠、订单 stationName 快照未用配置名）。
+- 判据净增与首红证据：见 §30 变异电池 M5~M8（thing 预算、D70 两处开关、手选站点守卫均精确首红后 SHA256/原样恢复复绿）；另 `selftest-message-pages` 新增纯件/接线静态断言（授权先于创建、先于 dispatch；工作台 `subscribeEnabled`；profile `subscribeVisible`；TEST_WRITE 隐藏；调试弹窗仅 develop）；`selftest-message-pages` 164→**177**、`selftest-messages` 129→**140**、`selftest-ai` 262→**272**、`selftest-order-flow` 281→**286**、`selftest-recognize` 305→**308**、`selftest-partner-customers` 137→**140**、`selftest-partner-pages` 347→**359**、`selftest-admin-pages` 255→**259**、`selftest-profile` 199→**200**、`selftest-privacy-text` 305→**311**；QA 362→**380**（补 §AH/§AI 回填 + §AJ D73 6 条）。
+- 文档回写：CONTRACT §2/§9/§11.2/§13（含 D73 追加「我的 → 微信提醒」/20004/字段预算）、DATA_MODEL、ENGINEERING §3.6/§4.1/§8.3/§12、RUNBOOK §8/§14、UX_CUSTOMER §8.4/§9.2、UX_PARTNER §3.5/§4.12、ARCHITECTURE §2（批 31 文件登记）、DECISIONS（D68/D69/D73）、TECH_DEBT（TD-092~098）、隐私文本 v1.11（三处同源 + 发布前清单 + CONTRACT）、QA §AH/§AI/§AJ 与附录 B/E、docs/README 与 archive README 索引/状态、AGENTS.md 恢复。
+- 未修/风险：TD-092~098；真机项 QA §AH/§AI/§AJ 待用户点检；模板类型=2 与 P0-3 额度待用户；行数贴边文件（`selftest-profile` 999/1000、`selftest-partner-pages` 950/950、`pkg-partner/.../form-model.js` 与 `pkg-admin/.../view-model.js` 499/500）下一批触碰前须先拆件。
+- 纪律：本次仅提交与回读 HEAD；未 push/tag/发布/提审/操作云控制台；真机项未代勾、未代宣布通过。

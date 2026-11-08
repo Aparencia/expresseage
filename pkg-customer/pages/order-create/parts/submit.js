@@ -8,6 +8,8 @@ const deliveryModel = require('./delivery');
 const model = require('./model');
 const precheck = require('./precheck');
 const appointUtil = require('../../../../shared/appoint');
+const subscribe = require('../../../../utils/subscribe');
+const modeGuard = require('../../../../api/mode-guard');
 
 const DETAIL_PAGE = '/pkg-customer/pages/order-detail/index';
 
@@ -58,6 +60,20 @@ function imagesReady(page) {
   return !broken && tickets.length === images.length;
 }
 
+// 批 31（D73）：下单点击内请求「送达通知」授权（每单一次；勾「总是保持」后静默）。
+// 订阅未启用/缺模板 ID 时静默跳过（不每次提交打日志，出厂默认不打扰）；失败/拒绝不阻断下单。
+async function requestSubscribe(configSnapshot) {
+  const ids = subscribe.planForOrderSubmit(configSnapshot);
+  if (!ids.length) return null;
+  const result = await subscribe.request(ids);
+  if (!result.ok) {
+    // 静默降级，但留排障线索（不打扰用户；devtools/vConsole 可见）
+    console.warn('[subscribe] request failed', result.skipped,
+      (result.error && (result.error.errCode || result.error.errMsg)) || '');
+  }
+  return result;
+}
+
 async function onSubmit(page) {
   if (page.data.readonly) {
     wx.showToast({ title: '开发者只读视角不能操作', icon: 'none' });
@@ -81,10 +97,15 @@ async function onSubmit(page) {
     return;
   }
   page.setData({ submitting: true, submitError: '' });
+  const configSnapshot = store.get('config');
   const submission = model.ensureSubmission(page.data.submission, fingerprintOf(page));
   page.setData({ submission: submission });
   const payload = buildPayloadOf(page);
   try {
+    // TEST_WRITE 测试会话不请求微信授权（不污染测试账号的订阅状态）。
+    // requestSubscribe 在 try 内同步发起（无前置 await，保留点击手势），15s 兜底保证 submitting 不永久卡死。
+    const testWrite = page.data.testWrite === true || modeGuard.isTestWrite();
+    const subscribeResult = testWrite ? null : await requestSubscribe(configSnapshot);
     const data = await orderApi.create(payload, { clientRequestId: submission.id });
     const order = (data && data.order) || ((data && data.orders) || [])[0] || {};
     const merged = !!(data && data.merged === true);
@@ -95,6 +116,8 @@ async function onSubmit(page) {
       resultMerged: merged
     });
     wx.showToast({ title: merged ? '已并入最近订单' : '已提交，等待兼职接单', icon: 'success' });
+    // 20004：用户关闭了「订阅消息」主开关；下单成功后再引导，不阻断提交。
+    if (subscribe.isMainSwitchOff(subscribeResult)) subscribe.guideMainSwitch('customer');
   } catch (err) {
     page.setData({ submitting: false, submitError: (err && err.message) || '提交失败，内容还在，可以重试' });
   }

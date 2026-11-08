@@ -14,18 +14,30 @@ const { createFakeDb, cmd } = require('./fake-db');
 
 // 内容安全桩（v2）：customer.saveProfile / partner.* 会调 cloud.openapi.security.msgSecCheck；
 // 单测零真实微信外呼，按 suggest 返回 pass/risky 两种结果。
-function cloudStub(suggest) {
+function cloudStub(suggest, options) {
   const result = suggest || 'pass';
-  return {
+  const opts = options || {};
+  const subscribeCalls = [];
+  const stub = {
+    subscribeCalls: subscribeCalls,
     openapi: {
       security: {
         msgSecCheck: async () => ({
           errCode: 0,
           result: { suggest: result, label: result === 'pass' ? 100 : 20001 }
         })
+      },
+      // 批 31（D73）：订阅消息发送桩——记录入参，默认成功；options.send 可注入失败/错误码。
+      subscribeMessage: {
+        send: async (payload) => {
+          subscribeCalls.push(payload);
+          if (typeof opts.send === 'function') return opts.send(payload);
+          return { errCode: 0, errMsg: 'ok' };
+        }
       }
     }
   };
+  return stub;
 }
 
 function uniqueIndexesForApi() {

@@ -1,10 +1,8 @@
 'use strict';
 /**
  * tools/selftest-partner-pages.js — 代客下单/客户档案端侧断言套件（A~Q；D44 同批 + T5-A 收口）。
- * A 客户列表 / B 顾客详情 / C 解绑流程 / D 代客下单两路径 / E 字段校验矩阵 / F READONLY+transport /
- * G 静态纪律 / H 激活页邀请码 / I 代客缺陷回归 / J 服务类型目录 / K D42 头像 / N D44 站点按件+多图+识别预填 /
- * O T5-A TD-084 逐件识别兜底·幂等键按件·超限请分单·预约请求时校时（TD-083 结果块配置化在 D 段）；
- * Q 批27/D59 团队页（主兼职成员/子码批次作废/移除/名额 + 子队员队伍摘要 + 零判据静态扫）。
+ * A 客户列表 / B 顾客详情 / C 解绑流程 / D 代客下单两路径 / E 字段校验矩阵 / F READONLY+transport / G 静态纪律 / H 激活页邀请码 / I 代客缺陷回归 / J 服务类型目录 / K D42 头像 / N D44 站点按件+多图+识别预填 /
+ * O T5-A TD-084 逐件识别兜底·幂等键按件·超限请分单·预约请求时校时（TD-083 结果块配置化在 D 段）；Q 批27/D59 团队页（主兼职成员/子码批次作废/移除/名额 + 子队员队伍摘要 + 零判据静态扫）。
  * 纪律：纯件 + api 层 fake transport（禁 mock 全局 wx、不连网络）；先合法基线再反例；样本非空；EXPECTED_ASSERTIONS 与实际精确相等。取数：node tools/selftest-partner-pages.js | Select-Object -Last 2
  */
 const path = require('path');
@@ -35,13 +33,12 @@ const shareCard = require(path.join(ROOT, 'pages/profile/parts/share-card.js'));
 const codeInput = require(path.join(ROOT, 'pkg-partner/pages/activate/parts/code-input-model.js'));
 
 // 注意：F 段（异步 fake transport）必须注册在最后——异步断言在 await 之后才计入，后注册同步段会覆盖节标题。
-// 226 + 17：T5-A 收口（TD-083 结果块配置化 3 条 + TD-084 逐件兜底/幂等粒度/超限/请求时校时 14 条）
 // 243 基线 + P 组批20-C 36 条 + 批24/D67 客户页筛选器 12 条 + 批27/D59 团队页（Q 组断言数在 cases 内独立记账）
 const cases = require(path.join(__dirname, 'lib', 'partner-pages-cases.js'));
 // TD-083/T5-A 拆件：夹具/静态扫描样本拆到 tools/lib/partner-pages-cases.js（控测试文件 ≤950 行，门禁 #18；
 // tools/lib 不参与 tools/selftest.js 注册完整性闸，先例 tools/lib/workbench-cases.js）。
 const D67_PAGE_ASSERTIONS = 12;
-const EXPECTED_ASSERTIONS = 243 + cases.PERF_EXPECTED_ASSERTIONS + D67_PAGE_ASSERTIONS + cases.TEAM_PAGE_ASSERTIONS + cases.CURSOR_ASSERTIONS;
+const EXPECTED_ASSERTIONS = 243 + cases.PERF_EXPECTED_ASSERTIONS + D67_PAGE_ASSERTIONS + cases.TEAM_PAGE_ASSERTIONS + cases.CURSOR_ASSERTIONS + cases.REVISE_ASSERTIONS;
 
 const {
   CONFIG, PARTNER, NOW, DAY, ROW_1, ROW_2, STATUS_LITERALS, bindingRow, orderRow,
@@ -246,7 +243,8 @@ function register(h) {
       'D3 苑值域按本人服务范围（serviceConfig.zones）收窄');
     const bindOptions = formModel.buildBindingOptions([ROW_1, { displayName: '无编号' }, ROW_2]);
     t.eq(bindOptions.map((item) => item.label), ['小王', '未填称呼'], 'D4 绑定档案选项：只有 bindingId 的行入选、昵称缺失回落');
-    t.eq(Object.keys(bindOptions[0]).sort(), ['bindingId', 'label', 'sub'], 'D5 已绑定路径只带 bindingId（不透传顾客 openid/身份）');
+    t.eq(Object.keys(bindOptions[0]).sort(), ['bindingId', 'disabled', 'label', 'status', 'statusText', 'sub'],
+      'D5 已绑定路径只带 bindingId（不透传顾客 openid/身份；D68 另带状态展示字段）');
     t.eq(formModel.createInitialState({ config: CONFIG, partner: PARTNER, bindingList: [ROW_1], nowMs: NOW }).customerMode, 'BOUND',
       'D6 有绑定档案时默认「已绑定」路径（两条路都存在）');
     t.eq(formModel.createInitialState({ config: CONFIG, partner: PARTNER, bindingList: [], nowMs: NOW }).customerMode, 'GUEST',
@@ -838,6 +836,8 @@ function register(h) {
     (t) => cases.perfChecks(t));
   // ------------------------------------------------------------------ Q 批27/D59 团队页
   h.section('Q. D59 团队页：成员/子码批次作废/移除/名额 + 子队员摘要 + 零判据静态扫（§2.3/§2.4）', (t) => cases.teamChecks(t));
+  // ------------------------------------------------------------------ R 批31 T4-a 客户端缺口（用例表拆到 cases 控主文件 ≤950 行）
+  h.section('R. D68 停用顾客代客下单闸 / D71 站点 picker 接公开配置 / P2-A9 手填码补站点（§3.4/§3.5）', (t) => cases.reviseChecks(t));
   // ------------------------------------------------------------------ F READONLY/TEST_WRITE + transport
   h.section('F. READONLY/TEST_WRITE 与 fake transport：包络/零请求/票据/分享（§6.3、§6.4）', async (t) => {
     const captured = [];

@@ -46,7 +46,9 @@ const {
 
 // D67（批 24）：A2 段断言数（新增段，独立常量；既有的 cases.EXPECTED_ASSERTIONS 不放宽）。
 const D67_A2_ASSERTIONS = 17;
-const TOTAL_ASSERTIONS = EXPECTED_ASSERTIONS + D67_A2_ASSERTIONS;
+// 批31 T4-a：A11b~A11d D68 顾客状态 DTO 下发（3 条）
+const D68_STATUS_ASSERTIONS = 3;
+const TOTAL_ASSERTIONS = EXPECTED_ASSERTIONS + D67_A2_ASSERTIONS + D68_STATUS_ASSERTIONS;
 
 const ACTIVE = 'ACTIVE';
 
@@ -115,6 +117,17 @@ async function sectionA(h) {
       'A10 他人（P2）绑定不出现在本兼职列表（只搜/只列自己 ACTIVE 绑定）');
     t.eq(jsonOf(base.data).indexOf('openid-b7') >= 0, false,
       'A11 列表响应不含任何 openid 字样（既不回传也不贴内部键）');
+    // D68：行 DTO status 来自 users.status，停用顾客仍在列表（客户端标注「已停用」并禁止代客下单，服务端写闸兜底）
+    t.eq(base.data.list.every((row) => row.status === 'ACTIVE'), true, 'A11b ACTIVE 顾客行 status=ACTIVE');
+    const suspendedCustomerDb = world();
+    suspendedCustomerDb.seed('users', suspendedCustomerDb.dump('users').map((doc) => (
+      doc._id === C1 ? Object.assign({}, doc, { status: 'SUSPENDED' }) : doc)));
+    const suspendedPage = await apiOf(suspendedCustomerDb, P1).call('partner.listBindings');
+    t.eq([pickRow(suspendedPage.data.list, B1).status, pickRow(suspendedPage.data.list, B2).status],
+      ['SUSPENDED', 'ACTIVE'], 'A11c D68：停用顾客行 status=SUSPENDED，其他行仍 ACTIVE（列表不剔除历史绑定）');
+    const suspendedDetail = await apiOf(suspendedCustomerDb, P1).call('partner.getCustomer', { bindingId: B1 });
+    t.eq(suspendedDetail.data.customer.status, 'SUSPENDED',
+      'A11d D68 getCustomer 同步下发 status（详情页标注并禁代客下单）');
 
     const byTail = await pApi.call('partner.listBindings', { keyword: '6678' });
     t.eq(byTail.data.list.map((row) => row.bindingId), [B1], 'A12 keyword 命中手机尾号四位');

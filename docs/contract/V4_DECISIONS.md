@@ -1,7 +1,7 @@
-# V4_DECISIONS · v4 开工裁决清单（D1~D67）
+# V4_DECISIONS · v4 开工裁决清单（D1~D73）
 
-> 版本：v1.7（2026-11-02 增补 D58~D67 用户 11 条新需求裁决；v1.6 2026-11-01 增补 D43~D50 用户反馈裁决；v1.5 2026-10-28 追记 D36 分享与朋友圈、D37~D42 用户拍板；v1.4 已含 2026-10-27 **批 11 追记 D35 取件码回填修复**）
-> 状态：**D1~D67（D27 除外）已裁决**（D58~D67 于 2026-11-02 用户对《用户新需求理解、扩展与补全（2026-11-02）》Q1~Q11 逐条答复）；**A 批 P1 十项按推荐采纳并已实现（2026-10-23）**；D27 待定（定位可行性研究 v2 已交付，等用户裁决）
+> 版本：v1.13（2026-11-08 增补 D68/D69（顾客停用/恢复、退出登录）、D70~D72（站点识别与信息补全）、D73（服务通知：顾客送达 + 兼职新订单）；v1.7 2026-11-02 增补 D58~D67 用户 11 条新需求裁决；v1.6 2026-11-01 增补 D43~D50 用户反馈裁决；v1.5 2026-10-28 追记 D36 分享与朋友圈、D37~D42 用户拍板；v1.4 已含 2026-10-27 **批 11 追记 D35 取件码回填修复**）
+> 状态：**D1~D73（D27 除外）已裁决**（D58~D67 于 2026-11-02 用户对《用户新需求理解、扩展与补全（2026-11-02）》Q1~Q11 逐条答复；D68/D69 与 D70~D72 于 2026-11-08 按用户指令实现；D73 于 2026-11-08 用户确认范围）；**A 批 P1 十项按推荐采纳并已实现（2026-10-23）**；D27 待定（定位可行性研究 v2 已交付，等用户裁决）
 > 用法：主规格书 `docs/contract/V4_REBUILD_SPEC.md` §13 与 `docs/contract/V4_CONTRACT.md` §13 是索引，本文件是每条的展开。裁决人只能是你（用户）；agent 只出推荐与证据。
 > 裁决方式：本条回复即最终裁决（2026-10-22）；D20/D21 早前已按用户指示定。裁决后由 agent 写「裁决留痕」并同步 CONTRACT/主规格/README/STATE。
 
@@ -708,6 +708,24 @@ C中的隐私合规中的C1 见上文
 
 ---
 
+## D68/D69 · 2026-11-08 顾客停用/恢复与退出登录
+
+**来源**：用户 2026-11-08 消息（D68「后台可停用/恢复顾客账号」；D69「我的页面加退出登录」）。**结论**：登记 D68/D69，逐条边界见 CONTRACT §13 对应行。
+
+### D68 · 顾客停用/恢复（`users.status` 三态）
+**裁决**：`users.status ∈ {ACTIVE, SUSPENDED, DEACTIVATED}`；后台 `admin.setCustomerStatus` 只冻结**登录与写**，资料/绑定/进行中订单一律不动，恢复后即刻可用；`DEACTIVATED`（已注销）不可恢复；停用需填原因并二次确认、恢复一次确认；审计 `CUSTOMER_SUSPEND/CUSTOMER_RESTORE`；顾客端启动页整页状态页；兼职端客户列表/详情标「已停用」并禁止代客下单；测试账号会话不得执行该治理动作。
+**被否**：停用同时清理资料/解绑（用户要求不动数据）；已注销账号允许恢复（注销不可逆）。
+**代价/落点**：`shared/{enums,audit-actions,actions}.js`、`handlers/admin/setCustomerStatus.js`、`middleware/auth.js`、`order/_store.js`、`partner/{listBindings,getCustomer}.js`、`pages/launch/**`、`pkg-admin/{customers,customer-detail}/**`、`selftest-{admin,admin-pages,profile,switch,testaccount,partner-customers,partner-orders,query-window,deletion}`；CONTRACT/DATA_MODEL/ARCHITECTURE/UX×2/QA §AH/CHANGELOG/STATE。
+**真机项**：QA §AH1~AH5（用户点检）。
+
+### D69 · 退出登录（本机退出）
+**裁决**：小程序不能切换微信登录账号，所谓退出登录=**本机退出**：确认后清除本机会话缓存与 store（保留「我的取件码（本机）清单」），启动页停在「已退出登录」态，点「重新登录」重新走微信身份识别与隐私闸；切换会话下不显示该入口；零服务端动作、零新存储键。
+**被否**：服务端注销式退出（会误删数据）；保留登录态仅隐藏页面（不达用户预期）。
+**代价/落点**：`utils/storage.js`（`loggedOut` 标记 + `clearSession`）、`pages/launch/**`（退出态）、`pages/profile/**`（入口 + 拆件 `parts/{logout,delete-account}.js`）、`store` reset、`selftest-profile`。
+**真机项**：QA §AH4（用户点检）。
+
+---
+
 ## D70~D72 · 2026-11-08 站点识别与订单信息补全（用户 3 条指令 + 12 张真实截图）
 
 **来源**：用户 2026-11-08 消息（3 条）：①「新添订单信息双判据：订单站点可由识图得到 / 可由取件码反向推断，且该能力需能在开发者后台全局配置；已知 xxx-x-xxxx 必为西苑一栋」；②「开发者全局配置中站点需要能调节顺序；可为站点添加不同名称，显示到兼职端仍归类到主站点」；③「上传取件码截图与其在顾客端下单时的识别结果，据此修复」。随附 12 张真机截图（另 2 张重复）。
@@ -730,6 +748,17 @@ C中的隐私合规中的C1 见上文
 **被否**：把手机号当码后仅提示不改（用户截图已显示错填）；把 10 位纯数字一律拒绝（会误杀潜在真码，故只拒绝 `1[3-9]` 开头）。
 **代价/落点**：`utils/recognize/{codes,index}.js`、`cloudfunctions/api/{lib/ai/parse.js,handlers/ai/_common.js}`、`selftest-recognize` 新增 10 条真实截图断言、`selftest-ai` +7、`selftest-order-flow` +4；CONTRACT §13 D72、DATA_MODEL §2.10（无字段变更）、UX_CUSTOMER §4.2、QA。
 **真机项**：12 张截图对应场景（手机号行、单号后五位、一图多码、站点名多说法）真机复验（用户）。
+
+---
+
+## D73 · 2026-11-08 服务通知（一次性订阅：顾客送达 + 兼职新订单）
+
+**来源**：用户 2026-11-08 问「这个项目能不能接入服务通知？」→ 可行性研究（`docs/archive/research/2026-11-08_SERVICE_NOTIFICATION_FEASIBILITY.md`）→ 用户确认范围与两个模板。**结论**：登记 D73；逐条边界见 CONTRACT §13 D73 行与 §9 收窄句。
+
+**裁决**：一次性订阅、默认关闭。顾客端**只做送达通知**（`DELIVERED` → 商品送达通知，模板 `zxQ_…lmPl6ZQ`，3 字段：订单编号/送达时间/温馨提示）；兼职端**只做新订单通知**（顾客下单 `ORDER_CREATED` → 新订单通知，模板 `GP0_…DRKc`，3 字段：订单来源/服务区取件区域/订单量）；模板 ID/字段映射/开关进 `config.subscribeTemplates`（`enabled:false`）；公开子集启用时下发 `subscribeTemplateIds{delivered,newOrder}`（仅 ID、不下发字段映射）；授权挂在点击（顾客下单提交、兼职「开启新单提醒」/接单/拒单、外加「我的 → 微信提醒」状态行用于再次授权/查看状态/去设置引导）；一次授权一条、每单一条；**不做**接单/取件/异常/转派/复核/自动完成通知与授权状态落库；通知不含取件码/宿舍号/手机尾号/头像/昵称/截图/识别原文；测试/只读/注销不发；模板字段按平台长度上限生成（thing ≤20 字），超长按预算裁剪而非整条静默丢弃；20004（关闭订阅消息主开关）可给一次「去设置」引导；拒绝/失败/未开启不阻断主流程。
+**被否**：长期订阅（个人主体+工具类目不可用）；顾客全生命周期状态提醒（用户收敛为只做送达）；兼职新单作为主通道（量大、按条消耗额度，仍以 30s 轮询为主）；模板 ID 走新增客户端读动作（改动大，选公开子集下发 ID）。
+**代价/落点**：`config/defaults.js`、`cloudfunctions/api/db/config.js`（一层合并且后台只写 enabled 不丢 ID）、`cloudfunctions/api/lib/subscribe-message.js`（新）、`handlers/order/{_common,_create}.js`（事务后发送）、`cloudfunctions/api/config.json`（新：云调用权限）、`utils/subscribe.js`（新：真值判定/20004 引导）、下单页/工作台/「我的」接线、`tools/{selftest-messages,selftest-message-pages,selftest-cloud-fixtures,selftest-privacy-text}.js`；CONTRACT §9/§11.2/§13、DATA_MODEL §2.10/§7、ENGINEERING §3.6/§4.1/§12、RUNBOOK §8/§14、UX_CUSTOMER §8.4/§9.2、UX_PARTNER §4.12、QA §AJ、隐私文本 v1.11、CHANGELOG/STATE；**无新增集合/索引/触发器/云函数单元，需重部署 `api`（config.json + shared 副本）**。
+**真机项**：QA §AJ1~AJ6（授权弹窗/送达通知/新单通知/拒绝不阻断/20004/模板类型=2/额度 P0-3；用户点检，agent 不代勾）。`enabled` 默认 false，P0-3 与模板类型未确认前不得宣布生效。
 
 ---
 

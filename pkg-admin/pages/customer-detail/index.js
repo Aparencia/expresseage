@@ -1,4 +1,4 @@
-// pkg-admin/pages/customer-detail/index.js · 顾客详情（脱敏资料 + 绑定关系 + 订单摘要，无写动作）
+// pkg-admin/pages/customer-detail/index.js · 顾客详情（脱敏资料 + 绑定关系 + 订单摘要 + D68 停用/恢复治理动作）
 const admin = require('../../../api/modules/admin');
 const C = require('../../common/constants');
 const feedback = require('../../common/feedback');

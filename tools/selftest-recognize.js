@@ -29,7 +29,7 @@ const recognizeModel = require(path.join(ROOT, 'pkg-partner/pages/create-on-beha
 const viewModel = require(path.join(ROOT, 'pkg-partner/pages/create-on-behalf/parts/view-model.js'));
 const pickerState = require(path.join(ROOT, 'components/image-picker/state.js'));
 
-const EXPECTED_ASSERTIONS = 305; // 250 + 13：⑦ 噪声语料；+13：D44 代客下单多图/识别预填/上传并发；+19：D57 本机取件码粘贴解析；+10：D70 真实截图取证
+const EXPECTED_ASSERTIONS = 308; // 250 + 13：⑦ 噪声语料；+13：D44 代客下单多图/识别预填/上传并发；+19：D57 本机取件码粘贴解析；+10：D70 真实截图取证；+3：D72③「尾号」优先词多行语料
 
 // v3 真机语料（sha256 指纹钉：改动语料必须同步改这里的期望与解析断言）
 const CORPUS_ONE = [
@@ -90,6 +90,12 @@ function sectionTrackingTail(h) {
     t.eq(none.value, '', '§3 无 5 位数字返回空');
     t.eq(none.by, 'none', '§3 无候选来源标记 none');
     t.eq(text.pickTrackingTail([]).value, '', '§3 空行集返回空');
+    // D72③：多行语料——其他孤立 5 位在前时，「尾号 04898」标签行必须优先命中（不能取第一个孤立 5 位）
+    const labeled = text.pickTrackingTail(['34567', '订单备注', '尾号 04898']);
+    t.eq(labeled.value, '04898', 'D72③ 「尾号 04898」标签行优先于前面的孤立 5 位');
+    t.eq([labeled.by, labeled.line], ['keyword', '尾号 04898'], 'D72③ 标签行命中来源 keyword 且行定位正确');
+    const labeledOnly = text.pickTrackingTail(['尾号 04898']);
+    t.eq(labeledOnly.value, '04898', 'D72③ 仅标签行（尾号 + 空格 + 5 位）也取到 04898');
   });
 }
 

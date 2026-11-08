@@ -6,6 +6,7 @@
 'use strict';
 
 const orderState = require('../../shared/order-state');
+const enums = require('../../shared/enums');
 const text = require('./text');
 const codes = require('./codes');
 const station = require('./station');
@@ -228,9 +229,27 @@ function finishParcel(target) {
   return target;
 }
 
-// D70：码 → 站点同步（唯一命中才改；码是权威来源，冲突时覆盖识图/AI 站点）
+// D70：手选站点判定（消费 stationBy 来源标记）——手选站点优先，码反推不得覆盖（契约 D70 被否项
+// 「手填优先，只补空」）。stationBy='manual' 为显式手选标记；stationBy='code' 是码推断站点（可由码更新，
+// 不属手选）；其余件以「来源已降为 MANUAL 且已有站点」判定为用户手选/手填站点（手选站点入口 =
+// withManualEdit：改过识别字段即降 source=MANUAL）。
+function isManualStationOf(parcel) {
+  const value = parcel || {};
+  if (value.stationBy === 'manual') {
+    return true;
+  }
+  if (value.stationBy === 'code') {
+    return false;
+  }
+  return value.source === enums.RECOGNITION_SOURCE.MANUAL && !!value.stationId;
+}
+
+// D70：码 → 站点同步（唯一命中才改；码是权威来源，可覆盖识图/AI/码推断站点，但**不覆盖手选站点**）
 function syncStationFromCode(target, options) {
   if (!target || !target.pickupCode) {
+    return false;
+  }
+  if (isManualStationOf(target)) {
     return false;
   }
   const switches = station.inferOptionsOf(options);
@@ -244,6 +263,7 @@ function syncStationFromCode(target, options) {
   if (target.stationId === hit.id) {
     if (!target.stationName) {
       target.stationName = hit.name;
+      target.stationBy = 'code';
       return true;
     }
     return false;
@@ -263,6 +283,8 @@ function syncStationFromCode(target, options) {
 function applyAiSuggestion(parcel, suggestion, options) {
   const target = Object.assign(makeEmptyParcel(), parcel || {});
   const ai = suggestion || {};
+  // D70：手选站点标记必须在来源改写前捕获（下面写入 AI 字段时 source 会改写成 AI 来源），否则码反推覆盖手选站点
+  const manualStation = isManualStationOf(target);
   if (isLowAiSuggestion(ai)) {
     // 不写任何字段、不动 source/confidence/aiApplied（保持件原值）；只透传 failureId + 复核标记
     target.failureId = ai.failureId || target.failureId || '';
@@ -297,8 +319,8 @@ function applyAiSuggestion(parcel, suggestion, options) {
     target.recognized = !!ai.recognized;
     target.aiApplied = true;
   }
-  // D70：码 → 站点同步放在来源归因之后（只改站点，不把来源冒充成 AI）
-  if (syncStationFromCode(target, options) && changed.indexOf('station') < 0) {
+  // D70：码 → 站点同步放在来源归因之后（只改站点，不把来源冒充成 AI）；手选站点不覆盖（码不得抢手填）
+  if (!manualStation && syncStationFromCode(target, options) && changed.indexOf('station') < 0) {
     changed.push('station');
   }
   target.failureId = ai.failureId || target.failureId || '';
@@ -317,6 +339,8 @@ function adoptAiSuggestion(parcel, suggestion, options) {
   const target = Object.assign(makeEmptyParcel(), parcel || {});
   const changed = [];
   const rejected = [];
+  // D70：手选站点标记必须在来源改写前捕获（采纳会把 source 改成 AI 来源），否则码反推覆盖手选站点
+  const manualStation = isManualStationOf(target);
   adoptAiFields(target, suggestion || {}, changed, rejected);
   if (changed.length > 0) {
     target.source = AI_SOURCE;
@@ -324,8 +348,8 @@ function adoptAiSuggestion(parcel, suggestion, options) {
     target.aiApplied = true;
     target.aiSuggestion = null;
   }
-  // D70：采纳后按码同步站点（码命中格式时以码为准；不改变 source/confidence 归因）
-  if (syncStationFromCode(target, options) && changed.indexOf('station') < 0) {
+  // D70：采纳后按码同步站点（码命中格式时以码为准；不改变 source/confidence 归因；手选站点不覆盖）
+  if (!manualStation && syncStationFromCode(target, options) && changed.indexOf('station') < 0) {
     changed.push('station');
   }
   target.failureId = (suggestion && suggestion.failureId) || target.failureId || '';

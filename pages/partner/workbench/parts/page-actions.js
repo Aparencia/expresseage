@@ -27,8 +27,14 @@ module.exports = {
   },
 
   onRowAction(event) {
+    // 批 31（D73）：接单/拒单的点击里补 1 条「新订单通知」额度（勾「总是保持」后静默）。
+    // 必须在 dispatch（可能弹确认框）之前调用，保留点击手势；失败不阻断动作。
+    const actionKey = event.currentTarget.dataset.key;
+    if (actionKey === 'accept' || actionKey === 'reject') {
+      this.requestNewOrderSubscribe();
+    }
     this.dispatch(actionFlow.rowActionIntent(
-      event.currentTarget.dataset.key,
+      actionKey,
       event.currentTarget.dataset.orderNo,
       this.data.groups,
       this.data.readonly

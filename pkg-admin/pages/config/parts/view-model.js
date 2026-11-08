@@ -140,22 +140,33 @@ function stationNameErrorOf(value, list, current) {
   if (name.length < stationsLib.STATION_NAME_MIN || name.length > stationsLib.STATION_NAME_MAX) {
     return '站点名称需填 1~20 字。';
   }
-  if (list.some(function other(row, position) {
-    return position !== current && String(row.name || '').trim() === name;
-  })) {
+  // 与写层 shared/station-rules.validateStationConfig 同判：名称不能被其他行名称占用，
+  // 也不能撞其他行别名（或本行草稿里正编辑的别名；写层 ALIAS_DUP 同样拒绝）。
+  const others = takenByOtherRowsOf(list, current);
+  if (others[name] || splitStationText(value.aliasesText).indexOf(name) >= 0) {
     return '站点名称不能重复。';
   }
   return '';
 }
 
-// 其他站点的名称与别名集合（跨站唯一用；当前站自己的历史值不参与）
-function takenNamesOf(list, current) {
+// 其他行的名称+别名集合（名称跨站唯一；当前行自己的名称不参与，别名由调用方另行判重）
+function takenByOtherRowsOf(list, current) {
   const taken = {};
   list.forEach(function collect(row, position) {
     if (position === current) return;
     taken[String(row.name || '').trim()] = true;
     splitStationText(row.aliasesText).forEach(function mark(alias) { taken[alias] = true; });
   });
+  return taken;
+}
+
+// 跨站唯一用集合：所有行名称（写层名称全局唯一；当前行自己的名称也参与，别名=本站正式名必须被拒）
+// + 其他行的别名（当前行的别名由 stationAliasErrorOf 的 seen 单独判重，不能排除）。
+function takenNamesOf(list, current) {
+  const taken = takenByOtherRowsOf(list, current);
+  const currentRow = list[current];
+  const currentName = currentRow ? String(currentRow.name || '').trim() : '';
+  if (currentName) taken[currentName] = true;
   return taken;
 }
 

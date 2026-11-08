@@ -10,6 +10,8 @@
       <!-- D46/批 20：独立「取件清单」页入口（双阶段：待取件按站点 / 待送达原样；工作台数据流不变） -->
       <view class="mini-btn btn btn-ghost" bindtap="onPickListTap">取件清单</view>
       <view class="mini-btn btn btn-ghost" bindtap="onRefreshTap">刷新</view>
+      <!-- 批 31（D73）：一次性订阅的「新订单通知」授权入口；READONLY/测试会话/订阅未启用或缺模板 ID 时不显示 -->
+      <view wx:if="{{!readonly && !testWrite && subscribeEnabled}}" class="mini-btn btn btn-ghost" bindtap="onSubscribeTap">开启新单提醒</view>
       <view wx:if="{{!readonly && (selecting || hasRows)}}" class="mini-btn btn btn-primary" bindtap="onToggleSelecting">{{selecting ? '退出多选' : '多选'}}</view>
     </view>
   </view>

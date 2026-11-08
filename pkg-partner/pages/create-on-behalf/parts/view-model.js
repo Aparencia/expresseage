@@ -14,7 +14,9 @@ function numberOr(value, fallback) {
 
 function customerSummaryOf(state, binding) {
   if (state.customerMode === 'BOUND') {
-    return '已绑定：' + (binding ? binding.label : '未选择');
+    if (!binding) return '已绑定：未选择';
+    // D68：停用/注销顾客在摘要里如实标注（提交前本地校验也会拦）
+    return '已绑定：' + binding.label + (binding.disabled === true ? '（不可代客下单）' : '');
   }
   const guest = state.guest || {};
   const name = textOf(guest.displayName) || '未填称呼';
@@ -27,7 +29,10 @@ function bindingsViewOf(state) {
     bindingOptions: listOf(state.bindingOptions),
     bindingIndex: numberOr(state.bindingIndex, 0),
     bindingLabel: binding ? binding.label : '',
-    bindingSub: binding ? binding.sub : ''
+    bindingSub: binding ? binding.sub : '',
+    // D68：当前选中的档案被停用/注销 → 页面明示不可代客下单（选择入口已禁，提交前校验兜底）
+    bindingDisabled: !!(binding && binding.disabled === true),
+    bindingDisabledText: binding && binding.disabled === true ? binding.statusText || '已停用' : ''
   };
 }
 

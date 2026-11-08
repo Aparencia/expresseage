@@ -39,6 +39,8 @@ const base = {
     loadingMore: false,
     readonly: false,
     testWrite: false,
+    // 批 31（D73）：订阅未启用/缺模板 ID 时隐藏「开启新单提醒」入口（出厂不摆死按钮）
+    subscribeEnabled: false,
     sessionView: false,
     selecting: false,
     selectedCount: 0,
@@ -87,6 +89,8 @@ const base = {
     this.syncMode();
     this.refreshConfig();
     this.syncMaintenance();
+    // 批 31（D73）：configPublic 可能稍后异步到达 → 先按当前快照算一次，watchStore 里再补算
+    this.syncSubscribeVisible();
     // onShow 也走增量：已加载过就只发变化行补丁，不整页重拉（UX §4.11）
     this.load({ poll: this.data.stage === 'ready' }).then(() => {
       this.loadHistorySummary(); this.applyCompletedFocus();
@@ -207,6 +211,8 @@ const base = {
         this.syncMode();
       }
       this.syncMaintenance();
+      // 批 31（D73）：configPublic 刷新（订阅开关/模板 ID）后同步入口可见性
+      this.syncSubscribeVisible();
     });
   },
 
@@ -373,5 +379,7 @@ Object.assign(base, require('./parts/load-flow'));
 Object.assign(base, require('./parts/transfer-flow'));
 // 件级取件接线（D61）：逐件「已取件/撤销已取」→ itemIndex 写请求；页面只做事件转发
 Object.assign(base, require('./parts/piece-flow'));
+// 批 31（D73）：一次性订阅「开启新单提醒」/接单续订接线（从 page-actions 拆出，守页面 ≤500 行）
+Object.assign(base, require('./parts/subscribe-wiring'));
 
 Page(Object.assign(base, require('./parts/page-actions')));

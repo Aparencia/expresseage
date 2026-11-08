@@ -38,7 +38,7 @@ const privacyText = require(path.join(__dirname, '..', 'pkg-customer/parts/priva
 const defaults = require(path.join(__dirname, '..', 'config/defaults.js'));
 
 const ROOT = path.resolve(__dirname, '..');
-const EXPECTED_ASSERTIONS = 305; // 295 + 10（2026-11-03 D58/D59/D63 隐私文本定稿 v1.10：转派协作履约披露/队内昵称可见/去候选状态 10 条 M 组）；291 + 4（2026-11-03 D58/D59/D63：QA §AG 分区声明/AG1~AG12 区间/12 行精确计数/人列且未代勾）；259 + 30（2026-11-01 D57 本机取件码清单）+ 1（2026-11-02 D64~D67 QA §AE 与计数 343）+ 1（2026-11-03 D61/D62 QA §AF 与计数 350）
+const EXPECTED_ASSERTIONS = 311; // 305 + 3（2026-11-08 D73 定稿 v1.11：N 组订阅消息送达/新单披露三处同源）+ 3（QA §AJ 分区声明/AJ1~AJ6 区间/6 行且人列未代勾；附录 E 计数 362→380）
 
 const PART_FILE = 'pkg-customer/parts/privacy-text.js';
 const HELP_JS = 'pkg-customer/pages/help/index.js';
@@ -223,10 +223,10 @@ function register(h) {
 
   // ------------------------------------------------------------ D. 文本版本 ↔ config.privacyVersion
   h.section('D 文本版本 ↔ config.privacyVersion 对应（版本单源）', (t) => {
-    t.eq(privacyText.TEXT_VERSION, 'v1.10', '文本版本 v1.10（定稿 v1.10；历史 v1.0 / 定稿候选 v1.3 留痕）');
-    t.check(TEXT.indexOf(privacyText.TEXT_VERSION_LABEL) !== -1, '全文写明「定稿 v1.10」文本版本');
+    t.eq(privacyText.TEXT_VERSION, 'v1.11', '文本版本 v1.11（定稿 v1.11；历史 v1.10 / v1.0 / 定稿候选 v1.3 留痕）');
+    t.check(TEXT.indexOf(privacyText.TEXT_VERSION_LABEL) !== -1, '全文写明「定稿 v1.11」文本版本');
     t.check(privacyTextDocCache.indexOf(privacyText.TEXT_VERSION_LABEL) !== -1,
-      '定稿文档头部同为「定稿 v1.10」（改版本必须两端同步）');
+      '定稿文档头部同为「定稿 v1.11」（改版本必须两端同步）');
     t.check(privacyTextDocCache.indexOf(privacyText.TEXT_VERSION) !== -1,
       '定稿文档写明文本版本号 v1.10（与端内全文同一标签）');
     t.check(privacyTextDocCache.indexOf('历史版本') !== -1
@@ -353,7 +353,7 @@ function register(h) {
       && supplement.indexOf(TEXT) !== -1,
     '定稿文档保留用户填写占位符；剪贴板使用披露两端同源；补充文档为端内全文派生物（随文本重新生成，不单独维护）');
     t.check(supplement.indexOf('文本版本：' + privacyText.TEXT_VERSION_LABEL) !== -1,
-      '补充文档头部文本版本与端内全文同标签（定稿 v1.10；派生物随文本重新生成）');
+      '补充文档头部文本版本与端内全文同标签（定稿 v1.11；派生物随文本重新生成）');
   });
 
   // ------------------------------------------------------------ H. 批 10 口径（D24/D25）
@@ -523,9 +523,9 @@ function register(h) {
     t.check(qaDoc.indexOf('## AD. v1.8 批 21 增补（D57 本机取件码清单') !== -1
       && qaDoc.indexOf('| AD1 |') !== -1 && qaDoc.indexOf('| AD6 |') !== -1,
     'QA 真机清单新增 §AD AD1~AD6（人（真机），agent 不代勾）');
-    t.check(/^> 维护规则：[\s\S]{0,200}当前 \*\*362\*\* 条/m.test(qaDoc)
-      && /→ \*\*362\*\*/.test(qaDoc),
-    'QA 附录 E 计数与取数命令真实输出同步为 362（330 + §AD 6 + §AE 7 + §AF 7 + §AG 12）');
+    t.check(/^> 维护规则：[\s\S]{0,200}当前 \*\*380\*\* 条/m.test(qaDoc)
+      && /→ \*\*380\*\*/.test(qaDoc),
+    'QA 附录 E 计数与取数命令真实输出同步为 380（362 + §AH 5 + §AI 7 + §AJ 6）');
     t.check(qaDoc.indexOf('## AF. v2.0 批 25 增补（D61 件级取件 / D62 多站点按件分组') !== -1
       && qaDoc.indexOf('| AF1 |') !== -1 && qaDoc.indexOf('| AF7 |') !== -1,
     'QA 真机清单新增 §AF AF1~AF7（D61/D62；人（真机+控制台），agent 不代勾）');
@@ -542,6 +542,14 @@ function register(h) {
     t.eq(agRows.length, 12, 'QA §AG 精确 12 行（AG1~AG12 无缺号/无重复，与附录 E 合计口径同源）');
     const agHumanRows = qaDoc.match(/^\| AG\d+ \|.*\| 人（[^|]+） \| \[ \] \|/gm) || [];
     t.eq(agHumanRows.length, 12, 'QA §AG 每条都标「人（…）」且完成列为 [ ]（真机项只能用户点检，agent 不代勾）');
+    t.check(qaDoc.indexOf('## AJ. v2.4 批 31 增补（D73 服务通知/一次性订阅') !== -1
+      && qaDoc.indexOf('全部为「人（真机/控制台）」项') !== -1,
+    'QA 真机清单新增 §AJ 分区并声明全部为「人（真机/控制台）」项（agent 不代勾）');
+    t.check(qaDoc.indexOf('| AJ1 |') !== -1 && qaDoc.indexOf('| AJ6 |') !== -1,
+      'QA §AJ 覆盖 AJ1~AJ6（D73；人（真机/控制台），agent 不代勾）');
+    const ajRows = qaDoc.match(/^\| AJ\d+ \|/gm) || [];
+    const ajHumanRows = qaDoc.match(/^\| AJ\d+ \|.*\| 人（[^|]+） \| \[ \] \|/gm) || [];
+    t.eq([ajRows.length, ajHumanRows.length], [6, 6], 'QA §AJ 精确 6 行且每条标「人（…）」+ 完成列 [ ]');
   });
 
   // ------------------------------------------------------------ M. 2026-11-03 D58/D59/D63 定稿 v1.10
@@ -571,6 +579,21 @@ function register(h) {
       '补充文档派生物含 v1.10 定稿披露与 2026-11-03 定稿日期');
     t.check(supplement.indexOf('待用户终审') === -1 && supplement.indexOf('v1.10 候选') === -1,
       '反例锁定：补充文档不得残留「待用户终审 / v1.10 候选」旧状态');
+  });
+
+  // ------------------------------------------------------------ N. 2026-11-08 D73 定稿 v1.11（订阅消息披露）
+  h.section('N 定稿 v1.11（D73：微信订阅消息送达/新订单提醒披露；privacyVersion 保持 v4.0.0）', (t) => {
+    const supplementFile = 'docs/privacy/补充文档.txt';
+    const supplement = exists(supplementFile) ? readSource(supplementFile) : '';
+    t.check(TEXT.indexOf('送达提醒') !== -1 && TEXT.indexOf('新订单提醒') !== -1
+      && TEXT.indexOf('通知不含取件码') !== -1,
+    '端内全文新增 D73 订阅消息披露（送达提醒/新订单提醒/不含 L3）');
+    t.check(privacyTextDocCache.indexOf('2026-11-08 用户确认') !== -1
+      && privacyTextDocCache.indexOf('定稿 v1.11') !== -1,
+    '定稿文档写明文本版本 v1.11 与 2026-11-08 用户确认');
+    t.check(supplement.indexOf('送达提醒') !== -1 && supplement.indexOf('新订单提醒') !== -1
+      && supplement.indexOf('文本版本：定稿 v1.11') !== -1,
+    '补充文档派生物含 v1.11 订阅消息披露（三处同源）');
   });
 }
 

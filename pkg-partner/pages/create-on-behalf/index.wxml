@@ -28,6 +28,7 @@
           <view class="form-input picker-value">{{bindingLabel || '选择已绑定档案'}}<text wx:if="{{bindingSub}}"> · {{bindingSub}}</text></view>
         </picker>
         <view wx:if="{{presetMiss}}" class="warn-text">没找到该顾客（可能不在最近 50 条绑定里）：请手动选择顾客，或切到「新顾客（代客单）」建单。</view>
+        <view wx:if="{{bindingDisabled}}" class="warn-text">该顾客{{bindingDisabledText}}，不能代客下单；请换一位顾客，或切到「新顾客（代客单）」建单。</view>
         <view class="small guest-note">顾客已绑定：走正常订单，顾客可见进度；代客单不改变绑定关系。</view>
       </block>
 

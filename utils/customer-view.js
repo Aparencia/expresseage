@@ -5,6 +5,7 @@
 'use strict';
 
 const roomTag = require('./room-tag');
+const enums = require('../shared/enums');
 
 const PHONE_TAIL_LENGTH = 4;
 const KEYWORD_MAX = 30;
@@ -110,10 +111,26 @@ function buildKeyText(customer) {
   return parts.join(' · ');
 }
 
+// D68：顾客账号三态（服务端 partner.listBindings/getCustomer 已下发 users.status）；
+// 文案单源 shared/enums.USER_STATUS_LABELS，页面不自建「已停用/已注销」字面量。
+function accountStatusOf(customer) {
+  const value = textOf(customer && customer.status).toUpperCase();
+  if (value === enums.USER_STATUS.SUSPENDED || value === enums.USER_STATUS.DEACTIVATED) {
+    return value;
+  }
+  return enums.USER_STATUS.ACTIVE;
+}
+
+function accountStatusTextOf(status) {
+  return status === enums.USER_STATUS.ACTIVE ? '' : (enums.USER_STATUS_LABELS[status] || '');
+}
+
 // listBindings 行 → 页面行视图（不显示 openid、不拼完整手机号、不本地排序）
 // 批20-C：dormKey 空的顾客（资料未完善，服务端已置底）不再拼假宿舍锚，行上标「资料未完善」。
+// D68：停用/注销顾客行标状态并禁止代客下单（服务端仍兜底拒绝）。
 function buildListRow(item) {
   const customer = item || {};
+  const status = accountStatusOf(customer);
   const dormKey = textOf(customer.dormKey);
   const anchorText = dormKey ? formatDorm(dormKey, customer.roomTag) : '';
   const keyText = buildKeyText(customer);
@@ -144,7 +161,12 @@ function buildListRow(item) {
     incompleteText: dormKey ? '' : '资料未完善',
     activeOrderCount: activeCount,
     activeOrderCountText: activeCount > 0 ? '进行中 ' + activeCount + ' 单' : '',
-    boundAtText: shortDateText(customer.boundAt)
+    boundAtText: shortDateText(customer.boundAt),
+    status: status,
+    statusText: accountStatusTextOf(status),
+    isSuspended: status === enums.USER_STATUS.SUSPENDED,
+    isDeactivated: status === enums.USER_STATUS.DEACTIVATED,
+    canCreateOnBehalf: status === enums.USER_STATUS.ACTIVE
   };
 }
 

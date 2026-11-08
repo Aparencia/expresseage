@@ -234,6 +234,12 @@ Page({
     if (this.guardReadonly()) {
       return;
     }
+    // D68：停用/注销顾客禁止代客下单（入口已隐藏，这里兜底；服务端 order.create 仍会拒绝）
+    const view = this.data.view || {};
+    if (view.canCreateOnBehalf === false) {
+      wx.showToast({ title: (view.statusText || '该顾客已停用') + '，不能代客下单', icon: 'none' });
+      return;
+    }
     wx.navigateTo({
       url: '/pkg-partner/pages/create-on-behalf/index?bindingId=' + encodeURIComponent(this.data.bindingId)
     });

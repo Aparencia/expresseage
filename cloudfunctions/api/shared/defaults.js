@@ -63,7 +63,29 @@ const DEFAULT_CONFIG = {
   avatarMaxBytes: 200 * 1024,
   testAccountMaxPerRole: 3,
   testDataRetentionDays: PROMISE_RETENTION_DAYS.testData,
-  subscribeTemplates: { enabled: false },
+  // 批 31（D73）：服务通知（一次性订阅）。模板 ID 为公开配置（非凭证）；enabled 默认关闭，
+  // 上线前由用户在控制台 config/global 置 true。字段映射 key = 模板关键词，value = 值注册表键。
+  subscribeTemplates: {
+    enabled: false,
+    delivered: {
+      templateId: 'zxQ_yQgray66bHuDXPGGYEQTd6Fn-iCndeW6ImPl6ZQ',
+      page: 'pages/launch/index?orderNo={orderNo}',
+      fields: {
+        character_string1: 'orderNo',
+        time6: 'deliveredAt',
+        thing3: 'fixed:快递已送达，请及时取件'
+      }
+    },
+    newOrder: {
+      templateId: 'GP0_nOdr_hn-a2UD0LVgHRhsmCkeHDI11C9c5DnDRKc',
+      page: 'pages/partner/workbench/index',
+      fields: {
+        thing20: 'orderSourceText',
+        thing24: 'serviceAreaText',
+        number45: 'parcelCount'
+      }
+    }
+  },
   privacyVersion: 'v4.0.0',
   updatedAt: 0
 };
@@ -86,7 +108,7 @@ const CONFIG_LIMITS = {
   subInviteRate: { perMinute: { min: 1, max: 30 }, perDay: { min: 1, max: 200 } }
 };
 
-// config.getPublic 下发的公开子集（模板 ID / aiFallback / 治理参数一律不下发）
+// config.getPublic 下发的公开子集（aiFallback/治理参数一律不下发；D73：订阅启用时单独下发模板 ID，不下发字段映射）
 const PUBLIC_CONFIG_KEYS = [
   'zoneLabels',
   'stations',
@@ -130,7 +152,7 @@ function createDefaultConfig() {
   return JSON.parse(JSON.stringify(DEFAULT_CONFIG));
 }
 
-// 公开子集裁剪：subscribeEnabled 由 subscribeTemplates.enabled 派生（不下发模板 ID）
+// 公开子集裁剪：subscribeEnabled 由 subscribeTemplates.enabled 派生；D73 起 enabled 时另下发模板 ID
 function pickPublicConfig(config) {
   const source = config && typeof config === 'object' ? config : DEFAULT_CONFIG;
   const out = {};
@@ -142,6 +164,15 @@ function pickPublicConfig(config) {
   // D70：双判据开关按布尔净化（缺省=开；显式 false 才关），避免脏配置把能力意外关掉
   out.stationInfer = stations.stationInferOf({ stationInfer: source.stationInfer });
   out.subscribeEnabled = !!(source.subscribeTemplates && source.subscribeTemplates.enabled);
+  // 批 31（D73）：客户端授权必须拿到模板 ID（非密钥）；只下发 ID，不下发字段映射/其它治理配置。
+  if (out.subscribeEnabled && source.subscribeTemplates) {
+    const delivered = source.subscribeTemplates.delivered || {};
+    const newOrder = source.subscribeTemplates.newOrder || {};
+    out.subscribeTemplateIds = {
+      delivered: typeof delivered.templateId === 'string' ? delivered.templateId : '',
+      newOrder: typeof newOrder.templateId === 'string' ? newOrder.templateId : ''
+    };
+  }
   return out;
 }
 

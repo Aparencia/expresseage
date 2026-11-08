@@ -78,7 +78,8 @@ function maskSensitive(value, maxLength) {
 function tailCandidatesFromLine(line) {
   const out = [];
   // ⑦：关键词行取「数字运行内末 5 位」——运单号 JT0001234567890 的尾号是 67890，不是前 5 位 00012
-  const keywordRe = /(?:运单|单号|快递单|末位|末尾|后五位|后)(?:尾号|尾数|后)?[^\d]{0,4}(\d{5,})/g;
+  // D72③：「尾号 04898」这类标签行也必须走优先词，不得落到后面的孤立 5 位兜底（多行语料时取错行）
+  const keywordRe = /(?:运单|单号|快递单|尾号|末位|末尾|后五位|后)(?:尾号|尾数|后)?[^\d]{0,4}(\d{5,})/g;
   let keyword = keywordRe.exec(line);
   while (keyword) {
     const value = keyword[1].slice(-5);

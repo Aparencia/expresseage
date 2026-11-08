@@ -19,9 +19,23 @@ async function readConfig(dao) {
     return { config: cloneDefault(), seeded: false };
   }
   const config = Object.assign(cloneDefault(), doc);
+  // 批 31（D73）：subscribeTemplates 深层一层合并——后台只写 enabled:true 时不能丢默认模板 ID/字段映射。
+  config.subscribeTemplates = mergeSubscribeTemplates(DEFAULT_CONFIG.subscribeTemplates, doc.subscribeTemplates);
   // stations 读层净化：缺省/非法/重名条目回退内置默认，固定 P1~P8 顺序且名称唯一
   config.stations = sharedStations.stationsFromConfig(config);
   return { config: config, seeded: true };
+}
+
+function mergeSubscribeTemplates(base, override) {
+  const source = override && typeof override === 'object' ? override : {};
+  const merged = Object.assign({}, base, source);
+  ['delivered', 'newOrder'].forEach((key) => {
+    const baseItem = (base && base[key]) || {};
+    const sourceItem = (source && source[key]) || {};
+    merged[key] = Object.assign({}, baseItem, sourceItem);
+    merged[key].fields = Object.assign({}, baseItem.fields || {}, sourceItem.fields || {});
+  });
+  return merged;
 }
 
 // 公开子集：委托 shared/defaults 的 pickPublicConfig，保证客户端/云端字段一致。

@@ -33,7 +33,7 @@ const uploadCommon = require(path.join(ROOT, 'cloudfunctions/api/handlers/upload
 const profileVm = require(path.join(ROOT, 'pages/profile/parts/view-model.js'));
 const avatarSave = require(path.join(ROOT, 'pages/profile/parts/avatar-save.js'));
 
-const EXPECTED_ASSERTIONS = 199; // 194 - 2（批 16 草稿指针三件套删除）+ 7（D69 本机退出登录）
+const EXPECTED_ASSERTIONS = 200; // 194 - 2（批 16 草稿指针三件套删除）+ 7（D69 本机退出登录）+ 1（P2-A8 DEACTIVATED 文案时限）
 
 const TOKEN = 'T'.repeat(32);
 const CONSENT_AT = 1700000000000;
@@ -296,6 +296,10 @@ function register(h) {
       'launch 不在页面里比较隐私版本（状态机只在 utils/privacy-policy 纯件）');
     t.check(/decideEntryRoute\(|decideLaunchRoute\(/.test(launchJs),
       'launch 分流走 config/route.js 纯函数（页面零业务判据；D37 入口决策 decideEntryRoute 可回落 decideLaunchRoute）');
+    // P2-A8：已注销状态页文案必须给 30 天时限真话（30 天内原账号仍不可用，到期清理后重新进入按新用户）
+    t.check(launchJs.indexOf('30 天内原账号仍不可用') >= 0
+      && launchJs.indexOf('到期清理后可用同一微信重新进入') >= 0,
+    'D68/P2-A8 DEACTIVATED 文案补时限（不承诺注销后可立即重新使用）');
   });
 
   // ---------------------------------------------------------------- §11 隐私同意

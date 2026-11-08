@@ -211,6 +211,10 @@ function withManualEdit(item, patch, options) {
     next.confidence = '';
     next.aiApplied = false;
   }
+  // D70 手填优先（批 31 审查修复）：手选站点打 manual 标记，后续采纳建议/码反推不得覆盖。
+  if (Object.prototype.hasOwnProperty.call(patch || {}, 'stationId')) {
+    next.stationBy = 'manual';
+  }
   // D70：手填取件码命中站点格式且当前站点为空/不一致时，按码补站点（用户手选站点优先，仅空位才填）
   if (next.pickupCode && !next.stationId && options) {
     recognize.syncStationFromCode(next, options);

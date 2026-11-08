@@ -122,19 +122,22 @@ function applyAiFallbacksOf(items, calls, stationOption) {
   return out;
 }
 
-/** 只填空白字段（手填优先）：返回 {item, changed}；站点命中 P1~P8 才写入（非法站点不猜） */
-function fillBlank(target, row) {
+/** 只填空白字段（手填优先）：返回 {item, changed}；站点命中 P1~P8 才写入（非法站点不猜）
+ *  D71：stationIndex/stationName 取同一份 picker 值域（state.stationOptions，由公开配置生成） */
+function fillBlank(target, row, stationOptions) {
   const item = Object.assign({}, target || {});
   const value = row || {};
+  const options = listOf(stationOptions);
   let changed = 0;
   if (!textOf(item.pickupCode) && value.pickupCode) { item.pickupCode = value.pickupCode; changed += 1; }
   if (!textOf(item.lockerNo) && value.lockerNo) { item.lockerNo = value.lockerNo; changed += 1; }
   if (!textOf(item.trackingTail) && value.trackingTail) { item.trackingTail = value.trackingTail; changed += 1; }
   const stationId = textOf(value.stationId).toUpperCase();
   if (!textOf(item.stationId) && stations.isStationId(stationId)) {
+    const option = options.filter(function same(entry) { return entry.id === stationId; })[0] || null;
     item.stationId = stationId;
-    item.stationName = stations.stationNameOf(stationId);
-    item.stationIndex = formModel.stationIndexOf(formModel.stationOptionsOf(), stationId);
+    item.stationName = (option && textOf(option.name)) || stations.stationNameOf(stationId);
+    item.stationIndex = formModel.stationIndexOf(options.length ? options : formModel.stationOptionsOf(), stationId);
     item.stationTouched = true;
     changed += 1;
   }
@@ -176,7 +179,7 @@ function mergeRecognizedItems(state, recognized) {
       return;
     }
     used[index] = true;
-    const result = fillBlank(items[index], row);
+    const result = fillBlank(items[index], row, source.stationOptions);
     items[index] = result.item;
     if (result.changed > 0) filled += 1;
   });

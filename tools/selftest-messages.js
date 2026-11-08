@@ -29,8 +29,13 @@ const markReadHandler = require(path.join(ROOT, 'cloudfunctions/api/handlers/mes
 const { createDao } = require(path.join(ROOT, 'cloudfunctions/api/db/dao.js'));
 const switchSession = require(path.join(ROOT, 'cloudfunctions/api/middleware/switch-session.js'));
 const collections = require(path.join(ROOT, 'cloudfunctions/api/shared/collections.js'));
+const { createTestDb, cloudStub } = require('./selftest-cloud-fixtures');
+const subscribeMessage = require(path.join(ROOT, 'cloudfunctions/api/lib/subscribe-message.js'));
+const configReader = require(path.join(ROOT, 'cloudfunctions/api/db/config.js'));
+const sharedDefaults = require(path.join(ROOT, 'cloudfunctions/api/shared/defaults.js'));
+const orderCases = require('./lib/order-server-cases');
 
-const EXPECTED_ASSERTIONS = 108;
+const EXPECTED_ASSERTIONS = 140; // 129 + 11：P1-1 thing 预算 ×8 站点/楼栋 + order.create 钩子/重放/代客 + 停用不重发 + touser 防发错人
 
 const NOW = Date.UTC(2026, 9, 22, 5, 0, 0);
 const MINUTE = 60 * 1000;
@@ -725,6 +730,221 @@ async function sectionG(h) {
   });
 }
 
+// ── H. 服务通知（D73）────────────────────────────────────────────────────────
+function subscribeDb(extra) {
+  const opts = extra || {};
+  const db = createTestDb();
+  db.seed('users', [
+    userDoc(C1, ['CUSTOMER'], opts.customerUser || {}),
+    userDoc(P1, ['PARTNER'])
+  ]);
+  db.seed('config', [{
+    _id: 'global', privacyVersion: 'v4.0', maintenance: { enabled: false, text: '' },
+    subscribeTemplates: { enabled: true }
+  }]);
+  db.seed('customers', [{
+    _id: C1, customerNo: 'CADEFGHJK', displayName: '小王', zone: 'D', buildingNo: 4,
+    room: '522', profileCompleted: true
+  }]);
+  db.seed('partners', [{
+    _id: PID1, openid: P1, partnerNo: 'PAAAAAA', displayName: '老张', status: 'ACTIVE', serviceConfig: {}
+  }]);
+  db.seed('orders', [orderDoc('20260101-0201', 'PICKED', Object.assign({
+    _id: 'sub-101',
+    deliveredAt: new Date(NOW),
+    delivery: { zone: 'D', buildingNo: 4, room: '522', buildingText: 'D4' },
+    parcels: [{ stationName: '菜鸟驿站' }, { stationName: '菜鸟驿站' }]
+  }, opts.order || {}))]);
+  return db;
+}
+
+async function subscribeCtx(db, cloud) {
+  const dao = createDao(db);
+  const runtime = await configReader.readConfig(dao);
+  return { dao: dao, config: runtime.config, cloud: cloud };
+}
+
+async function sectionH(h) {
+  h.section('§H 服务通知（D73）：发送闸 / 字段 / 失败降级', async (t) => {
+    const db = subscribeDb();
+    const cloud = cloudStub();
+    const ctx = await subscribeCtx(db, cloud);
+    const order = db.dump('orders')[0];
+    const deliveredTemplate = sharedDefaults.DEFAULT_CONFIG.subscribeTemplates.delivered;
+
+    const first = await subscribeMessage.notifyDelivered(ctx, order);
+    t.eq([first.ok, cloud.subscribeCalls.length], [true, 1], 'H1 送达通知：enabled + 合法订单 → 发送 1 次');
+    const payload = cloud.subscribeCalls[0];
+    t.eq(payload.touser, order.customerOpenid, 'H1b 送达通知 touser=顾客 openid（订单 customerOpenid，不发错人）');
+    t.eq(payload.templateId, deliveredTemplate.templateId, 'H2 送达模板 ID 取自 config');
+    t.eq([payload.data.character_string1.value, payload.data.thing3.value,
+      payload.data.time6.value.indexOf('2026年10月22日') === 0],
+    ['20260101-0201', '快递已送达，请及时取件', true], 'H3 送达三字段：订单号/温馨提示/时间');
+    t.eq(payload.page, 'pages/launch/index?orderNo=20260101-0201', 'H4 落地页 = launch?orderNo');
+
+    const before = cloud.subscribeCalls.length;
+    const disabledCtx = Object.assign({}, ctx, {
+      config: Object.assign({}, ctx.config, {
+        subscribeTemplates: Object.assign({}, ctx.config.subscribeTemplates, { enabled: false })
+      })
+    });
+    await subscribeMessage.notifyDelivered(disabledCtx, order);
+    t.eq(cloud.subscribeCalls.length, before, 'H5 enabled=false → 0 次');
+    await subscribeMessage.notifyDelivered(ctx, Object.assign({}, order, { isTest: true }));
+    t.eq(cloud.subscribeCalls.length, before, 'H6 测试订单 → 0 次');
+    await subscribeMessage.notifyDelivered(ctx, Object.assign({}, order, { customerOpenid: '' }));
+    t.eq(cloud.subscribeCalls.length, before, 'H7 目标 openid 为空 → 0 次');
+
+    const suspendedDb = subscribeDb({ customerUser: { status: 'SUSPENDED' } });
+    const suspendedCtx = await subscribeCtx(suspendedDb, cloud);
+    await subscribeMessage.notifyDelivered(suspendedCtx, suspendedDb.dump('orders')[0]);
+    t.eq(cloud.subscribeCalls.length, before, 'H8 停用/注销用户 → 0 次');
+
+    const badConfig = JSON.parse(JSON.stringify(ctx.config));
+    badConfig.subscribeTemplates.delivered.fields.character_string1 = 'missingKey';
+    await subscribeMessage.notifyDelivered(Object.assign({}, ctx, { config: badConfig }), order);
+    t.eq(cloud.subscribeCalls.length, before, 'H9 未知字段映射 → 0 次（fail-closed）');
+
+    const throwCloud = cloudStub('pass', { send: () => { throw new Error('boom'); } });
+    const throwCtx = await subscribeCtx(subscribeDb(), throwCloud);
+    const throwRes = await subscribeMessage.notifyDelivered(throwCtx, order);
+    t.eq([throwRes.ok, throwCloud.subscribeCalls.length], [false, 1], 'H10 发送抛错 → 不抛、业务安全');
+
+    const rejectCloud = cloudStub('pass', { send: () => ({ errCode: 43101, errMsg: 'no subscribe' }) });
+    const rejectCtx = await subscribeCtx(subscribeDb(), rejectCloud);
+    const rejectRes = await subscribeMessage.notifyDelivered(rejectCtx, order);
+    t.eq(rejectRes.ok, false, 'H11 43101（无额度/拒收）→ 静默失败');
+
+    const newOrder = Object.assign({}, order, { orderNo: '20260101-0202', source: 'CUSTOMER' });
+    const newRes = await subscribeMessage.notifyNewOrder(ctx, newOrder);
+    const newPayload = cloud.subscribeCalls[cloud.subscribeCalls.length - 1];
+    t.eq([newRes.ok, cloud.subscribeCalls.length], [true, before + 1], 'H12 新订单通知：发送 1 次');
+    t.eq(newPayload.touser, order.partnerOpenid, 'H12b 新单通知 touser=兼职 openid（订单 partnerOpenid，不发顾客）');
+    t.eq([newPayload.templateId, newPayload.data.thing20.value, newPayload.data.number45.value],
+      [sharedDefaults.DEFAULT_CONFIG.subscribeTemplates.newOrder.templateId, '顾客下单', '2'],
+      'H13 新订单模板/来源/件数正确');
+
+    const beforeEmpty = cloud.subscribeCalls.length;
+    await subscribeMessage.notifyNewOrder(ctx, Object.assign({}, newOrder, { partnerOpenid: '' }));
+    t.eq(cloud.subscribeCalls.length, beforeEmpty, 'H14 新订单目标 openid 为空 → 0 次');
+
+    const onPublic = sharedDefaults.pickPublicConfig(ctx.config);
+    t.eq(onPublic.subscribeTemplateIds.delivered, deliveredTemplate.templateId,
+      'H15 公开配置 enabled 时下发模板 ID（客户端授权用）');
+    const offPublic = sharedDefaults.pickPublicConfig(Object.assign({}, ctx.config, {
+      subscribeTemplates: { enabled: false }
+    }));
+    t.eq(offPublic.subscribeTemplateIds === undefined, true, 'H16 公开配置关闭时不下发模板 ID');
+    t.eq(ctx.config.subscribeTemplates.delivered.templateId, deliveredTemplate.templateId,
+      'H17 后台只写 enabled 时默认模板 ID 不丢（readConfig 合并）');
+
+    t.eq(subscribeMessage.buildData({ thing3: 'fixed:' + 'x'.repeat(21) }, {}), null,
+      'H18 超长 thing 字段 → null（不硬发 47003）');
+    t.eq(subscribeMessage.dateTimeTextOf('not-a-date'), '', 'H19 非法时间 → 空串（不写假时间）');
+    const noCloudRes = await subscribeMessage.notifyDelivered({ dao: ctx.dao, config: ctx.config }, order);
+    t.eq([noCloudRes.ok, noCloudRes.skipped], [false, 'cloud'], 'H20 无云调用注入 → 跳过不抛');
+
+    const hookDb = subscribeDb();
+    const hookCloud = cloudStub();
+    const hookApi = createApi({ db: hookDb, now: NOW, env: {}, openid: P1, cloud: hookCloud });
+    const hookRes = await hookApi.call('order.markDelivered', { orderNo: '20260101-0201' },
+      { clientRequestId: 'H21DELIVER0000001' });
+    t.eq([hookRes.ok, hookCloud.subscribeCalls.length], [true, 1],
+      'H21 order.markDelivered 事务后触发送达通知（钩子接线）');
+    const hookReplay = await hookApi.call('order.markDelivered', { orderNo: '20260101-0201' },
+      { clientRequestId: 'H21DELIVER0000001' });
+    t.eq([hookReplay.ok, hookReplay.data.duplicated, hookCloud.subscribeCalls.length], [true, true, 1],
+      'H22 同 clientRequestId 重放 markDelivered：duplicated=true 且 0 新增发送（不重发通知）');
+  });
+}
+
+// ── I. 批 31 判据补齐：默认站点×楼栋长度预算 / order.create 钩子 / 重放不重发 ─────────
+// 模板平台字数上限（thing≤20、character_string/number≤32；按关键词前缀取，期望值来自微信模板规则，
+// 不从 lib 实现抄）。修前 P5（16 字站名）与 P4+10 栋直拼超 20 → buildData 整包 null → 新单通知静默不发。
+const TEMPLATE_FIELD_LIMITS = { thing: 20, character_string: 32, number: 32 };
+
+function templateLimitOf(key) {
+  const prefix = Object.keys(TEMPLATE_FIELD_LIMITS).filter((item) => key.indexOf(item) === 0)[0];
+  return prefix ? TEMPLATE_FIELD_LIMITS[prefix] : 32;
+}
+
+// 默认配置 + 默认站点名构造「新单通知」取值（serviceAreaText = 苑+楼栋+·+站点名，P1-1 回归面）
+function defaultNewOrderDataOf(stationName, zone, buildingNo) {
+  const config = sharedDefaults.DEFAULT_CONFIG;
+  const order = { delivery: { zone: zone, buildingNo: buildingNo }, parcels: [{ stationName: stationName }] };
+  return subscribeMessage.buildData(config.subscribeTemplates.newOrder.fields,
+    subscribeMessage.valuesOf(order, config));
+}
+
+// 新单钩子世界：默认顾客/兼职/绑定 + config.subscribeTemplates.enabled=true（模板 ID/字段映射走 defaults 合并）。
+// config 种子落库后维护/隐私闸生效（auth.js assertRuntimeGates），故两名业务用户补最新隐私同意，避免写动作被闸门挡掉。
+function subscribeHookWorld() {
+  const world = orderCases.seedWorld();
+  const consent = { version: sharedDefaults.DEFAULT_CONFIG.privacyVersion, at: NOW };
+  world.db.seed('users', [
+    orderCases.userDoc(world.customerOpenid, [orderCases.ROLES.CUSTOMER], { privacyConsent: consent }),
+    orderCases.userDoc(world.partnerOpenid, [orderCases.ROLES.PARTNER], { privacyConsent: consent })
+  ]);
+  world.db.seed('config', [{ _id: 'global', subscribeTemplates: { enabled: true } }]);
+  return world;
+}
+
+async function sectionI(h) {
+  h.section('§I 批 31 判据补齐（thing 预算 / order.create 钩子 / 重放与停用不重发）', async (t) => {
+    // a) 默认 8 站点 × 楼栋 1/5/10：任何组合都必须能发出（P5/P4-10 栋是修前超 20 字反例）
+    const defaults = sharedDefaults.DEFAULT_CONFIG;
+    const stationsList = defaults.stations;
+    const p5 = stationsList.filter((item) => item.id === 'P5')[0];
+    const zoneLabel = defaults.zoneLabels.D;
+    t.eq([stationsList.length, p5.name.length, (zoneLabel + '1栋·' + p5.name).length > 20],
+      [8, 16, true], 'I1 反例前提：默认 8 站点、P5 名 16 字，直拼「苑+楼栋+·+站名」21 字 > thing 上限 20');
+    const failures = [];
+    stationsList.forEach((station) => {
+      [1, 5, 10].forEach((buildingNo) => {
+        const data = defaultNewOrderDataOf(station.name, 'D', buildingNo);
+        const keys = Object.keys(defaults.subscribeTemplates.newOrder.fields);
+        const bad = keys.filter((key) => !data || !data[key] || data[key].value.length > templateLimitOf(key));
+        if (bad.length > 0) failures.push(station.id + '/栋' + buildingNo + ':' + bad.join(','));
+      });
+    });
+    t.eq(failures, [],
+      'I2 默认 8 站点 × 楼栋 1/5/10 全部可发出（buildData 非 null 且每字段 ≤ thing20/其它 32）');
+    const p5Data = defaultNewOrderDataOf(p5.name, 'D', 1);
+    t.eq([p5Data !== null, p5Data && p5Data.thing24.value.length <= 20,
+      p5Data && p5Data.thing24.value.indexOf(zoneLabel + '1栋') === 0],
+    [true, true, true], 'I3 P5 16 字站名可发出：thing24 裁到 ≤20 且保留「苑+楼栋」头部（修前整包 null）');
+
+    // b) order.create 新单钩子（顾客本人发、收件人=兼职）；同 clientRequestId 重放 0 新增；
+    //    PARTNER 代客（guest）单 0 次；e) 目标兼职用户 SUSPENDED → 0 次。
+    const world = subscribeHookWorld();
+    const cloud = cloudStub();
+    const customerApi = orderCases.apiOf(world.db, world.customerOpenid, cloud);
+    const newOrderTemplate = defaults.subscribeTemplates.newOrder;
+    const crid = orderCases.nextCrid('b31new');
+    const created = await customerApi.call('order.create',
+      orderCases.createPayload({ manualEntry: true }), { clientRequestId: crid });
+    t.eq([created.ok, cloud.subscribeCalls.length], [true, 1], 'I4 顾客新单钩子：事务提交后恰好发送 1 次');
+    t.eq([cloud.subscribeCalls[0].touser, cloud.subscribeCalls[0].templateId],
+      [world.partnerOpenid, newOrderTemplate.templateId], 'I5 新单收件人=partnerOpenid、模板=newOrder 默认 ID（发对人）');
+    const replay = await customerApi.call('order.create',
+      orderCases.createPayload({ manualEntry: true }), { clientRequestId: crid });
+    t.eq([replay.ok, replay.data.duplicated, cloud.subscribeCalls.length], [true, true, 1],
+      'I6 同 clientRequestId 重放 order.create：duplicated=true 且 0 新增发送（不重发）');
+    const guest = { displayName: '小张', phoneTail: '1234', zone: 'D', buildingNo: 4, room: '522' };
+    const guestRes = await orderCases.apiOf(world.db, world.partnerOpenid, cloud).call('order.create',
+      orderCases.createPayload({ manualEntry: true, guest: guest }), { clientRequestId: orderCases.nextCrid('b31guest') });
+    t.eq([guestRes.ok, guestRes.data.order.source, world.db.dump('orders').length, cloud.subscribeCalls.length],
+      [true, 'PARTNER', 2, 1], 'I7 PARTNER 代客单（guest 路径）成功但 0 新增发送（source=PARTNER 不发新单）');
+    const suspendedDb = subscribeDb();
+    suspendedDb.seed('users', [userDoc(P1, ['PARTNER'], { status: 'SUSPENDED' })]);
+    const suspendedCtx = await subscribeCtx(suspendedDb, cloud);
+    const beforeSuspended = cloud.subscribeCalls.length;
+    await subscribeMessage.notifyNewOrder(suspendedCtx, suspendedDb.dump('orders')[0]);
+    t.eq(cloud.subscribeCalls.length, beforeSuspended,
+      'I8 目标兼职用户 SUSPENDED → 新单通知 0 次（用户状态闸，不发错人）');
+  });
+}
+
 // ── 注册 ─────────────────────────────────────────────────────────────────────
 function register(h) {
   h.setExpected(EXPECTED_ASSERTIONS);
@@ -736,6 +956,8 @@ function register(h) {
   sectionE(h);
   sectionF(h);
   sectionG(h);
+  sectionH(h);
+  sectionI(h);
 }
 
 module.exports = { EXPECTED_ASSERTIONS, register };

@@ -344,3 +344,9 @@
   margin-left: 12rpx;
   flex-shrink: 0;
 }
+
+/* D73：微信提醒状态（与左侧标题同一行，弱化显示） */
+.subscribe-state {
+  margin-left: 12rpx;
+  font-size: 24rpx;
+}

@@ -38,8 +38,9 @@
       <text class="section-title">账号治理</text>
       <view class="small">停用=冻结登录与写操作，资料/绑定/订单保持不变；恢复后即刻可用。注销不可恢复。</view>
       <view class="row action-row">
-        <view class="btn btn-danger btn-small" wx:if="{{customer.canSuspend}}" loading="{{submitting}}" bindtap="onSuspend">停用账号</view>
-        <view class="btn btn-primary btn-small" wx:if="{{customer.canResume}}" loading="{{submitting}}" bindtap="onResume">恢复账号</view>
+        <!-- P2-A7：loading 必须落在 <button> 上（<view loading> 无效）；同时 disabled 防重复提交 -->
+        <button class="btn btn-danger btn-small" wx:if="{{customer.canSuspend}}" size="mini" loading="{{submitting}}" disabled="{{submitting}}" bindtap="onSuspend">{{submitting ? '处理中…' : '停用账号'}}</button>
+        <button class="btn btn-primary btn-small" wx:if="{{customer.canResume}}" size="mini" loading="{{submitting}}" disabled="{{submitting}}" bindtap="onResume">{{submitting ? '处理中…' : '恢复账号'}}</button>
       </view>
     </view>
 

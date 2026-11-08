@@ -94,7 +94,7 @@
 
 ### 3.8 配置种子与冒烟
 
-- 用户：在 `config` 集合写 `_id='global'` 的种子（或由 `admin.bootstrap` 幂等建/校验），键与默认值见 ENGINEERING §3.6；`privacyVersion` 随隐私文本定稿回填（定稿候选 v1.3（历史 v1.0 留痕）↔ 代码默认 `v4.0.0`，见 §8 与 `docs/privacy/发布前填写清单.md` §1#17）。
+- 用户：在 `config` 集合写 `_id='global'` 的种子（或由 `admin.bootstrap` 幂等建/校验），键与默认值见 ENGINEERING §3.6；`privacyVersion` 随隐私文本定稿回填（当前文本定稿 v1.11，历史 v1.10 / v1.0 / 定稿候选 v1.3 留痕；代码默认 `v4.0.0`，见 §8 与 `docs/privacy/发布前填写清单.md` §1#17）。
 - Lead/用户：云开发控制台 → 云函数 → `api` → 测试 → 调用内部动作 `health.check`、`admin.bootstrap`（仅在开发者白名单下可用）；期望返回集合/索引清单、`configSeeded`，重复调用结果一致。
 - Lead：`node tools/seed-dev.js` 输出单环境初始化计划（dry-run，只打印集合/索引/config/测试账号计划与环境断言，不写真实库；真实初始化由用户/部署机执行；含服务类型目录、测试邀请码批次、测试顾客/兼职资料）。
 - 冒烟：`account-switch` 开 READONLY 读写边界；测试账号走 `TEST_WRITE` 两端各一单；头像上传/替换；删除测试账号（先 `dryRun` 看计数）；审计 `ACCOUNT_SWITCH_*`/`TEST_ACCOUNT_*` 可查。详细清单见 §9。
@@ -159,8 +159,17 @@
 | `autoCompleteAt`（D43） | `'22:00'`（**UTC+8 的 `HH:MM`**；送达单日结批 cutoff——该单送达日所在自然日的该时刻；10 分钟触发器粒度 ⇒ 实际完成落该时刻~+10 分钟；旧的「小时数」键作废） | admin.updateConfig（HH:MM 格式闸；后台配置页可改） |
 | `zoneLabels` / `serviceCatalog` / `announcement` / `maintenance` | 五苑展示名 / 五类服务 / 公告 / 维护开关 | admin.updateConfig |
 | `stations`（v1.1/D32） | 8 条 `{id,name}` 站点正式名（P1~P8 固定；识别/选择器/AI prompt 用当前名称；缺省回退默认） | admin.updateConfig（后台配置页可改；名称 1~20 字、唯一） |
-| `privacyVersion` | 定稿候选文本 v1.3（历史 v1.0 留痕）对应 `v4.0.0`（首次发布保持；仅当体验版已让用户同意旧文本才 bump，见 `docs/privacy/发布前填写清单.md` §1#17） | admin.updateConfig（白名单文本键；后台 config 页不提供编辑入口，发布前由 Lead/用户一次性写入并留证） |
+| `privacyVersion` | 隐私文本版本对应 `v4.0.0`（当前文本定稿 v1.11，历史 v1.10 / v1.0 / 定稿候选 v1.3 留痕；首次发布保持；仅当体验版已让用户同意旧文本才 bump，见 `docs/privacy/发布前填写清单.md` §1#17） | admin.updateConfig（白名单文本键；后台 config 页不提供编辑入口，发布前由 Lead/用户一次性写入并留证） |
 | `aiFallback` | `{enabled:false, timeoutMs:8000, maxPerUserPerDay:5, ...}` | **后台只读**；改值走部署配置脚本/控制台，并与隐私文本同步 |
+| `subscribeTemplates`（D73） | 两个模板 ID + 字段映射 + `enabled:false`；顾客送达 / 兼职新订单 | **控制台 `config/global` 改 `enabled`**（后台暂无编辑页）；改前确认 `cloudfunctions/api/config.json` 已声明 `subscribeMessage.send` 并重部署 |
+
+- **服务通知（D73）启用步骤（用户执行，agent 不代跑）**：
+  1. `node tools/sync-cloud-shared.js` 后重部署 `api`（含 `config.json` 的 `permissions.openapi: ["subscribeMessage.send","security.msgSecCheck"]`）；**部署后约 10 分钟权限缓存生效**，期间调用可能 `-604101`，属预期，重试即可。
+  2. 控制台 `config/global` 将 `subscribeTemplates.enabled` 改为 `true`（**不要删模板 ID 子键**；只写 `{enabled:true}` 时读层会一层合并默认 ID/字段）。
+  3. 冒烟：云函数控制台调用 `config.getPublic` 应含 `subscribeEnabled:true` 与 `subscribeTemplateIds{delivered,newOrder}`（不含字段映射）；`health.check`/`admin.bootstrap` 仍 ok。
+  4. 真机按 `docs/delivery/V4_QA_CHECKLIST.md` §AJ 点检（授权弹窗/送达通知/新单通知/拒绝不阻断/P0-3 连续 3 条额度）；**P0-3 与模板类型=2 未确认前保持 `enabled:false`，不得宣布生效**。
+  5. 回退：控制台 `enabled=false` 即停止发送（无需重部署）；已发出的通知无法撤回。
+- **云调用权限文件入库**：`cloudfunctions/api/config.json` 必须入库（缺失 → 真机 `-604101`）；`cloudfunctions/cleanup/config.json`（仅 `permissions.openapi:[]` + 10 分钟触发器声明）一并入库，部署 `cleanup` 前核对控制台是否已有同名触发器，避免重复/覆盖；两者都不含环境特有信息、可安全提交。
 
 - 客户端只经 `config.getPublic` 取公开子集；缓存 TTL 5 分钟 + onShow 刷新（ENGINEERING §3.6）。
 - 改任何配置必须：`admin_audit{CONFIG_UPDATE}` 可查、`CHANGELOG`/`STATE` 记录、涉及隐私承诺时同步 `docs/privacy/`。
@@ -185,7 +194,7 @@
 | 14 | 异常介入取消（批 8） | 仅 `EXCEPTION` 单可介入取消、原因必填、`cancelledBy='ADMIN'`、审计 `ORDER_ANOMALY_CANCEL`；非异常单 `INVALID_TRANSITION` | Lead/用户 | 返回原文 + 后台截图 |
 | 15 | cleanup 重跑幂等（批 8；D43 日结批） | 触发器到点执行，日志/审计 `CLEANUP` 汇总 `scanned/acted/failed` 正常；紧接一轮 `acted` 收敛（无重复写审计）；`orderTimeout/autoComplete/retention/recognitionFailures/testData` 按到期条件生效；**`autoComplete` 按 `config.autoCompleteAt`（默认 22:00，UTC+8）日结批生效，`DELIVERED` 单转 `COMPLETED` 且逐单写 `AUTO_COMPLETED`** | Lead/用户 | 两轮日志 + 控制台订单/事件抽查 |
 | 16 | 维护模式（批 8） | 开启后读（`user.bootstrap`/`config.getPublic`/`message.list`）正常、客户端写 `INVALID_STATE`、端侧全屏公告可见；关闭后写恢复；开启/关闭均 `CONFIG_UPDATE` 审计 | 用户 | 录屏 + 返回原文 |
-| 17 | 隐私文本一致性（批 8） | `config.getPublic.privacyVersion` 与 `docs/privacy/隐私保护指引`（定稿候选 v1.3，历史 v1.0 留痕）一致；端内 help 全文离线可读、关键条目（数据项/留存/AI/测试账号/未成年人/权利）齐全；launch 弹窗口径与 §4.1/§4.2 一致 | Lead/用户 | 返回原文 + 截图 + `docs/privacy/发布前填写清单.md` 勾选 |
+| 17 | 隐私文本一致性（批 8） | `config.getPublic.privacyVersion` 与 `docs/privacy/隐私保护指引`（定稿 v1.11，历史 v1.10 / v1.0 / 定稿候选 v1.3 留痕）一致；端内 help 全文离线可读、关键条目（数据项/留存/AI/测试账号/未成年人/权利）齐全；launch 弹窗口径与 §4.1/§4.2 一致 | Lead/用户 | 返回原文 + 截图 + `docs/privacy/发布前填写清单.md` 勾选 |
 
 ## 10. 灰度发布与回滚演练
 
@@ -369,7 +378,7 @@
 | E12 | 头像/昵称隐私接口与基础库能力、真机压缩 | 批 2 | ENGINEERING §13 |
 | R2 | 私有存储"仅创建者可写" + 上传链路 | 批 1 / 批 4 | ENGINEERING §12 |
 | R3 | VisionKit 真机识别形态 | 批 4 | ENGINEERING §12 |
-| R6 | 订阅消息模板审批（P1） | 批 9 | ENGINEERING §12 |
+| R6 | 订阅消息模板与额度（D73） | 批 31 | ENGINEERING §12 |
 | R13 | 云开发配额/成本估算与告警 | 批 9 | ENGINEERING §12 |
 | E11 | DeepSeek 账号/条款/合规确认 | 批 4 前 | ENGINEERING §13 |
 | R9 | 校园运营/校方/驿站要求（线下确认） | 批 9 | ENGINEERING §12 |
@@ -419,7 +428,7 @@
 - **共享副本**：`shared/{enums,actions,order-state,validate}.js` 与 `config/defaults.js` 变更 → Lead 先跑 `node tools/sync-cloud-shared.js` 生成 `cloudfunctions/{api,cleanup}/shared/**` 副本（禁止手写），再上传 `api`（建议同版本重传 `cleanup`，行为无 sweep 变更）。
 - **配置**：`transferTtlMinutes=10`、`transferRate{perMinute:3,perDay:20}`、`teamMaxMembers=5`、`subInviteRate{perMinute:3,perDay:20}` 为**出厂默认（`config/defaults.js`）**、**不进公开子集、不进 `admin.updateConfig` 白名单**；上线**无需**在控制台改 `config`（改值只能走部署配置脚本/控制台并重跑 sync）。
 - **索引**：按 §3.5 新增 3 个索引（`idx_transfer_target`/`idx_issuer`/`idx_parent`），退化方案见同节；建后冒烟见 18.3。
-- **隐私文本**：`docs/privacy/隐私保护指引.md` 已定稿 **v1.10（2026-11-03 用户确认）**（转派协作履约 + 队内昵称可见两项披露），`privacyVersion` 配置值**保持 `v4.0.0` 不升版**；端内全文 `pkg-customer/parts/privacy-text.js`、`补充文档.txt`、发布前填写清单已同源同步（三处一致由 `selftest-privacy-text` 锁定）。
+- **隐私文本**：`docs/privacy/隐私保护指引.md` 已定稿 **v1.11（2026-11-08 用户确认）**（D73 订阅消息送达/新订单提醒披露；历史 v1.10 转派协作履约 + 队内昵称可见两项披露留痕），`privacyVersion` 配置值**保持 `v4.0.0` 不升版**；端内全文 `pkg-customer/parts/privacy-text.js`、`补充文档.txt`、发布前填写清单已同源同步（三处一致由 `selftest-privacy-text` 锁定）。
 
 ### 18.2 上线前冒烟（用户/Lead，最小链路）
 

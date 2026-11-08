@@ -19,6 +19,7 @@ const appointUtil = require(path.join(ROOT, 'shared/appoint.js'));
 const ocrFlow = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/ocr-flow.js'));
 const enums = require(path.join(ROOT, 'shared/enums.js'));
 const stations = require(path.join(ROOT, 'shared/stations.js'));
+const recognize = require(path.join(ROOT, 'utils/recognize/index.js'));
 const orderState = require(path.join(ROOT, 'shared/order-state.js'));
 const errorCopy = require(path.join(ROOT, 'shared/error-copy.js'));
 const store = require(path.join(ROOT, 'store/index.js'));
@@ -46,7 +47,7 @@ const {
   createOrderDb, orderApiOf, pageLayerHits
 } = caseLib;
 
-const EXPECTED_ASSERTIONS = 281; // 256 + 21：R 组 P0-1 多图 imageIndex 重映射 9 + S 组 P1-10 取消识别 8 + Q13~Q16 日历日回算 4；+4：D70 手填码补站点/开关
+const EXPECTED_ASSERTIONS = 286; // 256 + 21：R 组 P0-1 多图 imageIndex 重映射 9 + S 组 P1-10 取消识别 8 + Q13~Q16 日历日回算 4；+4：D70 手填码补站点/开关；+5：D70 手选站点优先（采纳/兜底两条路径不覆盖 4 + stationBy=code 可被码更新 1）
 
 function register(h) {
   // ---------------------------------------------------------------- A 站点选择器（P1~P8）
@@ -490,6 +491,32 @@ function register(h) {
     t.eq(model.stationContext({ stations: stationConfig, stationInfer: { fromCode: false } }),
       { stations: stationConfig, stationInfer: { fromCode: false } },
       'D70 页面 stationContext 原样携带站点表与开关（供识别/手填/AI 采纳共用）');
+    // D70：手选站点优先——用户手选 P2 后采纳「仅含取件码」的低置信建议，码反推不得覆盖手选站点（被否项：按码强制覆盖）
+    const pickedP2 = model.withManualEdit(
+      model.makeItem({ stationId: '', pickupCode: '' }, { serviceCode: serviceCode }),
+      { stationId: 'P2', stationName: stations.stationNameOf('P2') }, codeOption);
+    pickedP2.aiSuggestion = { pickupCode: '64-4-4033', confidence: 'LOW', source: 'DEEPSEEK' };
+    const pickedAdopt = model.adoptSuggestion(pickedP2, codeOption);
+    t.eq([pickedP2.source, pickedP2.stationId], ['MANUAL', 'P2'],
+      'D70 手选站点 P2 先落 source=MANUAL（手选优先基线）');
+    t.eq([pickedAdopt.item.stationId, pickedAdopt.item.stationName, pickedAdopt.item.pickupCode],
+      ['P2', stations.stationNameOf('P2'), '64-4-4033'],
+      'D70 手选站点 P2 + 采纳仅含码 64-4-4033 建议：站点保持 P2（码不覆盖手选）');
+    t.eq(pickedAdopt.changed, ['pickupCode'], 'D70 手选站点 P2 + 采纳仅含码建议：不产生 station 变更');
+    // 同口径覆盖 applyAiSuggestion（非低置信 AI 兜底直接预填）路径：补码后仍不覆盖手选站点
+    const pickedApply = await model.applyAiFallbacks([pickedP2], ctx, () => Promise.resolve({
+      recognized: true, stationId: '', stationName: '', pickupCode: '64-4-4033',
+      trackingTail: '', lockerNo: '', confidence: 'MEDIUM', source: 'DEEPSEEK', needsReview: false
+    }));
+    t.eq([pickedApply.items[0].stationId, pickedApply.items[0].pickupCode], ['P2', '64-4-4033'],
+      'D70 手选站点 P2 + AI 兜底补码 64-4-4033：站点仍保持 P2（applyAiSuggestion 同样不覆盖手选）');
+    // D70：码推断站点（stationBy=code）不是手选站点，手改码命中格式时仍由码更新站点（保留「码可覆盖识图/码站点」）
+    const byCodeItem = Object.assign(recognize.makeEmptyParcel(), {
+      stationId: 'P2', stationName: stations.stationNameOf('P2'), pickupCode: '64-4-4033',
+      stationBy: 'code', source: 'MANUAL'
+    });
+    t.eq([recognize.syncStationFromCode(byCodeItem, codeOption), byCodeItem.stationId], [true, 'P3'],
+      'D70 stationBy=code 不是手选站点：手改码命中格式可更新站点 P2→P3');
     const shell = await model.applyAiFallbacks(
       [model.makeItem({}, { serviceCode: serviceCode })], ctx, stub);
     t.eq([shell.called, shell.items[0].stationId !== ''], [1, true],
