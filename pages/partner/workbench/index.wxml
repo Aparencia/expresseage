@@ -8,6 +8,8 @@
     <view class="title">工作台</view>
     <view class="row">
       <view class="mini-btn btn btn-ghost" bindtap="onRefreshTap">刷新</view>
+      <!-- 2026-11-08：审核核对入口（截图 vs 订单信息；MVP 不留审核状态） -->
+      <view wx:if="{{!readonly}}" class="mini-btn btn btn-ghost" bindtap="onReviewTap">审核</view>
       <!-- 批 31（D73）：一次性订阅的「新订单通知」授权入口；READONLY/测试会话/订阅未启用或缺模板 ID 时不显示 -->
       <view wx:if="{{!readonly && !testWrite && subscribeEnabled}}" class="mini-btn btn btn-ghost" bindtap="onSubscribeTap">开启新单提醒</view>
       <view wx:if="{{!readonly && (selecting || hasRows)}}" class="mini-btn btn btn-primary" bindtap="onToggleSelecting">{{selecting ? '退出多选' : '多选'}}</view>

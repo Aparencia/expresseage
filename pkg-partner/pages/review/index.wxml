@@ -1,0 +1,88 @@
+<!-- pkg-partner/pages/review/index.wxml · 兼职「审核」核对页（2026-11-08 MVP）
+     一屏查看顾客上传的取件码截图与其订单信息；不一致可直接改订单字段（order.correct）。
+     不留审核状态、不加集合、不阻塞取件；READONLY 隐藏保存。 -->
+<view class="page-body">
+  <switch-bar />
+
+  <block wx:if="{{stage === 'list'}}">
+    <view class="card">
+      <view class="section-title">审核截图</view>
+      <view class="small muted review-hint">核对顾客上传的取件码截图与订单信息是否一致；不一致可直接改订单字段。审核不改变订单状态，也不阻塞取件。</view>
+      <view wx:if="{{error}}" class="small error-text">{{error}}</view>
+      <view
+        wx:for="{{rows}}"
+        wx:key="orderNo"
+        class="review-row"
+        data-order-no="{{item.orderNo}}"
+        bindtap="onOpen"
+      >
+        <view class="row between">
+          <view class="row">
+            <status-pill status="{{item.status}}" />
+            <text class="review-no">{{item.orderNo}}</text>
+          </view>
+          <text class="small muted">{{item.imageCountText}}</text>
+        </view>
+        <view class="row between review-meta">
+          <text class="small muted">{{item.anchorText}}</text>
+          <text wx:if="{{item.parcelCountText}}" class="small muted">{{item.parcelCountText}}</text>
+        </view>
+      </view>
+      <view wx:if="{{!rows.length && !error}}" class="small muted review-empty">{{emptyText}}</view>
+      <view wx:if="{{loading}}" class="small muted">加载中…</view>
+    </view>
+  </block>
+
+  <block wx:else>
+    <view class="row between review-head">
+      <view class="mini-btn btn btn-ghost" bindtap="onBack">返回列表</view>
+      <text class="small muted">{{current.statusText}}</text>
+    </view>
+
+    <view class="card">
+      <view class="row between">
+        <view class="strong">{{current.orderNo}}</view>
+        <text class="small muted">{{current.anchorText}}</text>
+      </view>
+      <view wx:if="{{error}}" class="small error-text">{{error}}</view>
+      <swiper wx:if="{{images.length}}" class="shot-swiper" indicator-dots circular>
+        <swiper-item wx:for="{{images}}" wx:key="index">
+          <image class="shot-image" src="{{item.url}}" mode="aspectFit" data-index="{{index}}" bindtap="onPreview" />
+        </swiper-item>
+      </swiper>
+      <view wx:else class="small muted">这单没有可查看的截图（可能已按隐私策略清理）。</view>
+    </view>
+
+    <view wx:for="{{parcels}}" wx:key="index" class="card parcel-card">
+      <view class="row between">
+        <view class="strong">{{item.indexText}}</view>
+        <text wx:if="{{item.needCode}}" class="tag need-tag">需查明</text>
+      </view>
+      <picker range="{{stationOptions}}" range-key="name" data-index="{{index}}" bindchange="onStationChange">
+        <view class="form-row">
+          <view class="form-label">站点</view>
+          <view class="form-input">{{item.stationName || '请选择站点'}}</view>
+        </view>
+      </picker>
+      <view class="form-row">
+        <view class="form-label">取件码</view>
+        <input class="form-input" value="{{item.pickupCode}}" maxlength="40" data-index="{{index}}" data-field="pickupCode" bindinput="onFieldInput" />
+      </view>
+      <view class="form-row">
+        <view class="form-label">柜号</view>
+        <input class="form-input" value="{{item.lockerNo}}" maxlength="10" data-index="{{index}}" data-field="lockerNo" bindinput="onFieldInput" />
+      </view>
+      <view class="form-row">
+        <view class="form-label">运单尾号</view>
+        <input class="form-input" value="{{item.trackingTail}}" maxlength="5" type="number" data-index="{{index}}" data-field="trackingTail" bindinput="onFieldInput" />
+      </view>
+      <view wx:if="{{!readonly}}" class="row parcel-actions">
+        <view class="mini-btn btn btn-primary" data-index="{{index}}" bindtap="onSave">{{saving ? '保存中…' : '保存这件'}}</view>
+      </view>
+    </view>
+
+    <view class="card">
+      <view class="small muted">审核只做核对与更正：不改订单状态、不影响取件；改动会同步到顾客端。</view>
+    </view>
+  </block>
+</view>

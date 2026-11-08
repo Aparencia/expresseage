@@ -227,6 +227,11 @@ const base = {
     this.load({ silent: true }).then(() => { this.loadHistorySummary(); this.toastMsg('已刷新'); });
   },
 
+  // 2026-11-08：审核核对页（顾客截图 vs 订单信息；页面内就地改字段，不改订单状态）
+  onReviewTap() {
+    wx.navigateTo({ url: '/pkg-partner/pages/review/index' });
+  },
+
   onRetryTap() {
     this._historyDirty = true;
     this.load({ silent: true }).then(() => this.loadHistorySummary());

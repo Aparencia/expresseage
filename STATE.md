@@ -5,7 +5,7 @@
 > 更新时机：每批开工/收口、用户裁决变化、风险新增或关闭、HEAD 变化需回读。
 > 本文只记**状态、待办与下一步**，不重复设计口径（口径看 CONTRACT，工程规则看 ENGINEERING，接口看 ARCHITECTURE）。
 
-**快照时间：2026-11-08（HEAD 99a5ce0 + 批 32 工作台行改版/取件清单伪 tab/子码长期/识别漏件/预约只留最晚时间/附加服务）：check.js 39/39 条、check-docs 12/12 条、selftest **38 套** 0 失败、零金额 0 命中（白名单 108 项）；check.ps1 4 步退出码 0；**批 32：D74 取件清单伪 tab（兼职底栏 4 格）+ D75 子码长期 + D76 预约只保留最晚时间 + D77 附加服务（固定标准代取 + 上楼/拆快递/丢垃圾）+ 工作台行改版（两行/状态色条/需查明只留件级/按钮 B）+ 送别人目的地址 + 改码浮层与提醒入口修复 + 两张截图漏件修复**；真机项 QA §AK 交用户点检；批 24~31 基线见 §19~§31）
+**快照时间：2026-11-08（HEAD 99a5ce0 + 批 32 工作台行改版/取件清单伪 tab/子码长期/识别漏件/预约只留最晚时间/附加服务）：check.js 39/39 条、check-docs 12/12 条、selftest **39 套** 0 失败、零金额 0 命中（白名单 108 项）；check.ps1 4 步退出码 0；**批 32：D74 取件清单伪 tab（兼职底栏 4 格）+ D75 子码长期 + D76 预约只保留最晚时间 + D77 附加服务（固定标准代取 + 上楼/拆快递/丢垃圾）+ 工作台行改版（两行/状态色条/需查明只留件级/按钮 B）+ 送别人目的地址 + 改码浮层与提醒入口修复 + 两张截图漏件修复**；真机项 QA §AK 交用户点检；批 24~31 基线见 §19~§31）
 > 临时总体说明（全局汇总，非状态源）：[`docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md`](docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md)（版本与取数快照由 Lead 统一维护；状态仍以本文件为准、口径以 CONTRACT 为准）。
 
 ## 1. 一句话状态
@@ -1626,3 +1626,22 @@ check.ps1：全部通过（4 步，退出码 0）
 - **文档**：CONTRACT §4/§5.3/§13 D77、DATA_MODEL §2.5、UX_CUSTOMER §3.7、UX_PARTNER §3.3、QA §AK11、CHANGELOG。
 - **真机项（agent 不代勾）**：QA §AK11（服务 picker 消失/固定标准代取、chip 勾选/取消、说明无数字、确认页与详情显示）。
 - **提交**：`99a5ce0`（代码/判据/文档）+ 本节证据回填提交。
+
+## 35. 批 32 补件：兼职「审核」核对页（MVP，D78，第 34 页，2026-11-08）
+
+- **交付**：工作台顶部新增「审核」入口；审核页只列今天「有截图 + 待接单/已接单/已取件」的单；点开一屏显示每张截图（swiper + 点开大图）与其订单信息（站点/取件码/柜号/运单尾号），可就地改并保存（复用 `order.correct`），顾客端同步；**不留审核状态、不加集合、不阻塞取件**；READONLY 隐藏保存。
+- **代码**：新增 `pkg-partner/pages/review/{index.js,index.wxml,index.wxss,index.json,parts/review-model.js}`；工作台 `onReviewTap` + 入口；`app.json`/`tools/lib/project.js` 页数 33→34（主包 9 + 分包 25、兼职 8→9）；CONTRACT §7/ARCHITECTURE/README 同步；新增 `tools/selftest-review.js`（17 条）注册为第 39 套，`check.ps1 SelfTestSuites=39`；`tools/selftest-share` 禁分享清单加审核页（249）。
+- **门禁真实输出**：
+```text
+$ powershell -File check.ps1
+PASS  check.js 代码/配置门禁（39 条）
+PASS  check-docs.js 设计文档门禁（--batch 1）
+PASS  zero-money-scan.js 零金额扫描（源码+页面+文档）
+PASS  selftest.js 全部断言 suite（EXPECTED_ASSERTIONS 闸）
+selftest：运行 39 套；失败 0 套；SKIP 0 套（无）；完整性 0 项；非聚合辅助文件 4 件（已声明）
+check.ps1：全部通过（4 步，退出码 0）
+```
+- **判据**：`selftest-review`（列表筛选/旧单图/编辑 patch/本地预校验/页面只走 order.correct/工作台入口/禁分享/四件套）；`selftest-share` 248→**249**。
+- **文档**：CONTRACT §7（34 页）、ARCHITECTURE §3.5、docs/README、UX_PARTNER（审核页 §3.13）、QA §AK12、ENGINEERING §8.1（39 套）、CHANGELOG。
+- **真机项（agent 不代勾）**：QA §AK12（列表范围/一屏截图+字段/保存同步/不改状态）。
+- **提交**：待提交（本节随收口提交回填）。

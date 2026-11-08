@@ -102,7 +102,8 @@
 | `pkg-partner/pages/stats/index` | 分包 | 我的/工作台 | 单量统计：今日/本周完成量、状态分布、异常数（**按订单计**；无费用口径） |
 | `pkg-partner/pages/messages/index` | 分包 | 我的/工作台铃铛 | 订单事件+留言+公告聚合消息中心（**未读=留言+状态事件**，D29，§3.9） |
 | `pages/partner/pick-list/index` | 主包（第 32 页，伪 tab） | 兼职底栏第 2 格「取件清单」 | **独立楼层配送清单（D46）**：苑→栋→楼层（`floor(room/100)`）分组展示已取件待送达单；分页/分片 ≤20 行、不做定时轮询、切页/下拉才刷新；复用批量送达（§3.11） |
-| `pkg-partner/pages/team/index` | 分包（第 33 页，D59） | 服务配置页「我的团队」行 | 团队：成员列表（编号/昵称/状态/加入时间，**不显示头像/fileId**）+ 发子邀请码（1~5 个、24H/72H/7D/长期（FOREVER，永不过期）、备注可选；**完整码仅本次响应**并提示「一次性，请当面告知」）+ 待用子码列表（**按 `batchId` 分组**，只显示尾 4 位/到期，「作废本批」二次确认）+ 移除成员（二次确认，说明移除后对方被停用、需联系管理员恢复）+ 名额 `quota{used,reserved,max}`（展示 `reserved/{max}`，含待用子码）；子队员视角只看「所属队伍：P-XXX / 成员数 N」（§3.12）；**本页不提供分享/转发（子邀请码/成员信息不外传，不在 `tools/lib/share-pages.js` 好友转发清单）** |
+| `pkg-partner/pages/team/index` | 分包（第 33 页，D59） | 服务配置页「我的团队」行 | 团队：成员列表（编号/昵称/状态/加入时间，**不显示头像/fileId**）+ 发子邀请码（1~5 个、24H/72H/7D/长期（FOREVER，永不过期）、备注可选；**完整码仅本次响应**并提示「一次性，请当面告知」）
+| `pkg-partner/pages/review/index` | 分包（第 34 页，2026-11-08） | 工作台顶部「审核」 | **审核核对（MVP）**：只列今天「有截图 + 待接单/已接单/已取件」的单；一屏显示每张截图与其订单信息，可就地改站点/取件码/柜号/尾号（复用 `order.correct`）；不改状态、不阻塞取件、不留审核记录（§3.13） |+ 待用子码列表（**按 `batchId` 分组**，只显示尾 4 位/到期，「作废本批」二次确认）+ 移除成员（二次确认，说明移除后对方被停用、需联系管理员恢复）+ 名额 `quota{used,reserved,max}`（展示 `reserved/{max}`，含待用子码）；子队员视角只看「所属队伍：P-XXX / 成员数 N」（§3.12）；**本页不提供分享/转发（子邀请码/成员信息不外传，不在 `tools/lib/share-pages.js` 好友转发清单）** |
 ### 2.2 导航规则（照 CONTRACT §7）
 - `launch` 是唯一启动页；`role` 不属于任何 tab。角色不匹配的 tab 页在 `onShow` 里 `reLaunch` 回本角色首页（兼职回工作台）。
 - **tabBar 只有 5 项（平台上限）**：`pages/customer/home/index`、`pages/customer/orders/index`、`pages/partner/workbench/index`、`pages/partner/customers/index`、`pages/profile/index`（双方共用）；`custom: true`，自定义 tabBar 组件固定在**项目根目录 `custom-tab-bar/`**（平台硬要求，不是 components/），按全局角色只渲染 3 格：顾客=首页/订单/我的，兼职=工作台/客户/我的。兼职"工作台"格显示待处理红点/数字。
@@ -112,7 +113,8 @@
 - 订单深链 `?orderNo=` 统一落订单详情：兼职端落 `pkg-partner/pages/order-detail/index`；云函数 `order.get` 校验订单 `partnerOpenid` 必须等于当前 partner，失败统一 toast"订单不存在或不属于你"并回工作台。
 - 返回逻辑：tab 页之间用 `wx.switchTab`；分包页用 `navigateBack`；从消息/深链进详情后，返回落工作台（不是顾客页）。
 - **取件清单入口（2026-11-08 升一级，伪装 tab）**：兼职底栏第 2 格「取件清单」，与工作台/客户/我的同级；点击 `wx.reLaunch('/pages/partner/pick-list/index')`（该页不在 `app.json` tabBar.list，页面内自绘共用 `components/tab-bar-view` 四格，顾客端「取件码」同款）；其余三格是真 tab 用 `wx.switchTab`；工作台顶部不再保留「取件清单」按钮（避免双入口）；本页 onShow/下拉/切阶段刷新，不挂定时轮询。
-- **团队入口（D59）**：服务配置页（`pkg-partner/pages/service-settings/index`）→「我的团队」行 → `wx.navigateTo('/pkg-partner/pages/team/index')`；该页不是 tab、不显示 tabBar，返回落服务配置页；主兼职可发子码/按批次作废/移除成员，子队员只读队伍摘要（§3.12）。
+- **团队入口（D59）**：服务配置页（`pkg-partner/pages/service-settings/index`）→「我的团队」行 → `wx.navigateTo('/pkg-partner/pages/team/index')`；该页不是 tab、不显示 tabBar，返回落服务配置页；主兼职可发子码/按批次作废/移除成员，子队员只读队伍
+- **审核入口（2026-11-08）**：工作台顶部「审核」→ `wx.navigateTo('/pkg-partner/pages/review/index')`；该页不是 tab、不显示 tabBar，返回落工作台；READONLY 不显示入口且页内隐藏保存摘要（§3.12）。
 - 切换角色：我的 → 切换身份 → `wx.reLaunch` 到 role/顾客首页，自定义 tabBar 重新渲染。
 - **开发者分流**：`user.bootstrap` 返回 `isDeveloper=true` ⇒ `wx.reLaunch('/pkg-admin/pages/overview/index')`（不需要 `?admin=1`，服务端白名单是唯一门槛）。开发者不进兼职业务 tab；后台「切换账号」入口在 `pkg-admin/pages/account-switch/index`（真实账号只读 / 测试账号可写，见 §6）。
 - **切换会话分流（v0.9）**：`app.globalData.viewContext`（仅内存）存在时，按 `viewContext.role` 渲染目标角色三格；`READONLY`（真实账号）= 顶部黄条 + 写控件置灰/隐藏 + 服务端拒写；`TEST_WRITE`（测试账号）= 顶部蓝条 + 每页 `TEST` 角标 + 写操作可用（只能写测试数据）；两种会话都隐藏分享/转发，退出回「切换账号」页（详见 §6）。
@@ -535,6 +537,14 @@
 - **导航**：`/pkg-partner/pages/team/index`（`app.json` 第 33 页）；入口 = 服务配置页（`pkg-partner/pages/service-settings/index`）新增「我的团队」行；返回 `navigateBack`。
 
 ---
+### 3.13 审核核对 `pkg-partner/pages/review/index`（2026-11-08 MVP，第 34 页）
+
+- **入口**：工作台顶部「审核」（READONLY 不显示）→ `wx.navigateTo('/pkg-partner/pages/review/index')`；返回落工作台。
+- **列表**：`order.listPartner({view:'day'})` 后客户端筛「有截图 + 状态为待接单/已接单/已取件」；行 = 状态 pill + 订单号 + 截图张数 + 宿舍锚 + 件数；空态「今天没有需要核对的截图单。顾客上传截图后，订单会出现在这里。」
+- **核对屏**：一屏顶部截图 `swiper`（逐张 `order.imageUrl` 临时 URL，点开 `previewImage` 看全组；全失败提示「截图暂时打不开」）+ 每件卡（站点 picker / 取件码 / 柜号 / 运单尾号）+「保存这件」；保存走 `order.correct({orderNo,itemIndex,patch},{expectedVersion})`，成功 toast「第 N 件已更正，顾客端同步」并刷新订单与截图；**无改动不发送**。
+- **边界**：不改订单状态、不阻塞取件、不留审核记录、不加集合；审核页禁分享；截图被清理时如实提示。
+- **校验**：码/尾号至少一个；尾号恰 5 位；码 ≤40、柜号 ≤10（服务端 `order.correct` 仍唯一权威）。
+
 ## 4. 工作台（取件清单）专章
 ### 4.1 定位与页面骨架
 工作台是兼职默认首页、运行态核心，继承 v3 取件清单的"按站点聚合 + 四档动线 + 勾选/批量"工作方式，但数据从 v3 的"件"改为七状态订单（§5），数据源 `order.listPartner({view:'workbench'})`（返回分页列表 + `counts` **6 项**：submitted/accepted/picked/delivered/exception/todayCompleted；覆盖 `SUBMITTED/ACCEPTED/PICKED/DELIVERED/EXCEPTION` 五类活动单；支持筛选/搜索，§5.3），所有操作经云函数。**v1.0（D23/D24）**：一行 = 一单（1~10 件包裹），**行是订单级、件在行内聚合展示**——接单/取件/送达整单生效，补码/改站点按件（`itemIndex`）；无截图手填单标「无截图·手填」。

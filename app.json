@@ -31,7 +31,8 @@
         "pages/service-settings/index",
         "pages/stats/index",
         "pages/messages/index",
-        "pages/team/index"
+        "pages/team/index",
+        "pages/review/index"
       ]
     },
     {

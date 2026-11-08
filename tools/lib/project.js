@@ -39,6 +39,8 @@ const SUBPACKAGES = {
     'pages/messages/index',
     // D59：主兼职「我的团队」页（成员/子邀请码/名额）
     'pages/team/index',
+    // 2026-11-08：兼职「审核」核对页（截图 vs 订单信息，MVP 不留审核状态）
+    'pages/review/index',
   ],
   'pkg-admin': [
     'pages/overview/index',

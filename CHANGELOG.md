@@ -11,6 +11,9 @@
 
 ### 用户可见变更
 
+- **2026-11-08 兼职「审核」核对页（MVP，第 34 页）**：工作台顶部新增「审核」入口——只列今天「有截图且待接单/已接单/已取件」的单；点开一屏显示顾客上传的每一张取件码截图与其订单信息（站点/取件码/柜号/运单尾号），发现不一致可就地改并保存，顾客端同步；**审核不改变订单状态、不阻塞取件、不新增审核记录**。
+- **2026-11-08 审核页工程细节**：新增 `pkg-partner/pages/review/{index.js,index.wxml,index.wxss,index.json,parts/review-model.js}`（列表筛选/锚/编辑 patch/本地预校验；写动作只走 `order.correct`，无状态写）；工作台 `onReviewTap` 入口；`app.json`/`tools/lib/project.js`/`CONTRACT §7`/`ARCHITECTURE`/`docs/README` 页数 33→**34**（主包 9 + 分包 25，兼职 8→9）；新增判据套件 `selftest-review` 17 条并注册为第 **39** 套（`check.ps1 SelfTestSuites=39`）；分享禁清单加审核页；QA §AK12；无服务端/集合/索引变更。
+
 - **2026-11-08 顾客下单新增「附加服务」（D77，批 32 补件）**：下单第 3 步不再让顾客选服务类型，固定「标准代取」；新增「附加服务」多选——**上楼**（3~6 层送到寝室门口）、**拆快递**（帮拆外包装）、**丢垃圾**（只丢无异味/无液体的整包垃圾），说明只写做什么、**不出现任何数字（零金额口径）**；确认页与订单详情显示所选名称；代客下单页保留原服务选择（代寄等仍可从兼职侧发起）。
 - **2026-11-08 附加服务工程细节**：`shared/{enums,validate}.js` 新增 `ADDONS/ADDON_CODES/ADDON_NAME/ADDON_DESC` 与 `validateAddons`（0~3、去重、枚举）；服务端 `order/_create`（`CREATE_FIELDS` + `normalizeAddons` + 落库）、`_parcels-input.normalizeAddons`、`_dto-fields.buildAddonDtos`、`_dto` 下发 `addons[{code,name,desc}]`、`_merge` 按 addons 相等判定；顾客端 `order-create/{index.js,index.wxml,parts/{model,step3,submit}.js}`（固定 `PICKUP_STD`、附加 chip、payload/指纹/确认页）；详情展示 `pkg-customer/pages/order-detail/parts/parcel-view.js` 与 `pkg-partner/pages/order-detail/parts/order-view.js`；判据 `selftest-order` 153→**156**（合法落库/DTO 名称/枚举外/重复）、`selftest-order-customer` +1、`selftest-order-detail-partner` +1，并同步 `order-flow`/`pickup-low`/`order-partner-cases` 白名单；文档 CONTRACT §4/§5.3/§13 D77、DATA_MODEL §2.5、UX_CUSTOMER §3.7、UX_PARTNER §3.3、QA §AK11；`check.ps1` 4 步退出码 0。
 

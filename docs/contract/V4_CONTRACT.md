@@ -389,7 +389,7 @@
 
 ## 7. 页面地图（app.json 口径，详见三份 UX 文档）
 
-**页面总数（v1.10，D59）：33 页 = 主包 9 + 分包 24（顾客 5 / 兼职 8 / 开发者 11）**；与 `tools/lib/project.js` 的 `ALL_PAGES`、`app.json` 声明、`check-docs` §8.3 #2 联动（32→33 由批 27 新页 `pkg-partner/pages/team/index` 触发；**2026-11-08 用户指令：`pkg-partner/pages/pick-list` 迁主包为 `pages/partner/pick-list/index` 伪 tab，页数 33 不变，主包 8→9、兼职分包 9→8**）。
+**页面总数（v1.12，D77）：34 页 = 主包 9 + 分包 25（顾客 5 / 兼职 9 / 开发者 11）**；与 `tools/lib/project.js` 的 `ALL_PAGES`、`app.json` 声明、`check-docs` §8.3 #2 联动（33→34 由 2026-11-08 审核核对页 `pkg-partner/pages/review/index` 触发；D74 把 `pick-list` 迁主包后主包 8→9、兼职分包 9→8，本次审核页再加回兼职 9）。
 
 主包（**tabBar.list 上限 5 项**；`custom: true`；自定义 tabBar 组件必须在**项目根目录 `custom-tab-bar/`**；真实 tabBar.list 5 条按角色渲染顾客 4 格/兼职 4 格，开发者使用分包页面无 tabBar；D64 起顾客第 4 格「取件码」为**伪 tab**：由页面内自绘共用底部栏显示、`app.json` 不新增条目；2026-11-08 起兼职第 2 格「取件清单」同为**伪 tab**）：
 ```
@@ -423,6 +423,7 @@ pkg-partner/pages/service-settings/index 服务配置（启用服务类型/范�
 pkg-partner/pages/stats/index          单量统计（今日/本周完成量、状态分布，无金额）
 pkg-partner/pages/messages/index       消息中心
 pkg-partner/pages/team/index           团队（第 33 页，D59：主兼职=成员列表（编号/昵称/状态/加入时间，**无头像**）+ 发子邀请码（1~5 个、24H/72H/7D、备注可选，完整码仅本次响应）+ 待用子码列表（**按 batchId 分组**，只显示尾 4 位/到期，「作废本批」二次确认）+ 移除成员（二次确认，说明移除后对方停用需联系管理员恢复）+ 名额 `quota{used,reserved,max}`（展示 `reserved/{max}`，含待用子码）；子队员=只看「所属队伍 P-XXX / 成员数 N」）
+pkg-partner/pages/review/index         审核核对（第 34 页，2026-11-08 MVP：兼职在工作台点「审核」→ 只看「有截图且状态为待接单/已接单/已取件」的单 → 一屏显示每张截图与其订单信息 → 就地改站点/取件码/柜号/尾号（复用 `order.correct`）→ 保存后顾客端同步；**不留审核状态、不加集合、不阻塞取件**）
 pkg-admin/pages/overview/index         开发者总览（统计卡/审计区块/账号切换入口）
 pkg-admin/pages/invite-codes/index     邀请码生成/批量/作废/状态
 pkg-admin/pages/customers/index        顾客列表/搜索（按顾客编号/宿舍/昵称，脱敏；不展示头像）
@@ -695,6 +696,8 @@ v3 是"数据只存本机、不上传、无账号"；v4 必须改为"**订单与
 | D76 | **顾客下单预约只保留「最晚时间」（2026-11-08 用户指令）**：Step3 预约区去掉「尽快 / 最晚时间」二选一，改为**必选最晚时间**（日期 + 30 分钟粒度时间 + 快捷 12:00/18:00/22:00；最小提前 30 分钟、最远 7 天）；进入 Step3 预选最近合法时刻，未选/非法行内红字挡下一步；服务端 `APPOINT_TYPE.ASAP` **保留**用于历史订单展示；**顾客下单页与代客下单页同批改为只选「最晚时间」**，新单提交恒为 `{type:'LATEST',latestAt}`；再次下单等历史预填如带 ASAP 在进 Step4 前强制转 LATEST；合并窗口仍按 `latestAt` 相等判定 | ✅ 已定（用户 2026-11-08 指令） | 代价：`pkg-customer/pages/order-create/{index.js,index.wxml,parts/step3.js}`、`pkg-partner/pages/create-on-behalf/{index.js,index.wxml,parts/{appoint-model,form-model}.js}`、`shared/appoint.createState(type)` 预选、`selftest-order-flow` G15/Q9、`selftest-partner-pages` D12/D36f/I1~I5、UX_CUSTOMER §3.7、UX_PARTNER §3.4、QA/CHANGELOG；无服务端/集合/索引变更；被否：保留「尽快」默认（与用户指令不符） |
 
 | D77 | **附加服务（2026-11-08 用户指令，方案 A）**：顾客下单页**移除服务类型 picker**，底座固定 `PICKUP_STD`（标准代取）；新增订单级 `orders.addons[]`（0~3 项，枚举 `UPSTAIRS` 上楼 / `UNPACK` 拆快递 / `TRASH` 丢垃圾，去重、非法拒绝），只表达「做什么」，**不出现任何数字**（零金额口径不变）；选择即整单生效，合并窗口按 `addons` 完全相等判定（不同附加服务不合并）；确认页/顾客详情/兼职详情展示名称；历史订单无 addons 字段按空处理、不迁移；代客下单页本批保留既有服务 picker（代寄等仍可从兼职侧发起） | ✅ 已定（用户 2026-11-08 选 A：固定标准代取 + 附加复选；代寄/送至楼下/加急/其他代办从顾客端移除） | 代价：`shared/{enums,validate}.js`（含两套云副本 sync）、`cloudfunctions/api/handlers/order/{_create,_parcels-input,_dto,_dto-fields,_merge}.js`、`pkg-customer/pages/order-create/**`、顾客/兼职详情、`selftest-order`/`order-flow`/`order-customer`/`order-detail-partner`/`pickup-low`/`order-partner-cases`、CONTRACT/DATA_MODEL/UX/QA；无新增集合/索引/触发器；被否：保留服务 picker 另加附加（重复）、底座改送至楼下（改动面更大） |
+
+| D78 | **兼职「审核」核对页（2026-11-08 用户指令，MVP）**：工作台新增「审核」入口 → 第 34 页 `pkg-partner/pages/review/index`；只列今天「有截图 + 待接单/已接单/已取件」的单；**一屏显示每张截图与其订单信息**（截图 swiper + 逐件站点/取件码/柜号/尾号），发现不一致可就地改并保存（复用 `order.correct`，带 `itemIndex/expectedVersion`），顾客端同步；**不留审核状态、不加集合/事件、不阻塞取件**；READONLY 隐藏保存；审核页禁分享；页数 33→34（主包 9 + 分包 25、兼职 8→9）；新增 `selftest-review` 第 39 套 | ✅ 已定（用户 2026-11-08：「审核角色是兼职本身；工作台新添审核入口；一屏显示每张截图及其订单；支持实时改动订单信息」） | 代价：新页四件套 + `parts/review-model.js`、工作台入口、`app.json`/`project.js`/CONTRACT §7/ARCHITECTURE/README/UX_PARTNER §3.13/QA §AK12、`check.ps1 SelfTestSuites=39`、`selftest-share` 禁分享；无服务端/集合/索引/触发器变更；被否：完整审核状态机/后台审核（用户选 MVP，不阻塞取件） |
 
 **未决项一律在 `docs/contract/V4_DECISIONS.md` 展开（背景/选项/推荐理由/被否方案/代价）。**
 
