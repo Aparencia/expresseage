@@ -256,8 +256,8 @@ function register(h) {
       return line.indexOf('addonHintText') >= 0;
     }).length, 2,
     'C3 附加服务说明渲染点恰好 2 处（Step3 复选区 + Step4 摘要，不多不少）');
-    t.check(/\.service-desc\s*\{/.test(wxss),
-      'C4 说明行样式落点 .service-desc 存在（与 Step3 说明同一视觉层级）');
+    t.check(/\.addon-hint\s*\{/.test(wxss),
+      'C4 附加服务说明样式落点 .addon-hint 存在（与 Step3 复选区同一视觉层级）');
     t.eq([wxml.indexOf('不上楼'), wxml.indexOf('需要上楼')], [-1, -1],
       'C5 页面不硬编码层级文案（「不上楼/需要上楼」只在 shared/enums desc 单源，前端不复制一份）');
   });

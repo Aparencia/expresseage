@@ -58,8 +58,8 @@ function needCodeIntent(orderNo, groups, readonly, itemIndex) {
     return { kind: 'navigate', orderNo: found.row.orderNo };
   }
   // 2026-11-08 行改版：件级「需查明」标签成为唯一补码入口，直接定位到该件（缺省仍首件）
-  const index = typeof itemIndex === 'number' && itemIndex >= 0 ? itemIndex : undefined;
-  return { kind: 'panel', panel: rowActions.openPanel('correct', found.row, index) };
+  const index = Number(itemIndex);
+  return { kind: 'panel', panel: rowActions.openPanel('correct', found.row, Number.isInteger(index) && index >= 0 ? index : undefined) };
 }
 
 // 浮层提交 → 意图：error / write / batchStationConfirm

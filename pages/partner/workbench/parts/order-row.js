@@ -89,7 +89,8 @@ function deliveryChipOf(item) {
 }
 
 // 顾客锚+键（行第二行）：头像/昵称不在行内出现，锚 = dormKey+roomTag
-function identityOf(item) {  const dorm = item.dorm || {};
+function identityOf(item) {
+  const dorm = item.dorm || {};
   const guest = item.guest || item.guestSnapshot || {};
   const counterpart = item.counterpart || {};
   const name = textOf(counterpart.displayName) || textOf(guest.displayName) || textOf(item.customerDisplayName);

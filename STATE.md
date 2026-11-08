@@ -1664,3 +1664,23 @@ check.ps1：全部通过（4 步，退出码 0）
 - **文档**：UX_CUSTOMER §3.7.2、QA §AK13、CHANGELOG。
 - **真机项（agent 不代勾）**：QA §AK13（吸顶常驻/两行密度/键盘不遮挡）。
 - **提交**：`bba05ee`（代码/判据/文档）+ 本节证据回填提交。
+
+## 37. 批 32~35 全量代码审查与修复（2026-11-09）
+
+- **范围**：`baed8ae..HEAD`（批 32~35 全部新增/改动代码），维度=逻辑正确性/简洁性/死代码清理；Production 52 文件 + 测试/门禁联动。
+- **修复**：①**P0 取件清单伪 tab**：`Page(Object.assign(..., tabWiring))` 的 `tabWiring.data` 覆盖整份页面 data → 改 `TAB_DATA` 单独合并（否则列表状态全丢）；补 H18 回归判据。②审核页：站点选项改后台配置单源（`stationsFromConfig`）、PICKED 单锁定站点/取件码（服务端只允许柜号/尾号）、加载态不再误报无截图、保存成功后的刷新失败不再误报保存失败、保存前捕获 orderNo 防返回竞态。③附加服务：`validateAddons` 按枚举顺序归一（合并窗口不受勾选顺序影响）；F10b 改为乱序输入断言。④长期码：创建结果/待用行显示「长期有效」，null 不误标。⑤死代码：移除 `need-code-tag`/`service-desc` 废弃样式、下单页 `services/serviceIndex` 残留状态与 bootstrap 的 services 装配、`appoint-model.appointType` 死字段；`model.serviceOptions` 登记 test-only 基线（生产 0 引用）。⑥注释/格式：`identityOf` 合并行、tabs/custom-tab-bar「兼职 3 格」旧注释、pick-list 迁移后旧路径注释。
+- **门禁真实输出**：
+```text
+$ powershell -File check.ps1
+PASS  check.js 代码/配置门禁（39 条）
+PASS  check-docs.js 设计文档门禁（--batch 1）
+PASS  zero-money-scan.js 零金额扫描（源码+页面+文档）
+PASS  selftest.js 全部断言 suite（EXPECTED_ASSERTIONS 闸）
+selftest：运行 39 套；失败 0 套；SKIP 0 套（无）；完整性 0 项（非聚合辅助文件 4 件已声明）
+check.ps1：全部通过（4 步，退出码 0）
+```
+- **判据**：`selftest-review` 17→**21**（PICKED 锁定/站点必填/站点配置/禁用态）、`selftest-pick-list` 217→**218**（TAB_DATA 回归）、`selftest-partner-pages` 359→**361**（长期码显示两处）、`selftest-order` F10b 乱序归一、`selftest-order-flow` 287（G18b）。
+- **文档**：UX_PARTNER §3.13（锁定/配置/加载/保存说真话）、DATA_MODEL §2.5（addons 顺序归一）、CHANGELOG。
+- **死代码扫描**：`tools/lib/dead-code.js` #35/#36 问题 0；`serviceOptions` 按 AGENTS §5.4 登记 test-only。
+- **真机项**：沿用 QA §AK1~§AK13（本轮为审查修复，不新增界面入口）。
+- **提交**：待提交（本节随收口提交回填）。

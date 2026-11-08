@@ -132,8 +132,20 @@
   align-items: center;
 }
 
-.service-desc {
-  margin-top: 8rpx;
+/* 2026-11-08（D77）：附加服务 chip（本页无全局 .chip，必须就地定义，否则选中态不可见） */
+.chip {
+  padding: 12rpx 24rpx;
+  border: 1rpx solid #E3E5E9;
+  border-radius: 999rpx;
+  background: #FAFBFC;
+  color: #333333;
+  font-size: 26rpx;
+}
+
+.chip-active {
+  border-color: #1F7A5C;
+  background: #E8F5F0;
+  color: #1F7A5C;
 }
 
 /* v1.0 D23/D24/D25：多图多件工具条 / 手填入口 / 配送地址 */

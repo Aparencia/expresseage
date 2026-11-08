@@ -131,15 +131,6 @@
   flex-wrap: wrap;
 }
 
-.need-code-tag {
-  padding: 4rpx 12rpx;
-  border-radius: 8rpx;
-  background: #FFF4CE;
-  color: #8A6D00;
-  font-size: 22rpx;
-  margin: 8rpx 12rpx 0 0;
-}
-
 .review-tag {
   padding: 4rpx 12rpx;
   border-radius: 8rpx;

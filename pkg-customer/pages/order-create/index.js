@@ -48,10 +48,8 @@ Page({
     items: [],
     lowCopy: model.LOW_SUGGESTION_COPY,
     stations: [],
-    services: [],
     // 2026-11-08（D77）：服务类型不再由顾客选择，底座固定「标准代取」；附加服务 0~3 项
     serviceCode: 'PICKUP_STD',
-    serviceIndex: 0,
     addons: [],
     addonOptions: enums.ADDONS.map(function option(item) {
       return { code: item.code, name: item.name, desc: item.desc, checked: false };
@@ -107,15 +105,12 @@ Page({
   // 配置 + 对方公开资料 + 本人资料（配送地址默认值）→ 服务类型选项；装配在 parts/bootstrap
   loadBootstrap() {
     return bootstrap.load().then((state) => {
-      const services = state.services || [];
       const delivery = deliveryModel.createState(state.profile, (state.config || {}).zoneLabels);
       this._stationOption = model.stationContext(state.config);
       this.setData({
         partnerPublic: state.partnerPublic,
         stations: model.stationOptions(state.config),
-        services: services,
         serviceCode: 'PICKUP_STD',
-        serviceIndex: 0,
         delivery: delivery,
         deliveryText: deliveryModel.displayText(delivery),
         deliverySelfText: deliveryModel.selfDisplayText(delivery),
@@ -170,7 +165,7 @@ Page({
   },
 
   itemDefaults() {
-    return reorder.defaultsFor({}, this.data.reorderPrefill, this.data.services);
+    return reorder.defaultsFor({}, this.data.reorderPrefill);
   },
 
   // §4.3.1 ③：识别进行中即可「先手动填写」——不阻塞手填，迟到结果不再覆盖（丢弃在飞会话的判据在 parts/files-flow）

@@ -149,6 +149,8 @@ function validateAddons(value) {
     }
     out.push(code);
   }
+  // 2026-11-08 审查：按枚举顺序归一，保证「同一组附加服务」在合并窗口比较时稳定（与勾选顺序无关）
+  out.sort((a, b) => enums.ADDON_CODES.indexOf(a) - enums.ADDON_CODES.indexOf(b));
   return succeed('addons', { value: out });
 }
 

@@ -1,6 +1,7 @@
 // components/tab-bar-view/tabs.js · 底部栏数据单源（D64：custom-tab-bar 与取件码伪 tab 页共用同一份）
 // 口径：CONTRACT §7/§8、D64——真实 tabBar.list 仍 5 项；顾客可见 4 格（首页/订单/取件码/我的），
-// 其中「取件码」是伪 tab（不在 tabBar.list，页面内自绘本组件并 reLaunch 进入）；兼职可见 3 格。
+// 其中「取件码」是伪 tab（不在 tabBar.list，页面内自绘本组件并 reLaunch 进入）；兼职可见 4 格
+// （工作台/取件清单/客户/我的；取件清单为 2026-11-08 伪 tab）。
 // 边界：只放纯数据（零 wx、零 store），视觉渲染在 components/tab-bar-view，跳转判据在调用方。
 'use strict';
 

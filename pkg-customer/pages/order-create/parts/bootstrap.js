@@ -1,4 +1,4 @@
-// pkg-customer/pages/order-create/parts/bootstrap.js · 下单页启动装配（配置 / 对方公开资料 / 服务类型 / 本人宿舍）
+// pkg-customer/pages/order-create/parts/bootstrap.js · 下单页启动装配（配置 / 对方公开资料 / 本人宿舍）
 // 纯件（零 wx）：页面只 setData；缓存命中不重复外呼（config 已在 store 时不请求）。
 'use strict';
 
@@ -6,7 +6,6 @@ const store = require('../../../../store/index');
 const bindApi = require('../../../../api/modules/bind');
 const configApi = require('../../../../api/modules/config');
 const customerApi = require('../../../../api/modules/customer');
-const model = require('./model');
 
 function loadConfig() {
   const cached = store.snapshot().config;
@@ -37,7 +36,7 @@ function loadProfile() {
   });
 }
 
-/** 启动装配：配置 + 对方公开资料 + 本人资料 → 服务类型选项 + 配送地址默认值（只展示兼职已启用项） */
+/** 启动装配：配置 + 对方公开资料 + 本人资料 → 配送地址默认值（服务类型已固定标准代取，D77） */
 function load() {
   return Promise.all([loadConfig(), loadPartner(), loadProfile()]).then(function done(results) {
     const config = results[0];
@@ -46,8 +45,7 @@ function load() {
     return {
       config: config,
       partnerPublic: partnerPublic,
-      profile: profile,
-      services: model.serviceOptions(config, partnerPublic)
+      profile: profile
     };
   });
 }

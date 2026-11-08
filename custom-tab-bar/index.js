@@ -1,5 +1,5 @@
 // custom-tab-bar/index.js · 自定义 tabBar 薄包装（视觉由 components/tab-bar-view 共用，D64）
-// 顾客 4 格（首页/订单/取件码/我的；取件码为伪 tab，不在 app.json tabBar.list）与兼职 3 格。
+// 顾客 4 格（首页/订单/取件码/我的；取件码为伪 tab，不在 app.json tabBar.list）与兼职 4 格（工作台/取件清单/客户/我的；取件清单同为伪 tab）。
 // 选中态：tab 页 onShow 显式 getTabBar().setData({selected:n})（每页一份实例）；
 // 本组件自身只做兜底推导 + 判等，避免每次 store 通知都重渲染 tabBar（PERFORMANCE §2.4 B10）。
 // 跳转：真 tab 用 wx.switchTab；伪 tab（pseudoTab=true）不在 tabBar.list，用 wx.reLaunch 进入。

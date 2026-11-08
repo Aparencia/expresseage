@@ -1,4 +1,4 @@
-// pkg-partner/pages/pick-list/parts/pick-view.js · 「待取件」阶段纯件（站点分组/行/复制文案/汇总；零 wx）
+// pages/partner/pick-list/parts/pick-view.js · 「待取件」阶段纯件（站点分组/行/复制文案/汇总；零 wx）
 // 口径：CONTRACT §5/§5.1（D61 件级取件）、UX_PARTNER §3.11/§4.3（D62：按**件的站点**分组——一单在每个
 //       件站点组各出现一次、行内只列本站件 + 「另 N 件在 Pn」、组内四档按本站件算；待取件阶段每件独立
 //       「已取件/撤销已取」并显示已取状态；已全取的订单因服务端状态变 PICKED 自动离开本阶段）。

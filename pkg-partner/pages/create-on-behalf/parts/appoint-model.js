@@ -5,7 +5,6 @@
 'use strict';
 
 const appointUtil = require('../../../../shared/appoint');
-const enums = require('../../../../shared/enums');
 
 function textOf(value) {
   return typeof value === 'string' ? value.trim() : '';
@@ -20,7 +19,7 @@ function numberOr(value, fallback) {
   return Number.isFinite(number) ? number : fallback;
 }
 
-// currentType：预填/热重载带来的历史值（2026-11-08 起代客下单也只保留「最晚时间」，历史 ASAP/SLOT 直接转 LATEST）
+// 2026-11-08：代客下单只保留「最晚时间」，历史 ASAP/SLOT 预填一律转 LATEST
 function createState(nowMs) {
   return appointUtil.createState(nowMs, 'LATEST');
 }
@@ -49,7 +48,6 @@ function signatureOf(state) {
 function viewOf(state) {
   const appoint = (state || {}).appoint || {};
   return {
-    appointType: textOf(appoint.type) || enums.APPOINT_TYPE.LATEST,
     appointDate: textOf(appoint.date),
     appointDateText: textOf(appoint.dateText),
     appointTime: textOf(appoint.time),

@@ -86,10 +86,10 @@ function inviteGroupOf(list, nowMs) {
     byKey[key].rows.push({
       key: key + ':' + byKey[key].rows.length,
       codeTailText: textOf(row.codeTail) ? '尾号 ' + textOf(row.codeTail) : '尾号未知',
-      // 2026-11-08：长期码 expiresAt=0 → 显示「长期有效」（不再当作未知/到期）
-      expiresText: Number(row.expiresAt) > 0
-        ? '到期 ' + format.formatRelative(row.expiresAt, nowMs)
-        : (Number(row.expiresAt) === 0 ? '长期有效' : '到期时间未知')
+      // 2026-11-08：长期码 expiresAt=0 → 显示「长期有效」；null/undefined 仍是「到期时间未知」
+      expiresText: (row.expiresAt === 0 || row.expiresAt === '0')
+        ? '长期有效'
+        : (row.expiresAt ? '到期 ' + format.formatRelative(row.expiresAt, nowMs) : '到期时间未知')
     });
   });
   return groups.map((group) => Object.assign({}, group, {
@@ -193,7 +193,8 @@ function resultOf(response, nowMs) {
     title: '已生成 ' + rows.length + ' 个子邀请码',
     codeRows: rows,
     batchText: textOf(dto.batchId) ? '批次 ' + textOf(dto.batchId) : '',
-    expiresText: dto.expiresAt ? '有效期至 ' + format.formatDateTime(dto.expiresAt) : '',
+    expiresText: dto.expiresAt ? '有效期至 ' + format.formatDateTime(dto.expiresAt)
+    : (dto.expiresAt === 0 ? '长期有效' : ''),
     hintText: RESULT_HINT
   };
 }

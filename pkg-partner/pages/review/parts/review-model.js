@@ -22,8 +22,8 @@ function listOf(value) {
   return Array.isArray(value) ? value : [];
 }
 
-function statusOf(order, state) {
-  return textOf(order && order.status) || textOf(state && state.status);
+function statusOf(order) {
+  return textOf(order && order.status);
 }
 
 // 截图张数：优先 images[]；旧单 image 单图兼容
@@ -54,24 +54,28 @@ function parcelCountTextOf(order) {
 
 // 列表行（只保留「有截图 + 可核对状态」的单）
 function listRowsOf(list) {
-  return listOf(list).filter(function pick(order) {
-    return imageCountOf(order) > 0 && REVIEW_STATUSES.indexOf(statusOf(order)) >= 0;
-  }).map(function row(order) {
-    return {
+  const out = [];
+  listOf(list).forEach(function each(order) {
+    const count = imageCountOf(order);
+    const status = statusOf(order);
+    if (!count || REVIEW_STATUSES.indexOf(status) < 0) {
+      return;
+    }
+    out.push({
       orderNo: textOf(order.orderNo),
-      status: statusOf(order),
-      statusText: textOf(order.statusText) || statusOf(order),
+      status: status,
+      statusText: textOf(order.statusText) || status,
       anchorText: anchorOf(order),
-      imageCount: imageCountOf(order),
-      imageCountText: '截图 ' + imageCountOf(order) + ' 张',
-      parcelCountText: parcelCountTextOf(order),
-      createdAtText: textOf(order.statusUpdatedAt) ? '' : ''
-    };
+      imageCount: count,
+      imageCountText: '截图 ' + count + ' 张',
+      parcelCountText: parcelCountTextOf(order)
+    });
   });
+  return out;
 }
 
-// 单件编辑字段：初值来自订单 DTO（服务端已归一）
-function parcelEditorOf(parcel, index) {
+// 单件编辑字段：初值来自订单 DTO（服务端已归一）；PICKED 单服务端只允许改柜号/尾号 → 站点/码锁住
+function parcelEditorOf(parcel, index, fieldsLocked) {
   const item = parcel || {};
   return {
     index: index,
@@ -83,12 +87,16 @@ function parcelEditorOf(parcel, index) {
     trackingTail: textOf(item.trackingTail),
     codeStatus: textOf(item.codeStatus),
     needCode: textOf(item.codeStatus) === enums.CODE_STATUS.NEED_CODE,
-    picked: item.picked === true
+    picked: item.picked === true,
+    fieldsLocked: fieldsLocked === true
   };
 }
 
 function parcelEditorsOf(order) {
-  return listOf(order && order.parcels).map(parcelEditorOf);
+  const locked = statusOf(order) === enums.ORDER_STATUS.PICKED;
+  return listOf(order && order.parcels).map(function map(parcel, index) {
+    return parcelEditorOf(parcel, index, locked);
+  });
 }
 
 // 归一编辑初值（用于比较「有没有改动」）
@@ -107,8 +115,9 @@ function originOf(editor) {
 function patchOf(editor) {
   const current = editor || {};
   const origin = current.origin || originOf(current);
+  const locked = current.fieldsLocked === true;
   const patch = {};
-  if (textOf(current.pickupCode) !== textOf(origin.pickupCode)) {
+  if (!locked && textOf(current.pickupCode) !== textOf(origin.pickupCode)) {
     patch.pickupCode = textOf(current.pickupCode);
   }
   if (textOf(current.lockerNo) !== textOf(origin.lockerNo)) {
@@ -117,7 +126,7 @@ function patchOf(editor) {
   if (textOf(current.trackingTail) !== textOf(origin.trackingTail)) {
     patch.trackingTail = textOf(current.trackingTail);
   }
-  if (textOf(current.stationId) !== textOf(origin.stationId)) {
+  if (!locked && textOf(current.stationId) !== textOf(origin.stationId)) {
     patch.stationId = textOf(current.stationId);
     patch.stationName = textOf(current.stationName);
   }
@@ -129,6 +138,9 @@ function validateEditor(editor) {
   const item = editor || {};
   const code = textOf(item.pickupCode);
   const tail = textOf(item.trackingTail);
+  if (item.fieldsLocked !== true && !textOf(item.stationId)) {
+    return { ok: false, reason: '请选择站点' };
+  }
   if (!code && !tail) {
     return { ok: false, reason: '取件码或运单尾号至少填一个' };
   }

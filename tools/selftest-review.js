@@ -13,7 +13,7 @@ const ROOT = path.resolve(__dirname, '..');
 const { createHarness } = require('./selftest');
 const reviewModel = require(path.join(ROOT, 'pkg-partner/pages/review/parts/review-model.js'));
 
-const EXPECTED_ASSERTIONS = 17;
+const EXPECTED_ASSERTIONS = 21;
 const PAGE = 'pkg-partner/pages/review/index';
 
 function readText(rel) {
@@ -65,8 +65,19 @@ function register(h) {
       '码/尾号都空 → 本地拦截（服务端仍权威）');
     t.eq(reviewModel.validateEditor({ pickupCode: '', trackingTail: '1234' }).ok, false,
       '运单尾号非 5 位 → 本地拦截');
-    t.eq(reviewModel.validateEditor({ pickupCode: '', trackingTail: '12345' }).ok, true,
-      '只有 5 位尾号 → 可保存');
+    t.eq(reviewModel.validateEditor({ pickupCode: '', trackingTail: '12345', stationId: 'P3' }).ok, true,
+      '只有 5 位尾号（已选站点）→ 可保存');
+    // 2026-11-08 审查：PICKED 单服务端只允许改柜号/尾号 → 站点/码锁住；站点必填
+    const pickedEditor = reviewModel.parcelEditorsOf({
+      status: 'PICKED', parcels: [{ stationId: 'P3', stationName: 'P3 站', pickupCode: 'A1234' }]
+    })[0];
+    t.eq(pickedEditor.fieldsLocked, true, '已取件单的站点/取件码在审核页锁定（服务端只允许柜号/尾号）');
+    const lockedPatch = reviewModel.patchOf(Object.assign({}, pickedEditor, {
+      origin: reviewModel.originOf(pickedEditor), pickupCode: 'B2345', lockerNo: '9'
+    }));
+    t.eq(lockedPatch, { lockerNo: '9' }, '锁定件只提交柜号/尾号，不提交取件码');
+    t.eq(reviewModel.validateEditor({ pickupCode: '1234', trackingTail: '', stationId: '' }).ok, false,
+      '未锁定件缺站点 → 本地拦截');
 
     const pageJs = readText(PAGE + '.js');
     const pageWxml = readText(PAGE + '.wxml');
@@ -74,6 +85,8 @@ function register(h) {
     t.check(/orderApi\.correct\(/.test(pageJs), '页面更正只走 order.correct（复用现有写动作）');
     t.check(/orderApi\.(accept|markPicked|markDelivered)\(/.test(pageJs) === false,
       '页面不擅自改订单状态（无 accept/markPicked/markDelivered）');
+    t.check(/stationsFromConfig/.test(pageJs) && /disabled="\{\{readonly \|\| item\.fieldsLocked\}\}"/.test(pageWxml),
+      '站点选项取自后台配置（改名/顺序同源），锁定/只读时输入禁用');
     t.check(/onFieldInput/.test(pageWxml) && /onStationChange/.test(pageWxml) && /swiper/.test(pageWxml),
       '一屏含截图 swiper + 站点/码/柜号/尾号编辑接线');
     t.check(/onReviewTap/.test(workbenchWxml) && readText('pages/partner/workbench/index.js').indexOf('/pkg-partner/pages/review/index') >= 0,

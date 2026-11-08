@@ -486,11 +486,11 @@ function register(h) {
       [true, 'LATEST', new Date(Date.parse('2026-10-22T12:00:00+08:00')).toISOString()],
       'F10 预约最晚时间成功且 DTO 回 ISO 时间（D47；SLOT 时段已不可新选）');
     // D77 附加服务：合法建单落库 + DTO 回名称；枚举外/重复一律 VALIDATION(data.field=addons)
-    const addonOrder = await cApi.call('order.create', createPayload({ addons: ['UPSTAIRS', 'TRASH'] }),
+    const addonOrder = await cApi.call('order.create', createPayload({ addons: ['TRASH', 'UPSTAIRS'] }),
       { clientRequestId: crid('10a') });
     t.eq([addonOrder.ok, addonOrder.ok && addonOrder.data.order.addons.map((item) => item.code),
       addonOrder.ok && addonOrder.data.order.addons.map((item) => item.name)],
-    [true, ['UPSTAIRS', 'TRASH'], ['上楼', '丢垃圾']], 'F10b 附加服务建单并在 DTO 回名称（D77）');
+    [true, ['UPSTAIRS', 'TRASH'], ['上楼', '丢垃圾']], 'F10b 附加服务建单并按枚举顺序归一（勾选顺序无关，D77）');
     await expectField(t, cApi.call('order.create', createPayload({ addons: ['BOGUS'] }),
       { clientRequestId: crid('10b') }), 'VALIDATION_FAILED', 'addons',
     'F10c 附加服务枚举外 → VALIDATION(data.field=addons)');

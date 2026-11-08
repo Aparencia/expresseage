@@ -1,4 +1,4 @@
-// pkg-partner/pages/pick-list/index.js · 独立「取件清单」页（D46，第 32 页；批 20 扩为双阶段）
+// pages/partner/pick-list/index.js · 独立「取件清单」页（D46，第 32 页；批 20 扩为双阶段）
 // 口径：CONTRACT §13-D46、UX_PARTNER §3.11；数据源 order.listPartner 工作台视图（现成动作、无服务端改动）：
 //       阶段一「待取件」= 已接单状态 → 按取件站点 P1~P8 分组（parts/pick-view，只读清单 + 单行/整组/全部复制）；
 //       阶段二「待送达」= 已取件状态 → 按苑→栋→楼层分组（parts/view-model，批量送达复用工作台纯件）。
@@ -49,7 +49,7 @@ Page(Object.assign({
     batchResult: null,
     copyLoading: false,
     emptyText: EMPTY_TEXT
-  }, tabWiring.data),
+  }, tabWiring.TAB_DATA),
 
   onLoad() {
     this._orders = [];

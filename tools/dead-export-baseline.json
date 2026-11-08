@@ -386,6 +386,13 @@
       "reason": "test-only",
       "evidence": "tools/selftest-profile.js:181",
       "note": "D64 后旧取件清单页删除导致生产端转死；仍被 selftest-profile 引用，先登记 test-only，清理须先移测试断言"
+    },
+    {
+      "file": "pkg-customer/pages/order-create/parts/model.js",
+      "symbol": "serviceOptions",
+      "reason": "test-only",
+      "evidence": "tools/selftest-order-flow.js:90",
+      "note": "D77 顾客端固定标准代取、服务选择器移除后生产端转死；仍被 selftest-order-flow/selftest-state 断言使用，先登记 test-only，清理须先移测试断言"
     }
   ],
   "pageDeadFunctions": []

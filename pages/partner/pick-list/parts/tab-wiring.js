@@ -11,7 +11,8 @@ const tabsData = require('../../../../components/tab-bar-view/tabs');
 const TAB_INDEX = 1;
 
 module.exports = {
-  data: {
+  // 键名不能叫 data：页面用 Object.assign 合并本件时会把整份页面 data 覆盖掉（2026-11-08 审查发现）
+  TAB_DATA: {
     tabs: tabsData.PARTNER_TABS,
     tabSelected: TAB_INDEX,
     badges: {}

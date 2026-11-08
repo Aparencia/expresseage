@@ -412,7 +412,7 @@ const TEAM_RELS = [
 // 队伍/邀请码状态字面量（页面层零判据：状态中文只取 shared/enums 标签表）
 const TEAM_STATUS_WORDS = ['UNUSED', 'USED', 'REVOKED', 'EXPIRED', 'ACTIVE', 'SUSPENDED', 'CLOSED', 'SUB', 'DEV', 'PENDING'];
 // Q 组断言数（含首红正控；实跑为准，改断言必须同步本条）
-const TEAM_PAGE_ASSERTIONS = 48;
+const TEAM_PAGE_ASSERTIONS = 50; // 48 + 2：长期码创建结果/待用行显示「长期有效」（2026-11-08 审查）
 
 function teamCaptainDto(overrides) {
   return Object.assign({
@@ -539,6 +539,13 @@ async function teamChecks(t) {
   t.check(result.hintText.indexOf('只显示这一次') >= 0 && result.hintText.indexOf('当面告知') >= 0
     && result.expiresText === '有效期至 2026-10-23 10:00',
   'Q18 结果块提示「只显示这一次/请当面告知」并带到期时刻');
+  // 2026-11-08 审查：长期码（expiresAt=0）在创建结果与待用码行都要显示「长期有效」，不能显示成到期/未知
+  const longResult = teamModel.resultOf({ batchId: TEAM_BATCH_A, codes: ['ABCD2345EFGH'], expiresAt: 0 }, NOW);
+  t.eq(longResult.expiresText, '长期有效', 'Q18b 长期码创建结果显示「长期有效」');
+  const longView = teamModel.buildSnapshot(teamCaptainDto({
+    pendingInvites: [{ codeTail: 'WXYZ', batchId: TEAM_BATCH_B, expiresAt: 0 }]
+  }), { nowMs: NOW });
+  t.eq(longView.inviteGroups[0].rows[0].expiresText, '长期有效', 'Q18c 待用长期码行显示「长期有效」');
   t.eq(teamModel.resultOf({ batchId: '', codes: [], expiresAt: 0 }, NOW).visible, false,
     'Q19 空码响应不画假结果块（空集不得判绿）');
 

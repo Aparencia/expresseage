@@ -45,12 +45,15 @@
         <text class="small muted">{{current.anchorText}}</text>
       </view>
       <view wx:if="{{error}}" class="small error-text">{{error}}</view>
-      <swiper wx:if="{{images.length}}" class="shot-swiper" indicator-dots circular>
-        <swiper-item wx:for="{{images}}" wx:key="index">
-          <image class="shot-image" src="{{item.url}}" mode="aspectFit" data-index="{{index}}" bindtap="onPreview" />
-        </swiper-item>
-      </swiper>
-      <view wx:else class="small muted">这单没有可查看的截图（可能已按隐私策略清理）。</view>
+      <view wx:if="{{reviewLoading}}" class="small muted">正在加载截图与订单…</view>
+      <block wx:else>
+        <swiper wx:if="{{images.length}}" class="shot-swiper" indicator-dots circular>
+          <swiper-item wx:for="{{images}}" wx:key="index">
+            <image class="shot-image" src="{{item.url}}" mode="aspectFit" data-index="{{index}}" bindtap="onPreview" />
+          </swiper-item>
+        </swiper>
+        <view wx:else class="small muted">这单没有可查看的截图（可能已按隐私策略清理）。</view>
+      </block>
     </view>
 
     <view wx:for="{{parcels}}" wx:key="index" class="card parcel-card">
@@ -58,7 +61,7 @@
         <view class="strong">{{item.indexText}}</view>
         <text wx:if="{{item.needCode}}" class="tag need-tag">需查明</text>
       </view>
-      <picker range="{{stationOptions}}" range-key="name" data-index="{{index}}" bindchange="onStationChange">
+      <picker range="{{stationOptions}}" range-key="name" data-index="{{index}}" bindchange="onStationChange" disabled="{{readonly || item.fieldsLocked}}">
         <view class="form-row">
           <view class="form-label">站点</view>
           <view class="form-input">{{item.stationName || '请选择站点'}}</view>
@@ -66,15 +69,15 @@
       </picker>
       <view class="form-row">
         <view class="form-label">取件码</view>
-        <input class="form-input" value="{{item.pickupCode}}" maxlength="40" data-index="{{index}}" data-field="pickupCode" bindinput="onFieldInput" />
+        <input class="form-input" value="{{item.pickupCode}}" maxlength="40" data-index="{{index}}" data-field="pickupCode" bindinput="onFieldInput" disabled="{{readonly || item.fieldsLocked}}" />
       </view>
       <view class="form-row">
         <view class="form-label">柜号</view>
-        <input class="form-input" value="{{item.lockerNo}}" maxlength="10" data-index="{{index}}" data-field="lockerNo" bindinput="onFieldInput" />
+        <input class="form-input" value="{{item.lockerNo}}" maxlength="10" data-index="{{index}}" data-field="lockerNo" bindinput="onFieldInput" disabled="{{readonly}}" />
       </view>
       <view class="form-row">
         <view class="form-label">运单尾号</view>
-        <input class="form-input" value="{{item.trackingTail}}" maxlength="5" type="number" data-index="{{index}}" data-field="trackingTail" bindinput="onFieldInput" />
+        <input class="form-input" value="{{item.trackingTail}}" maxlength="5" type="number" data-index="{{index}}" data-field="trackingTail" bindinput="onFieldInput" disabled="{{readonly}}" />
       </view>
       <view wx:if="{{!readonly}}" class="row parcel-actions">
         <view class="mini-btn btn btn-primary" data-index="{{index}}" bindtap="onSave">{{saving ? '保存中…' : '保存这件'}}</view>

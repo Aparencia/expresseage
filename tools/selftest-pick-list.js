@@ -34,7 +34,7 @@ const fsutil = require('./lib/fsutil');
 const zeroMoney = require('./zero-money-scan');
 const project = require('./lib/project');
 
-const EXPECTED_ASSERTIONS = 217; // 实跑读数：node tools/selftest-pick-list.js（批 25-B D61/D62：L/M 改判 + O 组 16 条 + N9b；+2：送别人「送至」判定 L10b/L11b）
+const EXPECTED_ASSERTIONS = 218; // 实跑读数：node tools/selftest-pick-list.js（批 25-B D61/D62：L/M 改判 + O 组 16 条 + N9b；+2：送别人「送至」判定 L10b/L11b；+1：H18 TAB_DATA 合并回归）
 
 const PAGE_DIR = 'pages/partner/pick-list';
 const FILES = {
@@ -485,6 +485,10 @@ function register(h) {
       'H16 兼职底栏登记「取件清单」伪 tab（与顾客取件码同款）');
     t.eq(workbenchWxml.indexOf('onPickListTap') === -1 && workbenchJs.indexOf('onPickListTap') === -1, true,
       'H17 工作台旧入口已移除（避免双入口）');
+    // 2026-11-08 审查回归：页面用 Object.assign 合并 tab 接线时，data 键会被整份覆盖 → 必须用 TAB_DATA
+    t.check(/TAB_DATA/.test(readText('pages/partner/pick-list/parts/tab-wiring.js'))
+      && !/tabWiring\.data\b/.test(readText('pages/partner/pick-list/index.js')),
+    'H18 伪 tab 数据以 TAB_DATA 合并，不覆盖页面 data（审查回归）');
     t.check(linesOf('pages/partner/workbench/index.js') <= 500,
       'H18 工作台 index.js 仍 ≤500 行（' + linesOf('pages/partner/workbench/index.js') + '）');
     const zonesSrc = readText(ZONES);

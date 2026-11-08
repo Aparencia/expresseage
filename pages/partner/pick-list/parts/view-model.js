@@ -1,4 +1,4 @@
-// pkg-partner/pages/pick-list/parts/view-model.js · 楼层配送清单纯件（分组/排序/分片/复制文案；零 wx）
+// pages/partner/pick-list/parts/view-model.js · 楼层配送清单纯件（分组/排序/分片/复制文案；零 wx）
 // 口径：CONTRACT §13-D46（独立第 32 页）、UX_PARTNER §3.11；数据源 order.listPartner({view:'workbench',status:PICKED})
 //       现成动作（无服务端改动）；按 苑 → 栋 → 楼层（zones.floorOf(room)）→ roomTag 自然序分组；
 //       分页/分片 ≤20 行；复制文案只到楼栋级（D48 红线：不含房间号/roomTag/订单号/称呼/尾号/取件码）。

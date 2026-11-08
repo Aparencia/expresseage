@@ -1,4 +1,4 @@
-// pkg-partner/pages/pick-list/parts/stage-flows.js · 双阶段「取件清单」页面接线（阶段切换 / 待取件加载 / 复制）
+// pages/partner/pick-list/parts/stage-flows.js · 双阶段「取件清单」页面接线（阶段切换 / 待取件加载 / 复制）
 // 职责：把 WXML 的阶段 chip 与复制事件接成页面 setData + 统一复制管道；判据/文案/分组在 pick-view 纯件。
 // 边界：页面方法（与 index.js 合并为 Page 配置）；不判断状态机、不直连 wx 之外的服务端动作。
 'use strict';
