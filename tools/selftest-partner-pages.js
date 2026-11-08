@@ -259,7 +259,7 @@ function register(h) {
       pickupCode: '27-2-7016', lockerNo: '3 号柜', trackingTail: '66785',
       stationId: 'P4', stationName: stations.stationNameOf('P4')
     }], 'D11 parcels[]：单件也是数组（v1.0 单入口，不再 parcel{}）');
-    t.eq(boundPayload.data.appoint, { type: 'ASAP' }, 'D12 预约 ASAP 只带 type（不带时段起止）');
+    t.eq(boundPayload.data.appoint, { type: 'LATEST', latestAt: '2026-10-22T12:00:00+08:00' }, 'D12 代客预约默认最晚时间 → 载荷带 latestAt（不再默认 ASAP）');
     const guest = guestState();
     t.eq(formModel.validate(guest), '', 'D13 新顾客路径合法基线可提交（先合法基线）');
     const guestPayload = payloadModel.buildPayload(guest);
@@ -345,26 +345,25 @@ function register(h) {
     t.check(duplicateResult.visible && duplicateResult.duplicateText.indexOf('不会重复建单') >= 0,
       'D35 重复提交（幂等命中）给出说明，不报错也不重复建单');
     const appointState = formModel.createAppointState(NOW);
-    t.eq([appointState.type, appointState.date, appointState.time], ['ASAP', '2026-10-22', '12:00'],
-      'D36 代客预约默认尽快（D47：预约与顾客下单同模型，预选值就绪）');
-    const latestAppoint = formModel.appointPatchWithType({ appoint: appointState }, 'LATEST', NOW).appoint;
+    t.eq([appointState.type, appointState.date, appointState.time], ['LATEST', '2026-10-22', '12:00'],
+      'D36 代客预约默认「最晚时间」（2026-11-08：与顾客端一致，不再默认尽快；预选值就绪）');
+    const latestAppoint = appointState;
     t.eq([latestAppoint.type, latestAppoint.latestText, formModel.appointViewOf({ appoint: latestAppoint }).appointText],
       ['LATEST', '最晚 10月22日 12:00', '最晚 10月22日 12:00'],
-      'D36b 代客切换「最晚时间」→ 摘要「最晚 M月D日 HH:MM」（与顾客端同文案）');
+      'D36b 代客预约摘要「最晚 M月D日 HH:MM」（与顾客端同文案）');
     t.eq(formModel.appointPayloadOf({ appoint: latestAppoint }),
       { type: 'LATEST', latestAt: '2026-10-22T12:00:00+08:00' },
       'D36c 代客载荷 appoint={type:LATEST, latestAt:ISO+08:00}（服务端再按 now 收紧）');
-    t.eq(formModel.appointSignatureOf({ appoint: latestAppoint })
+    const movedAppoint = formModel.appointPatchWithDate({ appoint: latestAppoint }, '2026-10-23', NOW).appoint;
+    t.eq(formModel.appointSignatureOf({ appoint: movedAppoint })
       !== formModel.appointSignatureOf({ appoint: appointState }), true,
     'D36d 预约变化进代客幂等签名（换键不吞新内容）');
     const staleAppoint = formModel.appointPatchWithDate({ appoint: latestAppoint }, '2026-10-01', NOW).appoint;
     t.check(formModel.validate(mutate(bound, { appoint: staleAppoint })).indexOf('30 分钟') >= 0,
       'D36e 过去的最晚时间 → 代客提交前拦截并给人话（服务端仍唯一权威）');
     const appointXml = textOfRel('pkg-partner/pages/create-on-behalf/index.wxml');
-    t.check(/onAppointType/.test(appointXml) && /onAppointDate/.test(appointXml)
-      && /onAppointTime/.test(appointXml) && /onAppointPreset/.test(appointXml)
-      && /最晚时间/.test(appointXml) && appointXml.indexOf('value="SLOT"') < 0,
-    'D36f 代客下单 UI：尽快/最晚时间 + 日期/时间/预设，SLOT 不可新选（D47）');
+    t.check(!/onAppointType/.test(appointXml) && !/value="ASAP"/.test(appointXml) && /onAppointDate|onAppointTime|onAppointPreset/.test(appointXml) && /最晚时间/.test(appointXml),
+    'D36f 代客下单 UI：只保留最晚时间 + 日期/时间/预设（无「尽快」）');
     t.eq(formModel.failureText({ code: 'PARTNER_CLOSED' }), '接单已关闭，暂时不能下单；已有订单不受影响。',
       'D37 PARTNER_CLOSED 人话（§3.4/§10）');
     t.eq(formModel.failureText({ code: 'VALIDATION_FAILED', message: '运单尾号必须是 5 位数字' }), '运单尾号必须是 5 位数字',
@@ -606,16 +605,16 @@ function register(h) {
     const dusk = new Date(2026, 9, 22, 20, 30, 0).getTime();
     const night = new Date(2026, 9, 22, 22, 30, 0).getTime();
     const noonState = formModel.createAppointState(noon);
-    t.eq([noonState.type, noonState.dateText, noonState.time], ['ASAP', '今天', '18:00'],
-      'I1 预约默认尽快；最晚时间预选过滤已过时刻（13:30 → 今天 18:00，30 分钟粒度）');
+    t.eq([noonState.type, noonState.dateText, noonState.time], ['LATEST', '今天', '18:00'],
+      'I1 代客预约默认「最晚时间」，预选过滤已过时刻（13:30 → 今天 18:00，30 分钟粒度）');
     const duskState = formModel.createAppointState(dusk);
     t.eq([duskState.dateText, duskState.time], ['今天', '22:00'], 'I2 20:30 → 今天 22:00（当天更早预设已过）');
     const nightState = formModel.createAppointState(night);
     t.eq([nightState.dateText, nightState.time], ['明天', '12:00'],
       'I3 22:30 当天预设全过 → 自动顺延到明天最近预设（不构造已过时刻）');
-    t.eq(noonState.notice, '', 'I4 正常单选「尽快」不显示降级提示（不打扰）');
-    t.check(formModel.createAppointState(night, 'SLOT').notice.indexOf('最晚时间') >= 0,
-      'I5 历史 SLOT 预填 → 降级「尽快」并提示（D47 新单不可选 SLOT）');
+    t.eq(noonState.notice, '', 'I4 正常「最晚时间」不显示降级提示（不打扰）');
+    t.eq([formModel.createAppointState(night, 'SLOT').type, formModel.createAppointState(night, 'SLOT').notice],
+      ['LATEST', ''], 'I5 历史 SLOT 预填也直接转「最晚时间」（新单不再有尽快/SLOT 选项）');
     const createPage = textOfRel('pkg-partner/pages/create-on-behalf/index.js');
     const createWxml = textOfRel('pkg-partner/pages/create-on-behalf/index.wxml');
     t.check(createPage.indexOf('serverNowMs()') >= 0 && createWxml.indexOf('appointNotice') >= 0,

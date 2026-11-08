@@ -1591,8 +1591,8 @@ check.ps1：全部通过（4 步，退出码 0）
 
 ## 33. 批 32 补件：预约只保留最晚时间（D76，2026-11-08）
 
-- **交付**：顾客下单 Step3 去掉「尽快 / 最晚时间」二选一，改为**只选最晚时间**（日期 + 30 分钟粒度时间 + 快捷 12:00/18:00/22:00；最小提前 30 分钟、最远 7 天）；进入 Step3 预选最近合法时刻；历史 ASAP 预填在进 Step4 前强制转 LATEST；代客下单页本批不动。
-- **代码**：`pkg-customer/pages/order-create/{index.js,index.wxml,parts/step3.js}`（初始 `createState(now,'LATEST')`、移除 radio 与 `setAppointType`、`goNext` 强制 LATEST）。
+- **交付**：顾客下单 Step3 与**代客下单页**都去掉「尽快 / 最晚时间」二选一，改为**只选最晚时间**（日期 + 30 分钟粒度时间 + 快捷 12:00/18:00/22:00；最小提前 30 分钟、最远 7 天）；进入页面预选最近合法时刻；历史 ASAP 预填在进 Step4 前强制转 LATEST。
+- **代码**：`pkg-customer/pages/order-create/{index.js,index.wxml,parts/step3.js}`（初始 `createState(now,'LATEST')`、移除 radio 与 `setAppointType`、`goNext` 强制 LATEST）；`pkg-partner/pages/create-on-behalf/{index.js,index.wxml,parts/{appoint-model,form-model}.js}`（`createState` 恒 LATEST、移除 `onAppointType`/`patchWithType`、wxml 去单选恒显日期/时间/预设）。
 - **门禁真实输出**：
 ```text
 $ powershell -File check.ps1
@@ -1603,7 +1603,7 @@ PASS  selftest.js 全部断言 suite（EXPECTED_ASSERTIONS 闸）
 selftest：运行 38 套；失败 0 套；SKIP 0 套（无）；完整性 0 项；非聚合辅助文件 4 件（已声明）
 check.ps1：全部通过（4 步，退出码 0）
 ```
-- **判据**：`selftest-order-flow` G15/Q9 改「只保留最晚时间 + 日期/时间/预设 + 30 分钟说明，无 ASAP/onAppointType」；其余套件不变。
+- **判据**：`selftest-order-flow` G15/Q9 改「只保留最晚时间 + 日期/时间/预设 + 30 分钟说明，无 ASAP/onAppointType」；`selftest-partner-pages` D12/D36f/I1~I5 改代客下单默认 LATEST、无「尽快」、SLOT 预填直接转 LATEST；其余套件不变。
 - **文档**：CONTRACT §13 D76、UX_CUSTOMER §3.7/§5、QA §AK9、CHANGELOG。
-- **真机项（agent 不代勾）**：QA §AK9（页面无「尽快」、默认预选、非法挡下一步、提交后详情文案）。
+- **真机项（agent 不代勾）**：QA §AK9（顾客端：页面无「尽快」、默认预选、非法挡下一步、提交后详情文案）与 §AK10（代客下单页同口径）。
 - **提交**：`56504f0`（代码/判据/文档）+ 本节证据回填提交。

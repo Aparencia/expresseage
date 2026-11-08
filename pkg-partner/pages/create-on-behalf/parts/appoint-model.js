@@ -20,13 +20,9 @@ function numberOr(value, fallback) {
   return Number.isFinite(number) ? number : fallback;
 }
 
-// currentType：预填/热重载带来的历史值（SLOT 会降级为「尽快」并给提示）
-function createState(nowMs, currentType) {
-  return appointUtil.createState(nowMs, currentType);
-}
-
-function patchWithType(state, type, nowMs) {
-  return { appoint: appointUtil.setType((state || {}).appoint, type, nowMs) };
+// currentType：预填/热重载带来的历史值（2026-11-08 起代客下单也只保留「最晚时间」，历史 ASAP/SLOT 直接转 LATEST）
+function createState(nowMs) {
+  return appointUtil.createState(nowMs, 'LATEST');
 }
 
 function patchWithDate(state, dateValue, nowMs) {
@@ -53,7 +49,7 @@ function signatureOf(state) {
 function viewOf(state) {
   const appoint = (state || {}).appoint || {};
   return {
-    appointType: textOf(appoint.type) || enums.APPOINT_TYPE.ASAP,
+    appointType: textOf(appoint.type) || enums.APPOINT_TYPE.LATEST,
     appointDate: textOf(appoint.date),
     appointDateText: textOf(appoint.dateText),
     appointTime: textOf(appoint.time),
@@ -72,7 +68,6 @@ function viewOf(state) {
 
 module.exports = {
   createState: createState,
-  patchWithType: patchWithType,
   patchWithDate: patchWithDate,
   patchWithTime: patchWithTime,
   patchWithPreset: patchWithPreset,

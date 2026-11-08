@@ -471,7 +471,6 @@ module.exports = {
   appointPatchWithDate: appointModel.patchWithDate,
   appointPatchWithPreset: appointModel.patchWithPreset,
   appointPatchWithTime: appointModel.patchWithTime,
-  appointPatchWithType: appointModel.patchWithType,
   appointPayloadOf: appointModel.payloadOf,
   appointSignatureOf: appointModel.signatureOf,
   appointViewOf: appointModel.viewOf,

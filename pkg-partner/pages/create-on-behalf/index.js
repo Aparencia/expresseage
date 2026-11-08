@@ -58,7 +58,6 @@ Page({
     itemsCount: 0,
     canAddItem: true,
     stationLines: [],
-    appointType: 'ASAP',
     appointDate: '',
     appointDateText: '',
     appointTime: '',
@@ -254,12 +253,7 @@ Page({
     this.update({ serviceIndex: Number(event.detail.value) });
   },
 
-  // D47 预约：尽快 / 最晚时间（日期 + 30 分钟一档时间 + 预设），判据在 shared/appoint
-  onAppointType(event) {
-    if (!this.state) return;
-    this.update(formModel.appointPatchWithType(this.state, event.detail.value, serverNowMs()));
-  },
-
+  // 2026-11-08：代客下单与顾客端一致，只保留「最晚时间」（不再提供「尽快」切换）
   onAppointDate(event) {
     if (!this.state) return;
     this.update(formModel.appointPatchWithDate(this.state, event.detail.value, serverNowMs()));
