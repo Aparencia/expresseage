@@ -7,6 +7,7 @@
     "pages/customer/pickcodes/index",
     "pages/partner/workbench/index",
     "pages/partner/customers/index",
+    "pages/partner/pick-list/index",
     "pages/profile/index"
   ],
   "subPackages": [
@@ -30,7 +31,6 @@
         "pages/service-settings/index",
         "pages/stats/index",
         "pages/messages/index",
-        "pages/pick-list/index",
         "pages/team/index"
       ]
     },

@@ -67,7 +67,7 @@ const {
 const summaryCopy = optionalRequire('pages/partner/workbench/parts/summary-copy.js');
 
 const EXPECTED_ASSERTIONS = 235 + dayCases.EXPECTED_ASSERTIONS + 33 + 15 + orderCases.EXPECTED_ASSERTIONS
-  + pickedCases.EXPECTED_ASSERTIONS + 6 + transferCases.WORKBENCH_EXPECTED_ASSERTIONS; // A~O 实际断言总数（批 26-W4：O 组转派待接收用例表见 lib）
+  + pickedCases.EXPECTED_ASSERTIONS + 6 + 5 + transferCases.WORKBENCH_EXPECTED_ASSERTIONS; // A~O 实际断言总数（批 26-W4：O 组转派待接收用例表见 lib；+2 H11a/H11b 送别人；+3 E09b/E09c/H08b 按钮 B 与件级定位）
 function textOf(rel) {
   return fsutil.readText(path.join(ROOT, rel));
 }
@@ -409,6 +409,12 @@ function register(h) {
     const noneToolbar = rowActions.buildToolbar(groupView.toRow(dto(STATUS.CANCELLED, { actions: [] })), {});
     t.eq([noneToolbar.primary.length, noneToolbar.secondary.length, noneToolbar.detail], [0, 0, true],
       'E09 服务端无 actions → 行工具不显示（只留详情）');
+    // 2026-11-08 按钮方案 B：主操作 + 改取件码留行内，其余低频动作进「更多」
+    const splitToolbar = rowActions.buildToolbar(submittedRow, {});
+    t.eq([splitToolbar.primary[0].key, splitToolbar.quick.map((tool) => tool.key)],
+      ['accept', ['correct']], 'E09b B 方案：主操作 + 改取件码留行内');
+    t.eq(splitToolbar.more.map((tool) => tool.key), ['reject', 'cancel', 'message'],
+      'E09c 其余低频动作进「更多」（拒单/取消/留言）');
     t.eq(rowActions.knownActions({ actions: [{ key: 'bogus', label: 'x' }, { key: 'pick' }] }).map((item) => item.key),
       ['pick'], 'E10 未知动作键丢弃、不渲染不受控按钮');
     const blankRow = row(STATUS.SUBMITTED);
@@ -670,6 +676,9 @@ function register(h) {
       [3, '3 件', 'P4 / P6', '1 件需查明', ''], 'H07 行聚合字段（件数/站点/需查明/无截图）');
     t.eq([multiRow.codeText, multiRow.parcelRows.length, multiRow.stationId],
       ['27-2-7016', 3, 'P4'], 'H08 行首仍首件码；逐件明细下发给面板；首件站点分组');
+    const multiIntent = actionFlow.needCodeIntent(multiRow.orderNo, groupView.buildGroups([multi]), false, 1);
+    t.eq([multiIntent.kind, multiIntent.panel.itemIndex], ['panel', 1],
+      'H08b 件级「需查明」直接定位该件（不再默认首件）');
     t.eq(groupView.buildGroups([multi]).map((group) => group.stationId), ['P4', 'P6'],
       'H09 D62 多站点订单在每个件站点组各出现一次（行内只列本站件）');
     const normalRow = groupView.toRow(dto(STATUS.ACCEPTED));
@@ -678,6 +687,16 @@ function register(h) {
     const manualRow = groupView.toRow(manualDto());
     t.eq([manualRow.manualEntry, manualRow.manualEntryText, manualRow.reviewText],
       [true, '无截图·手填', ''], 'H11 无截图·手填标识（D24）：不显示识别失败提示');
+    // 2026-11-08 用户真机：送别人时工作台只显示下单人宿舍 → 行内必须给出目的地址
+    const otherDeliveryRow = groupView.toRow(dto(STATUS.ACCEPTED, {
+      delivery: { zone: 'D', buildingNo: 8, buildingText: 'D8', room: '309', dormKey: 'D8-309', recipientName: '李四' }
+    }));
+    t.eq(otherDeliveryRow.deliveryChipText, '送至 D8-309（李四）',
+      'H11a 送别人：行内给出目的地址（不再只显示下单人宿舍）');
+    const selfDeliveryRow = groupView.toRow(dto(STATUS.ACCEPTED, {
+      delivery: { zone: 'D', buildingNo: 4, buildingText: 'D4', room: '522', dormKey: 'D4-522' }
+    }));
+    t.eq(selfDeliveryRow.deliveryChipText, '', 'H11b 本人宿舍：不重复显示目的地址');
     const panel = rowActions.openPanel('correct', multiRow);
     t.eq([panel.type, panel.items.length, panel.itemIndex, panel.code], ['code', 3, 0, '27-2-7016'],
       'H12 补码面板带件切换器（多件单 items=3、默认第 1 件）');

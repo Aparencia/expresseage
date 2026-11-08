@@ -15,6 +15,7 @@ const rowActions = require('../../../pages/partner/workbench/parts/row-actions')
 const share = require('../../../utils/share/handlers');
 const view = require('./parts/view-model');
 const pickView = require('./parts/pick-view');
+const tabWiring = require('./parts/tab-wiring');
 
 const DETAIL_PAGE = '/pkg-partner/pages/order-detail/index?orderNo=';
 const ACCOUNT_SWITCH_PAGE = '/pkg-admin/pages/account-switch/index';
@@ -22,7 +23,7 @@ const READONLY_COPY = '开发者只读视角不能操作';
 const EMPTY_TEXT = '当前没有待送达的已取件单。取件单会自动出现在这里，下拉或切回本页刷新。';
 
 Page(Object.assign({
-  data: {
+  data: Object.assign({
     stage: 'loading',
     tab: pickView.TAB_PICK,
     tabPick: pickView.TAB_PICK,
@@ -48,7 +49,7 @@ Page(Object.assign({
     batchResult: null,
     copyLoading: false,
     emptyText: EMPTY_TEXT
-  },
+  }, tabWiring.data),
 
   onLoad() {
     this._orders = [];
@@ -72,6 +73,8 @@ Page(Object.assign({
   onShow() {
     this.guard();
     this.syncMode();
+    // 伪 tab：选中格与角标（工作台待接单/我的消息）跟随 store；本页不自带 custom-tab-bar 实例
+    this.syncTabState();
     this.refresh();
   },
 
@@ -493,4 +496,4 @@ Page(Object.assign({
   writeHint(text) {
     return modeGuard.isTestWrite() ? text + '（将写入测试数据）' : text;
   }
-}, require('./parts/stage-flows')));
+}, require('./parts/stage-flows'), tabWiring));

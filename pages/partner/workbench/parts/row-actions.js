@@ -86,6 +86,8 @@ const ACTIONS = {
 };
 
 const PRIMARY_ORDER = ['accept', 'pick', 'deliver', 'resolve'];
+// 2026-11-08 行改版（按钮方案 B）：高频次操作留在行内，其余进「更多」浮层（不改动作可见性来源）
+const QUICK_KEYS = ['correct'];
 const WRITE_KEYS = ['accept', 'reject', 'pick', 'undoPick', 'deliver', 'undoDeliver', 'exception', 'resolve', 'correct', 'cancel'];
 const DELIVERY_QUICK_TAGS = ['放宿舍门口', '放楼下货架', '交给本人', '放快递柜'];
 
@@ -135,9 +137,14 @@ function buildToolbar(row, options) {
     }
   }
   const secondary = tools.filter((item) => !primary || item.key !== primary.key);
+  // B：quick = 改取件码（高频、低危）；more = 其余次操作（异常/留言/取消/拒单等）
+  const quick = secondary.filter((item) => QUICK_KEYS.indexOf(item.key) !== -1);
+  const more = secondary.filter((item) => QUICK_KEYS.indexOf(item.key) === -1);
   return {
     primary: primary ? [primary] : [],
     secondary: secondary,
+    quick: quick,
+    more: more,
     detail: true,
     hidden: false
   };

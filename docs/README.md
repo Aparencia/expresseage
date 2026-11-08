@@ -95,7 +95,7 @@ docs/
 
 | 文档 | 摘要 |
 | :-- | :-- |
-| `docs/contract/V4_CONTRACT.md` | 唯一口径卡 v1.13：角色与账号（含账号切换两模式）、术语与字段唯一拼写、14 集合摘要、订单状态机七态、action 表与 13 错误码、**33 页页面地图**（D64 起顾客第 3 格「取件码」伪 tab；D59 起第 33 页团队页）、权限矩阵、隐私与留存、裁决索引 D1~D73、写作纪律。门禁直接解析其 §4/§5.3/§7/§13 等章节。 |
+| `docs/contract/V4_CONTRACT.md` | 唯一口径卡 v1.13：角色与账号（含账号切换两模式）、术语与字段唯一拼写、14 集合摘要、订单状态机七态、action 表与 13 错误码、**33 页页面地图**（D64 起顾客第 3 格「取件码」伪 tab；2026-11-08 起兼职「取件清单」伪 tab；D59 起第 33 页团队页）、权限矩阵、隐私与留存、裁决索引 D1~D73、写作纪律。门禁直接解析其 §4/§5.3/§7/§13 等章节。 |
 | `docs/contract/V4_DECISIONS.md` | D1~D42 裁决台账：每条含用户原文留痕、推荐与被否方案、代价与落点；是理解「为什么这样设计」的第一手材料。 |
 | `docs/contract/V4_REBUILD_SPEC.md` | 重建主规格（v1.0 / 2026-10-21）：产品定义、铁律、架构、角色权限、流程、批次验收、风险。**历史快照**：与 CONTRACT 冲突处按 CONTRACT，文内冲突点已加更新指针。 |
 
@@ -142,7 +142,7 @@ docs/
 
 | 层 | 真实结构（2026-10-31 盘点） | 口径/文档对应 |
 | :-- | :-- | :-- |
-| 页面 | **33 页** = 主包 8（launch/role/customer home/orders/customer pickcodes/partner workbench/customers/profile）+ `pkg-customer` 5（bind/order-create/order-detail/messages/help）+ `pkg-partner` **9**（activate/order-detail/create-on-behalf/customer-detail/service-settings/stats/messages/pick-list/**team（D59 新增）**）+ `pkg-admin` 11（overview/invite-codes/customers/customer-detail/partners/orders/order-detail/config/account-switch/messages/recognition-review） | `docs/contract/V4_CONTRACT.md` §7（`check-docs` #2 校验它 = `app.json`） |
+| 页面 | **33 页** = 主包 9（launch/role/customer home/orders/customer pickcodes/partner workbench/customers/**partner pick-list**/profile）+ `pkg-customer` 5（bind/order-create/order-detail/messages/help）+ `pkg-partner` **8**（activate/order-detail/create-on-behalf/customer-detail/service-settings/stats/messages/**team（D59 新增）**）+ `pkg-admin` 11（overview/invite-codes/customers/customer-detail/partners/orders/order-detail/config/account-switch/messages/recognition-review） | `docs/contract/V4_CONTRACT.md` §7（`check-docs` #2 校验它 = `app.json`） |
 | 组件/工具 | `components/` 18 套（含维护遮罩、切换条、测试角标、头像、空态/骨架、D64 `tab-bar-view`、D65 `bottom-bar`）+ 根 `custom-tab-bar/`；`api/` 唯一网络出口 + 10 个域模块 + upload/privacy/mode-guard；`store/` 内存快照；`shared/` 口径纯件；`utils/` 纯件（识别/OCR/编号/roomTag/头像/存储/隐私策略等） | `docs/engineering/V4_ARCHITECTURE.md` §3 |
 | 云函数 | `cloudfunctions/api`（入口/router/app + 7 中间件 + db/dao + lib + 11 域 handlers）与 `cloudfunctions/cleanup`（13 个幂等 sweep + 独立 dao）；依赖只 `wx-server-sdk` | `docs/engineering/V4_ARCHITECTURE.md` §4、`V4_ENGINEERING.md` §4 |
 | 数据 | 14 集合（users/customers/partners/bindings/orders/order_events/order_messages/invitation_codes/admin_view_sessions/counters/config/admin_audit/upload_tickets/recognition_failures）、13 错误码、16 审计枚举、**89 动作**（client 74 / internal 15；v1.10 批 26 新增 8 个 client 动作） | `docs/contract/V4_CONTRACT.md` §4/§5.3、`docs/data/V4_DATA_MODEL.md` §1~§7 |

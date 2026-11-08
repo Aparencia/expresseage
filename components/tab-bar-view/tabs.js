@@ -14,6 +14,8 @@ const CUSTOMER_TABS = [
 
 const PARTNER_TABS = [
   { pagePath: 'pages/partner/workbench/index', text: '工作台', icon: '/assets/tabbar/partner-workbench.png', activeIcon: '/assets/tabbar/partner-workbench-active.png', badgeKey: 'workbenchPending' },
+  // 2026-11-08（用户指令）：取件清单升一级入口（伪 tab，不在 tabBar.list，reLaunch 进入）
+  { pagePath: 'pages/partner/pick-list/index', text: '取件清单', icon: '/assets/tabbar/partner-picklist.png', activeIcon: '/assets/tabbar/partner-picklist-active.png', pseudoTab: true },
   { pagePath: 'pages/partner/customers/index', text: '客户', icon: '/assets/tabbar/partner-customers.png', activeIcon: '/assets/tabbar/partner-customers-active.png' },
   { pagePath: 'pages/profile/index', text: '我的', icon: '/assets/tabbar/profile.png', activeIcon: '/assets/tabbar/profile-active.png', badgeKey: 'messages' }
 ];

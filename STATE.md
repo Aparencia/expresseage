@@ -1569,3 +1569,22 @@ check.ps1：全部通过（4 步，退出码 0）
 - 文档回写：CONTRACT §2/§9/§11.2/§13（含 D73 追加「我的 → 微信提醒」/20004/字段预算）、DATA_MODEL、ENGINEERING §3.6/§4.1/§8.3/§12、RUNBOOK §8/§14、UX_CUSTOMER §8.4/§9.2、UX_PARTNER §3.5/§4.12、ARCHITECTURE §2（批 31 文件登记）、DECISIONS（D68/D69/D73）、TECH_DEBT（TD-092~098）、隐私文本 v1.11（三处同源 + 发布前清单 + CONTRACT）、QA §AH/§AI/§AJ 与附录 B/E、docs/README 与 archive README 索引/状态、AGENTS.md 恢复。
 - 未修/风险：TD-092~098；真机项 QA §AH/§AI/§AJ 待用户点检；模板类型=2 与 P0-3 额度待用户；行数贴边文件（`selftest-profile` 999/1000、`selftest-partner-pages` 950/950、`pkg-partner/.../form-model.js` 与 `pkg-admin/.../view-model.js` 499/500）下一批触碰前须先拆件。
 - 纪律：本批代码/判据/文档提交 `90e68a6`（提交后回读 HEAD），本证据回填随下一 chore 提交；未 push/tag/发布/提审/操作云控制台；真机项未代勾、未代宣布通过。
+
+## 32. 批 32 收口证据（2026-11-08，工作台行改版 + 取件清单伪 tab + 子码长期 + 识别漏件）
+
+- **交付**：①工作台行改版（状态色条/订单号主视觉/三行压两行/「需查明」只留件级且可点补码/按钮方案 B：主操作+改取件码+详情+更多）；②送别人行内目的地址（工作台 chip + 取件清单「送至」前缀）；③订单详情改取件码浮层 `z-index 700` + 可滚动 + 空码占位；④「开启新单提醒」授权成功后隐藏；⑤取件清单升一级入口（伪 tab，`pkg-partner/pages/pick-list` → `pages/partner/pick-list`，兼职底栏 4 格，工作台旧入口删除）；⑥子邀请码长期（`FOREVER`，`expiresAt=0` 永不过期；一次性/名额/批次作废不变）；⑦两张截图只出一件的识别修复（柜号前缀码 `3号柜847594` → 码 `847594`）。
+- **门禁真实输出**：
+```text
+$ powershell -File check.ps1
+PASS  check.js 代码/配置门禁（39 条）
+PASS  check-docs.js 设计文档门禁（--batch 1）
+PASS  zero-money-scan.js 零金额扫描（源码+页面+文档）
+PASS  selftest.js 全部断言 suite（EXPECTED_ASSERTIONS 闸）
+selftest：运行 38 套；失败 0 套；SKIP 0 套（无）；完整性 0 项；非聚合辅助文件 4 件（已声明）
+check.ps1：全部通过（4 步，退出码 0）
+```
+- **判据**：`selftest-recognize` 308→313（柜号前缀码/两张真实截图各出一件）、`selftest-order-workbench` 431→434（按钮 B quick/more + 件级定位）、`selftest-pick-list` 215→217（送别人判定）、`selftest-team` 124→125（长期码 expiresAt=0）、`selftest-order-customer` P31 兼职 4 格、`selftest-partner-pages` Q12 有效期四档。
+- **文档**：CONTRACT §7（页面地图 主包 9/分包 24）+ §13 D74/D75、DATA_MODEL §2.9（FOREVER/expiresAt=0）、ARCHITECTURE §2/§3.5、UX_PARTNER §2.1/§2.2/§3.11/§3.12/§4、QA §AK、docs/README 页数、CHANGELOG。
+- **真机项（agent 不代勾）**：QA §AK1~AK8（行改版/送别人/浮层/提醒隐藏/伪 tab/长期码/两张截图/站点别名裁决）。
+- **风险/未决**：`五食堂21栋楼下` 内置别名仍映射 P3（截图实际为五食堂21栋兔喜），待用户裁决指向 P5/其它或删除；长期码在名额内仍可能长期有效（受一次性+批次作废+名额约束）。
+- **提交**：待提交（本节随收口提交回填）。

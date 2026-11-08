@@ -29,7 +29,7 @@ const recognizeModel = require(path.join(ROOT, 'pkg-partner/pages/create-on-beha
 const viewModel = require(path.join(ROOT, 'pkg-partner/pages/create-on-behalf/parts/view-model.js'));
 const pickerState = require(path.join(ROOT, 'components/image-picker/state.js'));
 
-const EXPECTED_ASSERTIONS = 308; // 250 + 13：⑦ 噪声语料；+13：D44 代客下单多图/识别预填/上传并发；+19：D57 本机取件码粘贴解析；+10：D70 真实截图取证；+3：D72③「尾号」优先词多行语料
+const EXPECTED_ASSERTIONS = 313; // 250 + 13：⑦ 噪声语料；+13：D44 代客下单多图/识别预填/上传并发；+19：D57 本机取件码粘贴解析；+10：D70 真实截图取证；+3：D72③「尾号」优先词多行语料；+5：柜号前缀码/两张真实截图各出一件
 
 // v3 真机语料（sha256 指纹钉：改动语料必须同步改这里的期望与解析断言）
 const CORPUS_ONE = [
@@ -299,6 +299,21 @@ function sectionParse(h) {
     t.eq(tooLong.unalignedCodes, ['1234567890123'], '§4.3 超长候选进 unalignedCodes（认出但不像）');
     t.check(!!tooLong.formErrors.pickupCode, '§4.3 超长候选给行内提示文案');
     t.eq(tooLong.needsReview, true, '§4.3 超长候选需复核/可走 AI 兜底');
+
+    // 2026-11-08 真实截图（中通/兔喜）：「取件码：3号柜847594」——旧实现把「柜」当噪音切掉，整行一个码都不出
+    const lockerPrefixed = recognize.parseOcrText('取件码：3号柜847594');
+    t.check(lockerPrefixed.found === true && lockerPrefixed.items.length === 1,
+      '§4.3 柜号前缀码「3号柜847594」产出一件');
+    t.eq(lockerPrefixed.items[0].pickupCode, '847594', '§4.3 柜号前缀码只取柜号后的码');
+    t.eq(lockerPrefixed.lockerNo, '3', '§4.3 柜号仍从同一行提取');
+    // 两张不同截图（五食堂21栋 3号柜847594 / 西苑一栋 运单后五位37892）必须各出一件，不得被跨图去重并成一件
+    const twoShots = recognize.mergeParcels([
+      recognize.parseOcrText('株洲天元五食堂21栋楼下店\n取件码：3号柜847594').items,
+      recognize.parseOcrText('湖工大西苑一栋南面菜鸟驿站\n取件出示运单号后五位37892').items
+    ], { max: 10 });
+    t.eq(twoShots.items.length, 2, '§4.3 两张不同截图各出一件（不被去重并成一件）');
+    t.eq(twoShots.items.map((item) => item.pickupCode + '|' + item.trackingTail), ['847594|', '|37892'],
+      '§4.3 两件码/尾号各自保留');
   });
 }
 

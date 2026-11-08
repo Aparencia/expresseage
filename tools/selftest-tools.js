@@ -205,7 +205,7 @@ function register(h) {
       'pages/profile/index.js': 'Page({\n  data: {}\n});\n',
       'pages/profile/index.wxml': '<view></view>\n',
       'pages/profile/parts/helper.js': 'function formatName(value) {\n  return String(value || "").trim();\n}\nmodule.exports = { formatName };\n',
-      'pkg-partner/pages/pick-list/index.js': 'const { formatName } = require("../../../pages/profile/parts/helper");\nPage({\n  data: {},\n  onLoad() {\n    formatName("x");\n  }\n});\n'
+      'pages/partner/pick-list/index.js': 'const { formatName } = require("../../../pages/profile/parts/helper");\nPage({\n  data: {},\n  onLoad() {\n    formatName("x");\n  }\n});\n'
     });
     t.eq(findingKeys(deadCode.scanPageFunctions(scanRequire)), [],
       '#36(iv) 解构 require 跨目录调用 → 函数存活（require 目标归一化后落在定义目录才计）');

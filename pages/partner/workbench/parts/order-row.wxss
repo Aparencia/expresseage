@@ -9,9 +9,18 @@
 .order-line {
   display: flex;
   align-items: flex-start;
-  padding: 20rpx 0;
+  padding: 20rpx 0 20rpx 16rpx;
   border-bottom: 1rpx solid #EEEEEE;
+  /* 2026-11-08 行改版：左侧状态色条提高相邻订单区分度（忙碌时不易看差） */
+  border-left: 6rpx solid transparent;
 }
+
+.order-line--submitted { border-left-color: #2B6DE5; }
+.order-line--accepted { border-left-color: #1F7A5C; }
+.order-line--picked { border-left-color: #C56A00; }
+.order-line--delivered { border-left-color: #7A5AF8; }
+.order-line--exception { border-left-color: #E54D42; }
+.order-line--history { border-left-color: #C9CED6; }
 
 .order-line-active {
   background: #F3F7FF;
@@ -40,9 +49,25 @@
   min-width: 0;
 }
 
+/* 两行结构：第一行 状态+单号+时间；第二行 宿舍锚+档位（2026-11-08 行改版） */
 .line-title {
   align-items: center;
   flex-wrap: wrap;
+}
+
+.line-time {
+  margin-left: auto;
+  color: #8A8F99;
+}
+
+.line-sub {
+  margin-top: 4rpx;
+  align-items: baseline;
+}
+
+.line-tier {
+  margin-left: 12rpx;
+  color: #8A8F99;
 }
 
 .code-text {
@@ -102,10 +127,6 @@
   color: #666666;
 }
 
-.line-foot {
-  margin-top: 6rpx;
-}
-
 .line-tags {
   flex-wrap: wrap;
 }
@@ -124,6 +145,16 @@
   border-radius: 8rpx;
   background: #F0F2F5;
   color: #666666;
+  font-size: 22rpx;
+  margin: 8rpx 12rpx 0 0;
+}
+
+/* 送别人：行锚是下单人宿舍，目的地址必须单独标出来（2026-11-08 用户真机反馈） */
+.delivery-tag {
+  padding: 4rpx 12rpx;
+  border-radius: 8rpx;
+  background: #E8F0FF;
+  color: #2B6DE5;
   font-size: 22rpx;
   margin: 8rpx 12rpx 0 0;
 }
@@ -167,6 +198,12 @@
   color: #999999;
 }
 
+/* 2026-11-08 按钮方案 B：低频动作收进「更多」（异常/留言/取消/拒单），行内只留主操作+改取件码+详情 */
+.tool-more {
+  border-color: #D9DEE5;
+  color: #666666;
+}
+
 .line-readonly {
   margin-top: 8rpx;
   font-size: 22rpx;
@@ -176,7 +213,9 @@
 /* D61/D62：件级取件行（缩进 32rpx + 左侧竖线；单件单不缩进、不显示「第 n 件」） */
 .order-no-text {
   margin: 0 12rpx;
-  color: #999999;
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #1F2937;
 }
 
 .picked-summary-tag {

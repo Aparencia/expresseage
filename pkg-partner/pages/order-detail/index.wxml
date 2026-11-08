@@ -257,7 +257,7 @@
       </view>
       <view wx:if="{{correctPanel.showPickupCode}}" class="form-row">
         <view class="form-label">取件码</view>
-        <input class="form-input" maxlength="{{correctPanel.pickupCodeMax}}" value="{{correctEditor.pickupCode}}" data-field="pickupCode" bindinput="onCorrectInput" />
+        <input class="form-input" maxlength="{{correctPanel.pickupCodeMax}}" value="{{correctEditor.pickupCode}}" placeholder="需查明 · 可留空，先补柜号/尾号" data-field="pickupCode" bindinput="onCorrectInput" />
       </view>
       <view wx:if="{{correctPanel.showLockerNo}}" class="form-row">
         <view class="form-label">柜号</view>

@@ -34,9 +34,9 @@ const fsutil = require('./lib/fsutil');
 const zeroMoney = require('./zero-money-scan');
 const project = require('./lib/project');
 
-const EXPECTED_ASSERTIONS = 215; // 实跑读数：node tools/selftest-pick-list.js（批 25-B D61/D62：L/M 改判 + O 组 16 条 + N9b）
+const EXPECTED_ASSERTIONS = 217; // 实跑读数：node tools/selftest-pick-list.js（批 25-B D61/D62：L/M 改判 + O 组 16 条 + N9b；+2：送别人「送至」判定 L10b/L11b）
 
-const PAGE_DIR = 'pkg-partner/pages/pick-list';
+const PAGE_DIR = 'pages/partner/pick-list';
 const FILES = {
   page: PAGE_DIR + '/index.js',
   wxml: PAGE_DIR + '/index.wxml',
@@ -268,7 +268,7 @@ function register(h) {
   // ------------------------------------------------------------ B. 分组/排序
   h.section('B 苑 → 栋 → 楼层 → roomTag 分组排序（含地址待同步兜底组）', (t) => {
     if (!view) {
-      t.check(false, 'B1 楼层清单纯件缺失（pkg-partner/pages/pick-list/parts/view-model.js）');
+      t.check(false, 'B1 楼层清单纯件缺失（pages/partner/pick-list/parts/view-model.js）');
       return;
     }
     const raw = floorFixtures();
@@ -436,7 +436,7 @@ function register(h) {
 
   // ------------------------------------------------------------ H. 注册与文档联动（页数随 app.json 动态对账）
   h.section('H 注册与文档联动（app.json/project/CONTRACT §7/ARCH/UX/QA/README 页数联动）', (t) => {
-    const pickPath = 'pkg-partner/pages/pick-list/index';
+    const pickPath = 'pages/partner/pick-list/index';
     const four = [FILES.page, FILES.wxml, FILES.wxss, FILES.json];
     t.eq(four.filter((rel) => readText(rel) === ''), [], 'H1 页面四件套齐全且非空');
     const pageJson = jsonOf(FILES.json);
@@ -452,11 +452,12 @@ function register(h) {
     const partnerPages = (project.SUBPACKAGES['pkg-partner'] || []).length;
     t.eq([pages.length, declaredTotal], [totalPages, totalPages],
       'H4 app.json 总页数 = 主包 + 各分包声明之和（动态取，不写死页数）');
-    t.eq(pages.indexOf(pickPath) !== -1, true, 'H5 app.json 声明 pkg-partner/pages/pick-list/index');
+    t.eq(pages.indexOf(pickPath) !== -1, true, 'H5 app.json 声明 pages/partner/pick-list/index');
     t.eq(project.ALL_PAGES.length, totalPages,
       'H6 tools/lib/project.js ALL_PAGES = ' + totalPages + '（与 app.json 动态对账，不写死）');
-    t.eq(project.SUBPACKAGES['pkg-partner'].indexOf('pages/pick-list/index') !== -1, true,
-      'H7 tools/lib/project.js pkg-partner 追加 pick-list（页数口径联动）');
+    t.eq(project.MAIN_PAGES.indexOf(pickPath) !== -1
+      && project.SUBPACKAGES['pkg-partner'].indexOf('pages/pick-list/index') === -1, true,
+      'H7 tools/lib/project.js：取件清单已迁主包（pkg-partner 不再含 pick-list）');
     const sec7 = fsutil.section(readText(CONTRACT), /^##\s*7\./) || '';
     t.eq(sec7.indexOf(pickPath) !== -1, true, 'H8 CONTRACT §7 页面地图含取件清单页路径（check-docs #2 双向一致）');
     t.eq(sec7.indexOf('pages/customer/pickcodes/index') !== -1, true,
@@ -479,9 +480,11 @@ function register(h) {
       'H15 docs/README 页数读数 = app.json/project 实数（动态读数，不写死）');
     const workbenchJs = readText('pages/partner/workbench/index.js');
     const workbenchWxml = readText('pages/partner/workbench/index.wxml');
-    t.eq(workbenchWxml.indexOf('onPickListTap') !== -1, true, 'H16 工作台顶部入口按钮接线（wxml 1 处）');
-    t.eq(workbenchJs.indexOf('onPickListTap(') !== -1 && workbenchJs.indexOf(pickPath) !== -1, true,
-      'H17 工作台入口跳转（index.js 1 处）');
+    const tabsSrc = readText('components/tab-bar-view/tabs.js');
+    t.eq(tabsSrc.indexOf(pickPath) !== -1 && tabsSrc.indexOf('pseudoTab: true') !== -1, true,
+      'H16 兼职底栏登记「取件清单」伪 tab（与顾客取件码同款）');
+    t.eq(workbenchWxml.indexOf('onPickListTap') === -1 && workbenchJs.indexOf('onPickListTap') === -1, true,
+      'H17 工作台旧入口已移除（避免双入口）');
     t.check(linesOf('pages/partner/workbench/index.js') <= 500,
       'H18 工作台 index.js 仍 ≤500 行（' + linesOf('pages/partner/workbench/index.js') + '）');
     const zonesSrc = readText(ZONES);
@@ -573,7 +576,7 @@ function register(h) {
   // ------------------------------------------------------------ K. 批 20 双阶段数据源
   h.section('K 双阶段数据源（待取件 ACCEPTED / 待送达 PICKED；counts→chip；默认阶段）', (t) => {
     if (!pickView) {
-      t.check(false, 'K1 待取件纯件缺失（pkg-partner/pages/pick-list/parts/pick-view.js）');
+      t.check(false, 'K1 待取件纯件缺失（pages/partner/pick-list/parts/pick-view.js）');
       return;
     }
     const page = readText(FILES.page);
@@ -627,12 +630,15 @@ function register(h) {
     t.eq(p4.rows.filter((row) => row.orderNo === '20261101-1007')[0].pieces[0].text, '8811 · 5号柜',
       'L9 件行含取件码 + 柜号');
     t.eq(groupOfKey(groups, 'P3').rows[0].anchorText, 'D4-522A', 'L10 宿舍锚 = dormKey + roomTag（只到锚级）');
+    t.eq(groupOfKey(groups, 'P3').rows[0].isOtherDelivery, false, 'L10b 本人宿舍：行内不标「送至」');
     const outsider = acceptedFixture('20261101-1010', {
       parcels: [parcelFixture('P4', '北部菜鸟')],
       delivery: { zone: 'D', buildingNo: 5, buildingText: 'D5', room: '602', dormKey: 'D5-602' }
     });
     t.eq(pickGroupsOf([outsider])[0].rows[0].anchorText, 'D5-602',
       'L11 D25 他人配送地址：锚取配送地址，不拼本人 roomTag（避免跑错宿舍）');
+    t.eq(pickGroupsOf([outsider])[0].rows[0].isOtherDelivery, true,
+      'L11b 送别人：行内标「送至」（与下单人宿舍区分，2026-11-08 真机反馈）');
     const guestOrder = acceptedFixture('20261101-1011', {
       dorm: null,
       delivery: null,

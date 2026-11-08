@@ -16,6 +16,8 @@ const MAIN_PAGES = [
   'pages/customer/pickcodes/index',
   'pages/partner/workbench/index',
   'pages/partner/customers/index',
+  // 2026-11-08（用户指令）：兼职「取件清单」升一级入口（伪 tab，迁主包；tabBar.list 仍 5 项）
+  'pages/partner/pick-list/index',
   'pages/profile/index',
 ];
 
@@ -35,7 +37,6 @@ const SUBPACKAGES = {
     'pages/service-settings/index',
     'pages/stats/index',
     'pages/messages/index',
-    'pages/pick-list/index',
     // D59：主兼职「我的团队」页（成员/子邀请码/名额）
     'pages/team/index',
   ],

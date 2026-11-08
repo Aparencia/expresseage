@@ -17,11 +17,12 @@ const ids = require('../../../../utils/ids');
 const COUNT_MAX = 5;
 // 备注上限与 shared/validate.TEXT_LIMITS.teamNote 同口径（服务端唯一权威，端侧只做输入框限长）
 const NOTE_MAX = 50;
-// 有效期选项（D59：24h/72h/7d）；key 与服务端校验枚举一致，label 只用于端侧展示
+// 有效期选项（D59：24h/72h/7d；2026-11-08 用户指令新增长期）；key 与服务端校验枚举一致，label 只用于端侧展示
 const VALIDITY_OPTIONS = [
   { key: '24H', label: '24 小时' },
   { key: '72H', label: '72 小时' },
-  { key: '7D', label: '7 天' }
+  { key: '7D', label: '7 天' },
+  { key: 'FOREVER', label: '长期' }
 ];
 const DEFAULT_VALIDITY = '24H';
 
@@ -85,7 +86,10 @@ function inviteGroupOf(list, nowMs) {
     byKey[key].rows.push({
       key: key + ':' + byKey[key].rows.length,
       codeTailText: textOf(row.codeTail) ? '尾号 ' + textOf(row.codeTail) : '尾号未知',
-      expiresText: row.expiresAt ? '到期 ' + format.formatRelative(row.expiresAt, nowMs) : '到期时间未知'
+      // 2026-11-08：长期码 expiresAt=0 → 显示「长期有效」（不再当作未知/到期）
+      expiresText: Number(row.expiresAt) > 0
+        ? '到期 ' + format.formatRelative(row.expiresAt, nowMs)
+        : (Number(row.expiresAt) === 0 ? '长期有效' : '到期时间未知')
     });
   });
   return groups.map((group) => Object.assign({}, group, {

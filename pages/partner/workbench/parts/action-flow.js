@@ -45,7 +45,7 @@ function rowActionIntent(key, orderNo, groups, readonly) {
 }
 
 // 「需查明 · 补码」点击：服务端给了 correct 就开行内面板，否则跳详情（不本地判状态）
-function needCodeIntent(orderNo, groups, readonly) {
+function needCodeIntent(orderNo, groups, readonly, itemIndex) {
   const found = groupView.findRow(groups, orderNo);
   if (!found) {
     return { kind: 'none' };
@@ -57,7 +57,9 @@ function needCodeIntent(orderNo, groups, readonly) {
   if (!hasCorrect) {
     return { kind: 'navigate', orderNo: found.row.orderNo };
   }
-  return { kind: 'panel', panel: rowActions.openPanel('correct', found.row) };
+  // 2026-11-08 行改版：件级「需查明」标签成为唯一补码入口，直接定位到该件（缺省仍首件）
+  const index = typeof itemIndex === 'number' && itemIndex >= 0 ? itemIndex : undefined;
+  return { kind: 'panel', panel: rowActions.openPanel('correct', found.row, index) };
 }
 
 // 浮层提交 → 意图：error / write / batchStationConfirm

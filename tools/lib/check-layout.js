@@ -19,7 +19,7 @@ const F = require('./fsutil');
 const { ROOT, RELS, PAGE_SCOPES, text, shortList } = require('./check-helpers');
 
 /** D64：伪 tab 页（不在 tabBar.list，但视觉/底垫与真 tab 页同级）。 */
-const PSEUDO_TAB_PAGES = ['pages/customer/pickcodes/index'];
+const PSEUDO_TAB_PAGES = ['pages/customer/pickcodes/index', 'pages/partner/pick-list/index'];
 /** 门禁 #38 存量基线：路径固定 + reason 枚举（只认「全屏居中遮罩」一类合法例外）。 */
 const BOTTOM_SAFE_BASELINE = 'tools/lib/bottom-safe-baseline.json';
 const BASELINE_REASONS = ['fullscreen-overlay-centered'];

@@ -7,8 +7,6 @@
   <view class="head-row">
     <view class="title">工作台</view>
     <view class="row">
-      <!-- D46/批 20：独立「取件清单」页入口（双阶段：待取件按站点 / 待送达原样；工作台数据流不变） -->
-      <view class="mini-btn btn btn-ghost" bindtap="onPickListTap">取件清单</view>
       <view class="mini-btn btn btn-ghost" bindtap="onRefreshTap">刷新</view>
       <!-- 批 31（D73）：一次性订阅的「新订单通知」授权入口；READONLY/测试会话/订阅未启用或缺模板 ID 时不显示 -->
       <view wx:if="{{!readonly && !testWrite && subscribeEnabled}}" class="mini-btn btn btn-ghost" bindtap="onSubscribeTap">开启新单提醒</view>
@@ -154,16 +152,26 @@
         wx:for="{{group.rows}}"
         wx:key="orderNo"
         wx:for-item="row"
-        class="order-line {{row.selected ? 'order-line-active' : ''}}"
+        class="order-line order-line--{{row.bucket}} {{row.selected ? 'order-line-active' : ''}}"
         data-order-no="{{row.orderNo}}"
         bindtap="onRowTap"
       >
         <view wx:if="{{selecting && row.selectable}}" class="check-dot {{row.selected ? 'check-dot-on' : ''}}"></view>
         <view wx:if="{{selecting && !row.selectable}}" class="check-dot check-dot-disabled"></view>
         <view class="flex-1 line-main">
+          <!-- 2026-11-08 行改版：三行压两行（单号+时间 / 宿舍+档位），其它维度全部进 tags 行；
+               需查明只在件级显示一处（件标签可点开补码），不再出现「档位+行标签+件标签」三次。 -->
           <view class="row line-title">
             <status-pill status="{{row.status}}" />
-            <text class="small order-no-text">{{row.orderNo}}</text>
+            <text class="order-no-text">{{row.orderNo}}</text>
+            <text class="small line-time">{{row.timeText}}</text>
+          </view>
+          <view class="row between line-sub">
+            <view class="muted ellipsis flex-1">{{row.anchorKeyText || row.senderText || '顾客信息待同步'}}</view>
+            <text wx:if="{{row.tierText && !row.needCode}}" class="small line-tier">{{row.tierText}}</text>
+          </view>
+          <view wx:if="{{row.exceptionText}}" class="exception-text">异常：{{row.exceptionText}}</view>
+          <view class="row line-tags">
             <!-- D45/M1：跨日未送达行标签（文案单源 parts/day-view.js；当日单/待确认/已完结不显示） -->
             <view wx:if="{{row.delayDaysText}}" class="tag delay-tag">{{row.delayDaysText}}</view>
             <view wx:if="{{row.isGuest}}" class="tag guest-tag">代客单</view>
@@ -172,15 +180,7 @@
             <view wx:if="{{row.pickedSummaryText}}" class="tag picked-summary-tag">{{row.pickedSummaryText}}</view>
             <view wx:if="{{row.stationSummaryText}}" class="small station-summary">{{row.stationSummaryText}}</view>
             <view wx:if="{{row.manualEntryText}}" class="tag manual-tag">{{row.manualEntryText}}</view>
-          </view>
-          <view class="muted ellipsis">{{row.anchorKeyText || row.senderText || '顾客信息待同步'}}</view>
-          <view class="row between small line-foot">
-            <text>{{row.timeText}}</text>
-            <text>{{row.tierText}}</text>
-          </view>
-          <view wx:if="{{row.exceptionText}}" class="exception-text">异常：{{row.exceptionText}}</view>
-          <view class="row line-tags">
-            <view wx:if="{{row.needCode}}" class="need-code-tag" data-order-no="{{row.orderNo}}" catchtap="onNeedCodeTap">需查明 · 补码</view>
+            <view wx:if="{{row.deliveryChipText}}" class="tag delivery-tag">{{row.deliveryChipText}}</view>
             <view wx:if="{{row.needCodeCountText}}" class="parcel-need-tag">{{row.needCodeCountText}}</view>
             <view wx:if="{{row.reviewText}}" class="review-tag">{{row.reviewText}}</view>
           </view>
@@ -196,15 +196,16 @@
               catchtap="onRowAction"
             >{{tool.label}}</view>
             <view
-              wx:for="{{row.toolbar.secondary}}"
+              wx:for="{{row.toolbar.quick}}"
               wx:key="key"
               wx:for-item="tool"
-              class="tool-btn {{tool.danger ? 'tool-danger' : ''}}"
+              class="tool-btn"
               data-key="{{tool.key}}"
               data-order-no="{{row.orderNo}}"
               catchtap="onRowAction"
             >{{tool.label}}</view>
             <view class="tool-btn tool-detail" data-order-no="{{row.orderNo}}" catchtap="onRowTap">详情</view>
+            <view wx:if="{{row.toolbar.more.length}}" class="tool-btn tool-more" data-order-no="{{row.orderNo}}" catchtap="onRowMoreTap">更多</view>
           </view>
           <view wx:if="{{readonly}}" class="line-readonly">只读视角：行工具已隐藏，可查看详情</view>
 
@@ -227,7 +228,13 @@
                   >{{piece.codeText}}</text>
                   <text wx:if="{{piece.showStation && piece.stationText}}" class="small piece-station">{{piece.stationText}}</text>
                   <text wx:if="{{piece.lockerText}}" class="small piece-locker">柜 {{piece.lockerText}}</text>
-                  <text wx:if="{{piece.needCode}}" class="tag piece-need">需查明</text>
+                  <text
+                    wx:if="{{piece.needCode}}"
+                    class="tag piece-need"
+                    data-order-no="{{row.orderNo}}"
+                    data-item-index="{{piece.index}}"
+                    catchtap="onNeedCodeTap"
+                  >需查明</text>
                   <text wx:if="{{piece.picked}}" class="tag piece-picked">{{piece.pickedText}}{{piece.pickedAtText ? ' ' + piece.pickedAtText : ''}}</text>
                 </view>
               </view>

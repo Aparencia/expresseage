@@ -101,8 +101,8 @@
 | `pkg-partner/pages/service-settings/index` | 分包 | 首次配置 / 我的 | 服务类型启用/停用 + 苑级范围 + 接单开关（无定价，§6） |
 | `pkg-partner/pages/stats/index` | 分包 | 我的/工作台 | 单量统计：今日/本周完成量、状态分布、异常数（**按订单计**；无费用口径） |
 | `pkg-partner/pages/messages/index` | 分包 | 我的/工作台铃铛 | 订单事件+留言+公告聚合消息中心（**未读=留言+状态事件**，D29，§3.9） |
-| `pkg-partner/pages/pick-list/index` | 分包（第 32 页） | 工作台顶部「楼层清单」 | **独立楼层配送清单（D46）**：苑→栋→楼层（`floor(room/100)`）分组展示已取件待送达单；分页/分片 ≤20 行、不做定时轮询、切页/下拉才刷新；复用批量送达（§3.11） |
-| `pkg-partner/pages/team/index` | 分包（第 33 页，D59） | 服务配置页「我的团队」行 | 团队：成员列表（编号/昵称/状态/加入时间，**不显示头像/fileId**）+ 发子邀请码（1~5 个、24H/72H/7D、备注可选；**完整码仅本次响应**并提示「一次性，请当面告知」）+ 待用子码列表（**按 `batchId` 分组**，只显示尾 4 位/到期，「作废本批」二次确认）+ 移除成员（二次确认，说明移除后对方被停用、需联系管理员恢复）+ 名额 `quota{used,reserved,max}`（展示 `reserved/{max}`，含待用子码）；子队员视角只看「所属队伍：P-XXX / 成员数 N」（§3.12）；**本页不提供分享/转发（子邀请码/成员信息不外传，不在 `tools/lib/share-pages.js` 好友转发清单）** |
+| `pages/partner/pick-list/index` | 主包（第 32 页，伪 tab） | 兼职底栏第 2 格「取件清单」 | **独立楼层配送清单（D46）**：苑→栋→楼层（`floor(room/100)`）分组展示已取件待送达单；分页/分片 ≤20 行、不做定时轮询、切页/下拉才刷新；复用批量送达（§3.11） |
+| `pkg-partner/pages/team/index` | 分包（第 33 页，D59） | 服务配置页「我的团队」行 | 团队：成员列表（编号/昵称/状态/加入时间，**不显示头像/fileId**）+ 发子邀请码（1~5 个、24H/72H/7D/长期（FOREVER，永不过期）、备注可选；**完整码仅本次响应**并提示「一次性，请当面告知」）+ 待用子码列表（**按 `batchId` 分组**，只显示尾 4 位/到期，「作废本批」二次确认）+ 移除成员（二次确认，说明移除后对方被停用、需联系管理员恢复）+ 名额 `quota{used,reserved,max}`（展示 `reserved/{max}`，含待用子码）；子队员视角只看「所属队伍：P-XXX / 成员数 N」（§3.12）；**本页不提供分享/转发（子邀请码/成员信息不外传，不在 `tools/lib/share-pages.js` 好友转发清单）** |
 ### 2.2 导航规则（照 CONTRACT §7）
 - `launch` 是唯一启动页；`role` 不属于任何 tab。角色不匹配的 tab 页在 `onShow` 里 `reLaunch` 回本角色首页（兼职回工作台）。
 - **tabBar 只有 5 项（平台上限）**：`pages/customer/home/index`、`pages/customer/orders/index`、`pages/partner/workbench/index`、`pages/partner/customers/index`、`pages/profile/index`（双方共用）；`custom: true`，自定义 tabBar 组件固定在**项目根目录 `custom-tab-bar/`**（平台硬要求，不是 components/），按全局角色只渲染 3 格：顾客=首页/订单/我的，兼职=工作台/客户/我的。兼职"工作台"格显示待处理红点/数字。
@@ -111,7 +111,7 @@
 - 绑定卡片 `?bind={partnerNo}` 可落在 `role` 或 `bind` 页（由登录态决定）：未登录 → role → 登录后转 `pkg-customer/pages/bind/index?code=`；已登录 → 直接进 bind；顾客须输入或确认**完整兼职编号**（P-XXX-XXX）。
 - 订单深链 `?orderNo=` 统一落订单详情：兼职端落 `pkg-partner/pages/order-detail/index`；云函数 `order.get` 校验订单 `partnerOpenid` 必须等于当前 partner，失败统一 toast"订单不存在或不属于你"并回工作台。
 - 返回逻辑：tab 页之间用 `wx.switchTab`；分包页用 `navigateBack`；从消息/深链进详情后，返回落工作台（不是顾客页）。
-- **楼层配送清单入口（D46）**：工作台顶部（与「刷新/多选」并列）点「楼层清单」→ `wx.navigateTo('/pkg-partner/pages/pick-list/index')`；该页不是 tab、不显示 tabBar，返回落工作台；切回工作台/再次进入时按 onShow 刷新（清单页自身不挂定时轮询）。
+- **取件清单入口（2026-11-08 升一级，伪装 tab）**：兼职底栏第 2 格「取件清单」，与工作台/客户/我的同级；点击 `wx.reLaunch('/pages/partner/pick-list/index')`（该页不在 `app.json` tabBar.list，页面内自绘共用 `components/tab-bar-view` 四格，顾客端「取件码」同款）；其余三格是真 tab 用 `wx.switchTab`；工作台顶部不再保留「取件清单」按钮（避免双入口）；本页 onShow/下拉/切阶段刷新，不挂定时轮询。
 - **团队入口（D59）**：服务配置页（`pkg-partner/pages/service-settings/index`）→「我的团队」行 → `wx.navigateTo('/pkg-partner/pages/team/index')`；该页不是 tab、不显示 tabBar，返回落服务配置页；主兼职可发子码/按批次作废/移除成员，子队员只读队伍摘要（§3.12）。
 - 切换角色：我的 → 切换身份 → `wx.reLaunch` 到 role/顾客首页，自定义 tabBar 重新渲染。
 - **开发者分流**：`user.bootstrap` 返回 `isDeveloper=true` ⇒ `wx.reLaunch('/pkg-admin/pages/overview/index')`（不需要 `?admin=1`，服务端白名单是唯一门槛）。开发者不进兼职业务 tab；后台「切换账号」入口在 `pkg-admin/pages/account-switch/index`（真实账号只读 / 测试账号可写，见 §6）。
@@ -472,7 +472,7 @@
 - **文案**：复制成功"兼职编号已复制"；切换身份确认"切换后回到身份选择页，未提交的操作会丢失。"
 - **跳转**：分包页 `navigateTo`；切换身份 `wx.reLaunch` 回 role。
 
-### 3.11 楼层配送清单 `pkg-partner/pages/pick-list/index`（D46，第 32 页）
+### 3.11 取件清单 `pages/partner/pick-list/index`（D46，第 32 页；2026-11-08 迁主包为伪 tab）
 **目标**：跑站时按「苑 → 栋 → 楼层」看已取件待送达的单，逐层送达，避免在工作台长列表里反复翻找。**独立分包页、不新增服务端动作**：数据源 `order.listPartner` 工作台视图 + 已取件状态（现成动作），客户端用 `shared/zones.floorOf(room)` 派生楼层（`floor(room/100)`，room≥100 恒 ≥1）。
 
 ```
@@ -499,7 +499,7 @@
 - **复制清单（D48 红线）**：文案由纯件生成、**只到苑/栋级**（例：`【楼层配送清单】 东苑 D4 共 5 单；东苑 D5 共 2 单；共 7 单待送达。`）；不得含房间号/roomTag/订单号/称呼/尾号/取件码；空清单点复制提示"当前没有可复制的清单"。**复制前先自动拉全剩余页**（循环 `load({more:true})` 直到无 `nextCursor`，上限 10 页/200 单、防重入；拉取失败给 toast 且**不复制半量**）；页头在有 `nextCursor` 时显示「已加载 N 单（还有更多，上拉或点“复制清单”自动拉全）」。
 - **状态**：加载中/错误重试/空态（"当前没有待送达的已取件单；取件单会自动出现在这里。"）；`READONLY` 黄条下隐藏多选与行内「已送达」、批量按钮不渲染，点写入口 toast"开发者只读视角不能操作"；`TEST_WRITE` 蓝条可写但只写测试数据（确认框追加"（将写入测试数据）"）；两种会话隐藏分享/转发（switch-bar 统一收口）。
 - **隐私**：本人订单 L3 可在页内展示（房间号/roomTag/收件人称呼）；复制文案楼栋级封顶；不显示取件码/尾号/顾客编号；不发通知、不落日志。
-- **导航**：`/pkg-partner/pages/pick-list/index`（`app.json` 第 32 页）；返回工作台；身份不匹配时 `reLaunch` 回本角色首页。
+- **导航**：`/pages/partner/pick-list/index`（`app.json` 第 32 页，伪 tab：不在 tabBar.list，页面内自绘 4 格底栏，`reLaunch` 进入；切其它格用 `switchTab`）；身份不匹配时 `reLaunch` 回本角色首页。
 - **待取件阶段（D55；D61/D62 修订）**：顶部两 chip「待取件 N」「待送达 N」（计数取 `counts.accepted`/`counts.picked`），默认待取件；数据源 `status=ACCEPTED`，按**件的站点**分组（D62：一单在每个件站点组各出现一次、行内只列本站件 + 「另 N 件在 Pn」、组内四档按本站件、组头单数+件数）；行显示宿舍锚、件数、`已取 n/m 件`；每件行显示码/柜号/需查明 + **已取状态** + 独立「已取件」/「撤销已取」（D61：只消费 `parcel.actions`，写请求带 `itemIndex/clientRequestId/expectedVersion`，免二次确认，READONLY 隐藏）；已全取的订单因服务端状态转 `PICKED` 自动离开本阶段（客户端不本地判状态）。复制单行/整组/全部**只含本站件**（全部复制前自动拉全剩余页，失败不复制半量）；文案只到站点/码/尾号/柜号/宿舍锚，不含称呼/订单号/顾客编号/手机尾号/头像。
 
 ### 3.12 团队 `pkg-partner/pages/team/index`（D59，第 33 页）
@@ -525,7 +525,7 @@
 │ └───────────────────────────┘ │
 └──────────────────────────────┘
 ```
-- **主兼职视角**：成员列表（`partnerNo`+`displayName`+状态文案+加入时间，**不显示头像/不显示 fileId**；状态文案由服务端 DTO 下发，页面零状态字面量）；发子邀请码（数量 1~5、有效期 24H/72H/7D、备注可选 ≤50 字）→ 成功后**完整码只在本次响应**弹层展示（一次性、请当面告知、可复制；离开即不可再查）；待使用子码**按 `batchId` 分组**，只显示尾 4 位/到期时间，组操作「作废本批」（二次确认"作废后这批子码全部失效，不可恢复"，成功 toast"已作废 N 个"）；移除成员（二次确认，文案"移除后对方将被停用，需联系管理员恢复；对方名下未完成订单需先处理"）；名额按服务端 `quota{used,reserved,max}` 展示：**主行按 `reserved/{max}`**（`reserved`=在队队员数+未过期待用子码数，与发码闸同口径；`used` 仅用于细分文案「队员 N / 待用码 M」）；服务端发码前按「成员数 + 待用未过期子码数 + 本批数量 > `teamMaxMembers` → `VALIDATION_FAILED`」校验，满员文案「队员+待用码已占用 {reserved}/{max}」，禁用发码并给原因（先移除成员/等待子码过期）；数量选项按剩余名额 `max-reserved` 收窄（1~5）。
+- **主兼职视角**：成员列表（`partnerNo`+`displayName`+状态文案+加入时间，**不显示头像/不显示 fileId**；状态文案由服务端 DTO 下发，页面零状态字面量）；发子邀请码（数量 1~5、有效期 24H/72H/7D/长期（FOREVER）、备注可选 ≤50 字）→ 成功后**完整码只在本次响应**弹层展示（一次性、请当面告知、可复制；离开即不可再查）；待使用子码**按 `batchId` 分组**，只显示尾 4 位/到期时间（长期码显示「长期有效」），组操作「作废本批」（二次确认"作废后这批子码全部失效，不可恢复"，成功 toast"已作废 N 个"）；移除成员（二次确认，文案"移除后对方将被停用，需联系管理员恢复；对方名下未完成订单需先处理"）；名额按服务端 `quota{used,reserved,max}` 展示：**主行按 `reserved/{max}`**（`reserved`=在队队员数+未过期待用子码数，与发码闸同口径；`used` 仅用于细分文案「队员 N / 待用码 M」）；服务端发码前按「成员数 + 待用未过期子码数 + 本批数量 > `teamMaxMembers` → `VALIDATION_FAILED`」校验，满员文案「队员+待用码已占用 {reserved}/{max}」，禁用发码并给原因（先移除成员/等待子码过期）；数量选项按剩余名额 `max-reserved` 收窄（1~5）。
 - **子队员视角**：只显示「所属队伍：P-XXX / 成员数 N」摘要卡 + 说明"你已加入该队伍；顾客只能绑定主兼职，你只能接收队内转派订单"；**不显示成员明细、不显示发码/作废/移除入口**。
 - **空/满/错误态**：无成员空态"还没有队员。生成子邀请码，让对方在激活页输入即可加入"；无待用子码"暂无待使用的子邀请码"；网络失败重试（并发冲突按服务端文案直出「并发生成冲突，请刷新后重试」）；`READONLY` 隐藏全部写入口（仅只读列表），`TEST_WRITE` 可写但仅测试数据；两种会话隐藏分享。
 - **隐私**：队内只共享编号+昵称；**不展示头像、不展示顾客信息/订单信息**；发码完整码只在创建响应出现，**不进日志/通知/分享卡片**。
@@ -1068,7 +1068,7 @@
 ## 14. v1.4 批 17 实现补充（D46 独立楼层配送清单，2026-11-01）
 
 ### 14.1 独立页与页数联动（31→32）
-- `pkg-partner/pages/pick-list/index` 为 `app.json` 第 32 页；页面清单见 §2.1、导航见 §2.2、逐页规格见 §3.11。
+- `pages/partner/pick-list/index` 为 `app.json` 主包第 32 页（伪 tab，2026-11-08 迁主包）；页面清单见 §2.1、导航见 §2.2、逐页规格见 §3.11。
 - 联动：`app.json` / CONTRACT §7 / `docs/engineering/V4_ARCHITECTURE.md` 页面数 / 本文 §2.1·§2.2·§3.11 / QA §F 真机项 / `docs/README.md` 页面结构读数 / `tools/lib/project.js` 页数口径 31→32（check-docs #2 双向对帐，判据不弱化）。
 - 工作台顶部新增「楼层清单」入口（只跳转；工作台数据流与轮询口径不变，onShow/30s 轮询仍按 §4.11）。
 
@@ -1089,14 +1089,14 @@
 - **已完结只放昨日及更早（修订 §4.10）**：折叠入口文案「已完结 · 昨日及更早 N+ 单 >」；展开窗口 `[昨日 0 点, 今日 0 点−1ms]` 单窗口游标翻页，sections 只含「昨天/更早」（今天完成单只在「全部」里看）；「今日完成」计数点击 → 切「全部」+ toast「今日完成的单都在「全部」里」；stats 页 `completedDate=今天` 跳入同此口径。
 - **复制汇总=今日已送达（D53）**：文案「【代取汇总】今日已送达 N 单（M 件）；东苑 4栋 3单…。已完成 X / 待确认 Y。」（≤200 字，超出按栋省略并注明）；服务端 `summary{scope:'deliveredToday',…}`（见 DATA_MODEL §15）；点击优先复用本次 load 的 summary（同自然日+counts 指纹未变零请求），跨日/计数变化才补拉 1 次 `view=day`；无今日送达 toast「今天还没有送达的订单」；truncated 时文案与 toast 同步「可能少报」。
 - **客户列表体验（D54）**：首屏 6 张灰占位卡（头像圆+两行灰条）；数据到达首片 ≤10 行立即 setData，其余按 `rows[n]` 帧间追加；onShow 刷新保留旧列表/滚动位置、不闪骨架，行级 diff 只发变化行，同 `bindingId`+`avatarFileId` 沿用旧头像 URL（头像重试强制换新）；请求在途底部「更新中…」；空 `dormKey` 行标「资料未完善」且恒置底；底部按钮区 120rpx + `env(safe-area-inset-bottom)` 底垫（tabBar 100rpx 不遮挡）；顾客订单页/首页首屏文字 loading 换灰骨架（刷新保留旧内容）。
-- **兼职端取件清单双阶段（D55，修订 §3.11）**：`pkg-partner/pages/pick-list/index` 顶部两 chip「待取件 N」「待送达 N」（计数取 `counts.accepted`/`counts.picked`，未加载不显示假 0）；默认待取件：`status=ACCEPTED` 按首件站点 P1~P8 分组（**D62 改判为按件站点分组，见 §16**），组内复用四档动线序，行显示宿舍锚 `dormKey+roomTag`、每件「取件码/运单尾号·柜号」（NEED_CODE 显示「需查明」不编假码）、多件标「共 N 件」；复制单行/整组/全部（全部复制前自动拉全剩余页，失败不复制半量），文案只到站点/码/尾号/柜号/宿舍锚，不含称呼/订单号/顾客编号/手机尾号/头像；行点击进详情，**D61 起每件有独立「已取件/撤销已取」写按钮**，待送达保留原楼层分组/批量送达；空态「当前没有待取件的单」；≤20 行/片、不轮询、切阶段/onShow/下拉才刷新。
+- **兼职端取件清单双阶段（D55，修订 §3.11）**：`pages/partner/pick-list/index` 顶部两 chip「待取件 N」「待送达 N」（计数取 `counts.accepted`/`counts.picked`，未加载不显示假 0）；默认待取件：`status=ACCEPTED` 按首件站点 P1~P8 分组（**D62 改判为按件站点分组，见 §16**），组内复用四档动线序，行显示宿舍锚 `dormKey+roomTag`、每件「取件码/运单尾号·柜号」（NEED_CODE 显示「需查明」不编假码）、多件标「共 N 件」；复制单行/整组/全部（全部复制前自动拉全剩余页，失败不复制半量），文案只到站点/码/尾号/柜号/宿舍锚，不含称呼/订单号/顾客编号/手机尾号/头像；行点击进详情，**D61 起每件有独立「已取件/撤销已取」写按钮**，待送达保留原楼层分组/批量送达；空态「当前没有待取件的单」；≤20 行/片、不轮询、切阶段/onShow/下拉才刷新。
 
 ## 16. 批 25 实现补充（D61 件级取件 / D62 多站点按件分组，2026-11-02）
 
 - **数据与 DTO（D61）**：`orders.parcels[i]` 增 `pickedAt`（Date，撤销清空）+ 可选 `pickedByNo`（取件兼职 `partnerNo` 快照）；订单 DTO 增 `pickedCount/parcelCount/allPicked`（由件字段派生，不落库计数）；每件 DTO 增 `picked`（bool）、`pickedAt`（毫秒，未取=0）、`actions`（string[]，仅 PARTNER 侧：ACCEPTED 未取→`['markPicked']`；ACCEPTED/PICKED 已取→`['unmarkPicked']`；其它侧别/状态 `[]`）。旧单无件级 `pickedAt` 属性时 DTO 按订单状态派生（PICKED/DELIVERED/COMPLETED→全部件已取；EXCEPTION 且 `fromStatus∈{PICKED,DELIVERED}`→全部件已取；其余未取），无数据迁移。
 - **工作台（`pages/partner/workbench`）**：订单摘要行保留状态/订单号/锚/件数/站点聚合/需查明/无截图/「已取 n/m 件」/行工具（订单级动作）；下方缩进逐件行（32rpx + 左竖线）显示件号/取件码（大字等宽、点击复制）/站点（跨站时）/柜号/需查明/已取状态+时间，行尾独立「已取件」/「撤销已取」按钮（只消费 `parcel.actions`）；单件单不缩进、不显示「第 1 件」，件按钮不与行工具等价动作重复；逐件写请求 `order.markPicked/unmarkPicked({orderNo,itemIndex})` 带 `clientRequestId`/`expectedVersion`，**免二次确认**；READONLY 隐藏全部件级写按钮（视图层不产出 action），TEST_WRITE 写成功提示注明测试数据。
 - **多站点分组（D62，修订 §4.3）**：分组键从「首件站点」改为「**件的站点**」——一单在其每件所属站点组各出现一次，行内只列本站件 + 「另 N 件在 Pn」；组内四档动线与码序按**本站件**计算；组头单数为主、件数不同才补（`N 单 · M 件`）；`stationId` 为空的件归「站点未知」兜底组。多选/批量仍按**订单**：同一单多组行共用选中态、批量队列按 `orderNo` 去重、选中跨站单 toast 提示、批量确认框追加「其中 K 单在其他站点还有件，整单动作将作用于全部件」。今日流水（view=day，D53）不拆站点组。
-- **兼职取件清单（`pkg-partner/pages/pick-list`，待取件阶段）**：同一 D62 分组；行内每件显示码/柜号/需查明/已取状态 + 独立「已取件/撤销已取」；已全取的订单因服务端状态转 `PICKED` 自动离开待取件（客户端不本地判状态）；复制单行/整组/全部只含本站件。待送达阶段行为不变（不提供件级取件动作）。
+- **兼职取件清单（`pages/partner/pick-list`，待取件阶段）**：同一 D62 分组；行内每件显示码/柜号/需查明/已取状态 + 独立「已取件/撤销已取」；已全取的订单因服务端状态转 `PICKED` 自动离开待取件（客户端不本地判状态）；复制单行/整组/全部只含本站件。待送达阶段行为不变（不提供件级取件动作）。
 - **兼职订单详情（`pkg-partner/pages/order-detail`）**：逐件卡增「已取件/待取件 + 时刻」与独立「已取件/撤销已取」按钮（同样只消费 `parcel.actions`，READONLY 隐藏）；取件信息卡头显示「已取 n/m 件」。
 - **时间线人话（D61 事件）**：`order_events` 新增 `PARCEL_PICKED` / `PARCEL_PICKED_REVERTED`（payload `{itemIndex}`；最后一件取完另写订单级 `PICKED` payload `{itemIndex,lastParcel:true}`）；兼职详情时间线映射「已取走一件」/「撤销了一件已取件」，服务端 note 带件号时显示「已取走第 N 件」，**绝不裸英文事件名上屏**。
 - **判据**：`tools/selftest-order-workbench.js`（N 组 + G15~G20 真实 DTO 联调）、`tools/selftest-pick-list.js`（L/M 改判 + O 组）、`tools/selftest-order-detail-partner.js`（J 组）覆盖：件级字段消费、同站过滤、跨站提示、组内排序按本站件、逐件请求形状、只读隐藏、免二次确认、全取后离开待取件（服务端状态收口）。

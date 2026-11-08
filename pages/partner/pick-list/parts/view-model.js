@@ -108,6 +108,14 @@ function roomTagOf(order, address) {
   return tag;
 }
 
+// 送别人判定（2026-11-08）：本单配送地址与下单人宿舍不同 → 行内标「送至」，避免按顾客宿舍送错
+function isOtherDeliveryOf(order, address) {
+  const dorm = order && order.dorm && typeof order.dorm === 'object' ? order.dorm : {};
+  const own = textOf(dorm.dormKey);
+  const target = textOf(address && address.dormKey);
+  return !!(own && target && own !== target);
+}
+
 // 单条 PICKED 订单 → 清单行视图（已送达/异常/取消/待接单一律不显示；D46 默认只含 PICKED）
 function rowOf(order) {
   if (!order || order.status !== enums.ORDER_STATUS.PICKED) {
@@ -118,6 +126,7 @@ function rowOf(order) {
   return {
     orderNo: textOf(order.orderNo),
     roomText: address.roomText,
+    isOtherDelivery: isOtherDeliveryOf(order, address),
     roomTagText: roomTagOf(order, address),
     nameText: nameOf(order),
     serviceName: textOf(order.service && order.service.name),

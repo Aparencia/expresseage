@@ -21,7 +21,8 @@ const TRANSFER_ORDERS_PAGE = 50;
 // D59 出厂上限/限流默认值只来自 config/defaults.js 副本（不在此写第二份数字口径）。
 const DEFAULT_TEAM_MAX_MEMBERS = DEFAULT_CONFIG.teamMaxMembers;
 const DEFAULT_SUB_INVITE_RATE = DEFAULT_CONFIG.subInviteRate;
-const SUB_INVITE_VALIDITY_HOURS = { '24H': 24, '72H': 72, '7D': 168 };
+// 子邀请码有效期 → 小时；FOREVER=0 表示永不设 expiresAt（激活时 expiresAt=0 视为不过期）
+const SUB_INVITE_VALIDITY_HOURS = { '24H': 24, '72H': 72, '7D': 168, FOREVER: 0 };
 const TEAM_MEMBER_STATUSES = [enums.PARTNER_STATUS.ACTIVE, enums.PARTNER_STATUS.SUSPENDED];
 const TRANSFER_TARGET_FIELDS = ['transfer.fromPartnerId', 'transfer.toPartnerId'];
 // 平台单事务预算 100 ops（V4_ENGINEERING §8.2 / TD-055）：移除队员事务内取消 PENDING 转派按
@@ -87,7 +88,7 @@ function countOf(value) {
 function validityOf(value) {
   const check = validate.validateSubInviteValidity(value);
   if (!check.ok) {
-    throw errors.validation('validity', '有效期只支持 24/72/168 小时');
+    throw errors.validation('validity', '有效期只支持 24/72/168 小时或长期');
   }
   return { validity: check.value, hours: SUB_INVITE_VALIDITY_HOURS[check.value] };
 }

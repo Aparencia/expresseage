@@ -8,8 +8,11 @@ const subscribe = require('../../../../utils/subscribe');
 
 module.exports = {
   // 入口是否显示：订阅未启用/缺模板 ID 时隐藏（出厂 enabled=false，不摆死按钮）。
+  // 批 32：本次会话已授权成功（subscribeOn）后也隐藏——用户明确要求「开启后应该消失」；
+  // 一次性订阅的额度由接单/拒单点击续，不靠这个按钮反复点。
   syncSubscribeVisible() {
-    const visible = subscribe.planForPartnerTap(store.get('config')).length > 0;
+    const visible = this.data.subscribeOn !== true
+      && subscribe.planForPartnerTap(store.get('config')).length > 0;
     if (visible !== this.data.subscribeEnabled) {
       this.setData({ subscribeEnabled: visible });
     }
@@ -41,6 +44,8 @@ module.exports = {
       }
       const statuses = result.statuses || subscribe.statusesOf(ids, result.result);
       if (subscribe.acceptedOf(statuses)) {
+        // 批 32：授权成功即隐藏入口（一次性订阅语义：一条授权只管一条通知，接单/拒单时滚动续额）
+        this.setData({ subscribeOn: true, subscribeEnabled: false });
         this.toastMsg('已开启新单提醒');
         return;
       }

@@ -41,6 +41,9 @@ const base = {
     testWrite: false,
     // 批 31（D73）：订阅未启用/缺模板 ID 时隐藏「开启新单提醒」入口（出厂不摆死按钮）
     subscribeEnabled: false,
+    // 批 32：本次会话已成功授权「新单提醒」→ 入口隐藏（一次性订阅，接单/拒单会静默续额；
+    // 再次授权走「我的 → 微信提醒」）。页面重进回到 config 判定，不落本机存储。
+    subscribeOn: false,
     sessionView: false,
     selecting: false,
     selectedCount: 0,
@@ -354,10 +357,6 @@ const base = {
     wx.navigateTo({ url: DETAIL_PAGE + event.currentTarget.dataset.orderNo });
   },
 
-
-  onPickListTap() {
-    wx.navigateTo({ url: '/pkg-partner/pages/pick-list/index' });
-  },
 
   toastMsg(title) {
     wx.showToast({ title: title, icon: 'none' });

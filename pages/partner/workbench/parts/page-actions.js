@@ -12,6 +12,7 @@ const rowActions = require('./row-actions');
 const filterView = require('./filter-view');
 const batchView = require('./batch-view');
 const actionFlow = require('./action-flow');
+const groupView = require('./group-view');
 const undoView = require('./undo-view');
 const historyView = require('./history-view');
 const dayView = require('./day-view');
@@ -23,7 +24,32 @@ const CREATE_ON_BEHALF_PAGE = '/pkg-partner/pages/create-on-behalf/index';
 
 module.exports = {
   onNeedCodeTap(event) {
-    this.dispatch(actionFlow.needCodeIntent(event.currentTarget.dataset.orderNo, this.data.groups, this.data.readonly));
+    const dataset = event.currentTarget.dataset;
+    this.dispatch(actionFlow.needCodeIntent(
+      dataset.orderNo,
+      this.data.groups,
+      this.data.readonly,
+      dataset.itemIndex
+    ));
+  },
+
+  // 2026-11-08 行改版（按钮方案 B）：低频动作收进「更多」——二次确认/浮层仍走 onRowAction，
+  // 不放宽危险动作的确认；action sheet 只做入口，不在这里判状态。
+  onRowMoreTap(event) {
+    const orderNo = event.currentTarget.dataset.orderNo;
+    const found = groupView.findRow(this.data.groups, orderNo);
+    const more = found && found.row && found.row.toolbar ? found.row.toolbar.more : null;
+    if (!more || !more.length) {
+      return;
+    }
+    wx.showActionSheet({
+      itemList: more.map((item) => item.label),
+      success: (res) => {
+        const tool = more[res && typeof res.tapIndex === 'number' ? res.tapIndex : -1];
+        if (!tool) return;
+        this.onRowAction({ currentTarget: { dataset: { key: tool.key, orderNo } } });
+      }
+    });
   },
 
   onRowAction(event) {

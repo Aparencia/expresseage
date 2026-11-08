@@ -75,7 +75,7 @@ check(2, 'JS 语法', '客户端 + shared/api/store/utils + tools + cloudfunctio
 });
 
 // ---------------------------------------------------------------- #03
-check(3, '页面四件套', '主包 8 + 分包 25（顾客 5 / 兼职 9 / 开发者 11）', () => {
+check(3, '页面四件套', '主包 9 + 分包 24（顾客 5 / 兼职 8 / 开发者 11）', () => {
   const bad = [];
   for (const page of P.ALL_PAGES) {
     for (const ext of P.PAGE_EXTS) {
@@ -146,7 +146,7 @@ check(8, '编译产物无 BOM', 'js/wxml/wxss/json 首三字节非 EF BB BF', ()
 check(9, 'WXML class 有定义', '同页 WXSS 或 app.wxss（含组件）', clientRules.wxmlClassDefined);
 
 // ---------------------------------------------------------------- #10
-check(10, 'tabBar↔pages', 'list 恰好 5 项/主包页/custom-tab-bar 在根/每角色 3 格/pkg-admin 不在 list', () => {
+check(10, 'tabBar↔pages', 'list 恰好 5 项/主包页/custom-tab-bar 在根/顾客 3+1 伪 tab、兼职 3+1 伪 tab/pkg-admin 不在 list', () => {
   const app = F.readJson(path.join(ROOT, 'app.json'));
   const tb = app.tabBar || {};
   const out = [];

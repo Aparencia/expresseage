@@ -30,6 +30,9 @@ const CODE_CONTEXT_RE = /(?:取件码|取货码|提货码|取件号)/;
 const CODE_CONTEXT_STRIP_RE = /^[\s\S]*?(?:取件码|取货码|提货码|取件号)[:：\s]*/;
 // 码区数字/字母组（组间允许 OCR 引入的空格/连字符/破折号等分隔符）
 const CODE_CONTEXT_RUN_RE = /[0-9A-Za-z]+(?:[\s\-—–_#·]+[0-9A-Za-z]+)*/g;
+// 「3号柜847594」「3号柜：847594」——柜号前缀不是噪音，码在柜号之后（2026-11-08 真实截图：
+// 中通/兔喜的取件码行就是「取件码：3号柜847594」；旧实现把「柜」当噪音切掉，整行一个码都不出）
+const LOCKER_PREFIX_RE = /^\d{1,3}\s*号\s*柜\s*[:：]?\s*/;
 // 纯数字片段行（OCR 把码拆成多行时的形态：207 / 3 / 1014）
 const FRAGMENT_LINE_RE = /^[\d\s\-—–_#·]+$/;
 // 各种分隔符（归一用）
@@ -158,9 +161,14 @@ function stripContextLabel(line) {
   return String(line || '').replace(CODE_CONTEXT_STRIP_RE, '');
 }
 
+// 柜号前缀剥离：「3号柜847594」→「847594」（柜号仍由 pickLocker 从原行提取，码区只看柜号之后）
+function stripLockerPrefix(text) {
+  return String(text || '').replace(LOCKER_PREFIX_RE, '');
+}
+
 /** 码上下文行里「码区」的数字/字母组；短码要求整行就是码，避免把掩码运单前缀 JT22 当码 */
 function contextCodeRuns(line) {
-  const rest = stripContextLabel(line).trim();
+  const rest = stripLockerPrefix(stripContextLabel(line).trim());
   // ⑦：同一行「取件码：207-3-1014 取件时间：2026-10-27」只用第一个码区段，噪音标签后的数字不算码
   const codeArea = rest.split(NOISE_SPLIT_RE)[0] || '';
   const runs = codeArea.match(CODE_CONTEXT_RUN_RE) || [];

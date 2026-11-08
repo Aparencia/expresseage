@@ -207,8 +207,8 @@ function registerP(t) {
   t.eq([customerTabs.length, customerTabs.map(function text(tab) { return tab.text; }),
     customerTabs[2] && customerTabs[2].pseudoTab, customerTabs[3] && customerTabs[3].pagePath,
     (tabsData.PARTNER_TABS || []).length],
-  [4, ['首页', '订单', '取件码', '我的'], true, 'pages/profile/index', 3],
-  'P31 底部栏数据单源：顾客 4 格（首页/订单/取件码/我的，取件码=伪 tab 第 3 格）+ 兼职 3 格');
+  [4, ['首页', '订单', '取件码', '我的'], true, 'pages/profile/index', 4],
+  'P31 底部栏数据单源：顾客 4 格（首页/订单/取件码/我的，取件码=伪 tab 第 3 格）+ 兼职 4 格（工作台/取件清单/客户/我的，取件清单=伪 tab 第 2 格）');
   const barSrc = textOf(CUSTOM_TAB_BAR);
   t.check(barSrc.indexOf('tab-bar-view/tabs') >= 0 && barSrc.indexOf('CUSTOMER_TABS') >= 0
     && textOf('custom-tab-bar/index.wxml').indexOf('<tab-bar-view') >= 0,

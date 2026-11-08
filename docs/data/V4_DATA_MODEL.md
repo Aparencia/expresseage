@@ -224,9 +224,9 @@ v0.7 关闭全部非 D 级缺口：零金额（§0.3）、双角色唯一编号�
 | :-- | :-- | :-- | :-- | :-- | :-- | :-- |
 | `_id`/`code` | string | 是 | 自增/唯一索引；12 位 32 字母表（§4.3），落库去横杠大写 | `admin.createInvites`/`partner.activate` | admin | L2 |
 | `status` | string | 是 | `UNUSED`/`USED`/`REVOKED`/`EXPIRED`；**不存在“重新生效”** | 发码/激活/作废/cleanup | admin/激活内部 | L1 |
-| `kind` | string | 是（缺省 `'DEV'`） | **v1.10/D59**：`'DEV'`=开发者主码（`admin.createInvites`）；`'SUB'`=主兼职子码（`partner.createSubInvites`：一次性、有效期 24h/72h/7d、可**按批次**作废、上限 `config.teamMaxMembers`）；**旧记录缺该字段按 `'DEV'` 处理（零迁移）** | `admin.createInvites`/`partner.createSubInvites` | admin；主兼职仅见自己发的 SUB 码 | L1 |
+| `kind` | string | 是（缺省 `'DEV'`） | **v1.10/D59**：`'DEV'`=开发者主码（`admin.createInvites`）；`'SUB'`=主兼职子码（`partner.createSubInvites`：一次性、有效期 24h/72h/7d/长期（FOREVER，`expiresAt=0` 永不过期，2026-11-08 D75）、可**按批次**作废、上限 `config.teamMaxMembers`）；**旧记录缺该字段按 `'DEV'` 处理（零迁移）** | `admin.createInvites`/`partner.createSubInvites` | admin；主兼职仅见自己发的 SUB 码 | L1 |
 | `issuerPartnerId` | string | 否（DEV 为 `''`） | **v1.10/D59**：SUB 码=发码主兼职 `partners._id`（激活时写入 `partners.parentPartnerId`）；DEV 恒 `''` | `partner.createSubInvites` | admin；该主兼职（`listSubMembers.pendingInvites` 只回 `codeTail`） | L2 |
-| `batchId`/`expiresAt` | string/Date | 是 | 发码批次（**DEV=`B20261021-01`；SUB=`TB`+yyyyMMdd+seq**）/过期时间（`expiresAt` 必填、不可 null） | `admin.createInvites`/`partner.createSubInvites` | admin；主兼职见自己批次 | L1 |
+| `batchId`/`expiresAt` | string/Date | 是 | 发码批次（**DEV=`B20261021-01`；SUB=`TB`+yyyyMMdd+seq**）/过期时间（DEV 必填、不可 null；SUB 长期码=0 表示永不过期，2026-11-08 D75） | `admin.createInvites`/`partner.createSubInvites` | admin；主兼职见自己批次 | L1 |
 | `usedBy`/`usedAt` | string/Date | 否 | 使用人=`partners._id`（激活创建；注销时置空并保留审计）/使用时间 | 激活/注销 | admin | L2 |
 | `note`/`createdBy` | string | 否/是 | 备注 ≤50 字/发码人（DEV=`developerNo` 如 `DEV-01`；**SUB=`'PARTNER:'+partnerNo`**） | `admin.createInvites`/`partner.createSubInvites` | admin | L2 |
 | `createdAt`†/`revokedAt`†/`revokedBy`† | Date/string | 是/否/否 | 创建/作废/作废人（DEV=`developerNo`；**SUB 批次作废时逐条写 `revokedAt/revokedBy`（主兼职编号快照）**） | 发码/作废 | admin | L1/L2 |

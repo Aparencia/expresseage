@@ -117,8 +117,8 @@ function validateInvitationCode(raw) {
   return succeed('invitationCode', { canonical: result.canonical });
 }
 
-// 子邀请码有效期选项（D59）：主兼职发码只能选 24H/72H/7D；小时换算由 handler 按 D59 口径负责
-const INVITATION_VALIDITY = ['24H', '72H', '7D'];
+// 子邀请码有效期选项（D59）：主兼职发码只能选 24H/72H/7D；2026-11-08 用户指令新增长期（FOREVER，永不过期）
+const INVITATION_VALIDITY = ['24H', '72H', '7D', 'FOREVER'];
 
 function validateSubInviteValidity(value) {
   if (typeof value !== 'string' || INVITATION_VALIDITY.indexOf(value) === -1) {

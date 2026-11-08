@@ -69,9 +69,27 @@ function actionsOf(item) {
   return out;
 }
 
+// 本单配送目的地（D25，2026-11-08）：行锚只显示下单人宿舍，送别人时必须在行内给出目的地址，
+// 否则兼职会按顾客宿舍送错。判定用 delivery 与 dorm 的 dormKey 对比（旧单无 mode 也兼容）；
+// SELF/历史单（两者相同或 delivery 缺失）不显示，保持行紧凑。
+function deliveryChipOf(item) {
+  const delivery = item && item.delivery && typeof item.delivery === 'object' ? item.delivery : null;
+  const dorm = item && item.dorm && typeof item.dorm === 'object' ? item.dorm : null;
+  if (!delivery) {
+    return '';
+  }
+  const target = textOf(delivery.dormKey)
+    || [textOf(delivery.buildingText), textOf(delivery.room)].filter(Boolean).join('-');
+  const own = dorm ? textOf(dorm.dormKey) : '';
+  if (!target || (own && target === own)) {
+    return '';
+  }
+  const name = textOf(delivery.recipientName);
+  return '送至 ' + target + (name ? '（' + name + '）' : '');
+}
+
 // 顾客锚+键（行第二行）：头像/昵称不在行内出现，锚 = dormKey+roomTag
-function identityOf(item) {
-  const dorm = item.dorm || {};
+function identityOf(item) {  const dorm = item.dorm || {};
   const guest = item.guest || item.guestSnapshot || {};
   const counterpart = item.counterpart || {};
   const name = textOf(counterpart.displayName) || textOf(guest.displayName) || textOf(item.customerDisplayName);
@@ -170,6 +188,7 @@ function baseFieldsOf(item, identity, nowMs) {
     keyText: identity.keyText,
     anchorKeyText: identity.anchorKeyText,
     senderText: identity.senderText,
+    deliveryChipText: deliveryChipOf(item),
     isGuest: textOf(item.source) === enums.ORDER_SOURCE.PARTNER,
     exceptionText: textOf(exception.text) || textOf(exception.codeText) || textOf(item.exceptionText),
     cancelReasonText: textOf(item.cancelReasonText) || textOf(item.cancelReason),

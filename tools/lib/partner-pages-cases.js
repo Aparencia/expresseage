@@ -514,8 +514,8 @@ async function teamChecks(t) {
     [4, 1, [1]],
     'Q11c 旧服务端缺 reserved → 回退本地 used+本页待用码推导（1+3=4，剩余 1）；兼容期不放行超发');
   t.eq(view.validityOptions.map((item) => [item.key, item.label]),
-    [['24H', '24 小时'], ['72H', '72 小时'], ['7D', '7 天']],
-    'Q12 有效期恰三档 24h/72h/7d 且文案非空（D59）');
+    [['24H', '24 小时'], ['72H', '72 小时'], ['7D', '7 天'], ['FOREVER', '长期']],
+    'Q12 有效期四档 24h/72h/7d/长期 且文案非空（D59 + 2026-11-08 用户指令）');
 
   // ② 发码提交体与校验转发（服务端仍唯一权威）
   t.eq(teamModel.buildCreatePayload({ count: 2, validity: '7D', note: ' 给小李 ' }),

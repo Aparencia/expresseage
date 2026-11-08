@@ -127,7 +127,9 @@
   bottom: calc(var(--v4-inset-bar) + 48rpx);
 }
 
-/* 面板遮罩：全屏遮罩把 safe-area 让给底部面板（面板自身只留内容内边距，避免双层安全区叠加） */
+/* 面板遮罩：全屏遮罩把 safe-area 让给底部面板（面板自身只留内容内边距，避免双层安全区叠加）
+   2026-11-08：z-index 20 < bottom-bar 600 ⇒ 操作条盖在补码浮层上（用户截图：柜号/尾号被截断）。
+   遮罩必须高于操作条（600），否则面板永远被压住；面板再加 max-height + 滚动，字段多时长内容不被裁。 */
 .panel-mask {
   position: fixed;
   left: 0;
@@ -137,12 +139,14 @@
   background: rgba(0, 0, 0, 0.4);
   display: flex;
   align-items: flex-end;
-  z-index: 20;
+  z-index: 700;
   padding-bottom: env(safe-area-inset-bottom);
 }
 
 .panel {
   width: 100%;
+  max-height: 82vh;
+  overflow-y: auto;
   box-sizing: border-box;
   padding: 24rpx;
   background: #FFFFFF;

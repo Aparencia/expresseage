@@ -162,7 +162,8 @@ async function handler(ctx, payload) {
     partner: partner,
     partnerId: partnerId,
     fields: fields,
-    expiresAt: time.addHours(nowMs, fields.validity.hours),
+    // FOREVER（hours=0）不落到期时间：expiresAt=0 在 activate 判定为永不过期
+    expiresAt: fields.validity.hours > 0 ? time.addHours(nowMs, fields.validity.hours) : 0,
     config: config,
     nowMs: nowMs,
     nowDate: new Date(nowMs)

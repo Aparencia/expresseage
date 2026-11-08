@@ -126,6 +126,13 @@
   margin-right: 12rpx;
 }
 
+/* 2026-11-08：送别人时行内明示「送至」，否则锚和下单人宿舍无法区分 */
+.send-to-label {
+  color: #2B6DE5;
+  font-weight: 600;
+  margin-right: 4rpx;
+}
+
 .room-tag {
   background: #E8F0FF;
   color: #2B6DE5;

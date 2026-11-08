@@ -60,6 +60,16 @@ function queryOf(options) {
   return payload;
 }
 
+// 送别人判定（2026-11-08）：本单配送地址与下单人宿舍不同 = 送别人；行内要把「送至」标出来，
+// 否则锚和顾客宿舍长得一样，兼职会按顾客宿舍送错。旧单无 mode 也能判（只比 dormKey）。
+function isOtherDeliveryOf(order) {
+  const dorm = order && order.dorm && typeof order.dorm === 'object' ? order.dorm : {};
+  const delivery = order && order.delivery && typeof order.delivery === 'object' ? order.delivery : {};
+  const own = textOf(dorm.dormKey);
+  const target = textOf(delivery.dormKey);
+  return !!(own && target && own !== target);
+}
+
 // 宿舍锚（D46 只到 dormKey+roomTag 级）：配送地址优先（D25 他人地址亦只显示锚）；
 // roomTag 仅当本单配送地址=顾客本人宿舍时才拼上，避免跨宿舍误导（与工作台锚同口径）
 function anchorTextOf(order) {
@@ -119,6 +129,7 @@ function rowOf(order, station) {
     stationId: stationId,
     stationTitle: textOf(station.title),
     anchorText: anchorTextOf(order),
+    isOtherDelivery: isOtherDeliveryOf(order),
     parcelCount: parcelCount,
     parcelCountText: parcelCount > 1 ? '共 ' + parcelCount + ' 件' : '1 件',
     needCode: pieces.some((piece) => piece.needCode),

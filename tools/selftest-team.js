@@ -51,7 +51,7 @@ const adminRevokeInvite = require(path.join(API, 'handlers/admin/revokeInvite.js
 const adminListInvites = require(path.join(API, 'handlers/admin/listInvites.js'));
 const adminSetPartnerStatus = require(path.join(API, 'handlers/admin/setPartnerStatus.js'));
 
-const EXPECTED_ASSERTIONS = 124; // 实跑读数（node tools/selftest-team.js 汇总行）；改断言必须同步此数
+const EXPECTED_ASSERTIONS = 125; // 实跑读数（node tools/selftest-team.js 汇总行）；改断言必须同步此数（+1：长期码 expiresAt=0）
 
 const NOW = Date.parse('2026-11-03T10:00:00+08:00');
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -306,6 +306,9 @@ function register(h) {
       'U1 落库 kind=SUB/issuerPartnerId=主兼职 _id/createdBy=PARTNER:编号');
     t.check(docs.every((doc) => doc.status === enums.INVITATION_STATUS.UNUSED && doc.usedBy === ''),
       'U1 新码均为 UNUSED 且未绑定使用者');
+    // 2026-11-08 用户指令：子邀请码新增长期（FOREVER）——不设到期时间，激活时 expiresAt=0 视为不过期
+    const forever = await createSubInvitesHandler(mainCtx(dao, 'rid-u1-create-0002'), { count: 1, validity: 'FOREVER' });
+    t.eq(forever.expiresAt, 0, 'U1b 长期码 expiresAt=0（永不设到期）');
     db.seed(COLLECTIONS.USERS, [userDoc('openid-new-sub', { roles: [] })]);
     const subCtxNew = makeCtx(dao, { openid: 'openid-new-sub', role: '', ids: idsFor(100) });
     const activated = await activateHandler(subCtxNew, {

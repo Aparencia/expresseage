@@ -389,20 +389,21 @@
 
 ## 7. 页面地图（app.json 口径，详见三份 UX 文档）
 
-**页面总数（v1.10，D59）：33 页 = 主包 8 + 分包 25（顾客 5 / 兼职 9 / 开发者 11）**；与 `tools/lib/project.js` 的 `ALL_PAGES`、`app.json` 声明、`check-docs` §8.3 #2 联动（32→33 由批 27 新页 `pkg-partner/pages/team/index` 触发）。
+**页面总数（v1.10，D59）：33 页 = 主包 9 + 分包 24（顾客 5 / 兼职 8 / 开发者 11）**；与 `tools/lib/project.js` 的 `ALL_PAGES`、`app.json` 声明、`check-docs` §8.3 #2 联动（32→33 由批 27 新页 `pkg-partner/pages/team/index` 触发；**2026-11-08 用户指令：`pkg-partner/pages/pick-list` 迁主包为 `pages/partner/pick-list/index` 伪 tab，页数 33 不变，主包 8→9、兼职分包 9→8**）。
 
-主包（**tabBar.list 上限 5 项**；`custom: true`；自定义 tabBar 组件必须在**项目根目录 `custom-tab-bar/`**；真实 tabBar.list 5 条按角色渲染顾客 4 格/兼职 3 格，开发者使用分包页面无 tabBar；D64 起顾客第 4 格「取件码」为**伪 tab**：由页面内自绘共用底部栏显示、`app.json` 不新增条目）：
+主包（**tabBar.list 上限 5 项**；`custom: true`；自定义 tabBar 组件必须在**项目根目录 `custom-tab-bar/`**；真实 tabBar.list 5 条按角色渲染顾客 4 格/兼职 4 格，开发者使用分包页面无 tabBar；D64 起顾客第 4 格「取件码」为**伪 tab**：由页面内自绘共用底部栏显示、`app.json` 不新增条目；2026-11-08 起兼职第 2 格「取件清单」同为**伪 tab**）：
 ```
 pages/launch/index            启动分流（读角色/资料/绑定/是否开发者 → reLaunch；**onLoad 读 `bind`/`orderNo` 白名单 + 隐私闸（D37）**；不在 tabBar）
 pages/role/index              身份选择 + 邀请码入口 + 邀请卡（?bind=CODE，由 launch 分流进入；D37；不在 tabBar）
 pages/customer/home/index     顾客首页（tab 1：首页）
 pages/customer/orders/index   顾客订单列表（tab 2：订单）
 pages/customer/pickcodes/index 顾客取件码（D64 一级入口「取件码」=伪 tab；**只显示顾客自建本机取件码**：写入/删除/复制/已取标记；不显示订单、不提供分享、READONLY 只读说明卡）
-pages/partner/workbench/index 兼职工作台=取件清单（tab 3：工作台）
+pages/partner/workbench/index 兼职工作台（tab 3：工作台；D52「全部」=今日订单流水、D58 待接收转派）
 pages/partner/customers/index 兼职客户档案（tab 4：客户）
+pages/partner/pick-list/index  兼职取件清单（2026-11-08 迁主包：**伪 tab**，视觉同级第 2 格；D46/D55 双阶段——「待取件」按站点 P1~P8 展示 ACCEPTED 单的码/尾号/柜号/宿舍锚（只读、可复制）；「待送达」按苑→栋→楼层展示 PICKED 待送达单、分页/分片 ≤20 行、不参与工作台轮询、可复用批量送达；默认待取件，两 chip 切换）
 pages/profile/index           我的（tab 5：**顾客/兼职共用**，页内按角色渲染；显示头像/昵称与对应唯一编号）
 ```
-- 顾客可见 tab：1 首页 / 2 订单 / 5 我的 + **「取件码」伪 tab（D64，视觉同级第 3 格）**；兼职可见 tab：3 工作台 / 4 客户 / 5 我的。
+- 顾客可见 tab：1 首页 / 2 订单 / 5 我的 + **「取件码」伪 tab（D64，视觉同级第 3 格）**；兼职可见 tab：3 工作台 / 4 客户 / 5 我的 + **「取件清单」伪 tab（2026-11-08，视觉同级第 2 格）**。
 - 兼职"我的"里的编号/分享绑定卡片/服务配置入口/统计/切换身份，都在共用 `pages/profile/index` 内按角色渲染。
 - 角色不匹配的 tab 页在 `onShow` 里 `reLaunch` 回本角色首页；`tabBar` 切格用 `wx.switchTab`，跨角色切换用 `wx.reLaunch`。
 - **开发者分流**：`user.bootstrap` 返回 `isDeveloper=true` ⇒ `wx.reLaunch('/pkg-admin/pages/overview/index')`；不需要 `?admin=1`（服务端白名单是唯一门槛）。
@@ -421,7 +422,6 @@ pkg-partner/pages/customer-detail/index  兼职侧顾客详情（历史订单/�
 pkg-partner/pages/service-settings/index 服务配置（启用服务类型/范围/接单开关，无价格）
 pkg-partner/pages/stats/index          单量统计（今日/本周完成量、状态分布，无金额）
 pkg-partner/pages/messages/index       消息中心
-pkg-partner/pages/pick-list/index      取件清单（独立第 32 页，D46/D55：双阶段——「待取件」按站点 P1~P8 展示 ACCEPTED 单的码/尾号/柜号/宿舍锚（只读、可复制）；「待送达」按苑→栋→楼层展示 PICKED 待送达单、分页/分片 ≤20 行、不参与工作台轮询、可复用批量送达；默认待取件，两 chip 切换）
 pkg-partner/pages/team/index           团队（第 33 页，D59：主兼职=成员列表（编号/昵称/状态/加入时间，**无头像**）+ 发子邀请码（1~5 个、24H/72H/7D、备注可选，完整码仅本次响应）+ 待用子码列表（**按 batchId 分组**，只显示尾 4 位/到期，「作废本批」二次确认）+ 移除成员（二次确认，说明移除后对方停用需联系管理员恢复）+ 名额 `quota{used,reserved,max}`（展示 `reserved/{max}`，含待用子码）；子队员=只看「所属队伍 P-XXX / 成员数 N」）
 pkg-admin/pages/overview/index         开发者总览（统计卡/审计区块/账号切换入口）
 pkg-admin/pages/invite-codes/index     邀请码生成/批量/作废/状态
@@ -436,7 +436,7 @@ pkg-admin/pages/messages/index         后台消息（异常工单/系统提示�
 pkg-admin/pages/recognition-review/index 识别失败复核（原图+OCR 文本+AI 结果；补录站点/取件码、忽略、通知上传者；v0.8）
 ```
 - **导航规则**：`launch` 是唯一启动页；`role` 不属任何 tab；角色不匹配的 tab 页在 `onShow` 里 `reLaunch` 回本角色首页；**分享卡统一落 `launch`（D37）**：`launch.onLoad(options)` 读参数白名单 `bind`/`orderNo`（`bind` 归一为合法 `partnerNo`，非法/越界参数丢弃），**先过隐私同意闸再分流**——带 `bind` → `role?bind=`（邀请卡，**落地卡按目标角色渲染：顾客身份显示绑定入口，兼职身份不显示顾客绑定入口**）；带 `orderNo` → 订单详情（校验归属，失败回列表）；否则按现有角色/资料/绑定分流。卡片与跳转不得携带 openid/订单内容/头像昵称等业务值。**非 launch 首启兜底（D37 补强，2026-10-30 用户侧复现）**：`role`/`customer/home` 等可能被「修复前已发出的旧分享卡」或朋友圈卡直达的页面，在未同意隐私/版本变更时先 `reLaunch` 回 `launch` 过闸并保留 `bind`/`orderNo`，不得在未同意状态下继续渲染写入口；切换会话按既有口径跳过（服务端按 `developerNo` 豁免，TD-046）。
-- **自定义 tabBar**：组件位于项目根目录 `custom-tab-bar/`（平台硬要求），读全局角色，渲染顾客四格（首页/订单/取件码/我的；取件码为 D64 伪 tab，视觉由共用 `components/tab-bar-view` 提供、页面内自绘并 `reLaunch` 进入）或兼职三格（工作台/客户/我的）；**切换会话下渲染目标角色三格/四格**且每页顶部常驻黄条（真实账号只读）或蓝条（测试账号可写）；兼职"工作台"显示待处理红点；切换角色后 `reLaunch` 到对应首页。
+- **自定义 tabBar**：组件位于项目根目录 `custom-tab-bar/`（平台硬要求），读全局角色，渲染顾客四格（首页/订单/取件码/我的；取件码为 D64 伪 tab，视觉由共用 `components/tab-bar-view` 提供、页面内自绘并 `reLaunch` 进入）或兼职四格（工作台/取件清单/客户/我的；取件清单为 2026-11-08 伪 tab，同款自绘）；**切换会话下渲染目标角色三格/四格**且每页顶部常驻黄条（真实账号只读）或蓝条（测试账号可写）；兼职"工作台"显示待处理红点；切换角色后 `reLaunch` 到对应首页。
 - **开发者页面无 tabBar**：全部在 `pkg-admin` 分包内，用页面内导航/返回栈；从切换会话退出回「切换账号」页（`pkg-admin/pages/account-switch/index`）。
 - **切换会话（v0.9）**：所有业务页面（顾客/兼职）在 `viewContext` 存在时：`READONLY` = 顶部黄条 + 写控件置灰 + 读接口注入 `viewTicket`；`TEST_WRITE` = 顶部蓝条 + `TEST` 角标 + 读写接口注入 `viewTicket`（服务端仅允许测试账号写）；两种会话都隐藏分享/转发入口；退出回「切换账号」页。
 
@@ -688,6 +688,9 @@ v3 是"数据只存本机、不上传、无账号"；v4 必须改为"**订单与
 | D71 | **站点顺序与别名（2026-11-08 用户指令 2）**：`config.stations` **数组顺序即展示顺序**（顾客/兼职选择器、后台行、AI prompt），后台可上移/下移后整表保存；每站点新增 `aliases[]`（0~5 个、1~20 字、与所有正式名/别名全局唯一），**仅用于识别/手输归一，不展示、不产生新站点/新分组**（兼职端仍按主站点 id 归类）；名称/别名/格式唯一性由 `shared/station-rules.validateStationConfig` 在写层严格校验（非法整表拒绝），读层非法项逐项回退/丢弃（脏配置不外泄）；顺序/别名变更不影响历史订单快照（`stationId+stationName`） | ✅ 已定（用户 2026-11-08 指令 2） | 代价：`shared/stations.stationsFromConfig` 输出顺序化 + 别名表、后台配置页行模型/上下移动/别名输入、`config.getPublic` 形状（多 aliases/codePatterns/stationInfer）、缓存与 AI prompt 使用顺序；被否：别名单独建站点（兼职端会多出分组，违反「归主站点」）、顺序只存 index 字段（与数组双源） |
 | D72 | **识别口径修订（2026-11-08 用户指令 3，12 张真实截图取证）**：①**手机号/疑似手机号**（11 位或 OCR 掉 1 位的 10 位 `1[3-9]\d{8,10}`）不得作为取件码——AI 建议同样拒绝（`isAiFillableCode` + 服务端 `normalizePickupCode/acceptCodeToken` 同判），用户手填仍按可提交闸（4~12 位字母数字含数字）；②`xxx-x-xxxx` 等带分隔符码**保留展示形态**（提交仍按紧凑 4~12 位校验），不再被吞成连写；③运单尾号优先「后五位/尾号/末位」标签后的 5 位（`04898`），无标签才退回独立 5 位；④站点识别扩展为「配置别名 + 包含 + 关键词」与取件码反推组合，唯一命中才采信；⑤AI 低置信不写入（D29 不变）、AI 只补空位不覆盖手填 | ✅ 已定（用户 2026-11-08 指令 3） | 代价：`utils/recognize/{codes,index,station,text}.js`、`cloudfunctions/api/{lib/ai/parse.js,handlers/ai/_common.js}`、下单/代客下单页接线、`selftest-recognize/-ai/-order-flow`（真实截图 fixture 与首红）；风险：10 位纯数字且以 1[3-9] 开头的真实取件码会被拒（当前语料无此形态，用户可手填） |
 | D73 | **服务通知（一次性订阅）范围收敛（2026-11-08 用户确认）**：顾客端**只做送达通知**（`DELIVERED` → 商品送达通知，模板 ID `zxQ_yQgray66bHuDXPGGYEQTd6Fn-iCndeW6ImPl6ZQ`），兼职端**只做新订单通知**（顾客下单 `ORDER_CREATED` → 新订单通知，模板 ID `GP0_nOdr_hn-a2UD0LVgHRhsmCkeHDI11C9c5DnDRKc`）；模板 ID/字段映射/开关统一进 `config.subscribeTemplates`（`enabled` 默认 false）；`config.getPublic` 在启用时下发 `subscribeTemplateIds{delivered,newOrder}`（仅 ID，不下发字段映射）；授权挂在用户点击（顾客下单提交、兼职「开启新单提醒」/接单/拒单，**外加「我的 → 微信提醒」状态行用于再次授权/查看状态/去设置引导**），一次授权一条、每单一条；不做接单/取件/异常/转派/复核通知与授权状态落库；通知不含 L3、测试/只读/注销不发；**模板字段按平台长度上限生成（thing ≤20 字等），超长按预算裁剪而非整条静默丢弃；发送跳过原因可记日志（不含 openid/L3）**；20004（用户关闭订阅消息主开关）可给一次「去设置」引导，拒绝/失败/未开启一律不阻断主流程。 | ✅ 已定（用户 2026-11-08 确认） | 代价：`config/defaults.js`、`db/config.js` 合并、`lib/subscribe-message.js`、order 两个钩子、`utils/subscribe.js`、下单/工作台/「我的」接线、`api/config.json` 权限、`selftest-messages/-message-pages`；验证：模板字段 + 真机「总是保持」连续 3 条 + 模板类型=2 |
+
+| D74 | **兼职「取件清单」升一级入口（2026-11-08 用户指令，方案 A 伪 tab）**：`pkg-partner/pages/pick-list` 迁主包 `pages/partner/pick-list/index`，与工作台/客户/我的同级（底部第 2 格）；因平台 `tabBar.list` 上限 5 项且两端共用（顾客 首页/订单 + 兼职 工作台/客户 + 我的），**不新增第 6 条真 tab**，改走伪 tab（同 D64 顾客「取件码」）：页面内自绘共用 `components/tab-bar-view` 四格、其余真 tab 用 `switchTab`；工作台顶部旧「取件清单」按钮删除（避免双入口）；页数 33 不变，主包 8→9、`pkg-partner` 9→8；新增 2 个 tabbar 图标；`tabBar.list` 仍 5 项 | ✅ 已定（用户 2026-11-08 选 A） | 代价：页面迁移主包、`app.json`/`tools/lib/project.js`/`CONTRACT §7`/`ARCHITECTURE`/`UX_PARTNER`/`docs/README`/门禁 #3/#10/#37/`selftest-pick-list`/`selftest-order-customer` 联动；被否：B 腾一条真 tab（顾客「订单」降为伪 tab，顾客端体验降级）、C 不做同级（不满足用户要求） |
+| D75 | **兼职子邀请码新增长期（2026-11-08 用户指令）**：`partner.createSubInvites.validity` 增枚举 `FOREVER`（长期）；**不写 `expiresAt`（=0）**，`partner.activate` 对 `expiresAt<=0` 视为永不过期；一次性、名额上限（`teamMaxMembers`）、批次级作废、发码限流均不变；团队页有效期四档（24 小时 / 72 小时 / 7 天 / 长期），待用码行显示「长期有效」；不新增集合/索引/动作/错误码 | ✅ 已定（用户 2026-11-08） | 代价：`shared/validate.js`（含两套云副本 sync）、`partner/_team.js`、`createSubInvites.js`、团队页纯件与 `selftest-team`/`selftest-partner-pages`、DATA_MODEL/UX/QA 回写；风险：长期码一旦外泄在名额内可长期使用——仍受「一次性 + 批次作废 + 名额上限」约束 |
 
 **未决项一律在 `docs/contract/V4_DECISIONS.md` 展开（背景/选项/推荐理由/被否方案/代价）。**
 
