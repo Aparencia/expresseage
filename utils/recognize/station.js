@@ -50,6 +50,19 @@ function matchStation(text, options) {
   return { id: hit.id, name: hit.name, by: byOfKind(hit.kind), kind: hit.kind };
 }
 
+// D70：双判据开关（缺省均开）与「取件码 → 站点」推断（唯一命中才采信）
+function inferOptionsOf(options) {
+  return shared.stationInferOf(options);
+}
+
+function inferFromCode(code, options) {
+  const hit = shared.inferStationFromCode(code, options);
+  if (!hit) {
+    return null;
+  }
+  return { id: hit.id, name: hit.name, by: 'code', pattern: hit.pattern, kind: 'code' };
+}
+
 module.exports = {
   STATIONS,
   ALIASES,
@@ -58,5 +71,7 @@ module.exports = {
   stationName,
   stationIdOfName,
   matchStation,
+  inferOptionsOf,
+  inferFromCode,
   normalizeStation: shared.normalizeStation
 };

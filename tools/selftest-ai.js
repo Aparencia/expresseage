@@ -30,7 +30,7 @@ const ocrFlow = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/o
 const orderModel = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/model.js'));
 const reviewVm = require(path.join(ROOT, 'pkg-admin/pages/recognition-review/parts/view-model.js'));
 
-const EXPECTED_ASSERTIONS = 255; // 253 + 2：401/403 归因 AUTH_FAILED + 鉴权失败不计熔断（2026-11-07）
+const EXPECTED_ASSERTIONS = 262; // 253 + 2：401/403 归因 AUTH_FAILED + 鉴权失败不计熔断（2026-11-07）；+7：D70 取件码反推站点/手机号不当码
 
 const NOW = Date.parse('2026-10-21T12:00:00+08:00');
 const CUSTOMER_OPENID = 'openid-customer-ai';
@@ -826,6 +826,8 @@ function registerCodeTokenSection(h) {
     t.eq(ruleOf('取件码：ABCD').pickupCode, '', '纯字母候选不当码（必须含数字）');
     const masked = payloadLib.buildAiPayload({ ocrTextMasked: '湖工大西苑一栋南面菜鸟驿站 取件码：207-3-1014 运单号：JT2216865664225', role: 'CUSTOMER' });
     t.check(masked.ocrTextMasked.indexOf('2216865664225') < 0 && ruleOf(masked.ocrTextMasked).pickupCode === '20731014', '服务端二次去敏后：运单长数字不外发，规则仍命中真取件码');
+    // D70 站点双判据/手机号闸：独立案例文件（主套件守 #18 ≤1000 行）
+    require('./lib/ai-station-cases').registerStationInferCases(t, { ruleOf, parseLib, stations });
   });
 }
 

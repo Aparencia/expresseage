@@ -109,8 +109,9 @@ async function identify(file, onState) {
   }
   const maskedText = recognize.maskForAi(result.joined || '');
   const ticket = (file && file.uploadTicketId) || '';
-  const stationsOption = (configApi.getCachedPublic() || {}).stations;
-  const parsed = recognize.parseOcrText(result.joined || '', { stations: stationsOption });
+  const publicConfig = configApi.getCachedPublic() || {};
+  const stationOption = { stations: publicConfig.stations, stationInfer: publicConfig.stationInfer };
+  const parsed = recognize.parseOcrText(result.joined || '', stationOption);
   let items = parsed.items;
   let aiTried = false;
   let aiUsed = false;
@@ -136,6 +137,7 @@ async function identify(file, onState) {
       uploadTicketId: ticket,
       fileId: (file && file.fileId) || '',
       role: 'CUSTOMER',
+      stationOption: stationOption,
       requestIdOf: function requestIdOf(index) {
         return failureRequestIdOf(ticket, index, maskedText);
       }

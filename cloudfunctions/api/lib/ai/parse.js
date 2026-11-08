@@ -11,6 +11,11 @@
 
 /** 取件码形制：去空格/连字符后 4~12 位字母数字。 */
 const CODE_RE = /^[0-9A-Z]{4,12}$/;
+/** D70：手机号/疑似手机号（OCR 掉 1 位的 10 位也算）不是取件码。 */
+const PHONE_LIKE_RE = /^1[3-9]\d{8,10}$/;
+/** D70：日期形态（2026-10-27 / 20261027）不是取件码。 */
+const DATE_LIKE_RE = /^(?:(?:19|20)\d{2}[-/.]\d{1,2}[-/.]\d{1,2}|(?:19\d{2}|20[0-2]\d)(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01]))$/;
+const stationsLib = require('../../shared/stations');
 /** 运单尾号：恰好 5 位 ASCII 数字。 */
 const TAIL_RE = /^\d{5}$/;
 /** 柜号上限（CONTRACT §4.2）。 */
@@ -115,7 +120,14 @@ function normalizePickupCode(raw) {
     return '';
   }
   const value = String(raw).replace(/[\s\-—_·]+/g, '').toUpperCase();
-  return CODE_RE.test(value) ? value : '';
+  if (!CODE_RE.test(value)) {
+    return '';
+  }
+  // D70：模型可能把手机号/日期当码回传——11/10 位手机号与日期一律置空（不写进定单/复核建议）
+  if (PHONE_LIKE_RE.test(value) || DATE_LIKE_RE.test(value)) {
+    return '';
+  }
+  return value;
 }
 
 /**
@@ -203,9 +215,17 @@ function normalizeAiFields(raw, options) {
   const opts = options && typeof options === 'object' ? options : {};
   const stationIds = Array.isArray(opts.stationIds) ? opts.stationIds : [];
   const stations = Array.isArray(opts.stations) ? opts.stations : [];
-  const stationId = normalizeStationId(input.stationId, stationIds);
-  const pickupCode = normalizePickupCode(input.pickupCode);
+  const rawCode = input.pickupCode == null ? '' : String(input.pickupCode);
+  const pickupCode = normalizePickupCode(rawCode);
   const confidence = normalizeConfidence(input.confidence);
+  let stationId = normalizeStationId(input.stationId, stationIds);
+  // D70：取件码格式反推站点为权威（唯一命中才采信；未命中保留模型给的合法站点）
+  if (pickupCode) {
+    const inferred = stationsLib.inferStationFromCode(rawCode, { stations: stations });
+    if (inferred) {
+      stationId = inferred.id;
+    }
+  }
   return {
     stationId,
     stationName: resolveStationName(stationId, stations),

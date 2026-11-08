@@ -434,7 +434,9 @@ function configForAdmin(config) {
   return {
     zoneLabels: source.zoneLabels || {},
     // v1.1（D32）：站点正式名（固定 P1~P8；缺省/非法条目回退内置默认，后台配置页据此回填 8 行输入）
+    // D70/D71：整表含顺序/别名/取件码格式；stationInfer 双判据开关按布尔净化后回填（否则保存后重新加载回落默认 true）
     stations: sharedStations.stationsFromConfig(source),
+    stationInfer: sharedStations.stationInferOf({ stationInfer: source.stationInfer }),
     serviceCatalog: Array.isArray(source.serviceCatalog) ? source.serviceCatalog.slice() : [],
     announcement: source.announcement,
     maintenance: source.maintenance || { enabled: false, text: '' },

@@ -92,6 +92,57 @@ function buildParcel(base) {
 }
 
 /**
+ * 单件站点解析器（D70）：取件码命中格式时以码为准，否则回退截图识图结果。
+ */
+function stationForCodeOf(switches, options, imageStation) {
+  return function stationForCode(code) {
+    if (switches.fromCode && code) {
+      const hit = station.inferFromCode(code, options);
+      if (hit) {
+        return { id: hit.id, name: hit.name, by: 'code' };
+      }
+    }
+    return imageStation;
+  };
+}
+
+// 一图多码：每个码一件（同一 base 尾号/柜号/来源，站点逐件按码解析）
+function buildCodeItems(codeList, base, stationFor) {
+  return codeList.map(function mapCode(item, index) {
+    const target = stationFor(item.value);
+    return buildParcel(Object.assign({}, base, {
+      stationId: target.id,
+      stationName: target.name,
+      stationBy: target.by,
+      pickupCode: item.value,
+      recognized: !!(target.id && item.value),
+      confidence: target.id ? 'MEDIUM' : 'LOW',
+      index: index
+    }));
+  });
+}
+
+// 无码有尾号：一件 NEED_CODE（站点仍可由识图得到）
+function buildTailItem(base, imageStation) {
+  return buildParcel(Object.assign({}, base, {
+    stationId: imageStation.id,
+    stationName: imageStation.name,
+    stationBy: imageStation.by,
+    pickupCode: ''
+  }));
+}
+
+function buildItemsOf(codeList, tailValue, base, imageStation, stationFor) {
+  if (codeList.length > 0) {
+    return buildCodeItems(codeList, base, stationFor);
+  }
+  if (tailValue) {
+    return [buildTailItem(base, imageStation)];
+  }
+  return [];
+}
+
+/**
  * OCR 文本 → 订单字段 DTO。
  * 一图多码：每个紧凑码可提交的候选一件（共享同一 fileId，由页面组装）；无码有尾号 → 一件 NEED_CODE。
  * 超长/带奇怪符号的候选「认出但不像」：不自动填，单独放 unalignedCodes 交给页面提示。
@@ -104,35 +155,25 @@ function buildParcel(base) {
 function parseOcrText(rawText, options) {
   const lines = text.splitLines(rawText);
   const joined = lines.join(' ');
-  const matched = station.matchStation(joined, options);
+  // D70 站点双判据：识图（开关 fromImage）+ 取件码格式反推（开关 fromCode，命中即权威）
+  const switches = station.inferOptionsOf(options);
+  const matched = switches.fromImage ? station.matchStation(joined, options) : null;
+  const imageStation = matched
+    ? { id: matched.id, name: matched.name, by: matched.by }
+    : { id: '', name: '', by: '' };
   const tail = text.pickTrackingTail(lines);
   const candidates = codes.pickCodeCandidates(lines);
   // ⑦：只对上下文/强形态候选产件；非上下文纯数字（订单号等）降级为 unaligned 提示
   const codeList = candidates.filter(function compact(item) { return item.compact && item.numericOnly !== true; });
   const unalignedCodes = candidates.filter(function odd(item) { return !item.compact || item.numericOnly === true; }).map(function value(item) { return item.value; });
   const lockerNo = pickLocker(lines);
-  const shared = {
-    stationId: matched ? matched.id : '',
-    stationName: matched ? matched.name : '',
+  const stationFor = stationForCodeOf(switches, options, imageStation);
+  const base = {
     trackingTail: tail.value || '',
     lockerNo: lockerNo,
-    source: 'RULE',
-    confidence: matched && tail.value ? 'MEDIUM' : 'LOW',
-    recognized: !!(matched && codeList.length > 0)
+    source: 'RULE'
   };
-  let items = [];
-  if (codeList.length > 0) {
-    items = codeList.map(function mapCode(item, index) {
-      return buildParcel(Object.assign({}, shared, {
-        pickupCode: item.value,
-        recognized: !!(shared.stationId && item.value),
-        confidence: shared.stationId ? 'MEDIUM' : 'LOW',
-        index: index
-      }));
-    });
-  } else if (tail.value) {
-    items = [buildParcel(Object.assign({}, shared, { pickupCode: '' }))];
-  }
+  const items = buildItemsOf(codeList, tail.value, base, imageStation, stationFor);
   const needsReview = items.some(function review(item) {
     return !item.stationId || item.codeStatus === 'NEED_CODE' || item.confidence === 'LOW';
   }) || (unalignedCodes.length > 0 && codeList.length === 0);
@@ -170,7 +211,7 @@ function lowSuggestionOf(ai) {
     out.stationId = ai.stationId;
     out.stationName = station.stationName(ai.stationId);
   }
-  if (codes.isFillableCode(ai.pickupCode)) out.pickupCode = codes.normalizeCode(ai.pickupCode);
+  if (codes.isAiFillableCode(ai.pickupCode)) out.pickupCode = codes.normalizeCode(ai.pickupCode);
   if (codes.isPlausibleTail(ai.trackingTail)) out.trackingTail = codes.normalizeTail(ai.trackingTail);
   if (ai.lockerNo && codes.isPlausibleLocker(ai.lockerNo)) out.lockerNo = codes.normalizeLocker(ai.lockerNo);
   if (Object.keys(out).length === 0) return null;
@@ -187,13 +228,39 @@ function finishParcel(target) {
   return target;
 }
 
+// D70：码 → 站点同步（唯一命中才改；码是权威来源，冲突时覆盖识图/AI 站点）
+function syncStationFromCode(target, options) {
+  if (!target || !target.pickupCode) {
+    return false;
+  }
+  const switches = station.inferOptionsOf(options);
+  if (!switches.fromCode) {
+    return false;
+  }
+  const hit = station.inferFromCode(target.pickupCode, options);
+  if (!hit) {
+    return false;
+  }
+  if (target.stationId === hit.id) {
+    if (!target.stationName) {
+      target.stationName = hit.name;
+      return true;
+    }
+    return false;
+  }
+  target.stationId = hit.id;
+  target.stationName = hit.name;
+  target.stationBy = 'code';
+  return true;
+}
+
 /**
  * AI 兜底结果合并且只填空字段（手填优先、不覆盖）。
  * suggestion: {recognized,stationId,stationName,pickupCode,trackingTail,lockerNo,confidence,source,failureId,needsReview}
  * D29：仅「低置信且来自 AI」（confidence=LOW 且 source=DEEPSEEK）不写入任何字段，只返回可采纳建议快照；
  * RULE/NONE 的规则/降级结果与 HIGH/MEDIUM 照旧预填（规则结果不是 AI 猜测，不能让用户白填）。
  */
-function applyAiSuggestion(parcel, suggestion) {
+function applyAiSuggestion(parcel, suggestion, options) {
   const target = Object.assign(makeEmptyParcel(), parcel || {});
   const ai = suggestion || {};
   if (isLowAiSuggestion(ai)) {
@@ -209,7 +276,7 @@ function applyAiSuggestion(parcel, suggestion) {
     target.stationName = ai.stationName || station.stationName(ai.stationId);
     changed.push('station');
   }
-  if (!target.pickupCode && codes.isFillableCode(ai.pickupCode)) {
+  if (!target.pickupCode && codes.isAiFillableCode(ai.pickupCode)) {
     target.pickupCode = codes.normalizeCode(ai.pickupCode);
     changed.push('pickupCode');
   } else if (ai.pickupCode && !codes.isCompactCode(ai.pickupCode) && !target.pickupCode) {
@@ -230,6 +297,10 @@ function applyAiSuggestion(parcel, suggestion) {
     target.recognized = !!ai.recognized;
     target.aiApplied = true;
   }
+  // D70：码 → 站点同步放在来源归因之后（只改站点，不把来源冒充成 AI）
+  if (syncStationFromCode(target, options) && changed.indexOf('station') < 0) {
+    changed.push('station');
+  }
   target.failureId = ai.failureId || target.failureId || '';
   target.needsReview = ai.needsReview === true || !target.recognized;
   finishParcel(target);
@@ -242,11 +313,29 @@ function applyAiSuggestion(parcel, suggestion) {
  * aiApplied=true，并清空建议条（aiSuggestion=null）。仍需人核对，故 needsReview=true。
  * @returns {{parcel:object, changed:string[], rejected:string[]}}
  */
-function adoptAiSuggestion(parcel, suggestion) {
+function adoptAiSuggestion(parcel, suggestion, options) {
   const target = Object.assign(makeEmptyParcel(), parcel || {});
-  const ai = suggestion || {};
   const changed = [];
   const rejected = [];
+  adoptAiFields(target, suggestion || {}, changed, rejected);
+  if (changed.length > 0) {
+    target.source = AI_SOURCE;
+    target.confidence = CONFIDENCE_LOW;
+    target.aiApplied = true;
+    target.aiSuggestion = null;
+  }
+  // D70：采纳后按码同步站点（码命中格式时以码为准；不改变 source/confidence 归因）
+  if (syncStationFromCode(target, options) && changed.indexOf('station') < 0) {
+    changed.push('station');
+  }
+  target.failureId = (suggestion && suggestion.failureId) || target.failureId || '';
+  target.needsReview = true;
+  finishParcel(target);
+  return { parcel: target, changed: changed, rejected: rejected };
+}
+
+// 采纳时逐字段只填空位（手填优先）；非法值进 rejected 留痕、不写入
+function adoptAiFields(target, ai, changed, rejected) {
   if (!target.stationId && ai.stationId) {
     if (station.stationName(ai.stationId)) {
       target.stationId = ai.stationId;
@@ -257,7 +346,7 @@ function adoptAiSuggestion(parcel, suggestion) {
     }
   }
   if (!target.pickupCode && ai.pickupCode) {
-    if (codes.isFillableCode(ai.pickupCode)) {
+    if (codes.isAiFillableCode(ai.pickupCode)) {
       target.pickupCode = codes.normalizeCode(ai.pickupCode);
       changed.push('pickupCode');
     } else {
@@ -280,16 +369,6 @@ function adoptAiSuggestion(parcel, suggestion) {
       rejected.push('lockerNo');
     }
   }
-  if (changed.length > 0) {
-    target.source = AI_SOURCE;
-    target.confidence = CONFIDENCE_LOW;
-    target.aiApplied = true;
-    target.aiSuggestion = null;
-  }
-  target.failureId = ai.failureId || target.failureId || '';
-  target.needsReview = true;
-  finishParcel(target);
-  return { parcel: target, changed: changed, rejected: rejected };
 }
 
 // ── 多图汇总（v1.0 D23，纯函数）──────────────────────────────────────────────
@@ -364,6 +443,7 @@ module.exports = {
   parseOcrText,
   applyAiSuggestion,
   adoptAiSuggestion,
+  syncStationFromCode,
   maskForAi,
   summarizeParcel,
   pickLocker,

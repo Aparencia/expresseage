@@ -19,7 +19,8 @@ Page({
       testDataRetentionDays: '—'
     },
     ranges: C.CONFIG_RANGE,
-    limits: C.LIMITS
+    limits: C.LIMITS,
+    stationLimits: vm.stationInputLimits()
   },
 
   onLoad() {
@@ -84,6 +85,44 @@ Page({
     if (!stations[index]) return;
     stations[index].name = event.detail.value;
     this.setData({ 'form.stations': stations });
+    this.markDirty();
+  },
+
+  // D71 站点别名（仅识别归一用；拆项/校验在 parts 纯件，页面只转发）
+  onStationAliasInput(event) {
+    const index = Number(event.currentTarget.dataset.index);
+    const stations = this.data.form.stations.slice();
+    if (!stations[index]) return;
+    stations[index].aliasesText = event.detail.value;
+    this.setData({ 'form.stations': stations });
+    this.markDirty();
+  },
+
+  // D70 站点取件码格式（`*`=任意字母数字，整串匹配；拆项/校验在 parts 纯件）
+  onStationPatternInput(event) {
+    const index = Number(event.currentTarget.dataset.index);
+    const stations = this.data.form.stations.slice();
+    if (!stations[index]) return;
+    stations[index].codePatternsText = event.detail.value;
+    this.setData({ 'form.stations': stations });
+    this.markDirty();
+  },
+
+  // D71 站点顺序（数组顺序 = 展示顺序；越界由纯件兜底不移动）
+  onStationMove(event) {
+    const index = Number(event.currentTarget.dataset.index);
+    const dir = Number(event.currentTarget.dataset.dir);
+    this.setData({ 'form.stations': vm.moveStation(this.data.form.stations, index, dir) });
+    this.markDirty();
+  },
+
+  // D70 站点双判据开关：dataset.field = fromImage（截图识别）/ fromCode（取件码反推）
+  onStationInferToggle(event) {
+    const field = event.currentTarget.dataset.field;
+    if (field !== 'fromImage' && field !== 'fromCode') return;
+    const stationInfer = this.data.form.stationInfer || vm.emptyForm().stationInfer;
+    stationInfer[field] = event.detail.value === true;
+    this.setData({ 'form.stationInfer': stationInfer });
     this.markDirty();
   },
 

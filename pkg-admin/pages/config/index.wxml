@@ -33,12 +33,37 @@
     </view>
 
     <view class="card">
-      <text class="section-title">站点名称</text>
-      <view class="form-row" wx:for="{{form.stations}}" wx:key="id">
-        <text class="form-label">{{item.id}}</text>
-        <input class="form-input" value="{{item.name}}" maxlength="{{limits.stationNameMax}}" placeholder="{{item.defaultName}}" data-index="{{index}}" bindinput="onStationInput" />
+      <text class="section-title">站点配置（顺序 / 别名 / 取件码格式）</text>
+      <view class="row between toggle-row">
+        <text class="muted">从截图识别站点</text>
+        <switch checked="{{form.stationInfer.fromImage}}" color="#1F7A5C" data-field="fromImage" bindchange="onStationInferToggle" />
       </view>
-      <view class="small">站点编号固定 P1~P8，只能改名称：每个 1~20 字且不能重复；改名后选择器、手输归一与识别结果都用新名称。</view>
+      <view class="row between toggle-row">
+        <text class="muted">从取件码推断站点</text>
+        <switch checked="{{form.stationInfer.fromCode}}" color="#1F7A5C" data-field="fromCode" bindchange="onStationInferToggle" />
+      </view>
+      <view class="form-block" wx:for="{{form.stations}}" wx:key="id">
+        <view class="row between">
+          <text class="strong">{{item.id}} · 第 {{index + 1}} 位（共 {{form.stations.length}} 位）</text>
+          <view class="row">
+            <button class="btn btn-ghost mini-btn" size="mini" disabled="{{index === 0}}" data-index="{{index}}" data-dir="-1" bindtap="onStationMove">上移</button>
+            <button class="btn btn-ghost mini-btn" size="mini" disabled="{{index === form.stations.length - 1}}" data-index="{{index}}" data-dir="1" bindtap="onStationMove">下移</button>
+          </view>
+        </view>
+        <view class="form-row">
+          <text class="form-label">名称</text>
+          <input class="form-input" value="{{item.name}}" maxlength="{{limits.stationNameMax}}" placeholder="{{item.defaultName}}" data-index="{{index}}" bindinput="onStationInput" />
+        </view>
+        <view class="form-row">
+          <text class="form-label">别名</text>
+          <input class="form-input" value="{{item.aliasesText}}" maxlength="{{stationLimits.aliasTextMax}}" placeholder="识别用，多个用顿号或逗号分隔，如：西苑一栋南面" data-index="{{index}}" bindinput="onStationAliasInput" />
+        </view>
+        <view class="form-row">
+          <text class="form-label">取件码格式</text>
+          <input class="form-input" value="{{item.codePatternsText}}" maxlength="{{stationLimits.patternTextMax}}" placeholder="如 *-*-****，多个用顿号分隔；* 代表任意字母数字" data-index="{{index}}" bindinput="onStationPatternInput" />
+        </view>
+      </view>
+      <view class="small">站点编号固定 P1~P8，不能自建/删除；上下移动决定展示顺序（顾客端选择器与兼职端分组按此顺序）。站点名称 1~20 字且不能重复；别名 0~5 个（每个 1~20 字）仅用于识别与手输归一，不展示、不产生新站点，兼职端仍按主站点归类；取件码格式 0~3 个，`*` 代表 1 位以上字母/数字、其余字符按字面量（允许 `-`）、整串匹配（如 *-*-**** 命中 64-4-4033）。关闭「从截图识别站点」/「从取件码推断站点」后，对应判据不再自动带出站点，仍可手动选择站点。</view>
     </view>
 
     <view class="card">

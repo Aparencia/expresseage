@@ -5,7 +5,7 @@
 > 更新时机：每批开工/收口、用户裁决变化、风险新增或关闭、HEAD 变化需回读。
 > 本文只记**状态、待办与下一步**，不重复设计口径（口径看 CONTRACT，工程规则看 ENGINEERING，接口看 ARCHITECTURE）。
 
-**快照时间：2026-11-08（HEAD 98187d + 批 29 D68/D69 收口提交）：check.js 39/39 条、check-docs 12/12 条、selftest **38 套** 0 失败、零金额 0 命中（白名单 108 项）；check.ps1 4 步退出码 0；**批 29：D68 顾客停用/恢复（users.status 三态 + admin.setCustomerStatus + 后台状态/按钮 + 顾客端状态页 + 兼职端标签与代客下单闸）+ D69 退出登录（本机退出、保留本机取件码清单）**；真机项交用户点检（QA §AH），证据 §28；批 24~28 基线见 §19~§27）
+**快照时间：2026-11-08（HEAD f06f33f + 批 30 站点双判据/顺序别名/识别修复）：check.js 39/39 条、check-docs 12/12 条、selftest **38 套** 0 失败、零金额 0 命中（白名单 108 项）；check.ps1 4 步退出码 0；**批 30：D70 站点双判据（识图 + 取件码格式反推，后台开关/格式可配）+ D71 站点顺序与别名 + D72 真实截图识别修复（手机号不当码/连字符码保留/尾号按标签）**；真机项交用户点检（QA §AI），证据 §29；批 24~29 基线见 §19~§28）
 > 临时总体说明（全局汇总，非状态源）：[`docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md`](docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md)（版本与取数快照由 Lead 统一维护；状态仍以本文件为准、口径以 CONTRACT 为准）。
 
 ## 1. 一句话状态
@@ -1505,3 +1505,21 @@ check.ps1：全部通过（4 步，退出码 0）
 - 真机项 QA §AH1~AH5 待用户点检（agent 不代勾、不代宣布通过）。
 - 部署：需重部署 pi（先 ode tools/sync-cloud-shared.js）；无新增集合/索引/触发器/云函数单元。
 
+## 29. 批 30 站点双判据/顺序别名/识别修复（D70~D72，2026-11-08）收口证据（真实输出）
+
+```text
+$ powershell -File check.ps1
+PASS  check.js 代码/配置门禁（39 条）
+PASS  check-docs.js 设计文档门禁（--batch 1）
+PASS  zero-money-scan.js 零金额扫描（源码+页面+文档）
+PASS  selftest.js 全部断言 suite（EXPECTED_ASSERTIONS 闸）
+selftest：运行 38 套；失败 0 套；SKIP 0 套（无）；完整性 0 项；非聚合辅助文件 4 件（已声明）
+check.ps1：全部通过（4 步，退出码 0）
+```
+
+- 套件读数（本次真实输出，逐项）：core 223、state 405、recognize 305、cloud 209、cloud-dual 46、ai 262、bind 188、bind-cloud 119、order 153、order-flow 281、order-lifecycle 98、order-customer 378、order-partner 170、order-workbench 429、order-detail-partner 298、pickup-low 63、pick-list 215、partner-customers 137、partner-orders 90、partner-pages 347、partner-stats 248、query-window 62、profile 199、switch 169、testaccount 172、admin 288、messages 108、cleanup 239、admin-pages 246、message-pages 149、privacy-text 305、tools 50、deletion 105、performance 147、security 56、share 248、transfer 140、team 124；全量断言合计以 `node tools/selftest.js` 汇总为准。
+- 本批新增/改动判据：`selftest-core` +21（D70/D71 顺序/别名/格式/校验/反推/开关）、`selftest-recognize` +10（真实截图 fixture：单号后五位/一图三码/T-0-2051/手机号/开关）、`selftest-ai` +7（服务端规则反推、码优先、手机号/日期闸；拆 `tools/lib/ai-station-cases.js` 守 #18）、`selftest-order-flow` +4（手填码补站点/开关/上下文）、`selftest-admin-pages` 224→246（拆 `tools/lib/admin-config-station-cases.js`：D32 16 条纯搬移 + D70/D71 22 条）。
+- 真实 bug 修复（真实截图取证）：①手机号/疑似手机号被当取件码（规则与 AI 双路：客户端 `isAiFillableCode` + 服务端 `normalizePickupCode/acceptCodeToken` 同判）；②`64-4-4033`/`T-0-2051` 等带分隔符码无站点来源（现按格式反推 P3 且保留展示形态）；③AI 站点与取件码冲突（现以码为准）；④站点多说法只能命中内置别名（现支持后台配置别名）。
+- 部署/迁移：`node tools/sync-cloud-shared.js` 后重部署 `api`（shared 新增 `station-rules.js` 副本、`defaults.js` 新增 `stationInfer`/P3 格式）；**无新增集合/索引/触发器/云函数单元**；旧配置读层自动回退默认（不需先迁移库），后台保存一次即结构化落库。
+- 真机项（只能用户点检，agent 不代勾）：QA §AI1~AI7——取件码反推站点、识图站点多说法、手机号不当码、后台调序、站点别名、配置校验/回填、旧配置兼容。
+- 跨批未提交改动（非本批）：AGENTS.md、docs/README、docs/archive/README、研究文档与 `cloudfunctions/cleanup/config.json` 为前序工作树遗留，本批未纳入提交；`project.config.json` 仍为开发者工具重排键序（用户选择保留）。

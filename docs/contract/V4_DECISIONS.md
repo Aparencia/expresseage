@@ -708,6 +708,31 @@ C中的隐私合规中的C1 见上文
 
 ---
 
+## D70~D72 · 2026-11-08 站点识别与订单信息补全（用户 3 条指令 + 12 张真实截图）
+
+**来源**：用户 2026-11-08 消息（3 条）：①「新添订单信息双判据：订单站点可由识图得到 / 可由取件码反向推断，且该能力需能在开发者后台全局配置；已知 xxx-x-xxxx 必为西苑一栋」；②「开发者全局配置中站点需要能调节顺序；可为站点添加不同名称，显示到兼职端仍归类到主站点」；③「上传取件码截图与其在顾客端下单时的识别结果，据此修复」。随附 12 张真机截图（另 2 张重复）。
+**结论**：登记 D70（双判据 + 后台可配）、D71（站点顺序 + 别名）、D72（识别口径修复）；逐条边界见 CONTRACT §13 对应行。
+
+### D70 · 站点双判据（识图 + 取件码格式反推，后台可开关）
+**裁决**：`config.stations[]` 每站点增 `codePatterns[]`（0~3 个；`*`=1 位以上字母/数字、其余字面量、整串匹配；出厂 P3=`['*-*-****']` 覆盖 64-4-4033 / T-0-2051 / 205-5-4016）；`config.stationInfer={fromImage,fromCode}` 两项各默认开、后台可关；**取件码唯一命中时以码为准**（覆盖识图站点），零/多命中不猜；识别链路（下单/代客下单/AI 规则快照/AI 输出）同一份 `shared/stations` 与开关；`stations`/`stationInfer` 进公开子集；写入走 `admin.updateConfig` 白名单。
+**被否**：客户端硬编码规则（用户明确要求后台可配）；按码强制覆盖用户手选（手填优先，只补空）。
+**代价/落点**：新增 `shared/station-rules.js`；改 `shared/stations.js`、`config/defaults.js`、`admin.updateConfig`、`admin/_dto.configForAdmin`、`utils/recognize/{station,codes,index}.js`、下单/代客下单零件、`handlers/ai/_common.js`、`lib/ai/parse.js`、后台配置页、判据；CONTRACT §3/§4/§4.2/§13、DATA_MODEL §2.10、UX_DEVELOPER §3.8/§7.4、UX_CUSTOMER §4.2、QA。
+**真机项**：真实截图（菜鸟多码/快递超市/单号后五位）识别与站点回填、后台关开关后的退化（用户点检）。
+
+### D71 · 站点顺序可调 + 站点别名
+**裁决**：`config.stations` 数组顺序=展示顺序（顾客/兼职选择器、后台行、AI prompt），后台可上移/下移后整表保存；每站点 `aliases[]` 0~5 个（1~20 字，与所有名称/别名全局唯一），**只用于识别/手输归一，不展示、不产生新站点/新分组**（兼职端仍按主站点 id 归类）；写层 `validateStationConfig` 严格拒绝非法整表（重名/重别名/非法格式/缺站点），读层非法项逐项回退或丢弃；历史订单快照不变。
+**被否**：别名单独建站点（兼职端多分组）；顺序只存独立 index 字段（与数组双源）。
+**代价/落点**：`shared/station-rules.normalizeStations/validateStationConfig`、`stationsFromConfig` 输出顺序化、后台配置页行模型/上下移/别名输入、`config.getPublic` 形状、`selftest-{core,state,admin,admin-pages}`、DATA_MODEL §2.10、UX_DEVELOPER、QA。
+**真机项**：后台调序/别名保存后，顾客选择器顺序、识别命中与兼职端归类（用户点检）。
+
+### D72 · 识别口径修复（真实截图取证）
+**裁决**：①手机号/疑似手机号（11 位或 OCR 掉 1 位的 10 位 `1[3-9]\d{8,10}`）不得作为取件码，AI 建议同样拒绝（客户端 `isAiFillableCode` + 服务端 `normalizePickupCode/acceptCodeToken` 同判），用户手填仍按可提交闸；②`64-4-4033` 等带分隔符码保留展示形态（提交按紧凑 4~12 位校验）；③运单尾号优先「后五位/尾号/末位」标签后的 5 位；④站点多说法（配置别名 + 包含 + 关键词）与取件码反推组合，唯一命中才采信；⑤AI 低置信不写入（D29 不变）、AI 只补空位。
+**被否**：把手机号当码后仅提示不改（用户截图已显示错填）；把 10 位纯数字一律拒绝（会误杀潜在真码，故只拒绝 `1[3-9]` 开头）。
+**代价/落点**：`utils/recognize/{codes,index}.js`、`cloudfunctions/api/{lib/ai/parse.js,handlers/ai/_common.js}`、`selftest-recognize` 新增 10 条真实截图断言、`selftest-ai` +7、`selftest-order-flow` +4；CONTRACT §13 D72、DATA_MODEL §2.10（无字段变更）、UX_CUSTOMER §4.2、QA。
+**真机项**：12 张截图对应场景（手机号行、单号后五位、一图多码、站点名多说法）真机复验（用户）。
+
+---
+
 ## A 批 P1 十项（按推荐采纳，2026-10-23 实现留痕）
 
 **用户原文**（2026-10-22）：「A、B 按照推荐进行采纳」。**背景**：`docs/archive/research/CONVENIENCE_2026-10-22.md` §4.1 方案 A（P1 小修包，收益/成本比最高）。**采纳**：十项全部实现，落点与判据见 `docs/ux/V4_UX_CUSTOMER.md` v1.1 六次修订 + §12.6.1 AC-C-71~75、`docs/delivery/V4_QA_CHECKLIST.md` A23/C15/P24/P25。

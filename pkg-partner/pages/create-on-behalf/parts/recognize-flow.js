@@ -236,7 +236,8 @@ async function identifyOne(file, context, imageIndex) {
     }
     if (seen.ok === true) {
       ocrText = seen.text || '';
-      parsed = recognize.parseOcrText(ocrText, { stations: context.stations });
+      // D70：站点双判据（识图 + 取件码格式反推）与线下单同源
+      parsed = recognize.parseOcrText(ocrText, context.stationOption || { stations: context.stations });
     }
   }
   if (context.isCancelled()) {
@@ -258,7 +259,7 @@ async function identifyOne(file, context, imageIndex) {
     result.cancelled = true;
     return result;
   }
-  const merged = recognizeModel.applyAiFallbacksOf(seeds, calls);
+  const merged = recognizeModel.applyAiFallbacksOf(seeds, calls, context.stationOption);
   Object.assign(result, {
     changed: merged.changed, failureId: merged.failureId, failed: merged.failed,
     low: merged.low, error: merged.error

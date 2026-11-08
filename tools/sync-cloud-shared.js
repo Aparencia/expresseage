@@ -43,13 +43,13 @@ const SHARED_MANIFEST = [
     needed: [
       'actions.js', 'appoint.js', 'audit-actions.js', 'collections.js', 'defaults.js',
       'enums.js', 'error-codes.js', 'error-copy.js', 'gender.js', 'ids.js',
-      'order-state.js', 'order-view.js', 'role.js', 'room-tag.js', 'stations.js',
-      'validate.js', 'zones.js',
+      'order-state.js', 'order-view.js', 'role.js', 'room-tag.js', 'station-rules.js',
+      'stations.js', 'validate.js', 'zones.js',
     ],
   },
   {
     dir: 'cloudfunctions/cleanup/shared',
-    needed: ['audit-actions.js', 'collections.js', 'defaults.js', 'enums.js', 'stations.js', 'zones.js'],
+    needed: ['audit-actions.js', 'collections.js', 'defaults.js', 'enums.js', 'station-rules.js', 'stations.js', 'zones.js'],
   },
 ];
 

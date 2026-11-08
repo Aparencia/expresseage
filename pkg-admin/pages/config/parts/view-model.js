@@ -4,17 +4,21 @@
 //       站点名称单源 = shared/stations；时刻格式单源 = config/defaults.normalizeClockText（与服务端同一判据）。
 // D41（2026-10-28 用户拍板）：服务目录固定 5 类，顺序/默认名称单源 = shared/enums；
 //       旧目录（含已停用 PICKUP_DOOR 或缺新码 PICKUP_LOW）整表回退新默认，后台保存一次即完成迁移。
+// D70/D71（2026-11-08 用户拍板）：站点双判据开关（fromImage/fromCode，缺省开）+ 站点顺序可调 + 每站别名；
+//       行顺序 = 展示顺序；别名仅识别归一用（不展示/不产生新站点，兼职端仍按主站点归类）；取件码格式 `*`=任意字母数字。
 'use strict';
 
 const C = require('../../../common/constants');
 const F = require('../../../common/format');
 const stationsLib = require('../../../../shared/stations');
+const stationRules = require('../../../../shared/station-rules');
 const enums = require('../../../../shared/enums');
 const defaults = require('../../../../config/defaults');
 
 const FIELD_LABELS = {
   zoneLabels: '苑名',
   stations: '站点名称',
+  stationInfer: '站点识别开关',
   serviceCatalog: '服务类型模板',
   announcement: '公告',
   maintenance: '维护模式',
@@ -34,11 +38,56 @@ function toInt(value) {
   return isNaN(parsed) ? NaN : Math.floor(parsed);
 }
 
-// 站点编辑行：当前配置名 + 默认名占位提示（id 固定 P1~P8，不自建/不增删）
+// 站点多项文本（别名/取件码格式）在输入框里的连接符；保存时按 [,，、\s]+ 拆分去空（D71）
+const STATION_TEXT_JOIN = '、';
+const STATION_TEXT_SEPARATOR_RE = /[,，、\s]+/;
+
+function joinStationText(list) {
+  return (Array.isArray(list) ? list : []).join(STATION_TEXT_JOIN);
+}
+
+// 编辑文本 → 数组：只做「拆项 + 去空白 + 丢空项」，不静默清洗（非法项留给 shared 严格校验出错误文案）
+function splitStationText(text) {
+  return String(text === undefined || text === null ? '' : text)
+    .split(STATION_TEXT_SEPARATOR_RE)
+    .map(function trimItem(item) { return item.trim(); })
+    .filter(function notEmpty(item) { return item !== ''; });
+}
+
+// 站点编辑行：当前配置名/别名/取件码格式 + 默认名占位提示；行顺序 = 配置顺序 = 展示顺序（D71）
 function stationRowsOf(stations) {
   return stationsLib.stationsFromConfig({ stations: stations }).map(function mapStation(item) {
-    return { id: item.id, name: item.name, defaultName: stationsLib.stationNameOf(item.id) };
+    return {
+      id: item.id,
+      name: item.name,
+      aliasesText: joinStationText(item.aliases),
+      codePatternsText: joinStationText(item.codePatterns),
+      defaultName: stationsLib.stationNameOf(item.id)
+    };
   });
+}
+
+// 别名/格式输入框上限（单源 = shared/station-rules）：N 项 × 单项上限 + (N-1) 个分隔符
+function stationInputLimits() {
+  return {
+    aliasTextMax: stationRules.STATION_ALIAS_MAX * (stationRules.STATION_ALIAS_LEN_MAX + 1) - 1,
+    patternTextMax: stationRules.STATION_PATTERN_MAX * (stationRules.STATION_PATTERN_LEN_MAX + 1) - 1
+  };
+}
+
+// D71 站点顺序移动：dir=-1 上移 / 1 下移；边界不越界（原样返回），返回新数组且不改入参
+function moveStation(rows, index, dir) {
+  const list = Array.isArray(rows) ? rows.slice() : [];
+  const from = Number(index);
+  const step = Number(dir);
+  if (step !== -1 && step !== 1) return list;
+  if (!Number.isFinite(from) || Math.floor(from) !== from) return list;
+  const to = from + step;
+  if (from < 0 || from >= list.length || to < 0 || to >= list.length) return list;
+  const moved = list[from];
+  list[from] = list[to];
+  list[to] = moved;
+  return list;
 }
 
 // D41：目录是否「D41 之前」形态（空/含目录外 code/缺现行 code）→ 整表回退新默认；已迁移则保留后台改名。
@@ -80,6 +129,8 @@ function emptyForm() {
   return {
     zones: [],
     stations: stationRowsOf(null),
+    // D70：站点双判据开关，缺省两项都开（站内既有站点识别/取件码反推都可用）
+    stationInfer: stationsLib.stationInferOf({}),
     services: [],
     announcement: { enabled: false, title: '', text: '' },
     maintenance: { enabled: false, text: '' },
@@ -104,6 +155,8 @@ function buildForm(config) {
     };
   });
   form.stations = stationRowsOf(source.stations);
+  // D70：双判据开关按配置回填（缺省/脏值一率按开，与服务端 stationInferOf 同一判据）
+  form.stationInfer = stationsLib.stationInferOf({ stationInfer: source.stationInfer });
   // D41：服务类型固定 5 类（名称/说明可改，不新增/不删除）；旧目录回退新默认（保存一次即迁移）
   form.services = serviceRowsOf(source.serviceCatalog);
   const announcement = source.announcement || {};
@@ -150,8 +203,18 @@ function buildPayload(form) {
       return acc;
     }, {}),
     stations: (source.stations || []).map(function mapStation(item) {
-      return { id: item.id, name: String(item.name || '').trim() };
+      // D71：数组顺序 = 展示顺序；别名/取件码格式按分隔符拆项（空项丢弃，非法项留给共享校验）
+      return {
+        id: item.id,
+        name: String(item.name || '').trim(),
+        aliases: splitStationText(item.aliasesText),
+        codePatterns: splitStationText(item.codePatternsText)
+      };
     }),
+    stationInfer: {
+      fromImage: (source.stationInfer || {}).fromImage !== false,
+      fromCode: (source.stationInfer || {}).fromCode !== false
+    },
     serviceCatalog: (source.services || []).map(function mapService(item) {
       // 只上行契约字段 code/name/desc；enabled 不在 CONTRACT §6 口径内，不得凭空新增
       return {
@@ -178,24 +241,16 @@ function buildPayload(form) {
   };
 }
 
-// 站点名称校验：8 个固定 id 全覆盖、名称 1~20 字且不重复（id 不可增删/改名）
-function validateStationsOf(rows) {
-  const list = Array.isArray(rows) ? rows : [];
-  if (list.length !== stationsLib.STATION_COUNT) {
-    return '站点名称需覆盖全部 8 个站点。';
+// 站点整表校验（D32/D70/D71）：覆盖 8 个固定 id、名称唯一、别名 0~5（1~20 字、全局唯一）、
+// 取件码格式 0~3（合法且全局唯一）；数组顺序任意（即新展示顺序）。
+// 严格判据与中文文案单源 = shared/stations.validateStationConfig + stationErrorText（与 admin.updateConfig 同一闸）；
+// 行数先用共享 STATION_COUNT 快检挡掉明显残缺表单，再走整表校验。
+function validateStationsOf(list) {
+  if (!Array.isArray(list) || list.length !== stationsLib.STATION_COUNT) {
+    return stationsLib.stationErrorText('COUNT');
   }
-  const seen = {};
-  for (let i = 0; i < list.length; i += 1) {
-    const name = String((list[i] && list[i].name) || '').trim();
-    if (name.length < stationsLib.STATION_NAME_MIN || name.length > stationsLib.STATION_NAME_MAX) {
-      return '站点名称需填 ' + stationsLib.STATION_NAME_MIN + '~' + stationsLib.STATION_NAME_MAX + ' 字。';
-    }
-    if (seen[name]) {
-      return '站点名称不能重复。';
-    }
-    seen[name] = true;
-  }
-  return '';
+  const error = stationsLib.validateStationConfig(list, stationsLib.STATIONS);
+  return error ? stationsLib.stationErrorText(error) : '';
 }
 
 function validatePayload(payload) {
@@ -239,6 +294,11 @@ function validatePayload(payload) {
   if (stationError) {
     return stationError;
   }
+  // D70：双判据开关只接受布尔（页面由开关只产出布尔；直接构造上行载荷时挡住字符串/缺项）
+  const stationInfer = data.stationInfer || {};
+  if (typeof stationInfer.fromImage !== 'boolean' || typeof stationInfer.fromCode !== 'boolean') {
+    return '站点识别开关只接受开启/关闭。';
+  }
   return '';
 }
 
@@ -274,6 +334,8 @@ module.exports = {
   toInt,
   emptyForm,
   buildForm,
+  stationInputLimits,
+  moveStation,
   serviceRowsOf,
   buildReadonlyInfo,
   buildPayload,

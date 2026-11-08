@@ -35,7 +35,7 @@ const SAMPLE_FEN = 'total' + 'Fen';
 const FEE_ACTION_RE = new RegExp(['[Ff]' + 'en', 'pri' + 'ce', 'f' + 'ee'].join('|'));
 const CLEAN_TEXT = '订单状态与取件码信息整理，本程序只做下单/接单/履约与消息通知。';
 
-const EXPECTED_ASSERTIONS = 202; // 89 骨架 + 30 D37 入口白名单 + 25 D38 待绑定邀请/接线 + 16 D37-b 直落页隐私兜底 + 42 D57 本机取件码清单
+const EXPECTED_ASSERTIONS = 223; // 89 骨架 + 30 D37 入口白名单 + 25 D38 待绑定邀请/接线 + 16 D37-b 直落页隐私兜底 + 42 D57 本机取件码清单 + 21 D70/D71 站点双判据
 
 // D57 本机取件码清单：注入式假平台（按键隔离；平台 storage API 只允许出现在 utils/storage.js，
 // 本测试不 mock 全局 wx，只经该模块的 platform 注入点）。
@@ -348,7 +348,82 @@ function register(h) {
       '改名后旧说法按「苑 + 专属词」仍归一到同一点（不误配其他苑的站点）');
   });
 
-  // ---------------------------------------------------------------- §7.1/D37 launch 入口白名单与分流
+  // ---------------------------------------------------------------- §4.2 D70/D71 站点双判据/顺序/别名/取件码格式
+  h.section('§4.2 D70/D71 站点双判据（取件码反推）、顺序与别名、格式校验', (t) => {
+    const defaults8 = stations.listStations();
+    t.eq(defaults8.map((item) => Object.keys(item).sort()), Array(8).fill(['id', 'name']),
+      'D71 选择器列表只含 id/name（别名/格式不进页面数据）');
+    t.eq(stations.stationsFromConfig(null)[2].codePatterns, ['*-*-****'],
+      'D70 出厂 P3 取件码格式 *-*-****（xxx-x-xxxx 必为西苑一栋）');
+    const reordered = defaults8.map((item) => ({ id: item.id, name: item.name }));
+    reordered.unshift(reordered.pop());
+    t.eq(stations.listStations({ stations: reordered }).map((item) => item.id),
+      ['P8', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7'],
+      'D71 config.stations 数组顺序=展示顺序（上移/下移保存后生效）');
+    t.eq(stations.listStations()[0].id, 'P1', '缺省配置仍是 P1~P8 出厂顺序');
+    const withAlias = stations.stationsFromConfig({
+      stations: [{ id: 'P5', name: '西苑菜鸟驿站（西苑五食堂22栋）', aliases: ['工业大学西苑店', '西苑五食堂菜鸟'] }]
+    });
+    t.eq(withAlias.filter((item) => item.id === 'P5')[0].aliases, ['工业大学西苑店', '西苑五食堂菜鸟'],
+      'D71 站点别名按配置保存（仅识别归一用）');
+    t.eq(stations.matchStationInText('工业大学西苑店到件', { stations: withAlias }).id, 'P5',
+      'D71 配置别名参与识别归一');
+    t.eq(stations.listStations({ stations: withAlias }).filter((item) => item.id === 'P5')[0].aliases, undefined,
+      'D71 别名不进展示列表（兼职端仍归主站点）');
+    const dupAlias = stations.validateStationConfig(defaults8.map((item) => ({
+      id: item.id,
+      name: item.name,
+      aliases: item.id === 'P1' ? ['西苑快递'] : (item.id === 'P2' ? ['西苑快递'] : []),
+      codePatterns: []
+    })), stations.STATIONS);
+    t.eq(dupAlias, 'ALIAS_DUP', 'D71 写层拒绝跨站点重复别名');
+    const tooManyAliases = stations.validateStationConfig(defaults8.map((item) => ({
+      id: item.id,
+      name: item.name,
+      aliases: item.id === 'P1' ? ['a1', 'a2', 'a3', 'a4', 'a5', 'a6'] : [],
+      codePatterns: []
+    })), stations.STATIONS);
+    t.eq(tooManyAliases, 'ALIAS_COUNT', 'D71 每站点别名上限 5 个（写层拒绝）');
+    const badPattern = stations.validateStationConfig(defaults8.map((item) => ({
+      id: item.id,
+      name: item.name,
+      aliases: [],
+      codePatterns: item.id === 'P1' ? ['1234'] : []
+    })), stations.STATIONS);
+    t.eq(badPattern, 'PATTERN_FORMAT', 'D70 取件码格式必须含 *（写层拒绝无通配格式）');
+    const dupPattern = stations.validateStationConfig(defaults8.map((item) => ({
+      id: item.id,
+      name: item.name,
+      aliases: [],
+      codePatterns: (item.id === 'P1' || item.id === 'P2') ? ['*-*-****'] : []
+    })), stations.STATIONS);
+    t.eq(dupPattern, 'PATTERN_DUP', 'D70 取件码格式不能跨站点重复（避免歧义）');
+    const missingId = stations.validateStationConfig(defaults8.slice(0, 7).map((item) => ({
+      id: item.id, name: item.name, aliases: [], codePatterns: []
+    })), stations.STATIONS);
+    t.eq(missingId, 'COUNT', 'D71 写层仍要求覆盖 8 个固定站点');
+    t.eq(stations.validateStationConfig(stations.stationsFromConfig(null).map((item) => ({
+      id: item.id, name: item.name, aliases: [], codePatterns: []
+    })), stations.STATIONS), '', 'D71 合法整表通过校验（空格式合法）');
+    t.eq(stations.inferStationFromCode('64-4-4033').id, 'P3', 'D70 64-4-4033 反推 P3');
+    t.eq(stations.inferStationFromCode('T-0-2051').id, 'P3', 'D70 T-0-2051（字母组）反推 P3');
+    t.eq(stations.inferStationFromCode('205-5-4016').id, 'P3', 'D70 205-5-4016 反推 P3');
+    t.eq(stations.inferStationFromCode('04898'), null, 'D70 纯 5 位尾号不反推站点');
+    t.eq(stations.inferStationFromCode('5C621'), null, 'D70 无分隔符短码不反推站点（格式未配置）');
+    t.eq(stations.inferStationFromCode('1855213376'), null, 'D70 手机号不反推站点');
+    const ambiguousCode = stations.stationsFromConfig({
+      stations: [
+        { id: 'P1', name: '西苑顺丰快递（西苑五食堂）', codePatterns: ['*-*-****'] }
+      ]
+    });
+    t.eq(stations.inferStationFromCode('64-4-4033', { stations: ambiguousCode }).id, 'P1',
+      'D70 读层对重复格式去重（首个站点胜出，不产生双重命中）');
+    t.eq(stations.stationInferOf({ stationInfer: { fromCode: false } }),
+      { fromImage: true, fromCode: false },
+      'D70 双判据开关：只关 fromCode 时其余缺省开');
+  });
+
+
   h.section('§7.1/D37 launch 入口白名单（分享卡统一经 launch + 隐私闸）', (t) => {
     t.eq(route.LAUNCH_PAGE, '/pages/launch/index', 'D37 分享落地页 = launch（唯一启动页）');
     t.eq(route.LAUNCH_PAGE !== route.ROLE_PAGE, true, 'launch 与 role 是两个路径（邀请卡由 launch 分流得到）');

@@ -1,18 +1,23 @@
-// shared/stations.js · 校园取件点 P1~P8、名称可配与多说法命中归一（纯函数，零 wx）
-// 契约：docs/contract/V4_CONTRACT.md v1.1 §3/§4.2（D32：正式名可由 config.stations 修改，识别按「匹配命中」归一）；
+// shared/stations.js · 校园取件点 P1~P8、名称/别名/顺序可配、多说法命中与取件码反推（纯函数，零 wx）
+// 契约：docs/contract/V4_CONTRACT.md §3/§4.2（D32 名称可改；D70 站点双判据；D71 顺序与别名）；
 //       docs/data/V4_DATA_MODEL.md §2.10（config.stations 字段）；docs/engineering/V4_ENGINEERING.md §3.6（全局配置）。
 // 口径：站点 id 固定 P1~P8（禁自建站点）；名称默认内置、后台可改（1~20 字、非空、唯一，非法回退默认）；
-//       识别/手输按「配置精确名 → 去标点规范名 → 静态别名 → 关键词命中」归一，**唯一最高分才采信**，
-//       多解/无解一律不猜（宁可不猜，也不要把人指到错的驿站）。
+//       每站点可配 0~5 个别名（仅识别归一用）与 0~3 个取件码格式（`*`=1 位以上字母数字，整串匹配）；
+//       **数组顺序即展示顺序**（后台可上下移动）。
+//       识别/手输按「配置精确名 → 去标点规范名 → 别名（静态+配置）→ 包含 → 关键词命中」归一，
+//       **唯一最高分才采信**，多解/无解一律不猜；取件码格式命中唯一站点时作为站点权威来源（D70）。
 // 调用方：识别零件（utils/recognize/*）、下单/改码校验（云+端）、后台配置页、AI 兜底与复核回填。
 // 旧接口零破坏：STATIONS/STATION_ALIASES/listStations/normalizeStation/... 不带 options 时一律用内置表。
 'use strict';
+
+const rules = require('./station-rules');
 
 // 内置默认名（config.stations 缺省/非法时回退；改名不影响 id）
 const STATIONS = [
   { id: 'P1', name: '西苑顺丰快递（西苑五食堂）' },
   { id: 'P2', name: '西苑京东快递（西苑五食堂）' },
-  { id: 'P3', name: '西苑一栋南面快递中心' },
+  // D70：`xxx-x-xxxx`（含字母组，如 64-4-4033 / T-0-2051）默认归西苑一栋（P3）；后台可改/可加
+  { id: 'P3', name: '西苑一栋南面快递中心', codePatterns: ['*-*-****'] },
   { id: 'P4', name: '北部菜鸟驿站（北苑一食堂三楼）' },
   { id: 'P5', name: '西苑菜鸟驿站（西苑五食堂22栋）' },
   { id: 'P6', name: '南苑菜鸟驿站' },
@@ -82,7 +87,12 @@ function canonicalStationText(value) {
 }
 
 function cloneStations(list) {
-  return (Array.isArray(list) ? list : []).map((item) => ({ id: item.id, name: item.name }));
+  return (Array.isArray(list) ? list : []).map((item) => ({
+    id: item.id,
+    name: item.name,
+    aliases: Array.isArray(item.aliases) ? item.aliases.slice() : [],
+    codePatterns: Array.isArray(item.codePatterns) ? item.codePatterns.slice() : []
+  }));
 }
 
 function cleanStationName(value) {
@@ -96,39 +106,10 @@ function cleanStationName(value) {
   return name;
 }
 
-// config.stations → 每个 id 的第一条合法名称（未知 id/空名/超长名一律忽略，留待回退默认）
-function providedStationsOf(config) {
-  const source = config && Array.isArray(config.stations) ? config.stations : [];
-  const provided = {};
-  source.forEach((item) => {
-    if (!item || typeof item !== 'object') {
-      return;
-    }
-    if (STATION_IDS.indexOf(item.id) < 0 || provided[item.id]) {
-      return;
-    }
-    const name = cleanStationName(item.name);
-    if (name) {
-      provided[item.id] = name;
-    }
-  });
-  return provided;
-}
-
-// 旧配置缺 stations / 条目非法 / 重名 → 该条目回退内置默认名；输出固定 P1~P8 顺序、名称必唯一
+// 配置缺条目/条目非法/重名 → 该条目回退内置默认名；名称/别名/格式净化与顺序单源 = shared/station-rules
 function stationsFromConfig(config) {
-  const provided = providedStationsOf(config);
-  const used = {};
-  return STATIONS.map((item) => {
-    const custom = provided[item.id];
-    const reservedByDefault = STATIONS.some((other) => other.id !== item.id && other.name === custom);
-    if (custom && !reservedByDefault && !used[custom]) {
-      used[custom] = true;
-      return { id: item.id, name: custom };
-    }
-    used[item.name] = true;
-    return { id: item.id, name: item.name };
-  });
+  const source = config && Array.isArray(config.stations) ? config.stations : [];
+  return rules.normalizeStations(source, STATIONS);
 }
 
 function buildTable(stations) {
@@ -136,6 +117,7 @@ function buildTable(stations) {
   const byName = {};
   const byCanonical = {};
   const aliasesById = {};
+  const aliasEntries = [];
   stations.forEach((item) => {
     byId[item.id] = item.name;
     byName[item.name] = item.id;
@@ -145,21 +127,34 @@ function buildTable(stations) {
     }
     aliasesById[item.id] = [];
   });
-  STATION_ALIASES.forEach((item) => {
-    if (!aliasesById[item.id]) {
+  const pushAlias = (id, alias) => {
+    if (!aliasesById[id]) {
       return;
     }
-    const canonical = canonicalStationText(item.alias);
-    if (canonical && aliasesById[item.id].indexOf(canonical) < 0) {
-      aliasesById[item.id].push(canonical);
+    const canonical = canonicalStationText(alias);
+    if (!canonical || aliasesById[id].indexOf(canonical) >= 0) {
+      return;
     }
+    aliasesById[id].push(canonical);
+    aliasEntries.push({ id: id, canonical: canonical });
+  };
+  STATION_ALIASES.forEach((item) => pushAlias(item.id, item.alias));
+  stations.forEach((item) => {
+    (Array.isArray(item.aliases) ? item.aliases : []).forEach((alias) => pushAlias(item.id, alias));
   });
-  return { stations: stations, byId: byId, byName: byName, byCanonical: byCanonical, aliasesById: aliasesById };
+  return {
+    stations: stations,
+    byId: byId,
+    byName: byName,
+    byCanonical: byCanonical,
+    aliasesById: aliasesById,
+    aliasEntries: aliasEntries
+  };
 }
 
-const DEFAULT_TABLE = buildTable(cloneStations(STATIONS));
+const DEFAULT_TABLE = buildTable(stationsFromConfig(null));
 
-// options 形状统一 { stations: [{id,name}] }；不传/非法 → 内置默认表（旧调用零破坏）
+// options 形状统一 { stations: [{id,name,aliases?,codePatterns?}] }；不传/非法 → 内置默认表（旧调用零破坏）
 function resolveTable(options) {
   if (options && Array.isArray(options.stations)) {
     return buildTable(stationsFromConfig(options));
@@ -167,12 +162,33 @@ function resolveTable(options) {
   return DEFAULT_TABLE;
 }
 
+// 站点双判据开关（D70）：缺省两项均开启；调用方可传 {stationInfer:{fromImage,fromCode}} 关闭其一
+function stationInferOf(options) {
+  const source = options && options.stationInfer && typeof options.stationInfer === 'object'
+    ? options.stationInfer
+    : {};
+  return {
+    fromImage: source.fromImage !== false,
+    fromCode: source.fromCode !== false
+  };
+}
+
+// 取件码 → 站点（D70）：唯一命中才采信；未命中/多站点命中返回 null（不猜）
+function inferStationFromCode(code, options) {
+  const hit = rules.matchCodeStation(code, resolveTable(options).stations);
+  if (!hit) {
+    return null;
+  }
+  return { id: hit.id, name: hit.name, pattern: hit.pattern, by: 'code' };
+}
+
 function nameOfTable(table, stationId) {
   return table.byId[stationId] || '';
 }
 
+// 展示用列表（选择器/分组标题）：只暴露 id/name，别名与格式属于识别口径、不进页面数据
 function listStations(options) {
-  return cloneStations(resolveTable(options).stations);
+  return cloneStations(resolveTable(options).stations).map((item) => ({ id: item.id, name: item.name }));
 }
 
 function isStationId(stationId) {
@@ -211,12 +227,11 @@ function containedCanonicalIds(canonicalInput, table) {
 
 function aliasIdsIn(canonicalInput, table) {
   const ids = [];
-  STATION_ALIASES.forEach((item) => {
+  (table.aliasEntries || []).forEach((item) => {
     if (!table.byId[item.id]) {
       return;
     }
-    const key = canonicalStationText(item.alias);
-    if (key !== '' && canonicalInput.indexOf(key) !== -1 && ids.indexOf(item.id) < 0) {
+    if (item.canonical !== '' && canonicalInput.indexOf(item.canonical) !== -1 && ids.indexOf(item.id) < 0) {
       ids.push(item.id);
     }
   });
@@ -465,6 +480,12 @@ module.exports = {
   MATCH_KIND,
   stationsFromConfig,
   listStations,
+  stationInferOf,
+  inferStationFromCode,
+  validateStationConfig: rules.validateStationConfig,
+  stationErrorText: rules.stationErrorText,
+  STATION_ALIAS_MAX: rules.STATION_ALIAS_MAX,
+  STATION_PATTERN_MAX: rules.STATION_PATTERN_MAX,
   isStationId,
   stationNameOf,
   canonicalStationText,

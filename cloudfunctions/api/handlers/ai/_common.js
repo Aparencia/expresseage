@@ -28,7 +28,8 @@ const CARRIER_PREFIX_RE = /^(?:JT|SF|YT|JD)/;
 const DIGIT_RE = /\d/;
 // ⑦：日期/手机号/纯 5 位不是取件码（与客户端 isContextCode 同判；只用于「猜候选」，不否决用户/AI 明确字段）
 const DATE_LIKE_RE = /^(?:(?:19|20)\d{2}[-/.]\d{1,2}[-/.]\d{1,2}|(?:19\d{2}|20[0-2]\d)(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01]))$/;
-const PHONE_LIKE_RE = /^1[3-9]\d{9}$/;
+// D70：手机号/疑似手机号（11 位，或 OCR 掉 1 位的 10 位）不是取件码
+const PHONE_LIKE_RE = /^1[3-9]\d{8,10}$/;
 
 // identity.roles = auth 按 users.roles 归一出的业务角色集（双角色 [CUSTOMER,PARTNER]）；
 // 切换会话/手工注入 ctx 只有 role 时回落单元素集，保持单角色语义不变。
@@ -163,8 +164,8 @@ function ticketStatusOf(ticket, scope, nowMs) {
 // 服务端规则快照（入队 ruleResult）：输入只有去敏文本与尾号提示，故由服务端在同一文本上重跑规则归一。
 function buildRuleResult(maskedText, hintTrackingTail, ticketStatus, config) {
   const conflicts = [];
-  const station = normalizeStationFromText(maskedText, config);
-  if (station.conflict) {
+  const textStation = normalizeStationFromText(maskedText, config);
+  if (textStation.conflict) {
     conflicts.push(CONFLICT_STATION_MISMATCH);
   }
   const code = normalizeCodeFromText(maskedText);
@@ -172,6 +173,11 @@ function buildRuleResult(maskedText, hintTrackingTail, ticketStatus, config) {
     conflicts.push(CONFLICT_CODE_CONFLICT);
   }
   const pickupCode = code.value;
+  // D70：取件码格式反推站点为权威（唯一命中才采信；未命中才回退识图站点）
+  const codeStation = inferStationFromCodeOf(code.raw || pickupCode, config);
+  const station = codeStation
+    ? { id: codeStation.id, name: codeStation.name }
+    : { id: textStation.id, name: textStation.name };
   const trackingTail = normalizeTailFromText(maskedText) || hintTrackingTail || '';
   return {
     stationId: station.id,
@@ -183,6 +189,17 @@ function buildRuleResult(maskedText, hintTrackingTail, ticketStatus, config) {
     conflicts,
     ticketInvalid: !ticketStatus.valid
   };
+}
+
+// D70：config.stations 的取件码格式 → 站点（唯一命中才采信；与客户端 shared/stations 同源）
+function inferStationFromCodeOf(rawCode, config) {
+  if (typeof stations.inferStationFromCode !== 'function') {
+    return null;
+  }
+  const table = typeof stations.stationsFromConfig === 'function'
+    ? stations.stationsFromConfig(config)
+    : null;
+  return stations.inferStationFromCode(rawCode, { stations: table });
 }
 
 function normalizeStationFromText(text, config) {
@@ -215,20 +232,22 @@ function normalizeStationFromText(text, config) {
 function acceptCodeToken(token, linePrefix) {
   const value = token.replace(CODE_SEPARATOR_RE, '').toUpperCase();
   if (value.length < 4 || value.length > 12 || !DIGIT_RE.test(value)) {
-    return '';
+    return null;
   }
   if (CARRIER_PREFIX_RE.test(value)) {
-    return '';
+    return null;
   }
-  // ⑦：日期/手机号/纯 5 位不当取件码（同判客户端；D35 的 20731014 不构成现实日期，不受影响）
+  // ⑦/D70：日期/手机号（含 OCR 掉 1 位的 10 位）/纯 5 位不当取件码（同判客户端；D35 的 20731014 不构成现实日期）
   if (DATE_LIKE_RE.test(value) || PHONE_LIKE_RE.test(value) || /^\d{5}$/.test(value)) {
-    return '';
+    return null;
   }
   const segments = String(linePrefix || '').split(CODE_CONTEXT_RESET_RE);
   if (CODE_CONTEXT_SKIP_RE.test(segments[segments.length - 1])) {
-    return '';
+    return null;
   }
-  return value;
+  // D70：raw 保留分隔符（- / 破折号统一成 -）供取件码格式反推站点；value 仍是紧凑形态（校验/落库口径不变）
+  const raw = token.replace(/[—–_#]/g, '-').replace(/\s+/g, '').toUpperCase();
+  return { value: value, raw: raw };
 }
 
 function normalizeCodeFromText(text) {
@@ -240,15 +259,15 @@ function normalizeCodeFromText(text) {
   while (match) {
     const lineStart = cleaned.lastIndexOf('\n', match.index) + 1;
     const code = acceptCodeToken(match[0], cleaned.slice(lineStart, match.index));
-    if (code && accepted.indexOf(code) < 0) {
+    if (code && !accepted.some((row) => row.value === code.value)) {
       accepted.push(code);
     }
     match = CODE_TOKEN_RE.exec(cleaned);
   }
   if (accepted.length === 1) {
-    return { value: accepted[0], conflict: false };
+    return { value: accepted[0].value, raw: accepted[0].raw, conflict: false };
   }
-  return { value: '', conflict: accepted.length > 1 };
+  return { value: '', raw: '', conflict: accepted.length > 1 };
 }
 
 function normalizeTailFromText(text) {

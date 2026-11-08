@@ -303,6 +303,8 @@ Page({
     });
     recognizeFlow.identifyFiles(list, {
       stations: config.stations,
+      // D70：站点双判据开关（缺省开；后台关闭 fromCode 时不做取件码反推）
+      stationOption: { stations: config.stations, stationInfer: config.stationInfer },
       onProgress: (progress) => {
         if (this.recognizeToken !== token) return;
         this.setData({ recognizeText: recognizeModel.progressTextOf(progress) });

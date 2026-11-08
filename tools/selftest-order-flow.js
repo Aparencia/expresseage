@@ -46,7 +46,7 @@ const {
   createOrderDb, orderApiOf, pageLayerHits
 } = caseLib;
 
-const EXPECTED_ASSERTIONS = 277; // 256 + 21：R 组 P0-1 多图 imageIndex 重映射 9 + S 组 P1-10 取消识别 8 + Q13~Q16 日历日回算 4 // 242 + 14：D47 预约客户端 Q 组（选项/载荷/摘要/指纹/文案/接线） // 210 + 32（P0-1：P1~P30 + P26b 流水线化 31 + P 组样本非空 1）
+const EXPECTED_ASSERTIONS = 281; // 256 + 21：R 组 P0-1 多图 imageIndex 重映射 9 + S 组 P1-10 取消识别 8 + Q13~Q16 日历日回算 4；+4：D70 手填码补站点/开关
 
 function register(h) {
   // ---------------------------------------------------------------- A 站点选择器（P1~P8）
@@ -475,6 +475,21 @@ function register(h) {
       ['MANUAL', 'DEEPSEEK', 'RULE'], 'H16 三件同批进 payload 时包裹级 recognitionSource 互不干扰');
     t.eq(model.withManualEdit(aiItem, { serviceCode: enums.SERVICE_CODES[1] }).source, 'DEEPSEEK',
       'H17 手改非识别字段（服务类型）不降级来源');
+    // D70：手填取件码命中站点格式 → 只补空站点（用户手选站点优先）
+    const blankItem = model.makeItem({ stationId: '', pickupCode: '' }, { serviceCode: serviceCode });
+    const stationConfig = stations.stationsFromConfig(null);
+    const codeOption = { stations: stationConfig, stationInfer: { fromImage: true, fromCode: true } };
+    const edited = model.withManualEdit(blankItem, { pickupCode: '64-4-4033' }, codeOption);
+    t.eq([edited.stationId, edited.stationName], ['P3', stations.stationNameOf('P3')],
+      'D70 手填 64-4-4033 → 自动补站点 P3（来源仍 MANUAL）');
+    t.eq(model.withManualEdit(blankItem, { pickupCode: '64-4-4033' }).stationId, '',
+      'D70 旧调用（不传站点上下文）不猜站点（零破坏）');
+    const offEdited = model.withManualEdit(blankItem, { pickupCode: '64-4-4033' },
+      { stations: stationConfig, stationInfer: { fromImage: true, fromCode: false } });
+    t.eq(offEdited.stationId, '', 'D70 后台关闭 fromCode 后手填码不补站点（开关有牙）');
+    t.eq(model.stationContext({ stations: stationConfig, stationInfer: { fromCode: false } }),
+      { stations: stationConfig, stationInfer: { fromCode: false } },
+      'D70 页面 stationContext 原样携带站点表与开关（供识别/手填/AI 采纳共用）');
     const shell = await model.applyAiFallbacks(
       [model.makeItem({}, { serviceCode: serviceCode })], ctx, stub);
     t.eq([shell.called, shell.items[0].stationId !== ''], [1, true],

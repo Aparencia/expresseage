@@ -29,6 +29,15 @@ function stationOptions(config) {
   return recognize.station.listStations({ stations: config && config.stations });
 }
 
+// D70：站点双判据上下文（站点表含别名/取件码格式 + 开关），识别/手填/AI 采纳共用同一份
+function stationContext(config) {
+  const source = config || {};
+  return {
+    stations: Array.isArray(source.stations) ? source.stations : undefined,
+    stationInfer: source.stationInfer || undefined
+  };
+}
+
 function stationName(id) {
   return recognize.station.stationName(id);
 }
@@ -190,7 +199,7 @@ function needsAiFallback(item) {
 }
 
 /** 用户手改识别字段 → 来源降为 MANUAL（优先级 MANUAL > AI 来源 > RULE），并清掉失真的置信度 */
-function withManualEdit(item, patch) {
+function withManualEdit(item, patch, options) {
   const next = Object.assign({}, item, patch || {});
   const keys = Object.keys(patch || {});
   let touched = false;
@@ -201,6 +210,10 @@ function withManualEdit(item, patch) {
     next.source = enums.RECOGNITION_SOURCE.MANUAL;
     next.confidence = '';
     next.aiApplied = false;
+  }
+  // D70：手填取件码命中站点格式且当前站点为空/不一致时，按码补站点（用户手选站点优先，仅空位才填）
+  if (next.pickupCode && !next.stationId && options) {
+    recognize.syncStationFromCode(next, options);
   }
   return next;
 }
@@ -251,7 +264,7 @@ async function fallbackOne(item, index, ctx, aiCall) {
     suggestion = { error: true };
   }
   const state = aiStateOf(suggestion);
-  const merged = recognize.applyAiSuggestion(item, suggestion);
+  const merged = recognize.applyAiSuggestion(item, suggestion, ctx.stationOption);
   const nextItem = merged.parcel;
   // D29：LOW + AI 来源不写字段，只挂可采纳建议（suggested 计数），failed 只计真失败（TIMEOUT/CLOSED）
   nextItem.aiSuggestion = merged.suggestion || null;
@@ -299,13 +312,13 @@ async function applyAiFallbacks(items, context, aiCall) {
  * 采纳后清建议条与逐件提示；重算行内校验由 recognize.adoptAiSuggestion 统一完成。
  * @returns {{item:object, changed:string[], rejected:string[], adopted:boolean}}
  */
-function adoptSuggestion(item) {
+function adoptSuggestion(item, options) {
   const value = Object.assign({}, item || {});
   const snapshot = value.aiSuggestion || null;
   if (!snapshot) {
     return { item: revalidateItem(value), changed: [], rejected: [], adopted: false };
   }
-  const result = recognize.adoptAiSuggestion(value, snapshot);
+  const result = recognize.adoptAiSuggestion(value, snapshot, options);
   const next = result.parcel;
   next.aiSuggestion = null;
   next.aiHint = '';
@@ -422,6 +435,7 @@ module.exports = {
   MAX_PARCELS,
   MAX_IMAGES,
   stationOptions,
+  stationContext,
   stationName,
   serviceOptions,
   makeItem,

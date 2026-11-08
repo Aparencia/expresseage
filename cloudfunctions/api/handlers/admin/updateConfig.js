@@ -44,7 +44,7 @@ const NUMBER_RULES = {
 const TEXT_KEYS = ['privacyVersion'];
 // D43/D51：时刻文本键（HH:MM，UTC+8；D51 默认 22:00）；旧的「小时数」键作废，不进白名单
 const CLOCK_KEYS = ['autoCompleteAt'];
-const OBJECT_KEYS = ['zoneLabels', 'serviceCatalog', 'announcement', 'maintenance', 'stations'];
+const OBJECT_KEYS = ['zoneLabels', 'serviceCatalog', 'announcement', 'maintenance', 'stations', 'stationInfer'];
 const WHITELIST = Object.keys(NUMBER_RULES).concat(TEXT_KEYS, CLOCK_KEYS, OBJECT_KEYS);
 
 function normalizeText(key, value) {
@@ -169,36 +169,26 @@ function normalizeMaintenance(value) {
   return { enabled: value.enabled === true, text: text };
 }
 
-// v1.1（D32）：站点名称整表提交——固定 8 个 P1~P8、名称非空去空白 1~20 字、名称唯一（不增删站点 id）
+// v1.1（D32）+ D70/D71：站点整表提交——固定 8 个 P1~P8（顺序=提交顺序）、名称非空 1~20 字且唯一、
+// 别名 0~5 个（1~20 字、全局唯一）、取件码格式 0~3 个（`*`=1 位以上字母数字、全局唯一）。
+// 严格校验单源 = shared/stations.validateStationConfig；通过后按同一净化函数返回规范形状。
 function normalizeStations(value) {
-  if (!Array.isArray(value) || value.length !== sharedStations.STATION_COUNT) {
-    throw errors.validation('stations', '站点名称需覆盖全部 8 个站点');
+  const error = sharedStations.validateStationConfig(value, sharedStations.STATIONS);
+  if (error) {
+    throw errors.validation('stations', sharedStations.stationErrorText(error));
   }
-  const byId = {};
-  value.forEach((item) => {
-    if (!item || typeof item !== 'object' || sharedStations.STATION_IDS.indexOf(item.id) < 0) {
-      throw errors.validation('stations', '站点编码不正确（只允许 P1~P8）');
-    }
-    if (byId[item.id] !== undefined) {
-      throw errors.validation('stations', '站点编码重复');
-    }
-    const name = typeof item.name === 'string' ? item.name.trim() : '';
-    if (name.length < sharedStations.STATION_NAME_MIN || name.length > sharedStations.STATION_NAME_MAX) {
-      throw errors.validation('stations', '站点名称需为 1~20 字');
-    }
-    byId[item.id] = name;
-  });
-  const seen = {};
-  sharedStations.STATION_IDS.forEach((id) => {
-    if (byId[id] === undefined) {
-      throw errors.validation('stations', '站点名称需覆盖全部 8 个站点');
-    }
-    if (seen[byId[id]]) {
-      throw errors.validation('stations', '站点名称不能重复');
-    }
-    seen[byId[id]] = true;
-  });
-  return sharedStations.STATION_IDS.map((id) => ({ id: id, name: byId[id] }));
+  return sharedStations.stationsFromConfig({ stations: value });
+}
+
+// D70：站点双判据开关（fromImage=识图站点 / fromCode=取件码反推站点）；缺省/非布尔按开处理
+function normalizeStationInfer(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw errors.validation('stationInfer', '站点识别开关格式不正确');
+  }
+  if (typeof value.fromImage !== 'boolean' || typeof value.fromCode !== 'boolean') {
+    throw errors.validation('stationInfer', '站点识别开关只接受开启/关闭');
+  }
+  return { fromImage: value.fromImage, fromCode: value.fromCode };
 }
 
 function normalizePatch(input) {
@@ -227,6 +217,8 @@ function normalizePatch(input) {
       patch[key] = normalizeMaintenance(value);
     } else if (key === 'stations') {
       patch[key] = normalizeStations(value);
+    } else if (key === 'stationInfer') {
+      patch[key] = normalizeStationInfer(value);
     }
   });
   if (Object.keys(patch).length === 0) {

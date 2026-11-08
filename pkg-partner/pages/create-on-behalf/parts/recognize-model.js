@@ -99,7 +99,7 @@ function aiFallbackIndexesOf(items) {
  * 某件失败只降级该件，不污染其它件的建议/失败关联。
  * @returns {{items:object[],changed:number,failed:number,low:number,error:number,failureId:string}}
  */
-function applyAiFallbacksOf(items, calls) {
+function applyAiFallbacksOf(items, calls, stationOption) {
   const list = listOf(items).map(function clone(item) { return Object.assign({}, item || {}); });
   const out = { items: list, changed: 0, failed: 0, low: 0, error: 0, failureId: '' };
   listOf(calls).forEach(function each(call) {
@@ -108,7 +108,7 @@ function applyAiFallbacksOf(items, calls) {
     const value = Object.assign({}, (call && call.value) || {});
     // 兼容服务端旧 DTO 字段名：缺 failureId 时用 failureNo 兜底（建单仍按件关联失败记录）
     if (!textOf(value.failureId) && textOf(value.failureNo)) value.failureId = textOf(value.failureNo);
-    const merged = recognize.applyAiSuggestion(list[index], value);
+    const merged = recognize.applyAiSuggestion(list[index], value, stationOption);
     list[index] = merged.parcel;
     if (merged.changed.length > 0) out.changed += 1;
     if (merged.suggestion) out.low += 1;

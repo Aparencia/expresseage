@@ -29,7 +29,10 @@ const DEFAULT_CONFIG = {
   // 服务类型目录：只有类型名与说明（CONTRACT §6）
   serviceCatalog: enums.SERVICES.map((item) => ({ code: item.code, name: item.name, desc: item.desc })),
   // v1.1（D32）：站点正式名（固定 P1~P8；名称非空、1~20 字、唯一；后台可改，进公开子集）
+  // D70/D71（2026-11-08）：站点可配别名（仅识别归一）与取件码格式（`*`=1 位以上字母数字），数组顺序即展示顺序
   stations: stations.stationsFromConfig(null),
+  // D70：站点双判据开关——从截图文本识别站点 / 从取件码格式反推站点（默认都开；后台可关）
+  stationInfer: { fromImage: true, fromCode: true },
   announcement: { enabled: false, title: '', text: '', updatedAt: 0 },
   maintenance: { enabled: false, text: '' },
   orderTimeoutMinutes: 120,
@@ -87,6 +90,7 @@ const CONFIG_LIMITS = {
 const PUBLIC_CONFIG_KEYS = [
   'zoneLabels',
   'stations',
+  'stationInfer',
   'serviceCatalog',
   'announcement',
   'maintenance',
@@ -133,8 +137,10 @@ function pickPublicConfig(config) {
   PUBLIC_CONFIG_KEYS.forEach((key) => {
     out[key] = source[key] === undefined ? DEFAULT_CONFIG[key] : source[key];
   });
-  // stations 按配置净化（缺省/非法条目回退内置默认；输出固定 8 条、名称唯一），避免把脏配置下发端侧
+  // stations 按配置净化（缺省/非法条目回退内置默认；输出固定 8 条、名称/别名唯一、顺序=配置顺序），避免把脏配置下发端侧
   out.stations = stations.stationsFromConfig(source);
+  // D70：双判据开关按布尔净化（缺省=开；显式 false 才关），避免脏配置把能力意外关掉
+  out.stationInfer = stations.stationInferOf({ stationInfer: source.stationInfer });
   out.subscribeEnabled = !!(source.subscribeTemplates && source.subscribeTemplates.enabled);
   return out;
 }

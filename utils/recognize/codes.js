@@ -20,6 +20,8 @@ const CODE_COMPACT_MAX = 12;
 // 服务端 PICKUP_CODE_SEPARATOR：空格/连字符/下划线/井号在判紧凑码前整体去掉
 const CODE_COMPACT_SEPARATOR = /[\s\-_#]/g;
 const CODE_ALNUM = /^[0-9A-Za-z]+$/;
+// D70（2026-11-08 真实截图）：手机号/疑似手机号（11 位，或 OCR 掉 1 位的 10 位）不是取件码
+const PHONE_LIKE_RE = /^1[3-9]\d{8,10}$/;
 const LOCKER_MAX = 10;
 
 // 码上下文：只认明确的取件码类标签（⑦：裸「取件/提货」会把「取件时间/取件人」行误当码上下文）
@@ -75,7 +77,8 @@ function isDateLike(value) {
 }
 
 function isPhoneLike(value) {
-  return /^1[3-9]\d{9}$/.test(value);
+  const code = compactCode(value);
+  return PHONE_LIKE_RE.test(code);
 }
 
 /** 取件码展示形态闸：4~40 字符；必须含数字；不含竖排汉字；不像日期/手机号 */
@@ -105,6 +108,21 @@ function isFillableCode(value) {
 /** 可自动填的码：展示闸 + 服务端紧凑闸都过（识别层不自动填「认出但不像」的候选） */
 function isAutoFillCode(value) {
   return isPlausibleCode(value) && isCompactCode(value);
+}
+
+/**
+ * AI 建议专用码闸（D70，真实截图取证）：比「可提交」更严——手机号（含 OCR 掉 1 位的 10 位）
+ * 与日期不得被模型当取件码写进自动预填；用户手填仍走 isFillableCode（不静默否决用户输入）。
+ */
+function isAiFillableCode(value) {
+  if (!isFillableCode(value)) {
+    return false;
+  }
+  const compact = compactCode(value);
+  if (isPhoneLike(compact) || isDateLike(compact) || isDateLike(normalizeCode(value))) {
+    return false;
+  }
+  return true;
 }
 
 /** 码上下文里的可回填候选：过服务端紧凑闸；纯 5 位仍当运单尾号不当码（与全局启发式一致） */
@@ -319,6 +337,8 @@ module.exports = {
   isCompactCode,
   isFillableCode,
   isAutoFillCode,
+  isAiFillableCode,
+  isPhoneLike,
   normalizeLocker,
   normalizeTail,
   isPlausibleCode,

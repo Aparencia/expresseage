@@ -78,6 +78,7 @@ Page({
     const snapshot = store.snapshot();
     const readonly = !!(snapshot.viewContext && snapshot.viewContext.viewMode === 'READONLY');
     this._reorderNo = reorder.orderNoOf(options);
+    this._stationOption = model.stationContext(snapshot.config);
     this.setData({
       readonly: readonly,
       stations: model.stationOptions(snapshot.config),
@@ -100,6 +101,7 @@ Page({
     return bootstrap.load().then((state) => {
       const services = state.services || [];
       const delivery = deliveryModel.createState(state.profile, (state.config || {}).zoneLabels);
+      this._stationOption = model.stationContext(state.config);
       this.setData({
         partnerPublic: state.partnerPublic,
         stations: model.stationOptions(state.config),
@@ -292,7 +294,7 @@ Page({
   updateItem(index, patch) {
     if (!(index >= 0)) return;
     const items = this.data.items.slice();
-    items[index] = model.revalidateItem(model.withManualEdit(items[index], patch));
+    items[index] = model.revalidateItem(model.withManualEdit(items[index], patch, this._stationOption));
     this.setData({ items: items, submission: model.clearSubmission() });
   },
 
@@ -317,7 +319,7 @@ Page({
       ? e.currentTarget.dataset.index : -1);
     if (!(index >= 0)) return;
     const items = this.data.items.slice();
-    const result = model.adoptSuggestion(items[index]);
+    const result = model.adoptSuggestion(items[index], this._stationOption);
     items[index] = result.item;
     this.setData({ items: items, submission: model.clearSubmission() });
     if (result.adopted) wx.showToast({ title: model.LOW_SUGGESTION_COPY.adopted, icon: 'none' });

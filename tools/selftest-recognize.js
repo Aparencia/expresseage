@@ -29,7 +29,7 @@ const recognizeModel = require(path.join(ROOT, 'pkg-partner/pages/create-on-beha
 const viewModel = require(path.join(ROOT, 'pkg-partner/pages/create-on-behalf/parts/view-model.js'));
 const pickerState = require(path.join(ROOT, 'components/image-picker/state.js'));
 
-const EXPECTED_ASSERTIONS = 295; // 250 + 13：⑦ 噪声语料；+13：D44 代客下单多图/识别预填/上传并发；+19：D57 本机取件码粘贴解析
+const EXPECTED_ASSERTIONS = 305; // 250 + 13：⑦ 噪声语料；+13：D44 代客下单多图/识别预填/上传并发；+19：D57 本机取件码粘贴解析；+10：D70 真实截图取证
 
 // v3 真机语料（sha256 指纹钉：改动语料必须同步改这里的期望与解析断言）
 const CORPUS_ONE = [
@@ -278,7 +278,8 @@ function sectionParse(h) {
     const tailOnly = recognize.parseOcrText('运单尾号 34567');
     t.check(tailOnly.found === true && tailOnly.items.length === 1, '§4.3 无码有尾号产出一件');
     t.eq(tailOnly.items[0].codeStatus, 'NEED_CODE', '§4.3 无码件 codeStatus=NEED_CODE');
-    const unknownStation = recognize.parseOcrText('取件码：8-2-3021');
+    // D70：`xxx-x-xxxx` 形态由取件码反推站点，故「站点留空」反例改用不成格式的码（A123）
+    const unknownStation = recognize.parseOcrText('取件码：A123');
     t.eq(unknownStation.station, null, '§4.3 未识别到站点时 station=null');
     t.eq(unknownStation.items[0].stationId, '', '§4.3 未识别站点时 stationId 留空');
     t.eq(unknownStation.items[0].confidence, 'LOW', '§4.3 缺站点置信度 LOW');
@@ -830,6 +831,65 @@ function sectionD44(h) {
       && uploadSrc.indexOf('boundedReadBytes') >= 0,
     'D44-12 api/upload：删死导出 cancelTicket + size 三级解析（聊天图不再 size=0 被服务端误拒）');
     t.notEmpty(merged.items, 'D44 样本非空（防止空集全绿）');
+  });
+
+  // ---------------------------------------------------------------- D70 真实截图取证（站点双判据 + 手机号不当码）
+  h.section('D70 真实截图取证（取件码格式反推站点 / 手机号不当码 / 码形态保留）', (t) => {
+    const S01 = [
+      '待取件，已放入代收点',
+      '取件出示快递单号后五位 31601',
+      '菜鸟驿站 | 湖工大西苑一栋南面菜鸟驿站',
+      '快递员：许李 1855213376',
+      '待取件 2026-11-07 07:16:57'
+    ].join('\n');
+    const s01 = recognize.parseOcrText(S01);
+    t.eq([s01.items[0].stationId, s01.items[0].pickupCode, s01.items[0].trackingTail, s01.items[0].codeStatus],
+      ['P3', '', '31601', 'NEED_CODE'],
+      'D70 只有尾号的截图：站点识图 P3、不把快递员手机号当码、尾号 31601');
+    const S03 = [
+      '我的包裹',
+      '取件码 64-4-4033',
+      '取件码 111-2-4035',
+      '取件码 207-2-4028',
+      '湖工大西苑一栋南面菜鸟驿站'
+    ].join('\n');
+    const s03 = recognize.parseOcrText(S03);
+    t.eq(s03.items.map((item) => item.pickupCode), ['64-4-4033', '111-2-4035', '207-2-4028'],
+      'D70 一图三码：保留连字符展示形态（不吞成 6444033）');
+    t.eq(s03.items.map((item) => item.stationId), ['P3', 'P3', 'P3'],
+      'D70 三个 xxx-x-xxxx 码都反推 P3（即使文末只有一个驿站名）');
+    const S05 = [
+      '待取件，已放入代收点',
+      '取件出示快递单号后五位 04898',
+      '中通快递 79155941204898',
+      '菜鸟-湖工大西苑一栋南面菜鸟驿站'
+    ].join('\n');
+    const s05 = recognize.parseOcrText(S05);
+    t.eq([s05.items[0].stationId, s05.items[0].pickupCode, s05.items[0].trackingTail], ['P3', '', '04898'],
+      'D70 单号后五位 04898 只进尾号，不产取件码（NEED_CODE 可提交）');
+    const S09 = ['待取件', '工业大学西苑店', '取件码 T-0-2051', '送至 湖南工业大学河西校区西苑'].join('\n');
+    const s09 = recognize.parseOcrText(S09);
+    t.eq([s09.items[0].stationId, s09.items[0].pickupCode, s09.items[0].codeStatus], ['P3', 'T-0-2051', 'OK'],
+      'D70 站点名不在配置里时由取件码格式反推 P3（T-0-2051 含字母组）');
+    const s09Off = recognize.parseOcrText(S09, { stationInfer: { fromCode: false } });
+    t.eq(s09Off.items[0].stationId, '', 'D70 后台关闭「取件码反推」后不再按码补站点（开关有牙）');
+    const aiPhone = recognize.applyAiSuggestion(recognize.makeEmptyParcel(), {
+      stationId: 'P2', pickupCode: '1855213376', trackingTail: '31601',
+      confidence: 'HIGH', source: 'DEEPSEEK', recognized: true
+    });
+    t.eq([aiPhone.parcel.pickupCode, aiPhone.parcel.stationId], ['', 'P2'],
+      'D70 AI 把手机号当取件码 → 不写入（站点仍用 AI 合法值）');
+    const aiCode = recognize.applyAiSuggestion(recognize.makeEmptyParcel(), {
+      stationId: 'P2', pickupCode: '64-4-4033', confidence: 'HIGH', source: 'DEEPSEEK', recognized: true
+    });
+    t.eq([aiCode.parcel.pickupCode, aiCode.parcel.stationId], ['64-4-4033', 'P3'],
+      'D70 AI 码命中格式 → 站点以码为准（覆盖模型给的 P2）');
+    const adopted = recognize.adoptAiSuggestion(recognize.makeEmptyParcel(), {
+      pickupCode: '18552133176', confidence: 'LOW', source: 'DEEPSEEK'
+    });
+    t.check(adopted.rejected.indexOf('pickupCode') >= 0, 'D70 采纳建议同样拒绝手机号（rejected 留痕）');
+    t.eq([codes.isAiFillableCode('18552133176'), codes.isAiFillableCode('64-4-4033')], [false, true],
+      'D70 AI 码闸：手机号 false / 连字符取件码 true');
   });
 }
 

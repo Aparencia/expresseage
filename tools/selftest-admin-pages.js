@@ -12,11 +12,11 @@ const client = require(path.join(ROOT, 'api/client.js'));
 const adminApi = require(path.join(ROOT, 'api/modules/admin.js'));
 const errorCopy = require(path.join(ROOT, 'shared/error-copy.js'));
 const enums = require(path.join(ROOT, 'shared/enums.js'));
-const sharedStations = require(path.join(ROOT, 'shared/stations.js'));
 
 const copy = require(path.join(ROOT, 'pkg-admin/common/copy.js'));
 const C = require(path.join(ROOT, 'pkg-admin/common/constants.js'));
 const adminClockCases = require(path.join(__dirname, 'lib', 'admin-config-clock-cases.js'));
+const adminStationCases = require(path.join(__dirname, 'lib', 'admin-config-station-cases.js'));
 const adminInviteCases = require(path.join(__dirname, 'lib', 'admin-invite-cases.js'));
 const adminOrdersCases = require(path.join(__dirname, 'lib', 'admin-orders-cases.js'));
 const adminCustomerUiCases = require(path.join(__dirname, 'lib', 'admin-customer-ui-cases.js'));
@@ -34,7 +34,7 @@ const accountSwitchVm = require(path.join(ROOT, 'pkg-admin/pages/account-switch/
 const reviewVm = require(path.join(ROOT, 'pkg-admin/pages/recognition-review/parts/view-model.js'));
 const messagesVm = require(path.join(ROOT, 'pkg-admin/pages/messages/parts/view-model.js'));
 
-const EXPECTED_ASSERTIONS = 146 + 22 + 3 + 11 + 5 + 2 + adminOrdersCases.CLIENT_ASSERTIONS + adminInviteCases.CLIENT_ASSERTIONS + adminCustomerUiCases.CLIENT_ASSERTIONS; // 146+…=C 组 8 条移入 tools/lib/admin-invite-cases.js（含原 8 + D59 新增 15，合计 CLIENT_ASSERTIONS）；+5：批26-D58 后台转派留痕（P 组，D58 真实 DTO 驱动后 3→5）；+11：D43 自动完成时间用例表；+6：订单行/消息行「称呼（编号）」；+6：D68 顾客状态界面（用例表拆出 admin-customer-ui-cases.js）；余同批 16 前：v1.1/D32 站点卡 16 + 反馈④ 6 + D41 目录 3
+const EXPECTED_ASSERTIONS = 146 - 16 + adminStationCases.CLIENT_ASSERTIONS + 22 + 3 + 11 + 5 + 2 + adminOrdersCases.CLIENT_ASSERTIONS + adminInviteCases.CLIENT_ASSERTIONS + adminCustomerUiCases.CLIENT_ASSERTIONS; // 146-16+…：v1.1/D32 站点卡 16 条随 D70/D71 新增断言移入 tools/lib/admin-config-station-cases.js（合计 CLIENT_ASSERTIONS）；146+…=C 组 8 条移入 tools/lib/admin-invite-cases.js（含原 8 + D59 新增 15，合计 CLIENT_ASSERTIONS）；+5：批26-D58 后台转派留痕（P 组，D58 真实 DTO 驱动后 3→5）；+11：D43 自动完成时间用例表；+6：订单行/消息行「称呼（编号）」；+6：D68 顾客状态界面（用例表拆出 admin-customer-ui-cases.js）；余同批 16 前：反馈④ 6 + D41 目录 3
 
 const ADMIN_PAGES = ['overview', 'invite-codes', 'customers', 'customer-detail', 'partners', 'orders', 'order-detail', 'config', 'account-switch', 'messages', 'recognition-review'];
 const STATUS_LITERALS = ['SUBMITTED', 'ACCEPTED', 'PICKED', 'DELIVERED', 'COMPLETED', 'CANCELLED', 'EXCEPTION'];
@@ -496,61 +496,8 @@ function register(h) {
       '维护开启/关闭分别二次确认且后果句不同（§7.5）');
   });
 
-  // ------------------------------------------------------------------ H2. 站点名称编辑卡（v1.1/D32）
-  h.section('H2 §3.8/§7.4 D32 站点名称编辑卡：8 行固定 id/1~20 字唯一/变更清单/上行 payload', (t) => {
-    const sample = sampleConfig();
-    sample.stations = sharedStations.stationsFromConfig(null).map((item) => ({
-      id: item.id,
-      name: item.id === 'P6' ? '南苑东门驿站' : item.name
-    }));
-    const form = configVm.buildForm(sample);
-    t.eq(form.stations.length, 8, '配置表单含站点名称 8 行（固定 P1~P8）');
-    t.eq(form.stations.map((item) => item.id), ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8'],
-      '站点行 id 顺序固定（不自建/不增删站点）');
-    t.eq(form.stations[5].name, '南苑东门驿站', '站点名称按配置回填（改过的名字优先）');
-    t.eq(form.stations[5].defaultName, sharedStations.stationNameOf('P6'),
-      '站点行带内置默认名占位（清空/非法时提示可用默认）');
-    const defaultForm = configVm.buildForm({});
-    t.eq(defaultForm.stations.map((item) => item.name),
-      sharedStations.listStations().map((item) => item.name), '配置缺 stations 时表单回填内置默认名（旧配置兼容）');
-    const builtPayload = configVm.buildPayload({
-      zones: [], stations: [{ id: 'P1', name: ' 西苑顺丰快递东门 ' }], services: [],
-      announcement: { enabled: false, title: '', text: '' }, maintenance: { enabled: false, text: '' },
-      orderTimeoutMinutes: '120', autoCompleteAt: '23:50', screenshotRetentionDays: '7',
-      recognitionFailureRetentionDays: '30', ttlMinutes: '30', avatarMaxKb: '200'
-    });
-    t.eq([builtPayload.stations[0].name, builtPayload.stations[0].defaultName],
-      ['西苑顺丰快递东门', undefined], '上行 payload 名称去空白且不带展示字段 defaultName');
-    const basePayload = configVm.buildPayload(configVm.emptyForm());
-    t.eq(configVm.validatePayload(basePayload), '', '站点默认名基线合法（合法基线先绿）');
-    t.check(configVm.validatePayload(Object.assign({}, basePayload, {
-      stations: basePayload.stations.map((item, index) => (index === 0 ? { id: item.id, name: '  ' } : item))
-    })).indexOf('1~20') >= 0, '站点名称为空 → 提示 1~20 字');
-    t.check(configVm.validatePayload(Object.assign({}, basePayload, {
-      stations: basePayload.stations.map((item, index) => (index === 0 ? { id: item.id, name: '站'.repeat(21) } : item))
-    })).indexOf('1~20') >= 0, '站点名称超 20 字 → 提示 1~20 字');
-    t.check(configVm.validatePayload(Object.assign({}, basePayload, {
-      stations: basePayload.stations.map((item, index) => (
-        index === 1 ? { id: item.id, name: basePayload.stations[0].name } : item))
-    })).indexOf('不能重复') >= 0, '两个站点同名 → 提示不能重复');
-    t.check(configVm.validatePayload(Object.assign({}, basePayload, {
-      stations: basePayload.stations.slice(0, 7)
-    })).indexOf('8 个') >= 0, '站点行数不足 8 → 提示需覆盖 8 个站点');
-    t.check(configVm.collectChanges(basePayload, Object.assign({}, basePayload, {
-      stations: basePayload.stations.map((item, index) => (
-        index === 5 ? { id: item.id, name: '南苑东门驿站' } : item))
-    })).indexOf('站点名称') >= 0, '改站点名进入保存前变更清单（二次确认用中文字段名）');
-    t.eq(configVm.collectChanges(basePayload, basePayload).indexOf('站点名称'), -1,
-      '站点未变更时变更清单不含站点名称');
-    const wxml = textOf('pkg-admin/pages/config/index.wxml');
-    const pageJs = textOf('pkg-admin/pages/config/index.js');
-    t.check(wxml.indexOf('站点名称') >= 0 && wxml.indexOf('bindinput="onStationInput"') >= 0
-      && wxml.indexOf('maxlength="{{limits.stationNameMax}}"') >= 0,
-    '配置页渲染站点名称卡片：8 行输入 + 长度上限来自常量');
-    t.check(pageJs.indexOf('onStationInput') >= 0 && pageJs.indexOf('form.stations') >= 0,
-      '配置页事件转发 onStationInput 更新 form.stations（页面零业务判据，名称校验在纯件）');
-    t.eq(C.LIMITS.stationNameMax, 20, '后台常量站点名称上限 20（与 CONTRACT D32 一致）');
-  });
+  // ------------------------------------------------------------------ H2. 站点配置卡（v1.1/D32 + D70/D71；用例表拆出 tools/lib/admin-config-station-cases.js）
+  adminStationCases.register(h, { configVm: configVm, sampleConfig: sampleConfig });
 
   // ------------------------------------------------------------------ I. 账号切换
   h.section('I §3.9/§6 账号切换：候选/测试账号/额度/搜索入参/确认文案/危险确认', (t) => {
