@@ -347,9 +347,10 @@ function register(h) {
     t.check(/onRetrySubmit\(\)\s*\{\s*this\.onSubmit\(\)/.test(page),
       'G14 结果块「重试」复用同一提交流程（不再现生成键）');
     const pageXml = textOf(ORDER_CREATE_WXML);
-    t.check(/onAppointType/.test(pageXml) && /onLatestDate/.test(pageXml) && /onLatestTime/.test(pageXml)
-      && /onLatestPreset/.test(pageXml) && /onNoteInput/.test(pageXml),
-    'G15 Step3 整单预约/备注控件（D47：尽快/最晚时间 + 日期/时间/预设；备注每单一份）');
+    t.check(/onLatestDate/.test(pageXml) && /onLatestTime/.test(pageXml)
+      && /onLatestPreset/.test(pageXml) && /onNoteInput/.test(pageXml)
+      && /最晚时间/.test(pageXml) && !/onAppointType/.test(pageXml),
+    'G15 Step3 整单预约/备注控件（2026-11-08：只保留最晚时间 + 日期/时间/预设；备注每单一份）');
     t.check(/item\.appoint/.test(pageXml) === false && /item\.note/.test(pageXml) === false
       && /data\.appoint/.test(flowSource),
     'G16 无逐件预约/备注残留（提交读整单 data.appoint/note）');
@@ -766,9 +767,9 @@ function register(h) {
       !== appointUtil.fingerprintOf(appointUtil.pickPreset(latest, '18:00', nowMs)),
     true, 'Q8 最晚时间变化进提交指纹（换幂等键，避免旧键吞新内容）');
     const pageXml = textOf(ORDER_CREATE_WXML);
-    t.check(/value="LATEST"/.test(pageXml) && /最晚时间/.test(pageXml)
-      && /onLatestPreset/.test(pageXml) && /30 ?分钟/.test(pageXml),
-    'Q9 Step3 渲染「尽快/最晚时间」单选 + 预设/时间入口 + 30 分钟粒度说明（SLOT 不再出现为可选项）');
+    t.check(/最晚时间/.test(pageXml) && /onLatestPreset/.test(pageXml) && /30 ?分钟/.test(pageXml)
+      && !/value="ASAP"/.test(pageXml) && !/onAppointType/.test(pageXml),
+    'Q9 Step3 只渲染「最晚时间」+ 预设/时间入口 + 30 分钟粒度说明（不再有「尽快」选项）');
     t.check(pageXml.indexOf('value="SLOT"') < 0 && pageXml.indexOf('预约时段</label>') < 0,
       'Q10 新单不可选 SLOT（WXML 无 SLOT 单选；历史单详情仍展示）');
     const submitSrc = textOf('pkg-customer/pages/order-create/parts/submit.js');

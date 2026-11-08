@@ -1588,3 +1588,22 @@ check.ps1：全部通过（4 步，退出码 0）
 - **真机项（agent 不代勾）**：QA §AK1~AK8（行改版/送别人/浮层/提醒隐藏/伪 tab/长期码/两张截图/站点别名裁决）。
 - **风险/未决**：`五食堂21栋楼下` 内置别名仍映射 P3（截图实际为五食堂21栋兔喜），待用户裁决指向 P5/其它或删除；长期码在名额内仍可能长期有效（受一次性+批次作废+名额约束）。
 - **提交**：`de4c3fb`（代码/判据/文档；check.ps1 4 步退出码 0 的真实输出见 §32 上方）+ 本节证据回填提交。
+
+## 33. 批 32 补件：预约只保留最晚时间（D76，2026-11-08）
+
+- **交付**：顾客下单 Step3 去掉「尽快 / 最晚时间」二选一，改为**只选最晚时间**（日期 + 30 分钟粒度时间 + 快捷 12:00/18:00/22:00；最小提前 30 分钟、最远 7 天）；进入 Step3 预选最近合法时刻；历史 ASAP 预填在进 Step4 前强制转 LATEST；代客下单页本批不动。
+- **代码**：`pkg-customer/pages/order-create/{index.js,index.wxml,parts/step3.js}`（初始 `createState(now,'LATEST')`、移除 radio 与 `setAppointType`、`goNext` 强制 LATEST）。
+- **门禁真实输出**：
+```text
+$ powershell -File check.ps1
+PASS  check.js 代码/配置门禁（39 条）
+PASS  check-docs.js 设计文档门禁（--batch 1）
+PASS  zero-money-scan.js 零金额扫描（源码+页面+文档）
+PASS  selftest.js 全部断言 suite（EXPECTED_ASSERTIONS 闸）
+selftest：运行 38 套；失败 0 套；SKIP 0 套（无）；完整性 0 项；非聚合辅助文件 4 件（已声明）
+check.ps1：全部通过（4 步，退出码 0）
+```
+- **判据**：`selftest-order-flow` G15/Q9 改「只保留最晚时间 + 日期/时间/预设 + 30 分钟说明，无 ASAP/onAppointType」；其余套件不变。
+- **文档**：CONTRACT §13 D76、UX_CUSTOMER §3.7/§5、QA §AK9、CHANGELOG。
+- **真机项（agent 不代勾）**：QA §AK9（页面无「尽快」、默认预选、非法挡下一步、提交后详情文案）。
+- **提交**：待提交（本节随收口提交回填）。

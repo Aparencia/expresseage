@@ -27,14 +27,7 @@ function setService(page, e) {
   });
 }
 
-// 预约（D47）：切换尽快/最晚时间、选日期/时间/预设后都清空提交幂等键（内容变了要换键）
-function setAppointType(page, e) {
-  page.setData({
-    appoint: appointUtil.setType(page.data.appoint, e.detail.value, Date.now()),
-    submission: model.clearSubmission()
-  });
-}
-
+// 预约（2026-11-08 用户指令）：新单只保留「最晚时间」，不再提供「尽快」切换
 function setLatestDate(page, e) {
   page.setData({
     appoint: appointUtil.setDate(page.data.appoint, e.detail.value, Date.now()),
@@ -118,9 +111,15 @@ function goNext(page) {
     return;
   }
   const appointNow = Date.now();
-  const appointCheck = appointUtil.validateOf(page.data.appoint, appointNow);
+  // 2026-11-08：新单只允许「最晚时间」——历史预填（如再次下单带 ASAP）在进入 Step4 前强制转 LATEST
+  let appoint = page.data.appoint || {};
+  if (appointUtil.normalizeType(appoint.type) !== 'LATEST') {
+    appoint = appointUtil.setType(appoint, 'LATEST', appointNow);
+    page.setData({ appoint: appoint });
+  }
+  const appointCheck = appointUtil.validateOf(appoint, appointNow);
   if (!appointCheck.ok) {
-    page.setData({ appoint: appointUtil.refreshState(page.data.appoint, appointNow) });
+    page.setData({ appoint: appointUtil.refreshState(appoint, appointNow) });
     wx.showToast({ title: appointCheck.reason, icon: 'none' });
     return;
   }
@@ -143,7 +142,6 @@ module.exports = {
   NOTE_MAX,
   syncNoteError,
   setService,
-  setAppointType,
   setLatestDate,
   setLatestTime,
   setLatestPreset,

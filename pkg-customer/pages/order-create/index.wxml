@@ -168,34 +168,32 @@
 
     <view class="card">
       <view class="section-title">预约与备注（整单一份）</view>
-      <radio-group bindchange="onAppointType">
-        <label class="radio-row"><radio value="ASAP" checked="{{appoint.type === 'ASAP'}}" />尽快</label>
-        <label class="radio-row"><radio value="LATEST" checked="{{appoint.type === 'LATEST'}}" />最晚时间</label>
-      </radio-group>
-      <!-- D47：最晚时间只表达期望——不改变兼职接单时限、到点未送达不会自动取消（30 分钟粒度/≤7 天/最小提前 30 分钟） -->
-      <block wx:if="{{appoint.type === 'LATEST'}}">
-        <view class="small muted appoint-note">{{appoint.note}}</view>
-        <picker mode="date" start="{{appoint.minDate}}" end="{{appoint.maxDate}}" value="{{appoint.date}}" bindchange="onLatestDate">
-          <view class="form-row">
-            <view class="form-label">日期</view>
-            <view class="form-input">{{appoint.dateText || '请选择日期（7 天内）'}}</view>
-          </view>
-        </picker>
+      <!-- 2026-11-08 用户指令：只保留「最晚时间」（不再提供「尽快」）；到点未送达不自动取消 -->
+      <view class="form-row">
+        <view class="form-label">最晚时间</view>
+        <view class="form-input">{{appoint.latestText || '请选择日期与时间'}}</view>
+      </view>
+      <view class="small muted appoint-note">{{appoint.note}}</view>
+      <picker mode="date" start="{{appoint.minDate}}" end="{{appoint.maxDate}}" value="{{appoint.date}}" bindchange="onLatestDate">
         <view class="form-row">
-          <view class="form-label">快捷时间</view>
-          <view class="preset-row">
-            <view wx:for="{{appoint.presets}}" wx:key="*this" class="preset-chip" data-time="{{item}}" bindtap="onLatestPreset">{{item}}</view>
-          </view>
+          <view class="form-label">日期</view>
+          <view class="form-input">{{appoint.dateText || '请选择日期（7 天内）'}}</view>
         </view>
-        <picker range="{{appoint.times}}" range-key="label" value="{{appoint.timeIndex}}" bindchange="onLatestTime">
-          <view class="form-row">
-            <view class="form-label">时间</view>
-            <view class="form-input">{{appoint.timeIndex >= 0 ? appoint.times[appoint.timeIndex].label : '请选择时间'}}</view>
-          </view>
-        </picker>
-        <view class="small muted">时间按 30 分钟一档；最近可选 30 分钟后，最远 7 天内。</view>
-        <view class="small error-text" wx:if="{{appoint.error}}">{{appoint.error}}</view>
-      </block>
+      </picker>
+      <view class="form-row">
+        <view class="form-label">快捷时间</view>
+        <view class="preset-row">
+          <view wx:for="{{appoint.presets}}" wx:key="*this" class="preset-chip" data-time="{{item}}" bindtap="onLatestPreset">{{item}}</view>
+        </view>
+      </view>
+      <picker range="{{appoint.times}}" range-key="label" value="{{appoint.timeIndex}}" bindchange="onLatestTime">
+        <view class="form-row">
+          <view class="form-label">时间</view>
+          <view class="form-input">{{appoint.timeIndex >= 0 ? appoint.times[appoint.timeIndex].label : '请选择时间'}}</view>
+        </view>
+      </picker>
+      <view class="small muted">时间按 30 分钟一档；最近可选 30 分钟后，最远 7 天内。</view>
+      <view class="small error-text" wx:if="{{appoint.error}}">{{appoint.error}}</view>
       <view class="form-row">
         <view class="form-label">备注</view>
         <input class="form-input" value="{{note}}" placeholder="给兼职的话（≤200 字）" maxlength="200" bindinput="onNoteInput" />

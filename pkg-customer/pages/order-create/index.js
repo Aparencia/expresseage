@@ -50,8 +50,8 @@ Page({
     services: [],
     serviceCode: '',
     serviceIndex: 0,
-    // 预约（D47）：尽快 / 最晚时间（30 分钟粒度、≤7 天、最小提前 30 分钟）；纯件在 shared/appoint
-    appoint: appointUtil.createState(0),
+    // 预约（2026-11-08 用户指令）：只保留「最晚时间」（30 分钟粒度、≤7 天、最小提前 30 分钟）
+    appoint: appointUtil.createState(0, 'LATEST'),
     note: '',
     // A 批 P1-9：「其他代办」未填备注的行内红字（判据在 parts/precheck 纯件）
     noteError: '',
@@ -82,7 +82,7 @@ Page({
     this.setData({
       readonly: readonly,
       stations: model.stationOptions(snapshot.config),
-      appoint: appointUtil.createState(Date.now()),
+      appoint: appointUtil.createState(Date.now(), 'LATEST'),
       profileReady: !!(snapshot.customer && snapshot.customer.profileComplete),
       bindingReady: !!snapshot.binding
     });
@@ -328,10 +328,6 @@ Page({
   // ── Step3：服务/预约/备注 + 配送地址（整单一份）────────────────────────────
   onServiceChange(e) {
     step3.setService(this, e);
-  },
-
-  onAppointType(e) {
-    step3.setAppointType(this, e);
   },
 
   onLatestDate(e) {
