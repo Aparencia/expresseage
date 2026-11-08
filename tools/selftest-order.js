@@ -42,7 +42,7 @@ const {
   lowercaseCollectionKeyHitsInText, listJs, scanLowercaseKeys, serial
 } = caseLib;
 
-const EXPECTED_ASSERTIONS = 153; // 140 + 13：D47 预约 LATEST 服务端归一/拒绝样例/落库/DTO/合并同值 // 137 + 3：D40 10 张截图合法 / 11 张截图拒绝 / 合并追加将超 10 张不并入
+const EXPECTED_ASSERTIONS = 156; // 153 + 3：D77 附加服务合法建单落库/DTO 名称、枚举外、重复 // 140 + 13：D47 预约 LATEST 服务端归一/拒绝样例/落库/DTO/合并同值 // 137 + 3：D40 10 张截图合法 / 11 张截图拒绝 / 合并追加将超 10 张不并入
 
 function register(h) {
   const asyncSection = (title, fn) => h.section(title, (t) => serial(() => {
@@ -485,6 +485,18 @@ function register(h) {
     t.eq([latestOrder.ok, latestOrder.data.order.appoint.type, latestOrder.data.order.appoint.latestAt],
       [true, 'LATEST', new Date(Date.parse('2026-10-22T12:00:00+08:00')).toISOString()],
       'F10 预约最晚时间成功且 DTO 回 ISO 时间（D47；SLOT 时段已不可新选）');
+    // D77 附加服务：合法建单落库 + DTO 回名称；枚举外/重复一律 VALIDATION(data.field=addons)
+    const addonOrder = await cApi.call('order.create', createPayload({ addons: ['UPSTAIRS', 'TRASH'] }),
+      { clientRequestId: crid('10a') });
+    t.eq([addonOrder.ok, addonOrder.ok && addonOrder.data.order.addons.map((item) => item.code),
+      addonOrder.ok && addonOrder.data.order.addons.map((item) => item.name)],
+    [true, ['UPSTAIRS', 'TRASH'], ['上楼', '丢垃圾']], 'F10b 附加服务建单并在 DTO 回名称（D77）');
+    await expectField(t, cApi.call('order.create', createPayload({ addons: ['BOGUS'] }),
+      { clientRequestId: crid('10b') }), 'VALIDATION_FAILED', 'addons',
+    'F10c 附加服务枚举外 → VALIDATION(data.field=addons)');
+    await expectField(t, cApi.call('order.create', createPayload({ addons: ['UPSTAIRS', 'UPSTAIRS'] }),
+      { clientRequestId: crid('10c') }), 'VALIDATION_FAILED', 'addons',
+    'F10d 附加服务重复 → VALIDATION(data.field=addons)');
     await expectField(t, cApi.call('order.create', createPayload({ serviceCode: 'NOT_A_SERVICE' }),
       { clientRequestId: crid('12') }), 'VALIDATION_FAILED', 'serviceCode', 'F11 服务类型不在 SERVICE_CODES → VALIDATION(data.field=serviceCode)');
     const disabledWorld = seedWorld({ db: createTestDb(), partner: {

@@ -155,6 +155,10 @@
         <view class="form-label">服务类型</view>
         <view class="form-input">{{order.serviceName || '—'}}</view>
       </view>
+      <view class="form-row" wx:if="{{order.addonText}}">
+        <view class="form-label">附加服务</view>
+        <view class="form-input">{{order.addonText}}</view>
+      </view>
       <view class="form-row">
         <view class="form-label">预约</view>
         <view class="form-input {{order.appointOverdue ? 'appoint-overdue' : ''}}">{{order.appointText || '尽快'}}</view>

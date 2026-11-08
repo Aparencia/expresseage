@@ -43,6 +43,12 @@ function orderFieldsEqual(order, input) {
   if (textOf(service.code) !== input.service.code) {
     return false;
   }
+  // D77：附加服务是订单级字段——不同附加服务不合并（绝不静默丢掉新选择）
+  const addonsA = Array.isArray(order.addons) ? order.addons : [];
+  const addonsB = Array.isArray(input.addons) ? input.addons : [];
+  if (addonsA.length !== addonsB.length || addonsA.some((code, i) => code !== addonsB[i])) {
+    return false;
+  }
   const appoint = order.appoint || {};
   if (textOf(appoint.type) !== input.appoint.type) {
     return false;

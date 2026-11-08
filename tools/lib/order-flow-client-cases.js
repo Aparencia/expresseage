@@ -184,7 +184,7 @@ async function clientChecks(t, deps) {
       'F19 clientRequestId 进调用包络（服务端幂等键，重试不重复建单）');
     const body = env.data || {};
     t.eq(Object.keys(body).sort(),
-      ['appoint', 'images', 'manualEntry', 'note', 'parcels', 'serviceCode', 'tickets'].sort(),
+      ['addons', 'appoint', 'images', 'manualEntry', 'note', 'parcels', 'serviceCode', 'tickets'].sort(),
       'F20 请求体顶层键恰为 CONTRACT §5.3 v1.0 白名单');
     t.eq(body.parcels.length, 2, 'F21 多件在同一请求内提交（多图/多件合成一张订单）');
     t.check(body.images.length === body.tickets.length && body.manualEntry === false,

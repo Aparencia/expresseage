@@ -219,7 +219,7 @@ function register(h) {
     t.check(payloadOf([stationItem({})]).delivery === undefined,
       'D22 本人宿舍不传 delivery（服务端按资料默认，避免制造第二真相）');
     t.eq(Object.keys(withDelivery).sort(),
-      ['appoint', 'delivery', 'images', 'manualEntry', 'note', 'parcels', 'serviceCode', 'tickets'].sort(),
+      ['addons', 'appoint', 'delivery', 'images', 'manualEntry', 'note', 'parcels', 'serviceCode', 'tickets'].sort(),
       'D23 请求顶层键恰在 CONTRACT §5.3 v1.0 白名单内（未知键服务端 VALIDATION_FAILED）');
     t.eq(Object.keys(failBatch.parcels[0]).sort(), ['failureId', 'imageIndex', 'parcel'].sort(),
       'D24 包裹项键 = {parcel, imageIndex, failureId?}（视图态字段已剥掉）');
@@ -354,8 +354,8 @@ function register(h) {
     t.check(/item\.appoint/.test(pageXml) === false && /item\.note/.test(pageXml) === false
       && /data\.appoint/.test(flowSource),
     'G16 无逐件预约/备注残留（提交读整单 data.appoint/note）');
-    t.check(/services\[serviceIndex\]\.desc/.test(pageXml),
-      'G17 服务类型渲染名称+说明（D6：说明来自 model.serviceOptions 的 desc）');
+    t.check(/onAddonTap/.test(pageXml) && /addonOptions/.test(pageXml) && /附加服务/.test(pageXml),
+      'G17 附加服务复选渲染（D77：服务类型固定标准代取，说明只写做什么）');
     t.check(/wx\.previewImage/.test(page) && /onPreviewImage/.test(pageXml),
       'G18 「点击查看截图」入口存在且走本地预览（仍零 wx.cloud.*）');
     t.check(/onToggleOcrText/.test(page) && /查看识别原文/.test(pageXml),

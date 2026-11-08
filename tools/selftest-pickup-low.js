@@ -247,15 +247,15 @@ function register(h) {
   h.section('C. 顾客下单 Step4 摘要：服务行补说明行（复用目录 desc 单源）', (t) => {
     const wxml = textOf(FILES.createWxml);
     const wxss = textOf(FILES.createWxss);
-    t.check(/服务：\{\{services\[serviceIndex\]\.name/.test(wxml),
-      'C1 Step4 确认订单保留服务行（服务名称 + 预约文案同处一行）');
-    const inStep4 = /wx:if="\{\{step === 4\}\}"[\s\S]*?\{\{services\[serviceIndex\]\.desc\}\}/.test(wxml);
+    t.check(/服务：标准代取/.test(wxml) && /addonText/.test(wxml),
+      'C1 Step4 确认订单保留服务行（固定标准代取 + 附加服务摘要 + 预约文案同处一行）');
+    const inStep4 = /wx:if="\{\{step === 4\}\}"[\s\S]*?addonHintText/.test(wxml);
     t.check(inStep4,
-      'C2 Step4 摘要区出现说明行 {{services[serviceIndex].desc}}（第 3 步选择器的层级说明同时出现在确认页）');
-    t.eq(wxml.split('\n').filter(function hasDescLine(line) {
-      return line.indexOf('services[serviceIndex].desc') >= 0;
+      'C2 Step4 摘要区出现附加服务说明（addonHintText，与第 3 步同源）');
+    t.eq(wxml.split('\n').filter(function hasAddonLine(line) {
+      return line.indexOf('addonHintText') >= 0;
     }).length, 2,
-    'C3 说明渲染点恰好 2 处（Step3 选择器 + Step4 摘要，不多不少；复用同一数据字段不新增判定）');
+    'C3 附加服务说明渲染点恰好 2 处（Step3 复选区 + Step4 摘要，不多不少）');
     t.check(/\.service-desc\s*\{/.test(wxss),
       'C4 说明行样式落点 .service-desc 存在（与 Step3 说明同一视觉层级）');
     t.eq([wxml.indexOf('不上楼'), wxml.indexOf('需要上楼')], [-1, -1],

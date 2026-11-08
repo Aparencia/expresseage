@@ -222,6 +222,15 @@ function deliveryEquals(left, right) {
     && textOf(a.phoneTail) === textOf(b.phoneTail);
 }
 
+// 附加服务（D77）：订单级 0~3 项，枚举/去重/上限由 shared/validate 单源判定；缺省=[]。
+function normalizeAddons(input) {
+  const check = validate.validateAddons(input && input.addons);
+  if (!check.ok) {
+    throw errors.validation('addons', '附加服务不在可选范围内，请刷新后重试');
+  }
+  return check.value;
+}
+
 module.exports = {
   MAX_PARCELS,
   MAX_IMAGES,
@@ -232,5 +241,6 @@ module.exports = {
   normalizeManualEntry,
   storedImagesOf,
   normalizeDelivery,
-  deliveryEquals
+  deliveryEquals,
+  normalizeAddons
 };

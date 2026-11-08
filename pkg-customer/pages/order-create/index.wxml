@@ -155,15 +155,19 @@
 
   <block wx:if="{{step === 3}}">
     <view class="card">
-      <view class="section-title">服务类型（整单一份）</view>
-      <picker range="{{services}}" range-key="name" value="{{serviceIndex}}" bindchange="onServiceChange">
-        <view class="form-row">
-          <view class="form-label">服务类型</view>
-          <view class="form-input">{{services[serviceIndex].name || '请选择服务类型'}}</view>
-        </view>
-      </picker>
-      <!-- 只显示名称与说明（D6/§3.7：零金额语义） -->
-      <view class="small muted service-desc" wx:if="{{services[serviceIndex].desc}}">{{services[serviceIndex].desc}}</view>
+      <view class="section-title">附加服务（整单一份，可选）</view>
+      <!-- 2026-11-08（D77）：服务类型固定为「标准代取」，顾客只选附加服务；说明只写做什么（零金额口径不变） -->
+      <view class="row addon-row">
+        <view
+          wx:for="{{addonOptions}}"
+          wx:key="code"
+          class="chip addon-chip {{item.checked ? 'chip-active' : ''}}"
+          data-code="{{item.code}}"
+          bindtap="onAddonTap"
+        >{{item.name}}</view>
+      </view>
+      <view class="small muted addon-hint" wx:if="{{addonHintText}}">{{addonHintText}}</view>
+      <view class="small muted addon-hint" wx:else>不选则不附加服务；具体做法可在备注里与兼职沟通。</view>
     </view>
 
     <view class="card">
@@ -266,9 +270,8 @@
         <view wx:for="{{items}}" wx:key="key" class="summary-row" wx:if="{{item.checked}}">
           <view class="muted">{{item.stationName}} · {{item.pickupCode || '待查码'}}{{item.trackingTail ? ' · 尾号 ' + item.trackingTail : ''}}</view>
         </view>
-        <view class="muted small">服务：{{services[serviceIndex].name || '未选'}} · 预约：{{appoint.summary}}</view>
-        <!-- D41：确认页补服务层级说明（说明取 config.serviceCatalog 的 desc 单源，不在此硬编码层级文案） -->
-        <view class="muted small service-desc" wx:if="{{services[serviceIndex].desc}}">{{services[serviceIndex].desc}}</view>
+        <view class="muted small">服务：标准代取{{addonText ? ' · 附加：' + addonText : ''}} · 预约：{{appoint.summary}}</view>
+        <view class="muted small" wx:if="{{addonHintText}}">{{addonHintText}}</view>
         <view class="muted small" wx:if="{{note}}">备注：{{note}}</view>
         <view class="muted small">送达：{{deliveryText}}</view>
         <view class="small link-text" wx:if="{{files.length}}" bindtap="onPreviewImage">点击查看截图（{{files.length}} 张）</view>

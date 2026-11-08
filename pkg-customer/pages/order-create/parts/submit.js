@@ -31,6 +31,7 @@ function fingerprintOf(page) {
     images: page.data.images,
     tickets: page.data.tickets,
     serviceCode: page.data.serviceCode,
+    addons: (page.data.addons || []).join(','),
     appointType: page.data.appoint.type,
     latestAt: appointUtil.payloadOf(page.data.appoint).latestAt || '',
     note: page.data.note,
@@ -46,6 +47,7 @@ function buildPayloadOf(page) {
     images: page.data.images,
     tickets: page.data.tickets,
     serviceCode: page.data.serviceCode,
+    addons: page.data.addons,
     appoint: appointUtil.payloadOf(page.data.appoint, Date.now()),
     note: page.data.note,
     delivery: deliveryModel.toPayload(page.data.delivery)

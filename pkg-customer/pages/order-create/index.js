@@ -15,6 +15,7 @@ const filesFlow = require('./parts/files-flow');
 const step3 = require('./parts/step3');
 const submitFlow = require('./parts/submit');
 const appointUtil = require('../../../shared/appoint');
+const enums = require('../../../shared/enums');
 const share = require('../../../utils/share/handlers');
 
 const HOME_PAGE = '/pages/customer/home/index';
@@ -48,8 +49,15 @@ Page({
     lowCopy: model.LOW_SUGGESTION_COPY,
     stations: [],
     services: [],
-    serviceCode: '',
+    // 2026-11-08（D77）：服务类型不再由顾客选择，底座固定「标准代取」；附加服务 0~3 项
+    serviceCode: 'PICKUP_STD',
     serviceIndex: 0,
+    addons: [],
+    addonOptions: enums.ADDONS.map(function option(item) {
+      return { code: item.code, name: item.name, desc: item.desc, checked: false };
+    }),
+    addonText: '',
+    addonHintText: '',
     // 预约（2026-11-08 用户指令）：只保留「最晚时间」（30 分钟粒度、≤7 天、最小提前 30 分钟）
     appoint: appointUtil.createState(0, 'LATEST'),
     note: '',
@@ -106,7 +114,7 @@ Page({
         partnerPublic: state.partnerPublic,
         stations: model.stationOptions(state.config),
         services: services,
-        serviceCode: services.length > 0 ? services[0].code : '',
+        serviceCode: 'PICKUP_STD',
         serviceIndex: 0,
         delivery: delivery,
         deliveryText: deliveryModel.displayText(delivery),
@@ -126,15 +134,8 @@ Page({
   },
 
   _applyReorderPrefill(prefill) {
-    const code = reorder.serviceCodeOf(prefill, this.data.services);
-    const patch = { reorderPrefill: prefill };
-    if (code) {
-      let index = 0;
-      this.data.services.forEach(function each(service, i) { if (service.code === code) index = i; });
-      patch.serviceCode = code;
-      patch.serviceIndex = index;
-    }
-    this.setData(patch);
+    // 再次下单只预填站点/备注等；服务类型固定标准代取 + 附加服务由顾客重新选择（不继承历史服务类型）
+    this.setData({ reorderPrefill: prefill });
   },
 
   // ── Step1：截图（多图 0~10，逐图识别合并；失败也有手填支路）─────────────────
@@ -325,9 +326,9 @@ Page({
     if (result.adopted) wx.showToast({ title: model.LOW_SUGGESTION_COPY.adopted, icon: 'none' });
   },
 
-  // ── Step3：服务/预约/备注 + 配送地址（整单一份）────────────────────────────
-  onServiceChange(e) {
-    step3.setService(this, e);
+  // ── Step3：附加服务/预约/备注 + 配送地址（整单一份）────────────────────────
+  onAddonTap(e) {
+    step3.toggleAddon(this, e.currentTarget.dataset.code);
   },
 
   onLatestDate(e) {

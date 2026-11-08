@@ -127,6 +127,31 @@ function validateSubInviteValidity(value) {
   return succeed('validity', { value });
 }
 
+// 附加服务（D77，2026-11-08）：订单级数组；缺省=[]；每项 ∈ ADDON_CODES，去重前严格判重、上限 ADDON_MAX。
+function validateAddons(value) {
+  if (value === undefined || value === null || value === '') {
+    return succeed('addons', { value: [] });
+  }
+  if (!Array.isArray(value)) {
+    return fail('addons', 'FORMAT');
+  }
+  if (value.length > enums.ADDONS.length) {
+    return fail('addons', 'TOO_MANY');
+  }
+  const out = [];
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value[i];
+    if (typeof code !== 'string' || enums.ADDON_CODES.indexOf(code) < 0) {
+      return fail('addons', 'NOT_ALLOWED');
+    }
+    if (out.indexOf(code) >= 0) {
+      return fail('addons', 'DUPLICATE');
+    }
+    out.push(code);
+  }
+  return succeed('addons', { value: out });
+}
+
 // 房间级文本：去掉首尾空白后按"字符数"（码点）计，避免 emoji 被算成两个
 function textLength(text) {
   return typeof text === 'string' ? Array.from(text).length : 0;
@@ -415,6 +440,7 @@ module.exports = {
   validateDeveloperNo,
   validateInvitationCode,
   validateSubInviteValidity,
+  validateAddons,
   validateCancelReason,
   validateCancelNote,
   validateReleaseReason,

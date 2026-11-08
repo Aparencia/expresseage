@@ -22,6 +22,7 @@ const {
   buildImageDto,
   buildImageDtos,
   deliveryOf,
+  buildAddonDtos,
   needCodeOf,
   failureHintOf
 } = require('./_dto-fields');
@@ -279,6 +280,7 @@ function buildOrderFields(order, parts) {
     failureHint: failureHintOf(order),
     source: textOf(order.source),
     service: buildServiceDto(order.service),
+    addons: buildAddonDtos(order.addons),
     appoint: buildAppointDto(order.appoint),
     parcels,
     parcel: parcels[0] || buildParcelDto(null),

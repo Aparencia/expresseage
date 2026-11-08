@@ -268,6 +268,10 @@ function pageExtras(order, config, nowMs) {
     image: imagesView(order),
     serviceText: service.serviceText,
     serviceDesc: service.serviceDesc,
+    // 附加服务（D77）：服务端 DTO addons[{code,name,desc}]，历史单无该字段 → []
+    addonText: (Array.isArray(order.addons) ? order.addons : [])
+      .map(function name(item) { return item && typeof item === 'object' ? textOf(item.name) : ''; })
+      .filter(Boolean).join('、'),
     appointText: appoint.appointText,
     appointOverdue: appoint.appointOverdue,
     appointOverdueText: appoint.appointOverdueText

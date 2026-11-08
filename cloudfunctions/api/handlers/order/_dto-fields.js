@@ -151,6 +151,18 @@ function maskDeliveryDto(delivery) {
   return out;
 }
 
+// 附加服务（D77）：只回 code/name/desc（白名单）；历史单无 addons → []
+function buildAddonDtos(addons) {
+  const list = Array.isArray(addons) ? addons : [];
+  return list.map(function map(code) {
+    return {
+      code: code,
+      name: textOf(enums.ADDON_NAME[code]),
+      desc: textOf(enums.ADDON_DESC[code])
+    };
+  }).filter(function known(item) { return item.name !== ''; });
+}
+
 module.exports = {
   textOf,
   numberOrZero,
@@ -162,6 +174,7 @@ module.exports = {
   buildImageDtos,
   buildDeliveryDto,
   deliveryOf,
+  buildAddonDtos,
   needCodeOf,
   failureHintOf,
   maskDeliveryDto

@@ -89,6 +89,10 @@
         <view class="muted">服务类型</view>
         <view class="flex-1 right">{{serviceText}}</view>
       </view>
+      <view class="row between line" wx:if="{{addonText}}">
+        <view class="muted">附加服务</view>
+        <view class="flex-1 right">{{addonText}}</view>
+      </view>
       <!-- D41/D49：服务层级说明取公开配置 serviceCatalog 的 desc 单源；历史停用类型无说明，只显示「（已停用）」标记 -->
       <view class="small muted service-desc" wx:if="{{serviceDesc}}">{{serviceDesc}}</view>
       <view class="row between line">

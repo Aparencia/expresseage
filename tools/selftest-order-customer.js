@@ -62,7 +62,7 @@ const orderScope = orderScopeReq.value || {};
 const caseLib = require('./lib/order-customer-cases');
 const pickupCases = require('./lib/order-customer-pickup-cases'); // 批25-C/D61：Q 组件级取件顾客可见性
 // 实跑读数；批24-D64/D66：P 组扩 37（H 组 4 条并入并删除，+14 一级入口/文案断言）；批25-C/D61：+Q 组；批26-D58：+R 组 7
-const EXPECTED_ASSERTIONS = 335 + pickupCases.ASSERTIONS + 9 + caseLib.PREVIEW_ASSERTIONS; // +9：D58 转派 R 组（R1~R6 共 7 + 批27 审查 P2-5 补 R3b/R3c 2）
+const EXPECTED_ASSERTIONS = 335 + pickupCases.ASSERTIONS + 9 + 1 + caseLib.PREVIEW_ASSERTIONS; // +9：D58 转派 R 组（R1~R6 共 7 + 批27 审查 P2-5 补 R3b/R3c 2）；+1：D77 附加服务详情文案
 const {
   STATUS, PAGES, ISO, NOW, DOC_MS, textOf, actionsFor, dto, event, orderDoc,
   FAKE_DTO_CTX
@@ -729,8 +729,9 @@ function register(h) {
     t.check(createWxml.indexOf('标准代取送到寝室门口（上楼）') >= 0
       && createWxml.indexOf('需要楼下自取请选『送至楼下』') >= 0,
     'K30 D41 地址卡送达层级说明（标准代取=楼上；楼下自取需选送至楼下）');
-    t.check(createWxml.indexOf('range-key="name"') >= 0 && createWxml.indexOf('services[serviceIndex].name') >= 0,
-      'K31 D41 服务类型选择器文案由 config.services 下发（order-create 不写死服务名）');
+    t.check(createWxml.indexOf('onServiceChange') < 0 && createWxml.indexOf('onAddonTap') >= 0
+      && createWxml.indexOf('附加服务') >= 0,
+    'K31 D77 服务类型选择器移除，改附加服务复选（标准代取为固定底座）');
 
     t.notEmpty([homeWxml, ordersWxss, tabBar], 'K27 K 组静态样本非空');
   });
@@ -826,6 +827,10 @@ function register(h) {
     t.eq([extras.appointText, extras.appointOverdue, extras.appointOverdueText.length > 0],
       ['最晚 10月22日 12:00', true, true],
       'M7 详情页派生字段 pageExtras 带 appointText/appointOverdue/appointOverdueText');
+    const addonExtras = parcelView.pageExtras(Object.assign({}, base, {
+      addons: [{ code: 'UPSTAIRS', name: '上楼' }, { code: 'TRASH', name: '丢垃圾' }]
+    }), {}, ms + 60000);
+    t.eq(addonExtras.addonText, '上楼、丢垃圾', 'M7b 附加服务 DTO → 详情「上楼、丢垃圾」（D77）');
     const detailWxml = textOf('pkg-customer/pages/order-detail/index.wxml');
     t.check(/appointOverdue/.test(detailWxml) && /appointText/.test(detailWxml),
       'M8 详情 WXML 渲染预约文案 + 到点标红（无自动取消按钮/无状态改写接线）');

@@ -187,3 +187,8 @@
   color: var(--v4-brand);
   font-size: 26rpx;
 }
+
+/* 2026-11-08（D77）：附加服务复选 chip */
+.addon-row { flex-wrap: wrap; }
+.addon-chip { margin: 0 12rpx 12rpx 0; }
+.addon-hint { margin-top: 8rpx; }

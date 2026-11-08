@@ -146,6 +146,7 @@ function submissionFingerprint(items, context) {
     images.join('\u0003'),
     tickets.join('\u0003'),
     String(ctx.serviceCode || ''),
+    String(ctx.addons || ''),
     String(ctx.appointType || 'ASAP'),
     String(ctx.latestAt || ''),
     String(ctx.note || ''),
@@ -418,6 +419,7 @@ function buildPayload(options) {
     images: images,
     tickets: tickets,
     serviceCode: opt.serviceCode || '',
+    addons: Array.isArray(opt.addons) ? opt.addons.slice() : [],
     appoint: opt.appoint || { type: 'ASAP' },
     note: String(opt.note || ''),
     manualEntry: images.length === 0

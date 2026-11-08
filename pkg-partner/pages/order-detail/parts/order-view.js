@@ -140,6 +140,13 @@ function parcelSectionOf(item, readonly) {
 }
 
 // 详情页派生字段：wxml 只用这些稳定键，不直读服务端嵌套结构
+// 附加服务（D77）：DTO addons[{code,name,desc}] → 「上楼、拆快递」；历史单无字段 → ''
+function addonTextOf(order) {
+  const list = Array.isArray(order && order.addons) ? order.addons : [];
+  return list.map((entry) => (entry && typeof entry === 'object' ? textOf(entry.name) : ''))
+    .filter(Boolean).join('、');
+}
+
 function buildDetail(order, nowMs, options) {
   const opts = options || {};
   const item = order || {};
@@ -160,13 +167,13 @@ function buildDetail(order, nowMs, options) {
     imageCleaned: section.image.cleaned === true,
     imageCount: section.images.length || (section.image.fileId || section.image.hasImage ? 1 : 0),
     serviceName: serviceNameOfOrder(item),
+    addonText: addonTextOf(item),
     parcels: section.parcels,
     parcelCountText: section.parcels.length + ' 件',
     pickedCount: section.picked.pickedCount,
     allPicked: section.picked.allPicked,
     pickedSummaryText: section.picked.pickedCountText,
-    stationSummaryText: section.parcels.map((row) => row.stationText)
-      .filter((row, i, all) => all.indexOf(row) === i).join(' / '),
+    stationSummaryText: section.parcels.map((row) => row.stationText).filter((row, i, all) => all.indexOf(row) === i).join(' / '),
     needCode: section.parcels.some((row) => row.needCode),
     failureHint: section.parcels.some((row) => row.failureHint),
     manualEntry: section.manualEntry,

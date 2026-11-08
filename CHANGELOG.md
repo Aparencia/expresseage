@@ -11,6 +11,9 @@
 
 ### 用户可见变更
 
+- **2026-11-08 顾客下单新增「附加服务」（D77，批 32 补件）**：下单第 3 步不再让顾客选服务类型，固定「标准代取」；新增「附加服务」多选——**上楼**（3~6 层送到寝室门口）、**拆快递**（帮拆外包装）、**丢垃圾**（只丢无异味/无液体的整包垃圾），说明只写做什么、**不出现任何数字（零金额口径）**；确认页与订单详情显示所选名称；代客下单页保留原服务选择（代寄等仍可从兼职侧发起）。
+- **2026-11-08 附加服务工程细节**：`shared/{enums,validate}.js` 新增 `ADDONS/ADDON_CODES/ADDON_NAME/ADDON_DESC` 与 `validateAddons`（0~3、去重、枚举）；服务端 `order/_create`（`CREATE_FIELDS` + `normalizeAddons` + 落库）、`_parcels-input.normalizeAddons`、`_dto-fields.buildAddonDtos`、`_dto` 下发 `addons[{code,name,desc}]`、`_merge` 按 addons 相等判定；顾客端 `order-create/{index.js,index.wxml,parts/{model,step3,submit}.js}`（固定 `PICKUP_STD`、附加 chip、payload/指纹/确认页）；详情展示 `pkg-customer/pages/order-detail/parts/parcel-view.js` 与 `pkg-partner/pages/order-detail/parts/order-view.js`；判据 `selftest-order` 153→**156**（合法落库/DTO 名称/枚举外/重复）、`selftest-order-customer` +1、`selftest-order-detail-partner` +1，并同步 `order-flow`/`pickup-low`/`order-partner-cases` 白名单；文档 CONTRACT §4/§5.3/§13 D77、DATA_MODEL §2.5、UX_CUSTOMER §3.7、UX_PARTNER §3.3、QA §AK11；`check.ps1` 4 步退出码 0。
+
 - **2026-11-08 顾客下单预约只保留「最晚时间」（D76，批 32 补件；代客下单页同批）**：下单第 3 步的「尽快 / 最晚时间」二选一改为**只选最晚时间**——进入页面自动预选最近合法时刻（30 分钟一档、最早 30 分钟后、最远 7 天），仍可用快捷 12:00/18:00/22:00；不选/选到过去或非整点会行内红字并挡住下一步；提交后订单详情显示「最晚 X月X日 HH:MM」。**兼职代客下单页同步改为只保留最晚时间**；历史订单展示不受影响。
 - **2026-11-08 预约改造工程细节**：`pkg-customer/pages/order-create/{index.js,index.wxml,parts/step3.js}`（初始 `createState(now,'LATEST')`、去掉 radio 与 `setAppointType`、Step3→Step4 强制把历史 ASAP 预填转 LATEST）；`shared/appoint.js` 未改口径（`ASAP` 保留历史展示）；判据 `selftest-order-flow` G15/Q9 改「只保留最晚时间」；文档 CONTRACT §13 D76、UX_CUSTOMER §3.7/§5、QA §AK9；`check.ps1` 4 步退出码 0。
 

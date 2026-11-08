@@ -175,7 +175,14 @@ const DROP_OFF_SERVICE_CODE = 'DROP_OFF';
 // TD-070：「其他代办」码显式常量（客户端预检与服务端校验共用一个值；不从 SERVICES 顺序推导，
 // 未来在目录末尾新增服务码不会改变 CUSTOM 语义）。
 const CUSTOM_SERVICE_CODE = 'CUSTOM';
-
+// 附加服务（D77）：订单级可选，与「标准代取」底座叠加；只表达做什么（零金额口径不变），顺序即展示顺序。
+const ADDONS = [
+  { code: 'UPSTAIRS', name: '上楼', desc: '3~6 层送到寝室门口；具体楼层与兼职确认' },
+  { code: 'UNPACK', name: '拆快递', desc: '帮拆外包装；外包装是否带走或丢弃与兼职确认' },
+  { code: 'TRASH', name: '丢垃圾', desc: '只丢无异味、无液体的整包垃圾；需要双手拿的垃圾不接' }];
+const ADDON_CODES = ADDONS.map((item) => item.code);
+const ADDON_NAME = {}; const ADDON_DESC = {};
+ADDONS.forEach((item) => { ADDON_NAME[item.code] = item.name; ADDON_DESC[item.code] = item.desc; });
 const CODE_STATUS = {
   OK: 'OK',
   NEED_CODE: 'NEED_CODE'
@@ -423,6 +430,10 @@ module.exports = {
   SERVICE_NAME,
   DROP_OFF_SERVICE_CODE,
   CUSTOM_SERVICE_CODE,
+  ADDONS,
+  ADDON_CODES,
+  ADDON_NAME,
+  ADDON_DESC,
   CODE_STATUS,
   CODE_STATUS_TEXT,
   APPOINT_TYPE,

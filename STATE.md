@@ -1607,3 +1607,22 @@ check.ps1：全部通过（4 步，退出码 0）
 - **文档**：CONTRACT §13 D76、UX_CUSTOMER §3.7/§5、QA §AK9、CHANGELOG。
 - **真机项（agent 不代勾）**：QA §AK9（顾客端：页面无「尽快」、默认预选、非法挡下一步、提交后详情文案）与 §AK10（代客下单页同口径）。
 - **提交**：`56504f0`（顾客端）+ `3fb2407`（代客下单页）+ 本节证据回填提交。
+
+## 34. 批 32 补件：附加服务（D77，2026-11-08）
+
+- **交付**：顾客下单 Step3 移除服务类型 picker，固定「标准代取」；新增订单级附加服务多选（上楼/拆快递/丢垃圾，0~3、只写做什么、不出现任何数字）；确认页/顾客详情/兼职详情展示名称；代客下单页保留原服务选择（代寄等仍可从兼职侧发起）；历史订单无 addons 按空处理、不迁移。
+- **代码**：`shared/{enums,validate}.js`（ADDONS/编码/名称/描述 + `validateAddons`，sync 两套云副本）；服务端 `handlers/order/{_create,_parcels-input,_dto-fields,_dto,_merge}.js`（白名单/归一/落库/DTO/合并判等）；顾客端 `pkg-customer/pages/order-create/{index.js,index.wxml,parts/{model,step3,submit}.js}` 与 `pkg-customer/pages/order-detail/{index.wxml,parts/parcel-view.js}`；兼职端 `pkg-partner/pages/order-detail/{index.wxml,parts/order-view.js}`。
+- **门禁真实输出**：
+```text
+$ powershell -File check.ps1
+PASS  check.js 代码/配置门禁（39 条）
+PASS  check-docs.js 设计文档门禁（--batch 1）
+PASS  zero-money-scan.js 零金额扫描（源码+页面+文档）
+PASS  selftest.js 全部断言 suite（EXPECTED_ASSERTIONS 闸）
+selftest：运行 38 套；失败 0 套；SKIP 0 套（无）；完整性 0 项；非聚合辅助文件 4 件（已声明）
+check.ps1：全部通过（4 步，退出码 0）
+```
+- **判据**：`selftest-order` 153→**156**（合法落库/DTO 名称/枚举外/重复重复拒绝）、`selftest-order-customer` +1（详情 addonText）、`selftest-order-detail-partner` +1（详情 addonText）；`selftest-order-flow`/`pickup-low`/`order-partner-cases` 白名单与 UI 断言同步。
+- **文档**：CONTRACT §4/§5.3/§13 D77、DATA_MODEL §2.5、UX_CUSTOMER §3.7、UX_PARTNER §3.3、QA §AK11、CHANGELOG。
+- **真机项（agent 不代勾）**：QA §AK11（服务 picker 消失/固定标准代取、chip 勾选/取消、说明无数字、确认页与详情显示）。
+- **提交**：待提交（本节随收口提交回填）。

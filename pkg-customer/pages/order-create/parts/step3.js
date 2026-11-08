@@ -7,6 +7,7 @@ const deliveryModel = require('./delivery');
 const model = require('./model');
 const precheck = require('./precheck');
 const appointUtil = require('../../../../shared/appoint');
+const enums = require('../../../../shared/enums');
 
 const NOTE_MAX = 200;
 
@@ -15,14 +16,24 @@ function syncNoteError(page) {
   page.setData({ noteError: precheck.noteErrorOf(page.data.serviceCode, page.data.note) });
 }
 
-function setService(page, e) {
-  const serviceIndex = Number(e.detail.value);
-  const service = page.data.services[serviceIndex] || {};
-  const serviceCode = service.code || '';
+// 附加服务（D77，2026-11-08）：多选 chip，订单级 0~3 项；toggle 后清空提交幂等键
+function toggleAddon(page, code) {
+  const target = String(code || '');
+  const current = Array.isArray(page.data.addons) ? page.data.addons : [];
+  const exists = current.indexOf(target) >= 0;
+  const next = exists ? current.filter(function keep(item) { return item !== target; }) : current.concat([target]);
+  const options = (page.data.addonOptions || []).map(function mark(option) {
+    return Object.assign({}, option, { checked: next.indexOf(option.code) >= 0 });
+  });
+  const names = enums.ADDONS.filter(function hit(item) { return next.indexOf(item.code) >= 0; })
+    .map(function name(item) { return item.name; });
+  const descs = enums.ADDONS.filter(function hit(item) { return next.indexOf(item.code) >= 0; })
+    .map(function desc(item) { return item.name + '：' + item.desc; });
   page.setData({
-    serviceIndex: serviceIndex,
-    serviceCode: serviceCode,
-    noteError: precheck.noteErrorOf(serviceCode, page.data.note),
+    addons: next,
+    addonOptions: options,
+    addonText: names.join('、'),
+    addonHintText: descs.join('；'),
     submission: model.clearSubmission()
   });
 }
@@ -141,7 +152,7 @@ function goNext(page) {
 module.exports = {
   NOTE_MAX,
   syncNoteError,
-  setService,
+  toggleAddon,
   setLatestDate,
   setLatestTime,
   setLatestPreset,

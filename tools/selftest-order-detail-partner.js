@@ -36,7 +36,7 @@ const pieceActions = require(path.join(ROOT, 'pages/partner/workbench/parts/piec
 // 批 26-W4（D58 转派兼职端）：用例表拆 tools/lib（控测试文件 ≤1000 行，门禁 #18）
 const uiCases = require(path.join(__dirname, 'lib', 'partner-transfer-ui-cases.js'));
 
-const EXPECTED_ASSERTIONS = 191 + 15 + 2 + uiCases.DETAIL_EXPECTED_ASSERTIONS + 13; // 191 + 批 25-B D61 15 条（J 组）+ 批 26 D58 A 组拆分对齐 2 条（A7b/A8b）+ K 组转派 + L 组 13 条（2026-11-05 动作条层级/多图预览）
+const EXPECTED_ASSERTIONS = 191 + 15 + 2 + uiCases.DETAIL_EXPECTED_ASSERTIONS + 13 + 1; // +1：D77 附加服务详情文案 // 191 + 批 25-B D61 15 条（J 组）+ 批 26 D58 A 组拆分对齐 2 条（A7b/A8b）+ K 组转派 + L 组 13 条（2026-11-05 动作条层级/多图预览）
 const STATUS = orderState.STATUS;
 const STATUS_LITERALS = enums.ORDER_STATUS_LIST.slice();
 const PAGE_JS = 'pkg-partner/pages/order-detail/index.js';
@@ -338,6 +338,8 @@ function register(h) {
       && correctPanel.stillNeedCodeText(needDto).indexOf('需查明') >= 0,
     'B28 需查明单：状态文案与后续提示取服务端 codeStatus（补上码后刷新自动消失）');
     t.eq(orderView.buildDetail(needDto).pickupCodeText, '', 'B29 需查明单不伪造取件码（空 → 页面显示「需查明」占位）');
+    t.eq(orderView.buildDetail({ orderNo: 'X', addons: [{ code: 'UPSTAIRS', name: '上楼' }, { code: 'TRASH', name: '丢垃圾' }] }).addonText,
+      '上楼、丢垃圾', 'B29b 附加服务 DTO → 兼职详情「上楼、丢垃圾」（D77）');
     t.notEmpty(panel.stationOptions, 'B 组样本非空');
   });
 

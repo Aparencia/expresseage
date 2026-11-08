@@ -17,7 +17,7 @@ const subscribe = require('../../lib/subscribe-message');
 // 入参白名单（DATA_MODEL §12 #12）：不认识字段一律 VALIDATION_FAILED 并回 data.field（不静默忽略）；v1.0 新增多包裹/配送/手填位。
 // ticket/image 为旧单图形态兼容位（内部折算为 images[0]/tickets[0]）。
 const CREATE_FIELDS = ['parcels', 'images', 'tickets', 'ticket', 'image', 'serviceCode', 'appoint', 'note', 'delivery',
-  'guest', 'bindingId', 'manualEntry', 'mergeAppend', 'recognition', 'batchActionId'];
+  'addons', 'guest', 'bindingId', 'manualEntry', 'mergeAppend', 'recognition', 'batchActionId'];
 
 function assertKnownFields(input, allowed) {
   const value = parcelUtil.isPlainObject(input) ? input : {};
@@ -226,6 +226,7 @@ async function normalizeOrderInput(ctx, context, payload, now) {
     manualEntry,
     delivery,
     service,
+    addons: parcelsInput.normalizeAddons(input),
     appoint: parcelUtil.normalizeAppoint(input.appoint, now),
     note: parcelUtil.normalizeOrderNote(input.note, service.code),
     batchActionId: common.readBatchActionId(input),
@@ -315,6 +316,7 @@ function buildOrderDocument(options) {
     delivery: opt.input.delivery,
     guest: opt.context.guest || null,
     service: opt.input.service,
+    addons: opt.input.addons,
     appoint: opt.input.appoint,
     note: opt.input.note,
     clientRequestId: opt.clientRequestId,
