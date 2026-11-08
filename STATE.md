@@ -5,7 +5,7 @@
 > 更新时机：每批开工/收口、用户裁决变化、风险新增或关闭、HEAD 变化需回读。
 > 本文只记**状态、待办与下一步**，不重复设计口径（口径看 CONTRACT，工程规则看 ENGINEERING，接口看 ARCHITECTURE）。
 
-**快照时间：2026-11-08（HEAD 964938f + 批 31 服务通知/独立审查修复）：check.js 39/39 条、check-docs 12/12 条、selftest **38 套** 0 失败、零金额 0 命中（白名单 108 项）；check.ps1 4 步退出码 0；**批 31：D73 服务通知（一次性订阅：顾客送达提醒 + 兼职新订单提醒，`enabled` 默认 false；「我的 → 微信提醒」状态行/20004 引导）+ 2026-11-07/08 变更独立审查修复（P0 1 / P1 13，P2 修掉 8 项、登记 TD-092~098）**；真实截图站点识别、D68 停用标注、授权真相、thing 字段预算等见 §29~§31；真机项 QA §AH/§AI/§AJ 交用户点检；批 24~30 基线见 §19~§29）
+**快照时间：2026-11-08（HEAD 90e68a6 + 批 31 服务通知/独立审查修复）：check.js 39/39 条、check-docs 12/12 条、selftest **38 套** 0 失败、零金额 0 命中（白名单 108 项）；check.ps1 4 步退出码 0；**批 31：D73 服务通知（一次性订阅：顾客送达提醒 + 兼职新订单提醒，`enabled` 默认 false；「我的 → 微信提醒」状态行/20004 引导）+ 2026-11-07/08 变更独立审查修复（P0 1 / P1 13，P2 修掉 8 项、登记 TD-092~098）**；真实截图站点识别、D68 停用标注、授权真相、thing 字段预算等见 §29~§31；真机项 QA §AH/§AI/§AJ 交用户点检；批 24~30 基线见 §19~§29）
 > 临时总体说明（全局汇总，非状态源）：[`docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md`](docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md)（版本与取数快照由 Lead 统一维护；状态仍以本文件为准、口径以 CONTRACT 为准）。
 
 ## 1. 一句话状态
@@ -1568,4 +1568,4 @@ check.ps1：全部通过（4 步，退出码 0）
 - 判据净增与首红证据：见 §30 变异电池 M5~M8（thing 预算、D70 两处开关、手选站点守卫均精确首红后 SHA256/原样恢复复绿）；另 `selftest-message-pages` 新增纯件/接线静态断言（授权先于创建、先于 dispatch；工作台 `subscribeEnabled`；profile `subscribeVisible`；TEST_WRITE 隐藏；调试弹窗仅 develop）；`selftest-message-pages` 164→**177**、`selftest-messages` 129→**140**、`selftest-ai` 262→**272**、`selftest-order-flow` 281→**286**、`selftest-recognize` 305→**308**、`selftest-partner-customers` 137→**140**、`selftest-partner-pages` 347→**359**、`selftest-admin-pages` 255→**259**、`selftest-profile` 199→**200**、`selftest-privacy-text` 305→**311**；QA 362→**380**（补 §AH/§AI 回填 + §AJ D73 6 条）。
 - 文档回写：CONTRACT §2/§9/§11.2/§13（含 D73 追加「我的 → 微信提醒」/20004/字段预算）、DATA_MODEL、ENGINEERING §3.6/§4.1/§8.3/§12、RUNBOOK §8/§14、UX_CUSTOMER §8.4/§9.2、UX_PARTNER §3.5/§4.12、ARCHITECTURE §2（批 31 文件登记）、DECISIONS（D68/D69/D73）、TECH_DEBT（TD-092~098）、隐私文本 v1.11（三处同源 + 发布前清单 + CONTRACT）、QA §AH/§AI/§AJ 与附录 B/E、docs/README 与 archive README 索引/状态、AGENTS.md 恢复。
 - 未修/风险：TD-092~098；真机项 QA §AH/§AI/§AJ 待用户点检；模板类型=2 与 P0-3 额度待用户；行数贴边文件（`selftest-profile` 999/1000、`selftest-partner-pages` 950/950、`pkg-partner/.../form-model.js` 与 `pkg-admin/.../view-model.js` 499/500）下一批触碰前须先拆件。
-- 纪律：本次仅提交与回读 HEAD；未 push/tag/发布/提审/操作云控制台；真机项未代勾、未代宣布通过。
+- 纪律：本批代码/判据/文档提交 `90e68a6`（提交后回读 HEAD），本证据回填随下一 chore 提交；未 push/tag/发布/提审/操作云控制台；真机项未代勾、未代宣布通过。
