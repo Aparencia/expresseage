@@ -1645,3 +1645,22 @@ check.ps1：全部通过（4 步，退出码 0）
 - **文档**：CONTRACT §7（34 页）、ARCHITECTURE §3.5、docs/README、UX_PARTNER（审核页 §3.13）、QA §AK12、ENGINEERING §8.1（39 套）、CHANGELOG。
 - **真机项（agent 不代勾）**：QA §AK12（列表范围/一屏截图+字段/保存同步/不改状态）。
 - **提交**：`b09755a`（代码/判据/文档）+ 本节证据回填提交。
+
+## 36. 批 32 补件：下单核对页截图吸顶 + 字段密度（2026-11-08）
+
+- **交付**：Step2 下滑核对时「查看取件码截图」条 `position: sticky` 吸顶常驻；每件卡从 4 行压成 2 行（站点 chip + 取件码 / 柜号 + 运单尾号），保留来源图标记、错误行、需查明提示与 AI 建议条；字段标签/事件/校验不变。
+- **代码**：`pkg-customer/pages/order-create/{index.wxml,index.wxss}`（`.shot-sticky`、`.item-main`/`.item-sub`/`.station-chip`/`.sub-input`；原「点击查看截图」卡片换为吸顶条）。
+- **门禁真实输出**：
+```text
+$ powershell -File check.ps1
+PASS  check.js 代码/配置门禁（39 条）
+PASS  check-docs.js 设计文档门禁（--batch 1）
+PASS  zero-money-scan.js 零金额扫描（源码+页面+文档）
+PASS  selftest.js 全部断言 suite（EXPECTED_ASSERTIONS 闸）
+selftest：运行 39 套；失败 0 套；SKIP 0 套（无）；完整性 0 项；非聚合辅助文件 4 件（已声明）
+check.ps1：全部通过（4 步，退出码 0）
+```
+- **判据**：`selftest-order-flow` G18b（吸顶 + 两行紧凑布局存在）286→**287**；其余套件不变。
+- **文档**：UX_CUSTOMER §3.7.2、QA §AK13、CHANGELOG。
+- **真机项（agent 不代勾）**：QA §AK13（吸顶常驻/两行密度/键盘不遮挡）。
+- **提交**：待提交（本节随收口提交回填）。

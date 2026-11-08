@@ -192,3 +192,65 @@
 .addon-row { flex-wrap: wrap; }
 .addon-chip { margin: 0 12rpx 12rpx 0; }
 .addon-hint { margin-top: 8rpx; }
+/* 2026-11-08：核对页截图入口吸顶（下滑时固定在顶部） */
+.shot-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  padding: 16rpx 24rpx;
+  background: #FFFFFF;
+  border-bottom: 1rpx solid #EEEEEE;
+}
+
+/* 2026-11-08：站点+取件码一行、柜号+尾号一行（密度优化） */
+.item-main {
+  align-items: flex-end;
+  margin-top: 8rpx;
+}
+
+.item-station {
+  flex-shrink: 0;
+  max-width: 40%;
+}
+
+.station-chip {
+  padding: 14rpx 20rpx;
+  border-radius: 10rpx;
+  background: #F3F6FA;
+  color: #1F2937;
+  font-size: 26rpx;
+}
+
+.item-code {
+  flex: 1;
+  min-width: 0;
+  margin-left: 16rpx;
+}
+
+.item-sub {
+  margin-top: 10rpx;
+}
+
+.item-sub-field {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  margin-right: 16rpx;
+}
+
+.item-sub-field:last-child {
+  margin-right: 0;
+}
+
+.sub-label {
+  flex-shrink: 0;
+  margin-right: 10rpx;
+  color: #666666;
+  font-size: 26rpx;
+}
+
+.sub-input {
+  flex: 1;
+  min-width: 0;
+}

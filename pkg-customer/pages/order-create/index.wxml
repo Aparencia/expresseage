@@ -78,8 +78,12 @@
       <view class="small" wx:if="{{aiHint}}">{{aiHint}}</view>
       <view class="small" wx:for="{{imageFailures}}" wx:key="imageIndex">{{item.copy.text}}（第 {{item.imageIndex + 1}} 张图）</view>
     </view>
-    <view class="card" wx:if="{{files.length}}">
-      <view class="small link-text" bindtap="onPreviewImage">点击查看截图（{{files.length}} 张）</view>
+    <!-- 2026-11-08 用户截图反馈：下滑核对时，查看截图入口吸顶常驻，不随列表滚走 -->
+    <view class="shot-sticky" wx:if="{{files.length}}">
+      <view class="row between">
+        <text class="small link-text" bindtap="onPreviewImage">查看取件码截图（{{files.length}} 张）</text>
+        <text class="small muted">下滑核对时固定在顶部</text>
+      </view>
     </view>
 
     <view class="card row between list-tools">
@@ -101,32 +105,32 @@
         <view class="small" data-index="{{index}}" bindtap="onRemoveItem">移除</view>
       </view>
 
-      <picker range="{{stations}}" range-key="name" data-index="{{index}}" bindchange="onStationChange">
-        <view class="form-row">
-          <view class="form-label">站点</view>
-          <view class="form-input {{item.stationName ? '' : 'placeholder'}}">{{item.stationName || '请选择驿站站点'}}</view>
+      <!-- 2026-11-08：站点+取件码同一行、柜号+尾号同一行（原来 4 行占一屏，核对时要反复滚） -->
+      <view class="row item-main">
+        <picker class="item-station" range="{{stations}}" range-key="name" data-index="{{index}}" bindchange="onStationChange">
+          <view class="station-chip {{item.stationName ? '' : 'placeholder'}}">{{item.stationName || '选站点'}}</view>
+        </picker>
+        <view class="item-code">
+          <view class="form-label">取件码</view>
+          <code-editor
+            value="{{item.pickupCode}}"
+            placeholder="可留空，填运单后 5 位"
+            maxlength="40"
+            data-index="{{index}}"
+            bind:change="onCodeChange"
+          />
         </view>
-      </picker>
-
-      <!-- ⑧ 取件码与站点/柜号/运单尾号同构：前置标签 + 同款 .form-row 行（复用 app.wxss 全局类） -->
-      <view class="form-row">
-        <view class="form-label">取件码</view>
-        <code-editor
-          value="{{item.pickupCode}}"
-          placeholder="可留空，填运单后 5 位"
-          maxlength="40"
-          data-index="{{index}}"
-          bind:change="onCodeChange"
-        />
       </view>
 
-      <view class="form-row">
-        <view class="form-label">柜号</view>
-        <input class="form-input" value="{{item.lockerNo}}" placeholder="选填，≤10 字" maxlength="10" data-index="{{index}}" bindinput="onLockerChange" />
-      </view>
-      <view class="form-row">
-        <view class="form-label">运单尾号</view>
-        <input class="form-input" value="{{item.trackingTail}}" placeholder="选填，后 5 位数字" maxlength="5" data-index="{{index}}" bindinput="onTailChange" />
+      <view class="row item-sub">
+        <view class="item-sub-field">
+          <text class="sub-label">柜号</text>
+          <input class="form-input sub-input" value="{{item.lockerNo}}" placeholder="选填" maxlength="10" data-index="{{index}}" bindinput="onLockerChange" />
+        </view>
+        <view class="item-sub-field">
+          <text class="sub-label">尾号</text>
+          <input class="form-input sub-input" value="{{item.trackingTail}}" placeholder="后 5 位数字" maxlength="5" data-index="{{index}}" bindinput="onTailChange" />
+        </view>
       </view>
 
       <view class="small error-text" wx:if="{{item.formErrors.station}}">{{item.formErrors.station}}</view>

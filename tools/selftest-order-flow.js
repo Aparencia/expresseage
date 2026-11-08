@@ -47,7 +47,7 @@ const {
   createOrderDb, orderApiOf, pageLayerHits
 } = caseLib;
 
-const EXPECTED_ASSERTIONS = 286; // 256 + 21：R 组 P0-1 多图 imageIndex 重映射 9 + S 组 P1-10 取消识别 8 + Q13~Q16 日历日回算 4；+4：D70 手填码补站点/开关；+5：D70 手选站点优先（采纳/兜底两条路径不覆盖 4 + stationBy=code 可被码更新 1）
+const EXPECTED_ASSERTIONS = 287; // 286 + 1：G18b 核对页截图吸顶 + 两行紧凑布局（2026-11-08） // 256 + 21：R 组 P0-1 多图 imageIndex 重映射 9 + S 组 P1-10 取消识别 8 + Q13~Q16 日历日回算 4；+4：D70 手填码补站点/开关；+5：D70 手选站点优先（采纳/兜底两条路径不覆盖 4 + stationBy=code 可被码更新 1）
 
 function register(h) {
   // ---------------------------------------------------------------- A 站点选择器（P1~P8）
@@ -358,6 +358,8 @@ function register(h) {
       'G17 附加服务复选渲染（D77：服务类型固定标准代取，说明只写做什么）');
     t.check(/wx\.previewImage/.test(page) && /onPreviewImage/.test(pageXml),
       'G18 「点击查看截图」入口存在且走本地预览（仍零 wx.cloud.*）');
+    t.check(/shot-sticky/.test(pageXml) && /item-main/.test(pageXml) && /item-sub/.test(pageXml),
+      'G18b 核对页截图入口吸顶 + 站点/码与柜号/尾号两行紧凑布局（2026-11-08）');
     t.check(/onToggleOcrText/.test(page) && /查看识别原文/.test(pageXml),
       'G19 「查看识别原文（仅本页显示，不会保存）」折叠入口存在（UX §4.3）');
     t.check(/onCancelAi/.test(page) && /onCancelAi/.test(pageXml) && /ocrState === 'ai'/.test(pageXml),

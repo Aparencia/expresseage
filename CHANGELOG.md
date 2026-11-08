@@ -11,6 +11,9 @@
 
 ### 用户可见变更
 
+- **2026-11-08 下单核对页：截图入口吸顶 + 字段密度优化**：Step2 下滑核对时，「查看取件码截图」条固定在顶部，不用滚回顶部；每件卡从 4 行压成 2 行——「站点 chip + 取件码」一行、「柜号 + 运单尾号」一行，长单核对更快、更不容易看串行。
+- **2026-11-08 核对页 UI 工程细节**：`pkg-customer/pages/order-create/{index.wxml,index.wxss}`（`.shot-sticky` position: sticky 吸顶条替换原截图卡；`.item-main`/`.item-sub`/`.station-chip` 两行布局，保留原字段标签/事件/校验）；判据 `selftest-order-flow` G18b（286→**287**）；UX_CUSTOMER §3.7.2、QA §AK13、CHANGELOG；`check.ps1` 4 步退出码 0。
+
 - **2026-11-08 兼职「审核」核对页（MVP，第 34 页）**：工作台顶部新增「审核」入口——只列今天「有截图且待接单/已接单/已取件」的单；点开一屏显示顾客上传的每一张取件码截图与其订单信息（站点/取件码/柜号/运单尾号），发现不一致可就地改并保存，顾客端同步；**审核不改变订单状态、不阻塞取件、不新增审核记录**。
 - **2026-11-08 审核页工程细节**：新增 `pkg-partner/pages/review/{index.js,index.wxml,index.wxss,index.json,parts/review-model.js}`（列表筛选/锚/编辑 patch/本地预校验；写动作只走 `order.correct`，无状态写）；工作台 `onReviewTap` 入口；`app.json`/`tools/lib/project.js`/`CONTRACT §7`/`ARCHITECTURE`/`docs/README` 页数 33→**34**（主包 9 + 分包 25，兼职 8→9）；新增判据套件 `selftest-review` 17 条并注册为第 **39** 套（`check.ps1 SelfTestSuites=39`）；分享禁清单加审核页；QA §AK12；无服务端/集合/索引变更。
 
