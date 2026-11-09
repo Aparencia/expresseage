@@ -32,6 +32,45 @@ function listOf(value) {
   return Array.isArray(value) ? value : [];
 }
 
+// 2026-11-09：取件码自然序（用户指令「按取件码大小」）——逐段数字比较：
+//   8-2-3021 → [8,'-',2,'-',3021]；8-10-1 的 10 排在 8-2 之后；纯数字按数值；字母段按字典序。
+//   空码（需查明/待补码）不参与大小比较，统一排到有码件之后。
+function codeTokensOf(code) {
+  const source = textOf(code);
+  const tokens = [];
+  const re = /(\d+|\D+)/g;
+  let match = re.exec(source);
+  while (match) {
+    const raw = match[1];
+    tokens.push(/^\d+$/.test(raw) ? { num: Number(raw), text: raw } : { num: null, text: raw });
+    match = re.exec(source);
+  }
+  return tokens;
+}
+
+function compareCodes(left, right) {
+  const a = textOf(left);
+  const b = textOf(right);
+  if (!a && !b) return 0;
+  if (!a) return 1;
+  if (!b) return -1;
+  const leftTokens = codeTokensOf(a);
+  const rightTokens = codeTokensOf(b);
+  const length = Math.max(leftTokens.length, rightTokens.length);
+  for (let index = 0; index < length; index += 1) {
+    const x = leftTokens[index];
+    const y = rightTokens[index];
+    if (!x) return -1;
+    if (!y) return 1;
+    if (x.num !== null && y.num !== null) {
+      if (x.num !== y.num) return x.num < y.num ? -1 : 1;
+    } else if (x.text !== y.text) {
+      return x.text < y.text ? -1 : 1;
+    }
+  }
+  return a < b ? -1 : (a > b ? 1 : 0);
+}
+
 function tabOf(value) {
   return value === TAB_PICK || value === TAB_DELIVER ? value : '';
 }
@@ -91,9 +130,18 @@ function pieceViewOf(piece, groupStationId) {
   const stationId = textOf(item.stationId);
   const stationName = textOf(item.stationName);
   const cross = !!stationId && stationId !== textOf(groupStationId);
-  const codeText = item.needCode === true ? '需查明' : (textOf(item.codeText) || '待补码');
+  const needCode = item.needCode === true;
+  const pickupCode = textOf(item.pickupCode);
+  const tail = textOf(item.trackingTail);
+  const codeText = needCode ? '需查明' : (textOf(item.codeText) || '待补码');
   const text = textOf(item.lockerText) ? codeText + ' · ' + item.lockerText : codeText;
   const prefix = [stationId, stationName].filter(Boolean).join(' ');
+  // 2026-11-09（用户指令）：码做行首大字——行首用 codeDisplay，件行只留柜号/尾号等辅助信息
+  const codeDisplay = needCode ? '需查明' : (pickupCode || (tail ? '尾号 ' + tail : '待补码'));
+  const metaParts = [];
+  if (textOf(item.lockerText)) metaParts.push('柜号 ' + item.lockerText);
+  if (tail) metaParts.push('尾号 ' + tail);
+  if (needCode) metaParts.push('无码，接单后补');
   return {
     key: String(typeof item.index === 'number' ? item.index : 0) + '#' + stationId,
     index: typeof item.index === 'number' ? item.index : 0,
@@ -102,27 +150,45 @@ function pieceViewOf(piece, groupStationId) {
     showStation: cross,
     stationId: stationId,
     stationName: stationName,
-    needCode: item.needCode === true,
+    needCode: needCode,
+    tier: parcelView.tierOfPiece(item),
     lockerNo: textOf(item.lockerNo),
-    pickupCode: textOf(item.pickupCode),
+    pickupCode: pickupCode,
     codeStatus: textOf(item.codeStatus),
     picked: item.picked === true,
     pickedText: item.picked === true ? '已取' : '待取',
     pickedAtText: textOf(item.pickedAtText),
     codeText: codeText,
+    codeDisplay: codeDisplay,
+    metaText: metaParts.join(' · '),
     text: text,
     copyText: cross && prefix ? prefix + ' ' + text : text,
     action: pieceActions.viewOf(item, false)
   };
 }
 
-// 单行（一单）：宿舍锚 + 本站件（码/尾号 · 柜号）+ 已取进度 + 「另 N 件在 Pn」
+// 件内序（2026-11-09）：四档不变 → 同档按取件码自然升序 → 原件号稳定序
+function comparePieceViews(left, right) {
+  if (left.tier !== right.tier) {
+    return left.tier - right.tier;
+  }
+  const byCode = compareCodes(left.pickupCode, right.pickupCode);
+  if (byCode !== 0) {
+    return byCode;
+  }
+  return left.index - right.index;
+}
+
+// 单行（一单）：取件码行首大字 + 宿舍锚 + 本站件（柜号/尾号辅助）+ 已取进度 + 「另 N 件在 Pn」
 function rowOf(order, station) {
   const stationId = textOf(station.stationId);
   const rawPieces = parcelView.piecesForStationOf(order, stationId);
-  const pieces = rawPieces.map((piece) => pieceViewOf(piece, stationId));
+  const pieces = rawPieces.map((piece) => pieceViewOf(piece, stationId)).sort(comparePieceViews);
   const parcelCount = pieces.length;
   const picked = parcelView.pickedFieldsOf(order);
+  const tier = pieces.length ? pieces[0].tier : 99;
+  const coded = pieces.filter((piece) => piece.tier === tier && piece.pickupCode);
+  coded.sort((left, right) => compareCodes(left.pickupCode, right.pickupCode));
   return {
     key: textOf(order.orderNo),
     orderNo: textOf(order.orderNo),
@@ -133,11 +199,12 @@ function rowOf(order, station) {
     parcelCount: parcelCount,
     parcelCountText: parcelCount > 1 ? '共 ' + parcelCount + ' 件' : '1 件',
     needCode: pieces.some((piece) => piece.needCode),
+    headText: pieces.map((piece) => piece.codeDisplay).join(' / '),
     pickedCountText: picked.pickedCountText,
     otherPiecesText: parcelView.otherPiecesTextOf(order, stationId),
     pieces: pieces,
-    tier: parcelView.tierOfPieces(rawPieces),
-    routeNumber: parcelView.routeNumberOfPieces(rawPieces)
+    tier: tier,
+    sortCode: coded.length ? coded[0].pickupCode : ''
   };
 }
 
@@ -165,13 +232,14 @@ function stationRankOf(stationId) {
   return UNKNOWN_STATION_RANK;
 }
 
-// 组内序：四档动线（需查明→快递柜→分段码→其他）→ 码内数字升序 → 订单号稳定序（D62 按本站件算）
+// 组内序（2026-11-09 用户指令）：四档不变（需查明→快递柜→分段码→其他）→ 同档按取件码自然升序 → 订单号稳定序
 function compareRows(left, right) {
   if (left.tier !== right.tier) {
     return left.tier - right.tier;
   }
-  if (left.routeNumber !== right.routeNumber) {
-    return left.routeNumber - right.routeNumber;
+  const byCode = compareCodes(left.sortCode, right.sortCode);
+  if (byCode !== 0) {
+    return byCode;
   }
   if (left.orderNo === right.orderNo) {
     return 0;
@@ -377,6 +445,7 @@ module.exports = {
   MAX_AUTO_PAGES: MAX_AUTO_PAGES,
   EMPTY_TEXT: EMPTY_TEXT,
   tabOf: tabOf,
+  compareCodes: compareCodes,
   tabTextsOf: tabTextsOf,
   queryOf: queryOf,
   buildGroups: buildGroups,

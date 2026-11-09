@@ -61,27 +61,36 @@
           bindtap="onRowTap"
         >
           <view class="flex-1 line-main">
+            <!-- 2026-11-09 用户指令：取件码做行首大字，宿舍锚/件信息降为辅助（码小的在前） -->
             <view class="row line-top">
-              <view class="strong room-text"><text wx:if="{{row.isOtherDelivery}}" class="send-to-label">送至 </text>{{row.anchorText || '宿舍待同步'}}</view>
+              <view class="pickup-code {{row.needCode ? 'pickup-code--need' : ''}}">{{row.headText}}</view>
+            </view>
+            <view class="row line-sub">
+              <view class="small anchor-text"><text wx:if="{{row.isOtherDelivery}}" class="send-to-label">送至 </text>{{row.anchorText || '宿舍待同步'}}</view>
               <view wx:if="{{row.parcelCount > 1}}" class="small parcel-count">{{row.parcelCountText}}</view>
               <!-- D61：整单取件进度（多件单才显示） -->
               <view wx:if="{{row.pickedCountText}}" class="tag picked-count-tag">{{row.pickedCountText}}</view>
-              <view wx:if="{{row.needCode}}" class="tag room-tag">需查明</view>
             </view>
             <!-- D61/D62：行内只列本站件，每件显示已取状态并给独立「已取件/撤销已取」按钮 -->
-            <view wx:for="{{row.pieces}}" wx:key="key" wx:for-item="piece" class="row piece-line piece-line--pick">
-              <text wx:if="{{piece.showStation}}" class="piece-station">{{piece.stationId || piece.stationName}}</text>
-              <text class="piece-text {{piece.picked ? 'piece-text--picked' : ''}}">{{piece.text}}</text>
-              <text wx:if="{{piece.picked}}" class="tag piece-picked">{{piece.pickedText}}{{piece.pickedAtText ? ' ' + piece.pickedAtText : ''}}</text>
+            <block wx:for="{{row.pieces}}" wx:key="key" wx:for-item="piece">
               <view
-                wx:if="{{!readonly && piece.action}}"
-                class="mini-btn btn piece-btn {{piece.picked ? 'btn-ghost' : 'btn-primary'}}"
-                data-order-no="{{row.orderNo}}"
-                data-item-index="{{piece.index}}"
-                data-key="{{piece.action.key}}"
-                catchtap="onPieceAction"
-              >{{piece.action.label}}</view>
-            </view>
+                wx:if="{{piece.metaText || piece.picked || row.pieces.length > 1 || (!readonly && piece.action)}}"
+                class="row piece-line piece-line--pick"
+              >
+                <text wx:if="{{piece.showStation}}" class="piece-station">{{piece.stationId || piece.stationName}}</text>
+                <text wx:if="{{row.pieces.length > 1}}" class="piece-index">{{piece.indexText}}</text>
+                <text wx:if="{{piece.metaText}}" class="piece-meta">{{piece.metaText}}</text>
+                <text wx:if="{{piece.picked}}" class="tag piece-picked">{{piece.pickedText}}{{piece.pickedAtText ? ' ' + piece.pickedAtText : ''}}</text>
+                <view
+                  wx:if="{{!readonly && piece.action}}"
+                  class="mini-btn btn piece-btn {{piece.picked ? 'btn-ghost' : 'btn-primary'}}"
+                  data-order-no="{{row.orderNo}}"
+                  data-item-index="{{piece.index}}"
+                  data-key="{{piece.action.key}}"
+                  catchtap="onPieceAction"
+                >{{piece.action.label}}</view>
+              </view>
+            </block>
             <view wx:if="{{row.otherPiecesText}}" class="small piece-other">{{row.otherPiecesText}}</view>
           </view>
           <view class="mini-btn btn btn-ghost copy-row-btn" data-order-no="{{row.orderNo}}" data-station-id="{{row.stationId}}" catchtap="onCopyRowPick">复制</view>

@@ -292,7 +292,8 @@ function defineRefSets() {
 // 条目数不写死：以 CONTRACT §13 实际 D 行为准，只要求「1..最大定义号连续、无缺号」；
 // D_MAX 是引用硬上界——伪造 D68+ 引用必须判红（负向判据由 E 轴 selftest/手工钻取验证）。
 // 2026-11-08 批 32：D74（取件清单伪 tab）/D75（子邀请码长期）/D76（预约只留最晚时间）/D77（附加服务）/D78（审核核对页）→ 上限 73→78。
-const D_MAX = 78;
+// 2026-11-09：D79（取件清单排序与取件码突出）→ 上限 79。
+const D_MAX = 79;
 
 function dRangeProblems(dDefined) {
   const out = [];

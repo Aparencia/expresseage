@@ -34,7 +34,7 @@ const fsutil = require('./lib/fsutil');
 const zeroMoney = require('./zero-money-scan');
 const project = require('./lib/project');
 
-const EXPECTED_ASSERTIONS = 218; // 实跑读数：node tools/selftest-pick-list.js（批 25-B D61/D62：L/M 改判 + O 组 16 条 + N9b；+2：送别人「送至」判定 L10b/L11b；+1：H18 TAB_DATA 合并回归）
+const EXPECTED_ASSERTIONS = 223; // 实跑读数：node tools/selftest-pick-list.js（批 25-B D61/D62：L/M 改判 + O 组 16 条 + N9b；+2：送别人「送至」判定 L10b/L11b；+1：H18 TAB_DATA 合并回归；+5：2026-11-09 取件码自然序/行首大字 L5a/L5b/L5c/L9b/L9c）
 
 const PAGE_DIR = 'pages/partner/pick-list';
 const FILES = {
@@ -622,6 +622,25 @@ function register(h) {
     t.eq([p4.count, p4.pieceCount], [4, 4], 'L4 站点组单数/件数按本站件聚合（跨站单在 P4 只计本站 1 件）');
     t.eq(p4.rows.map((row) => row.orderNo), ['20261101-1009', '20261101-1007', '20261101-1005', '20261101-1004'],
       'L5 组内四档动线序：需查明 → 快递柜 → 分段码 → 其他（按本站件计算）');
+    // 2026-11-09 用户指令：同档内按取件码自然升序（逐段数字，8-2-999 < 8-2-3021 < 8-10-1）
+    t.eq([pickView.compareCodes('8-2-999', '8-2-3021'), pickView.compareCodes('8-2-3021', '8-10-1'),
+      pickView.compareCodes('', '8811')], [-1, -1, 1],
+    'L5a 取件码自然序：逐段数字比较、空码排最后');
+    const naturalGroups = pickGroupsOf([
+      acceptedFixture('20261101-3001', { parcels: [parcelFixture('P4', '北部菜鸟', { pickupCode: '8-10-1', lockerNo: '1号柜' })] }),
+      acceptedFixture('20261101-3002', { parcels: [parcelFixture('P4', '北部菜鸟', { pickupCode: '8-2-999', lockerNo: '1号柜' })] }),
+      acceptedFixture('20261101-3003', { parcels: [parcelFixture('P4', '北部菜鸟', { pickupCode: '8-2-3021', lockerNo: '1号柜' })] })
+    ]);
+    t.eq(groupOfKey(naturalGroups, 'P4').rows.map((row) => row.orderNo),
+      ['20261101-3002', '20261101-3003', '20261101-3001'],
+      'L5b 同档（快递柜）内按码自然升序，不是按整串数字（旧口径 8101 会排最前）');
+    const multiPiece = acceptedFixture('20261101-3004', { parcels: [
+      parcelFixture('P4', '北部菜鸟', { pickupCode: '9-1', itemIndex: 0 }),
+      parcelFixture('P4', '北部菜鸟', { pickupCode: '2-3', itemIndex: 1 })
+    ] });
+    const multiRow = pickGroupsOf([multiPiece])[0].rows[0];
+    t.eq([multiRow.headText, multiRow.pieces.map((piece) => piece.pickupCode)], ['2-3 / 9-1', ['2-3', '9-1']],
+      'L5c 一单多件：行首码按自然序拼接，件内也按码排（动作仍按原件号定位）');
     const crossInP4 = p4.rows.filter((row) => row.orderNo === '20261101-1005')[0];
     t.eq([crossInP4.pieces.length, crossInP4.pieces[0].stationId, crossInP4.otherPiecesText],
       [1, 'P4', '另 1 件在 P6'], 'L6 行内只列本站件 + 标注「另 N 件在 Pn」（D62 改判）');
@@ -633,6 +652,10 @@ function register(h) {
     t.eq([needRow.needCode, needRow.pieces[0].text], [true, '需查明'], 'L8 需查明件给占位文案（不编假取件码）');
     t.eq(p4.rows.filter((row) => row.orderNo === '20261101-1007')[0].pieces[0].text, '8811 · 5号柜',
       'L9 件行含取件码 + 柜号');
+    t.eq([needRow.headText, p4.rows.filter((row) => row.orderNo === '20261101-1007')[0].headText], ['需查明', '8811'],
+      'L9b 行首大字：有码显示取件码，无码显示「需查明」');
+    t.check(readText(FILES.wxml).indexOf('pickup-code') !== -1 && readText(FILES.wxml).indexOf('piece-text') === -1,
+      'L9c 取件码行首大字接线（pickup-code 上屏，旧 piece-text 小字退场）');
     t.eq(groupOfKey(groups, 'P3').rows[0].anchorText, 'D4-522A', 'L10 宿舍锚 = dormKey + roomTag（只到锚级）');
     t.eq(groupOfKey(groups, 'P3').rows[0].isOtherDelivery, false, 'L10b 本人宿舍：行内不标「送至」');
     const outsider = acceptedFixture('20261101-1010', {
@@ -796,7 +819,8 @@ function register(h) {
     'O7 件级写请求 = orderNo + itemIndex + expectedVersion + clientRequestId（幂等/乐观锁）');
     const wxml = readText(FILES.wxml);
     t.check(wxml.indexOf('catchtap="onPieceAction"') !== -1 && wxml.indexOf('!readonly && piece.action') !== -1
-      && wxml.indexOf('piece-text--picked') !== -1, 'O8 WXML 件级按钮/已取样式接线 + 只读隐藏');
+      && wxml.indexOf('piece-picked') !== -1 && wxml.indexOf('pickup-code') !== -1,
+    'O8 WXML 件级按钮/已取样式/取件码行首大字接线 + 只读隐藏');
     const stageSrc = readText(FILES.stageFlows);
     t.check(stageSrc.indexOf('piece-actions') !== -1 && stageSrc.indexOf("this.toastMsg(READONLY_COPY)") !== -1
       && stageSrc.indexOf('client.createRequestId()') !== -1 && stageSrc.indexOf('orderApi[write.method]') !== -1,

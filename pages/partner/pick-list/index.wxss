@@ -121,6 +121,31 @@
   align-items: center;
 }
 
+/* 2026-11-09 用户指令：取件码做行首大字（宿舍锚降到第二行），拣件时一眼对码 */
+.pickup-code {
+  font-family: Menlo, Consolas, monospace;
+  font-size: 40rpx;
+  font-weight: 700;
+  line-height: 1.35;
+  color: #1F7A5C;
+  letter-spacing: 1rpx;
+  word-break: break-all;
+}
+
+.pickup-code--need {
+  color: #B25E00;
+}
+
+.line-sub {
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 4rpx;
+}
+
+.anchor-text {
+  color: #666666;
+}
+
 .room-text {
   font-size: 34rpx;
   margin-right: 12rpx;
@@ -208,16 +233,16 @@
   padding: 4rpx 0;
 }
 
-.piece-text {
-  font-family: Menlo, Consolas, monospace;
-  font-size: 30rpx;
-  color: #1F2937;
+.piece-meta {
+  font-size: 26rpx;
+  color: #666666;
   margin-right: 12rpx;
 }
 
-.piece-text--picked {
+.piece-index {
+  font-size: 24rpx;
   color: #8A8F99;
-  text-decoration: line-through;
+  margin-right: 10rpx;
 }
 
 .piece-picked {

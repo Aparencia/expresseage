@@ -1684,3 +1684,23 @@ check.ps1：全部通过（4 步，退出码 0）
 - **死代码扫描**：`tools/lib/dead-code.js` #35/#36 问题 0；`serviceOptions` 按 AGENTS §5.4 登记 test-only。
 - **真机项**：沿用 QA §AK1~§AK13（本轮为审查修复，不新增界面入口）。
 - **提交**：`cb89ba4`（代码/判据/文档）+ 本节证据回填提交。
+
+## 38. 取件清单排序与取件码突出（D79，2026-11-09）
+
+- **用户指令**：取件清单「突出取件码，按站点和取件码大小排序」；用户选择=保留四档、仅同档按码 / 码做行首大字 / 需查明本组最前。
+- **交付（仅待取件阶段）**：站点组 P1→P8 不变；组内四档不变；同档改为取件码自然升序（逐段数字：`8-2-999` < `8-2-3021` < `8-10-1`，空码排同档后），不再按「去符号整串数字」；**取件码行首大字**（40rpx 加粗、多件 `/` 拼接），宿舍锚/件数/进度/柜号/尾号降为辅助；多件件行保留第 N 件、已取状态与独立按钮；复制文案顺序随展示序；待送达阶段零改动。
+- **代码**：`pages/partner/pick-list/parts/pick-view.js`（`compareCodes` 逐段自然序 + `comparePieceViews`/`compareRows`、行首字段 `headText`/`codeDisplay`/`metaText`）、`index.wxml`（码行首大字/辅助行）、`index.wxss`（`.pickup-code`/`.line-sub`/`.piece-meta` 等，旧 `.piece-text` 退场）。
+- **门禁真实输出**：
+```text
+$ powershell -File check.ps1
+PASS  check.js 代码/配置门禁（39 条）
+PASS  check-docs.js 设计文档门禁（--batch 1）
+PASS  zero-money-scan.js 零金额扫描（源码+页面+文档）
+PASS  selftest.js 全部断言 suite（EXPECTED_ASSERTIONS 闸）
+selftest：运行 39 套；失败 0 套；SKIP 0 套（无）；完整性 0 项（非聚合辅助文件 4 件已声明）
+check.ps1：全部通过（4 步，退出码 0）
+```
+- **判据**：`selftest-pick-list` 218→**223**（L5a 自然序、L5b 同档排序、L5c 多件拼接/件内序、L9b 行首字段、L9c WXML 接线；O8 更新为取件码大字/已取样式）。
+- **文档**：CONTRACT §13 D79、UX_PARTNER §3.11、QA §AK14、CHANGELOG。
+- **真机项（agent 不代勾）**：QA §AK14。
+- **提交**：待提交（本节随收口提交回填）。
