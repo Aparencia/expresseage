@@ -67,7 +67,7 @@ const {
 const summaryCopy = optionalRequire('pages/partner/workbench/parts/summary-copy.js');
 
 const EXPECTED_ASSERTIONS = 235 + dayCases.EXPECTED_ASSERTIONS + 33 + 15 + orderCases.EXPECTED_ASSERTIONS
-  + pickedCases.EXPECTED_ASSERTIONS + 6 + 5 + transferCases.WORKBENCH_EXPECTED_ASSERTIONS + 2; // A~O 实际断言总数（批 26-W4：O 组转派待接收用例表见 lib；+2 H11a/H11b 送别人；+3 E09b/E09c/H08b 按钮 B 与件级定位；+2 批 37 浮层模态）
+  + pickedCases.EXPECTED_ASSERTIONS + 6 + 5 + transferCases.WORKBENCH_EXPECTED_ASSERTIONS + 3; // A~O 实际断言总数（批 26-W4：O 组转派待接收用例表见 lib；+2 H11a/H11b 送别人；+3 E09b/E09c/H08b 按钮 B 与件级定位；+2 批 37 浮层模态；+1 tabBar 互斥）
 function textOf(rel) {
   return fsutil.readText(path.join(ROOT, rel));
 }
@@ -552,6 +552,7 @@ function register(h) {
     t.check(wxml.indexOf('class="panel-mask"') >= 0 && wxml.indexOf('class="panel"') >= 0 && wxml.indexOf('catchtap="onPanelClose"') >= 0 && wxml.indexOf('onHandoverToggle') >= 0 && wxml.indexOf("panel.type === 'tracking'") >= 0, 'F35 动作面板=页面级模态浮层；D81 已转出折叠/只读进度浮层已接线');
     t.check(wxml.indexOf('panel.orderNo') === -1 && wxml.indexOf('panel-page-card') === -1,
       'F36 行内/页底面板已移除（浮层不再撑开列表）');
+    t.check(actionSrc.indexOf('setPanel(') >= 0 && textOf('custom-tab-bar/index.wxml').indexOf('!hidden') >= 0, 'F37 浮层打开时隐藏自定义 tabBar（按钮不被遮挡）');
     t.eq(wxml.indexOf('batchActionId'), -1, 'F25 WXML 不出现内部字段 batchActionId');
     t.check(wxml.indexOf('open-type="share"') >= 0, 'F26 分享绑定卡片只在空态 UI（顾客自己确认才绑定）');
     t.check(indexSrc.indexOf('data: {') >= 0 && indexSrc.indexOf('Object.assign(base') >= 0,

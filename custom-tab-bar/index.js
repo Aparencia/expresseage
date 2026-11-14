@@ -52,7 +52,9 @@ Component({
     tabs: [],
     selected: 0,
     role: 'CUSTOMER',
-    badges: {}
+    badges: {},
+    // 页面级浮层打开时隐藏（工作台送达/补码等）；关闭即恢复，避免 tabBar 盖住浮层按钮
+    hidden: false
   },
 
   lifetimes: {

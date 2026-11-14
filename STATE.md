@@ -1828,3 +1828,14 @@ check.ps1：全部通过（4 步，退出码 0）
 - 交付：QA 附录 F「逐情景模拟回放（批 36~40）」——17 个场景（F1~F17），逐条给触发/期望/自动证据/真机项。
 - 口径：自动证据=本轮 `check.ps1` 全绿下对应套件断言；真实触发器/云库索引/真机 UI 不在自动模拟范围，按 RUNBOOK §3.6.1 与 QA §AL 由用户执行。
 - 文档：QA 附录 F + 索引行（§AL 8 项，合计 388）。
+
+## 46. 批 41 工作台浮层遮挡修复（2026-11-14，用户截图报障）
+
+- **现象**：工作台点「标记已送达」等动作后，浮层的「取消/保存」被底部自定义 tabBar 盖住（用户截图：面板底部只露出 tabBar，按钮不可见）。
+- **根因**：工作台是 tab 页，自定义 tabBar（z-index 500）渲染在页面 fixed 浮层之上；`.panel-mask` 的 z-index 700 在页面层内被 tabBar 覆盖（订单详情非 tab 页，故不受影响）。
+- **修复**：新增 `parts/panel-host.js`——所有 panel 变更统一走 `setPanel()`：打开即 `setTabBarHidden(true)`、关闭即恢复；`custom-tab-bar` 增 `hidden` 标志 + `wx:if`；页面 `onShow` 按当前 panel 状态恢复，避免切后台回来错位。
+- **判据**：`selftest-order-workbench` F37（setPanel 入口 + custom-tab-bar hidden 接线；断言总数 437）。
+- **门禁真实输出**：`check.ps1` 4 步 PASS（check 39/39、docs 12/12、零交易扫描 0 命中、selftest 39 套 0 失败）。
+- **文档**：CHANGELOG、QA §AL4 增「浮层打开时 tabBar 隐藏」。
+- **真机项（agent 不代勾）**：QA §AL4 复测四类浮层与批量浮层。
+- **说明**：本轮为已合并 main 的修复补丁；提交后再次 fast-forward 到 main。

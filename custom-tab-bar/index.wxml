@@ -1,2 +1,3 @@
 <!-- custom-tab-bar/index.wxml · 薄包装：视觉单源 components/tab-bar-view（D64） -->
-<tab-bar-view tabs="{{tabs}}" selected="{{selected}}" badges="{{badges}}" bind:tabtap="onTap" />
+<!-- 批 37 修复：页面级浮层打开时由 setTabBarHidden(true) 隐藏，避免 tabBar 盖住浮层按钮 -->
+<tab-bar-view wx:if="{{!hidden}}" tabs="{{tabs}}" selected="{{selected}}" badges="{{badges}}" bind:tabtap="onTap" />

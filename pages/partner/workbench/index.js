@@ -93,6 +93,8 @@ const base = {
   onShow() {
     this.syncTabBar();
     this.syncMode();
+    // 批 37 修复：从后台/其他页回来时按当前 panel 状态恢复 tabBar 显隐（浮层打开时不露出 tabBar）
+    this.setTabBarHidden(!!this.data.panel);
     this.refreshConfig();
     this.syncMaintenance();
     // 批 31（D73）：configPublic 可能稍后异步到达 → 先按当前快照算一次，watchStore 里再补算
@@ -390,5 +392,7 @@ Object.assign(base, require('./parts/piece-flow'));
 Object.assign(base, require('./parts/subscribe-wiring'));
 // D81：已转出折叠 + 只读进度浮层接线（页面零业务判据）
 Object.assign(base, require('./parts/handover'));
+// 批 37 修复：浮层与自定义 tabBar 互斥（panel-host 的 setPanel 是所有 panel 变更的唯一入口）
+Object.assign(base, require('./parts/panel-host'));
 
 Page(Object.assign(base, require('./parts/page-actions')));

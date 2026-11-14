@@ -41,6 +41,6 @@ module.exports = {
     if (!row) {
       return;
     }
-    this.setData({ panel: handoverView.panelOf(row) });
+    this.setPanel(handoverView.panelOf(row));
   }
 };

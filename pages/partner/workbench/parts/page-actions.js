@@ -78,7 +78,7 @@ module.exports = {
       return;
     }
     if (current.kind === 'panel') {
-      this.setData({ panel: current.panel });
+      this.setPanel(current.panel);
       return;
     }
     if (current.kind === 'confirm') {
@@ -105,7 +105,7 @@ module.exports = {
     if (!this.data.panel || this.data.panel.type !== 'code') {
       return;
     }
-    this.setData({ panel: rowActions.switchCodePanel(this.data.panel, isFinite(index) ? index : 0) });
+    this.setPanel(rowActions.switchCodePanel(this.data.panel, isFinite(index) ? index : 0));
   },
 
   onPanelInput(event) {
@@ -122,7 +122,7 @@ module.exports = {
   },
 
   onPanelClose() {
-    this.setData({ panel: null });
+    this.setPanel(null);
   },
 
   onPanelSubmit() {
@@ -132,7 +132,7 @@ module.exports = {
       return;
     }
     if (intent.kind === 'toast') {
-      this.setData({ panel: null });
+      this.setPanel(null);
       this.toastMsg(intent.message);
       return;
     }
@@ -143,7 +143,7 @@ module.exports = {
         confirmText: '确认',
         success: (res) => {
           if (res.confirm) {
-            this.setData({ panel: null });
+            this.setPanel(null);
             this.runBatch(intent.plan, intent.values);
           }
         }
@@ -182,12 +182,12 @@ module.exports = {
   },
 
   afterWrite(key, row, values) {
-    this.setData({ panel: null });
+    this.setPanel(null);
     this.load({ poll: true }).then(() => {
       const intent = actionFlow.afterWriteIntent(key, this.data.groups, row, values || {});
       this.toastMsg(intent.toastText);
       if (intent.panel) {
-        this.setData({ panel: intent.panel });
+        this.setPanel(intent.panel);
       }
     });
   },
@@ -205,7 +205,7 @@ module.exports = {
       return;
     }
     if (intent.kind === 'panel') {
-      this.setData({ panel: intent.panel });
+      this.setPanel(intent.panel);
       return;
     }
     if (intent.kind === 'confirm') {
