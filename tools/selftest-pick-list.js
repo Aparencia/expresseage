@@ -34,7 +34,7 @@ const fsutil = require('./lib/fsutil');
 const zeroMoney = require('./zero-money-scan');
 const project = require('./lib/project');
 
-const EXPECTED_ASSERTIONS = 223; // 实跑读数：node tools/selftest-pick-list.js（批 25-B D61/D62：L/M 改判 + O 组 16 条 + N9b；+2：送别人「送至」判定 L10b/L11b；+1：H18 TAB_DATA 合并回归；+5：2026-11-09 取件码自然序/行首大字 L5a/L5b/L5c/L9b/L9c）
+const EXPECTED_ASSERTIONS = 225; // 实跑读数：node tools/selftest-pick-list.js（批 25-B D61/D62：L/M 改判 + O 组 16 条 + N9b；+2：送别人「送至」判定 L10b/L11b；+1：H18 TAB_DATA 合并回归；+5：2026-11-09 取件码自然序/行首大字 L5a/L5b/L5c/L9b/L9c）
 
 const PAGE_DIR = 'pages/partner/pick-list';
 const FILES = {
@@ -271,6 +271,9 @@ function register(h) {
       t.check(false, 'B1 楼层清单纯件缺失（pages/partner/pick-list/parts/view-model.js）');
       return;
     }
+    t.eq(view.findOrderOf([[{ orderNo: 'A' }], [{ orderNo: 'B' }]], 'B').orderNo, 'B',
+      'B0a 批 42：待取件/待送达两个列表都参与订单查找（点已取件不再误报不在清单）');
+    t.eq(view.findOrderOf([[{ orderNo: 'A' }]], 'X'), null, 'B0b 批 42：两个列表都没有才返回 null');
     const raw = floorFixtures();
     const rows = view.rowsOf(raw);
     const groups = view.buildGroups(rows);

@@ -363,22 +363,10 @@
           >{{opt.id}} {{opt.name}}</view>
         </view>
       </block>
-      <block wx:elif="{{panel.type === 'tracking'}}">
-        <view class="tracking-row"><text class="muted">当前状态</text><text>{{panel.tracking.statusText}}</text></view>
-        <view class="tracking-row"><text class="muted">当前履约</text><text>{{panel.tracking.fulfillmentPartnerNo}}</text></view>
-        <view class="tracking-row" wx:if="{{panel.tracking.transferTimeText}}"><text class="muted">转出时间</text><text>{{panel.tracking.transferTimeText}}</text></view>
-        <view class="tracking-row"><text class="muted">状态更新</text><text>{{panel.tracking.timeText}}</text></view>
-        <view class="tracking-row" wx:if="{{panel.tracking.deliveredTimeText}}"><text class="muted">送达时间</text><text>{{panel.tracking.deliveredTimeText}}</text></view>
-        <view class="tracking-row" wx:if="{{panel.tracking.completedTimeText}}"><text class="muted">完成时间</text><text>{{panel.tracking.completedTimeText}}</text></view>
-        <view class="small muted tracking-hint">只读跟踪：顾客身份、地址、取件码与截图不会展示；如需操作请联系接手人。</view>
-      </block>
       <view wx:if="{{panel.error}}" class="panel-error">{{panel.error}}</view>
-      <view class="row panel-actions" wx:if="{{panel.type !== 'tracking'}}">
+      <view class="row panel-actions">
         <view class="mini-btn btn btn-ghost" catchtap="onPanelClose">取消</view>
         <view class="mini-btn btn btn-primary" catchtap="onPanelSubmit">保存</view>
-      </view>
-      <view class="row panel-actions" wx:else>
-        <view class="mini-btn btn btn-primary" catchtap="onPanelClose">关闭</view>
       </view>
     </view>
   </view>

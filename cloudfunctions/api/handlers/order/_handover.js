@@ -48,6 +48,8 @@ function summaryOf(order) {
   const pickedCount = parcels.filter((parcel) => parcel && parcel.picked === true).length;
   return {
     handover: true,
+    // D85：发起者保留控制权，客户端据此直接进订单详情（不再是只读跟踪）
+    canControl: true,
     orderNo: transfer.textOf(source.orderNo),
     status: statusOf(source),
     statusText: orderState.statusText(statusOf(source)),

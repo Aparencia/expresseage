@@ -20,6 +20,7 @@ const {
   getOrderByNo,
   getOrderById,
   orderSideOf,
+  resolveOrderSide,
   loadWritablePartner
 } = store;
 
@@ -131,7 +132,7 @@ async function runOrderAction(ctx, payload, spec) {
   if (!order) {
     throw errors.notFound('订单不存在或不可查看');
   }
-  const side = orderSideOf(ctx, order);
+  const side = await resolveOrderSide(ctx, order);
   if (!side) {
     throw errors.forbidden('无权操作该订单');
   }

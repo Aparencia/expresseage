@@ -5,6 +5,8 @@
 const orderApi = require('../../../../api/modules/order');
 const handoverView = require('./handover-view');
 
+// D85：已转出=发起者仍可控，点行直接进订单详情（不再弹只读跟踪浮层）
+
 const PAGE_SIZE = 20;
 const ERROR_TEXT = '已转出订单加载失败，请稍后重试';
 
@@ -41,6 +43,6 @@ module.exports = {
     if (!row) {
       return;
     }
-    this.setPanel(handoverView.panelOf(row));
+    wx.navigateTo({ url: '/pkg-partner/pages/order-detail/index?orderNo=' + encodeURIComponent(orderNo) });
   }
 };

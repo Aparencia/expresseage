@@ -35,7 +35,7 @@ const errorCopy = require(path.join(ROOT, 'shared/error-copy.js'));
 const subscribe = require(path.join(ROOT, 'utils/subscribe.js'));
 const subscribeRow = require(path.join(ROOT, 'pages/profile/parts/subscribe-row.js'));
 
-const EXPECTED_ASSERTIONS = 177; // 实际断言总数（运行后校准；少算/多算都判红）
+const EXPECTED_ASSERTIONS = 180; // 实际断言总数（运行后校准；少算/多算都判红）
 
 const NOW = Date.parse('2026-10-22T12:00:00+08:00');
 const WRITE_REJECTED = '系统维护中，暂时不能提交；急单请留言或联系开发者。';
@@ -587,6 +587,17 @@ function register(h) {
       'off', 'G14 模板 reject → 未开启');
     t.eq(subscribeRow.statusOf({ subscriptionsSetting: { mainSwitch: true } }, 't').state, 'off',
       'G15 无模板记录 → 未开启（可点此开启）');
+    // 批 42：工作台入口以真实订阅状态为准（已开启不显示按钮）；「我的」页给快捷关闭（一键进设置）
+    const acceptSetting = { subscriptionsSetting: { mainSwitch: true, itemSettings: { t: 'accept' } } };
+    t.eq([subscribe.settingStatusOf(acceptSetting, 't').state, subscribe.settingStatusOf(acceptSetting, 't').text],
+      ['on', '已开启'], 'G16 真实设置 accept → on「已开启」（工作台据此隐藏按钮）');
+    t.check(textOf('pages/partner/workbench/parts/subscribe-wiring.js').indexOf('settingStatusOf') >= 0
+      && textOf('pages/partner/workbench/parts/subscribe-wiring.js').indexOf('wx.getSetting') >= 0,
+    'G17 工作台入口读取真实订阅状态（不再只看本次会话 subscribeOn）');
+    t.check(textOf('pages/profile/index.wxml').indexOf('onSubscribeClose') >= 0
+      && textOf('pages/profile/index.wxml').indexOf('subscribeCanClose') >= 0
+      && typeof subscribeRow.close === 'function',
+    'G18 「我的」页已开启时显示「关闭」快捷入口（顾客/兼职同一行，一键进设置）');
   });
 
   // ---------------------------------------------------------------- H 批 31 接线静态断言（D73）

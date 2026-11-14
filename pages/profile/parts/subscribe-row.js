@@ -28,23 +28,18 @@ function blockedOf(page) {
 }
 
 function statusOf(settings, templateId) {
-  const all = (settings && settings.subscriptionsSetting) || {};
-  if (all.mainSwitch === false) return { state: 'blocked', text: '已关闭（去设置）' };
-  const value = (all.itemSettings || {})[templateId];
-  if (value === 'accept') return { state: 'on', text: '已开启' };
-  if (value === 'reject') return { state: 'off', text: '未开启（点此开启）' };
-  return { state: 'off', text: '未开启（点此开启）' };
+  return subscribe.settingStatusOf(settings, templateId);
 }
 
 function refresh(page) {
   const isCustomer = page.data.isCustomer === true;
   if (blockedOf(page) || !visibleOf(isCustomer)) {
-    page.setData({ subscribeVisible: false });
+    page.setData({ subscribeVisible: false, subscribeCanClose: false });
     return;
   }
   const templateId = templateIdOf(isCustomer);
   if (typeof wx === 'undefined' || typeof wx.getSetting !== 'function') {
-    page.setData({ subscribeVisible: false });
+    page.setData({ subscribeVisible: false, subscribeCanClose: false });
     return;
   }
   wx.getSetting({
@@ -54,19 +49,30 @@ function refresh(page) {
       page.setData({
         subscribeVisible: true,
         subscribeState: status.state,
-        subscribeStatusText: status.text
+        subscribeStatusText: status.text,
+        // 已开启才显示「关闭」快捷入口（平台不能代关，只能一键去设置页）
+        subscribeCanClose: status.state === 'on'
       });
     },
-    fail: () => page.setData({ subscribeVisible: false })
+    fail: () => page.setData({ subscribeVisible: false, subscribeCanClose: false })
   });
 }
 
 function openSystemSetting() {
   subscribe.openSetting().then((result) => {
     if (result.ok && typeof wx !== 'undefined' && typeof wx.showToast === 'function') {
-      wx.showToast({ title: '打开「订阅消息」后，可再次点击此处开启', icon: 'none' });
+      wx.showToast({ title: '在「订阅消息」里关闭后返回即可', icon: 'none' });
     }
   });
+}
+
+// 快捷关闭：不弹二次说明，直接进小程序设置页（顾客/兼职同一入口，模板不同）
+function close(page) {
+  if (blockedOf(page)) {
+    wx.showToast({ title: '开发者视角下不能操作此提醒', icon: 'none' });
+    return;
+  }
+  openSystemSetting();
 }
 
 function envVersionOf() {
@@ -110,15 +116,8 @@ function onTap(page) {
     return;
   }
   if (page.data.subscribeState === 'on') {
-    wx.showModal({
-      title: '微信提醒',
-      content: '已开启。如需关闭，请到小程序设置里关闭「订阅消息」。',
-      confirmText: '去设置',
-      cancelText: '知道了',
-      success: (res) => {
-        if (res.confirm) openSystemSetting();
-      }
-    });
+    // 快捷关闭：一键去设置页（不再弹说明框）；返回后 onShow 会按真实设置刷新
+    close(page);
     return;
   }
   subscribe.request([templateId]).then((result) => {
@@ -150,5 +149,6 @@ module.exports = {
   visibleOf,
   statusOf,
   refresh,
-  onTap
+  onTap,
+  close
 };

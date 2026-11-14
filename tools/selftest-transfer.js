@@ -516,9 +516,9 @@ async function sectionT10(h) {
     await p2.call('order.acceptTransfer', { orderNo: '20261103-1001' }, { clientRequestId: nextCrid('t10acc') });
     const oldRead = await p1.call('order.get', { orderNo: '20261103-1001' });
     t.eq([oldRead.ok, oldRead.data.handover, oldRead.data.order.handover,
-      oldRead.data.order.customerNo === undefined, oldRead.data.order.actions === undefined],
-    [true, true, true, true, true],
-    'T10-10 完成后原兼职只剩 D81 跟踪视图（操作/顾客身份为零；不再整单 FORBIDDEN）');
+      Array.isArray(oldRead.data.order.actions), oldRead.data.order.status],
+    [true, undefined, undefined, true, ACCEPTED],
+    'T10-10 完成后原兼职按 D85 保留控制视图（完整订单 + 动作矩阵，不再是只读跟踪）');
     const oldWorkbench = await p1.call('order.listPartner', { view: 'workbench' });
     t.eq(oldWorkbench.data.list.map((row) => row.orderNo), [],
       'T10-11 完成后原兼职工作台不再返回该单（服务端按当前归属过滤）');

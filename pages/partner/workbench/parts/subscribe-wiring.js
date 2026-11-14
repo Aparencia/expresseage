@@ -18,6 +18,30 @@ module.exports = {
     }
   },
 
+  // 批 42：入口可见性以「微信真实订阅状态」为准（wx.getSetting），不只看本次会话的 subscribeOn。
+  // 已开启（accept）→ 隐藏按钮；未开启/总开关关闭 → 显示（点击时按真实结果给下一步）。
+  refreshSubscribeStatus(force) {
+    const ids = subscribe.planForPartnerTap(store.get('config'));
+    const planId = ids.length ? ids[0] : '';
+    if (force !== true && this._subscribeCheckedId === planId) {
+      return;
+    }
+    this._subscribeCheckedId = planId;
+    if (!planId || typeof wx === 'undefined' || typeof wx.getSetting !== 'function') {
+      this.syncSubscribeVisible();
+      return;
+    }
+    wx.getSetting({
+      withSubscriptions: true,
+      success: (res) => {
+        const status = subscribe.settingStatusOf(res, planId);
+        const on = status.state === 'on';
+        this.setData({ subscribeOn: on, subscribeEnabled: !on });
+      },
+      fail: () => this.syncSubscribeVisible()
+    });
+  },
+
   // 接单/拒单 tap 内先补 1 条额度（必须在 dispatch/确认框之前，保留点击手势；失败静默不阻断）。
   requestNewOrderSubscribe() {
     if (this.data.readonly || this.data.testWrite) return;

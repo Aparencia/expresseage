@@ -223,7 +223,10 @@
               <text>微信提醒</text>
               <text class="muted subscribe-state">{{subscribeStatusText}}</text>
             </view>
-            <text class="row-arrow">›</text>
+            <view class="row">
+              <text wx:if="{{subscribeCanClose}}" class="link subscribe-close" catchtap="onSubscribeClose">关闭</text>
+              <text class="row-arrow">›</text>
+            </view>
           </view>
           <view class="row-item" data-doc="privacy" bindtap="onDocTap">
             <text>隐私与协议</text>

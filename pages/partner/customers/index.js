@@ -71,11 +71,11 @@ Page({
     this.load(true);
   },
 
-  // custom-tab-bar 每页一份实例：本页 onShow 显式同步选中格（客户=1）
+  // custom-tab-bar 每页一份实例：本页 onShow 显式同步选中格（客户=2：工作台 0/取件清单 1/客户 2/我的 3）
   syncTabBar() {
     const tabBar = typeof this.getTabBar === 'function' ? this.getTabBar() : null;
     if (tabBar) {
-      tabBar.setData({ selected: 1 });
+      tabBar.setData({ selected: 2 });
     }
   },
 

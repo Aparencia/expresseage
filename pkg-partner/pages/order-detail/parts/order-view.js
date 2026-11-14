@@ -100,7 +100,11 @@ function deliveryOf(order) {
   const dormKey = textOf(delivery.dormKey);
   const buildingText = textOf(delivery.buildingText) || textOf(delivery.zone);
   const room = textOf(delivery.room);
-  const address = dormKey || [buildingText, room].filter(Boolean).join('-');
+  // 批 42：地址只用「苑/栋-房号」重建，不直接信 dormKey——历史/脏数据可能把顾客字母编号（roomTag）
+  // 拼进 dormKey（D8-309A），详情页不应把内部字母编号当门牌展示。
+  const address = buildingText && room
+    ? buildingText + '-' + room
+    : (dormKey || [buildingText, room].filter(Boolean).join('-'));
   const recipientName = textOf(delivery.recipientName);
   const phoneTail = textOf(delivery.phoneTail);
   return {

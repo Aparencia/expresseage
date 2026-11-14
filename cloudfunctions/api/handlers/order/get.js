@@ -31,9 +31,16 @@ async function resolveReadAccess(ctx, order) {
   if (partner && transfer.isPendingTargetOf(order, partner._id)) {
     return { side: '', partner, transferTarget: true, maskCustomer: true };
   }
-  // D81：转派发起者（原履约人）只读跟踪——只给进度，不给顾客身份/地址/取件码/动作
+  // D85（批 42）：转派已被接收后，原履约人保留控制权——按 PARTNER 侧返回完整视图与动作
+  // （与当前履约人双人可控；转派邀请/再次转派仍只归当前履约人，见 _dto buildActions initiator 分支）
   if (partner && handover.isInitiatorOf(order, partner._id)) {
-    return { side: '', partner, handover: true, maskCustomer: true };
+    return {
+      side: 'PARTNER',
+      partner: partner,
+      initiator: true,
+      transferTarget: false,
+      maskCustomer: await access.maskCustomerOf(ctx, order, partner)
+    };
   }
   throw common.errors.forbidden('无权查看该订单');
 }
@@ -58,23 +65,13 @@ module.exports = async function orderGet(ctx, payload) {
     orderBy: [['at', 'asc']],
     limit: common.EVENT_LIST_LIMIT
   });
-  // D81：已转出单走最小投影（只回进度与转派结果；事件按顾客侧白名单，隐藏私有转派事件）
-  if (granted.handover) {
-    if (!handover.isInitiatorOf(order, granted.partner._id)) {
-      throw common.errors.forbidden('无权查看该订单');
-    }
-    return {
-      handover: true,
-      order: handover.summaryOf(order),
-      events: dto.buildEventDtos(events, 'CUSTOMER')
-    };
-  }
   // D58（批 26）：顾客侧事件时间线拉黑 4 个私有转派事件（与 message.list 同口径），TRANSFER_ACCEPTED 可见；
   // 兼职（含转派目标/新履约人）/admin 全量下发（双方与后台需要完整留痕）。
   const eventSide = granted.side || (granted.transferTarget ? 'PARTNER' : '');
   const orderDto = await dto.buildOrderDto(ctx, order, {
     side: granted.side,
     transferTarget: granted.transferTarget,
+    initiator: granted.initiator === true,
     maskCustomer: granted.maskCustomer
   });
   return {

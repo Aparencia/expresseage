@@ -36,7 +36,7 @@ const pieceActions = require(path.join(ROOT, 'pages/partner/workbench/parts/piec
 // 批 26-W4（D58 转派兼职端）：用例表拆 tools/lib（控测试文件 ≤1000 行，门禁 #18）
 const uiCases = require(path.join(__dirname, 'lib', 'partner-transfer-ui-cases.js'));
 
-const EXPECTED_ASSERTIONS = 191 + 15 + 2 + uiCases.DETAIL_EXPECTED_ASSERTIONS + 13 + 1; // +1：D77 附加服务详情文案 // 191 + 批 25-B D61 15 条（J 组）+ 批 26 D58 A 组拆分对齐 2 条（A7b/A8b）+ K 组转派 + L 组 13 条（2026-11-05 动作条层级/多图预览）
+const EXPECTED_ASSERTIONS = 191 + 15 + 2 + uiCases.DETAIL_EXPECTED_ASSERTIONS + 13 + 1 + 1; // +1：D77 附加服务详情文案 // 191 + 批 25-B D61 15 条（J 组）+ 批 26 D58 A 组拆分对齐 2 条（A7b/A8b）+ K 组转派 + L 组 13 条（2026-11-05 动作条层级/多图预览）
 const STATUS = orderState.STATUS;
 const STATUS_LITERALS = enums.ORDER_STATUS_LIST.slice();
 const PAGE_JS = 'pkg-partner/pages/order-detail/index.js';
@@ -729,6 +729,8 @@ function register(h) {
     t.eq([detail.deliveryText, detail.deliveryRecipientText, detail.deliveryIsDefault],
       ['D4-522', '收件人：小李', false], 'H4 配送地址（D25）：本单收件人地址原样展示');
     const defaultDelivery = orderView.buildDetail(multiDto({ delivery: { zone: 'D', buildingNo: 4, room: '522', dormKey: 'D4-522' } }));
+    const taggedDelivery = orderView.buildDetail(multiDto({ delivery: { zone: 'D', buildingNo: 4, room: '522', buildingText: 'D4', dormKey: 'D4-522A' } }));
+    t.eq(taggedDelivery.deliveryText, 'D4-522', 'H4b 配送地址不显示顾客字母编号（脏 dormKey D4-522A → D4-522）');
     t.eq([defaultDelivery.deliveryRecipientText, defaultDelivery.deliveryIsDefault], ['送至下单人宿舍', true],
       'H5 无收件人 → 明示送至下单人宿舍（不猜第三方）');
     const manualDto = multiDto({ manualEntry: true, images: [] });

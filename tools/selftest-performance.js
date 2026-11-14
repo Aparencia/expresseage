@@ -453,7 +453,7 @@ function register(h) {
       'pages/partner/workbench/index.js', 'pages/partner/customers/index.js'];
     const synced = tabPages.filter((rel) => {
       const src = textOf(rel);
-      return src.indexOf('getTabBar()') >= 0 && /setData\(\{\s*selected:\s*[01]/.test(src);
+      return src.indexOf('getTabBar()') >= 0 && /setData\(\{\s*selected:\s*[0-3]/.test(src);
     });
     t.eq(synced.length, 4, 'J8 4 个 tab 页 onShow 均显式同步 tabBar 选中格（per-page 单一来源，页面隐藏时零空转）');
     // D64：底部栏视觉抽为共用组件后，custom-tab-bar 只保留状态/跳转（不再自绘 icon 循环），

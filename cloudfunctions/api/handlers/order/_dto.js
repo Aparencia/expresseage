@@ -235,7 +235,8 @@ function buildActions(order, side, nowMs, options) {
       pushAction(actions, 'cancel');
     }
     // 兼职侧沿用现有键；终态（COMPLETED/CANCELLED）不再给 message（只读归档）
-    buildTransferActions(actions, order, opts);
+    // D85：转派发起者保留控制但不再持有转派邀请（request/cancel 只归当前履约人）。
+    if (opts.initiator !== true) buildTransferActions(actions, order, opts);
     pushMessageIfOpen(actions, status);
   } else if (side === 'CUSTOMER') {
     buildCustomerActions(actions, order);
@@ -305,7 +306,10 @@ function buildOrderFields(order, parts) {
     counterpart: parts.counterpart,
     // D58：transfer 恒返回（无字段 ⇒ null，零迁移）；键集合由 _transfer.blockOf 按角色剪裁
     transfer: parts.transferBlock,
-    actions: parts.withActions ? buildActions(order, side, parts.nowMs, { transferTarget: parts.transferTarget }) : [],
+    actions: parts.withActions ? buildActions(order, side, parts.nowMs, {
+      transferTarget: parts.transferTarget,
+      initiator: parts.initiator === true
+    }) : [],
     version: numberOrZero(order.version)
   }, party.buildTimeFields(order), pickSummaryFieldsOf(parcels));
 }
@@ -337,6 +341,7 @@ async function buildOrderDto(ctx, order, options) {
     counterpart,
     transferBlock: transfer.blockOf(order, relation),
     transferTarget,
+    initiator: opts.initiator === true,
     nowMs: time.toMs(ctx && ctx.now),
     status: textOf(order.status),
     parcels: buildParcelDtos(order, side),

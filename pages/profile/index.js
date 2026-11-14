@@ -60,6 +60,8 @@ Page({
     subscribeVisible: false,
     subscribeState: 'off',
     subscribeStatusText: '',
+    // 批 42：已开启时给「关闭」快捷入口（平台不能代关，一键进设置页）
+    subscribeCanClose: false,
     version: '开发版',
     zoneLabels: vm.ZONE_LABELS,
     buildingLabels: vm.BUILDING_LABELS,
@@ -446,6 +448,11 @@ Page({
   // D73：微信提醒行（读取 wx.getSetting；开启走授权，关闭只能去小程序设置）
   onSubscribeTap() {
     subscribeRow.onTap(this);
+  },
+
+  // 批 42：已开启时的「关闭」快捷入口（一键进设置页；顾客/兼职同一入口）
+  onSubscribeClose() {
+    subscribeRow.close(this);
   },
 
   // 分享卡判据全在 parts/share-card.js（D63：顾客带其 ACTIVE 绑定兼职编号）；零昵称/头像/宿舍/尾号/订单，纯件可单测。

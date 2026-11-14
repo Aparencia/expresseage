@@ -1839,3 +1839,16 @@ check.ps1：全部通过（4 步，退出码 0）
 - **文档**：CHANGELOG、QA §AL4 增「浮层打开时 tabBar 隐藏」。
 - **真机项（agent 不代勾）**：QA §AL4 复测四类浮层与批量浮层。
 - **说明**：本轮为已合并 main 的修复补丁；提交后再次 fast-forward 到 main。
+
+## 47. 批 42 用户报障修复 + 转派双人可控（D85，2026-11-14）
+
+- **① 微信提醒**：工作台「开启新单提醒」改为读取 `wx.getSetting` 真实状态（已开启隐藏，不再只看本次会话）；「我的 → 微信提醒」已开启时显示「关闭」快捷入口，一键进小程序设置页（顾客/兼职同一行、各用各的模板）。
+- **② 伪 tab 高亮**：兼职「客户」页把选中格写成 1（取件清单），改为 2（工作台 0/取件清单 1/客户 2/我的 3）。
+- **③ 取件清单已取件**：待取件订单存在 `_pickOrders`，写动作只查 `_orders` → 误报「订单已不在当前清单」且不写库；`findOrderOf` 同时查两阶段列表。
+- **④ 配送地址字母编号**：详情地址改用「苑/栋-房号」重建（不再直接信 `dormKey` 脏值），历史 `D8-309A` 只显示 `D8-309`。
+- **⑤ 转派双人可控（D85）**：`transfer.status=ACCEPTED` 后发起者仍按 PARTNER 侧读/写（完整详情、取件/送达/改码/异常/取消/留言、查看本单截图），与当前履约人双人可控；转派邀请动作仍只归当前履约人；PENDING/无关兼职仍 FORBIDDEN；「已转出」列表 `canControl` 点行进详情。`D_MAX` 84→85。
+- **判据**：`selftest-message-pages` 177→180（G16~G18）、`selftest-pick-list` 223→225（B0a/B0b）、`selftest-order-detail-partner` +1（H4b）、`selftest-transfer` D85-1~8（148，原 D81 组改判）、performance J8/order-customer K25 选中格期望同步。
+- **门禁真实输出（2026-11-14，工作树 dsh-006db18a-b8f6）**：`check.ps1` 4 步 PASS（check 39/39、docs 12/12、零交易扫描 0 命中、selftest 39 套 0 失败，退出码 0）。
+- **文档**：CONTRACT §13 D85、DATA_MODEL §5.2、UX_PARTNER §3.2/§3.3、UX_CUSTOMER「我的」、QA §AL9~§AL13（合计 393）、CHANGELOG。
+- **真机项（agent 不代勾）**：QA §AL9~§AL13。
+- **合并**：修复提交 fast-forward 到 `main`（见本轮收口提交）。

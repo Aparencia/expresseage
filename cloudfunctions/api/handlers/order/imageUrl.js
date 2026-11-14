@@ -44,7 +44,14 @@ module.exports = async function orderImageUrl(ctx, payload) {
   const orderNo = common.normalizeOrderNoInput(payload && payload.orderNo);
   const index = readImageIndex(payload);
   const order = await common.getOrderByNo(ctx, orderNo);
-  const side = common.assertOrderVisible(ctx, order);
+  // D85：转派发起者保留控制权（含查看本单截图）；普通越权仍 FORBIDDEN
+  let side = common.orderSideOf(ctx, order);
+  if (!side) {
+    side = await common.resolveOrderSide(ctx, order);
+  }
+  if (!side) {
+    throw errors.forbidden('无权查看该订单');
+  }
   common.assertTestOrderVisible(ctx, order);
   if (side === 'ADMIN') {
     throw errors.forbidden('后台请通过开发者只读视角查看原图');

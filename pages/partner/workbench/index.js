@@ -99,6 +99,7 @@ const base = {
     this.syncMaintenance();
     // 批 31（D73）：configPublic 可能稍后异步到达 → 先按当前快照算一次，watchStore 里再补算
     this.syncSubscribeVisible();
+    this.refreshSubscribeStatus(true);
     // onShow 也走增量：已加载过就只发变化行补丁，不整页重拉（UX §4.11）
     this.load({ poll: this.data.stage === 'ready' }).then(() => {
       this.loadHistorySummary(); this.applyCompletedFocus();
@@ -221,6 +222,7 @@ const base = {
       this.syncMaintenance();
       // 批 31（D73）：configPublic 刷新（订阅开关/模板 ID）后同步入口可见性
       this.syncSubscribeVisible();
+      this.refreshSubscribeStatus();
     });
   },
 

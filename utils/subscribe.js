@@ -83,6 +83,24 @@ function resultText(statuses) {
   return (blocked && RESULT_TEXT[blocked]) || '';
 }
 
+// 读取 wx.getSetting({withSubscriptions:true}) 的单模板状态（纯件，页面/工作台共用）。
+// 平台事实：订阅消息没有应用内开关；on=用户已授权（可引导去设置关闭），off=未开启（可再次请求）。
+function settingStatusOf(settings, templateId) {
+  const source = settings && typeof settings === 'object' ? settings : {};
+  const all = source.subscriptionsSetting || {};
+  if (all.mainSwitch === false) {
+    return { state: 'blocked', text: '已关闭（去设置）' };
+  }
+  const value = (all.itemSettings || {})[templateId];
+  if (value === 'accept') {
+    return { state: 'on', text: '已开启' };
+  }
+  if (value === 'reject') {
+    return { state: 'off', text: '未开启（点此开启）' };
+  }
+  return { state: 'off', text: '未开启（点此开启）' };
+}
+
 // 平台调用同步发起（保点击手势）；15s 兜底 resolve 为 timeout，绝不 reject、绝不重复 resolve。
 function request(tmplIds) {
   return new Promise(function run(resolve) {
@@ -187,6 +205,7 @@ module.exports = {
   planForOrderSubmit,
   planForPartnerTap,
   statusesOf,
+  settingStatusOf,
   acceptedOf,
   resultText,
   request,

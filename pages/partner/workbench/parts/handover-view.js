@@ -46,19 +46,9 @@ function rowsOf(list, now) {
   return (Array.isArray(list) ? list : []).map((item) => rowOf(item, now));
 }
 
-// 只读进度面板：type=tracking 由 WXML 渲染只读行 + 仅「关闭」按钮
-function panelOf(row) {
-  return {
-    type: 'tracking',
-    title: '已转出 ' + (row && row.orderNo ? row.orderNo : ''),
-    tracking: row || rowOf(null)
-  };
-}
-
 module.exports = {
   closedState,
   timeTextOf,
   rowOf,
-  rowsOf,
-  panelOf
+  rowsOf
 };

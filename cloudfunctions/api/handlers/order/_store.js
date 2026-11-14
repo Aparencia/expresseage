@@ -311,6 +311,36 @@ function orderSideOf(ctx, order) {
   return '';
 }
 
+// D85（批 42）：转派发起者保留控制权——转派已被接收后，原履约人仍按 PARTNER 侧参与
+// （读详情/取件/送达/改码/异常/取消/留言），与当前履约人双人可控；转派邀请本身仍只归当前履约人。
+// 仅「transfer.status=ACCEPTED 且 fromPartnerId=本人 且 本人已不是 partnerId」成立，不扩大给旁人。
+async function resolveOrderSide(ctx, order) {
+  const side = orderSideOf(ctx, order);
+  if (side) {
+    return side;
+  }
+  const scope = scopeOf(ctx);
+  if (!order || scope.roles.indexOf(enums.ROLES.PARTNER) < 0) {
+    return '';
+  }
+  const partner = await getPartnerByOpenid(ctx, scope.openid);
+  if (!partner) {
+    return '';
+  }
+  return isTransferInitiatorOf(order, partner._id) ? 'PARTNER' : '';
+}
+
+function isTransferInitiatorOf(order, partnerId) {
+  const block = order && order.transfer;
+  if (!block || block.status !== enums.TRANSFER_STATUS.ACCEPTED) {
+    return false;
+  }
+  if (String(block.fromPartnerId || '') !== String(partnerId || '')) {
+    return false;
+  }
+  return String(order.partnerId || '') !== String(partnerId || '');
+}
+
 function assertOrderVisible(ctx, order) {
   if (!order) {
     throw errors.notFound('订单不存在或不可查看');
@@ -443,6 +473,7 @@ module.exports = {
   getOrderById,
   normalizeOrderNoInput,
   orderSideOf,
+  resolveOrderSide,
   assertOrderVisible,
   loadUploadTicket,
   assertImageFile,

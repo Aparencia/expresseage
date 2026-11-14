@@ -715,8 +715,8 @@ function register(h) {
       'K24 订单页 onShow 同步选中格=1（不再高亮「首页」）');
     const workbench = textOf('pages/partner/workbench/index.js');
     const customers = textOf('pages/partner/customers/index.js');
-    t.check(/setData\(\{\s*selected:\s*0/.test(workbench) && /setData\(\{\s*selected:\s*1/.test(customers),
-      'K25 工作台/客户页 onShow 同步选中格=0/1（tabBar per-page 同步）');
+    t.check(/setData\(\{\s*selected:\s*0/.test(workbench) && /setData\(\{\s*selected:\s*2/.test(customers),
+      'K25 工作台/客户页 onShow 同步选中格=0/2（tabBar per-page 同步）');
     t.check(tabBar.indexOf('current.selected === selected') >= 0,
       'K26 tabbar 路径未命中时保留页面显式设置（不回落首页造成错格）');
 

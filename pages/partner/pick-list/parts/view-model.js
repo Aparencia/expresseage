@@ -432,6 +432,25 @@ function writeRowOf(order) {
   });
 }
 
+// 批 42：订单查找（待取件 _pickOrders / 待送达 _orders 两个列表都要查）。
+// 之前只查 _orders，待取件阶段点「已取件」会误报「订单已不在当前清单」且不写库。
+function findOrderOf(lists, orderNo) {
+  const groups = Array.isArray(lists) ? lists : [];
+  const target = textOf(orderNo);
+  if (!target) {
+    return null;
+  }
+  for (let g = 0; g < groups.length; g += 1) {
+    const list = Array.isArray(groups[g]) ? groups[g] : [];
+    for (let i = 0; i < list.length; i += 1) {
+      if (list[i] && list[i].orderNo === target) {
+        return list[i];
+      }
+    }
+  }
+  return null;
+}
+
 // 数据源 payload（现成动作、无服务端改动）：workbench 视图 + PICKED 状态 + ≤20 行/片
 function queryOf(options) {
   const opts = options || {};
@@ -457,5 +476,6 @@ module.exports = {
   toggleSelection,
   selectAll,
   selectedRows,
-  writeRowOf
+  writeRowOf,
+  findOrderOf
 };

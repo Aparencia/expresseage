@@ -350,3 +350,10 @@
   margin-left: 12rpx;
   font-size: 24rpx;
 }
+
+/* 批 42：已开启时的「关闭」快捷入口（一键进小程序设置页） */
+.subscribe-close {
+  color: #2B6DE5;
+  font-size: 26rpx;
+  padding: 8rpx 0 8rpx 16rpx;
+}

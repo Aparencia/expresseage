@@ -480,11 +480,11 @@ Page(Object.assign({
   },
 
   orderOf(orderNo) {
-    const list = this._orders;
-    for (let i = 0; i < list.length; i += 1) {
-      if (list[i] && list[i].orderNo === orderNo) {
-        return list[i];
-      }
+    // 待取件阶段订单在 _pickOrders、待送达阶段在 _orders：两个列表都要查，
+    // 否则点「已取件」会误报「订单已不在当前清单」且不写库。
+    const list = view.findOrderOf([this._orders, this._pickOrders], orderNo);
+    if (list) {
+      return list;
     }
     return null;
   },
