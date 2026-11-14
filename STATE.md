@@ -1852,3 +1852,13 @@ check.ps1：全部通过（4 步，退出码 0）
 - **文档**：CONTRACT §13 D85、DATA_MODEL §5.2、UX_PARTNER §3.2/§3.3、UX_CUSTOMER「我的」、QA §AL9~§AL13（合计 393）、CHANGELOG。
 - **真机项（agent 不代勾）**：QA §AL9~§AL13。
 - **合并**：修复提交 fast-forward 到 `main`（见本轮收口提交）。
+
+## 48. 批 43 主包体积/代码质量扫描修复（2026-11-14，用户 DevTools 截图 + 编译报错）
+
+- **现象**：DevTools 编译报 `main package source size 24574KB exceed max limit 2048KB`；代码质量扫描同时报主包 >1.5M、图片资源 >200K、主包存在未使用 JS（ai/privacy/appoint/audit-actions/order-edit/rebind/recognize）。
+- **根因**：仓库把 agent 工作树放在项目内 `.agents/worktrees/`，每个工作树含完整 docs/截图副本（各约 25MB）；`project.config.json` 的 `packOptions.ignore` 未忽略 `.agents`，主包把工作树副本打进来。
+- **修复**：`packOptions.ignore` 增 `.agents`（主包约 1.0MB；主包图片 36.5KB，均低于 1.5M/200K 线）。另新增 `config/main-deps.js` 并由 `app.js` 显式 require：把只被分包引用、按单源纪律放主包的 7 个模块声明为主包公共依赖，消除「主包未使用 JS」误报（模块零副作用，不改启动网络/存储路径）。
+- **判据**：`selftest-performance` 新增 J9（忽略 .agents/docs/tools/cloudfunctions/.git）、J10（main-deps 接线），147→149。
+- **门禁真实输出（2026-11-14，工作树 dsh-006db18a-b8f6）**：`check.ps1` 4 步 PASS（check 39/39、docs 12/12、零交易扫描 0 命中、selftest 39 套 0 失败，退出码 0）。
+- **用户侧**：DevTools 重新打开项目/清缓存后重新扫描与编译；本修复只改打包配置与启动 require，不改页面口径。
+- **说明**：工作树内同样有 `.agents`（嵌套），忽略规则按目录名生效，主/工作树都适用。

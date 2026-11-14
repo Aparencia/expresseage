@@ -7,6 +7,9 @@ const userModule = require('./api/modules/user');
 const bindModule = require('./api/modules/bind');
 const configModule = require('./api/modules/config');
 const sharePlatform = require('./utils/share/platform');
+// 主包公共依赖声明：分包共享模块只在主包存放，显式 require 让主包可达（代码质量扫描不误报未使用）。
+// 模块零副作用，不改变启动网络/存储行为；若后续把这些模块迁入分包，可同步删除本行。
+require('./config/main-deps');
 
 // 首页首次 onShow 复用启动期绑定结果的窗口（超过窗口视为过期，自行重拉）
 const BIND_REUSE_WINDOW_MS = 30 * 1000;

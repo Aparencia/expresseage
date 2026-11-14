@@ -49,6 +49,10 @@
         "type": "folder"
       },
       {
+        "value": ".agents",
+        "type": "folder"
+      },
+      {
         "value": "node_modules",
         "type": "folder"
       },

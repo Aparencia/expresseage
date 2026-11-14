@@ -37,7 +37,7 @@ const partnerMessagePoll = require(path.join(ROOT, 'pkg-partner/pages/order-deta
 const cloudActions = require(path.join(ROOT, 'cloudfunctions/api/shared/actions.js'));
 const { createApi } = require(path.join(ROOT, 'cloudfunctions/api/app.js'));
 
-const EXPECTED_ASSERTIONS = 147; // 实际断言总数（145 + 2：审查 P1-9 E16 改独立期望源拆 1→3 断）；少算/多算都判红
+const EXPECTED_ASSERTIONS = 149; // 实际断言总数（145 + 2：审查 P1-9 E16 改独立期望源拆 1→3 断）；少算/多算都判红
 const NOW = Date.parse('2026-10-22T12:00:00+08:00');
 const ROLES = { CUSTOMER: 'CUSTOMER', PARTNER: 'PARTNER' };
 const USER_STATUS = { ACTIVE: 'ACTIVE' };
@@ -456,6 +456,15 @@ function register(h) {
       return src.indexOf('getTabBar()') >= 0 && /setData\(\{\s*selected:\s*[0-3]/.test(src);
     });
     t.eq(synced.length, 4, 'J8 4 个 tab 页 onShow 均显式同步 tabBar 选中格（per-page 单一来源，页面隐藏时零空转）');
+    // 批 43：主包体积/图片资源/未使用 JS 的打包口径（DevTools 代码质量扫描）
+    const projectConfig = JSON.parse(textOf('project.config.json'));
+    const ignores = (projectConfig.packOptions && projectConfig.packOptions.ignore) || [];
+    const ignored = (name) => ignores.some((item) => item.value === name);
+    t.check(ignored('.agents') && ignored('docs') && ignored('tools') && ignored('cloudfunctions') && ignored('.git'),
+      'J9 主包打包忽略 .agents/docs/tools/cloudfunctions/.git（工作树副本不再把主包撑到 20MB+）');
+    t.check(textOf('app.js').indexOf("require('./config/main-deps')") >= 0
+      && textOf('config/main-deps.js').indexOf("require('../utils/recognize/index')") >= 0,
+    'J10 分包共享模块由主包显式声明依赖（代码质量扫描不误报「主包未使用 JS」）');
     // D64：底部栏视觉抽为共用组件后，custom-tab-bar 只保留状态/跳转（不再自绘 icon 循环），
     // 视觉组件零 store/零 wx → 不新增订阅与平台调用，热路径与抽取前等价。
     const tabView = textOf('components/tab-bar-view/index.js');
