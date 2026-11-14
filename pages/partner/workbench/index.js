@@ -17,6 +17,7 @@ const loadView = require('./parts/load-view');
 const guideView = require('./parts/guide-view');
 const dayView = require('./parts/day-view');
 const transferView = require('./parts/transfer');
+const handoverView = require('./parts/handover-view');
 const share = require('../../../utils/share/handlers');
 
 const DETAIL_PAGE = '/pkg-partner/pages/order-detail/index?orderNo=';
@@ -56,6 +57,8 @@ const base = {
     undo: actionFlow.closedUndo(),
     // D58 待接收转派：count 来自服务端顶层 transferPending；rows 来自 view='transfer'（服务端过滤）
     transfer: transferView.closedState(),
+    // D81 已转出：rows 来自 view='handover'（最小进度投影；首次展开才请求）
+    handover: handoverView.closedState(),
     banner: { visible: false, pendingNew: 0, text: '', actionText: '去看看' },
     completed: { text: '', expanded: false, loading: false, sections: [], moreText: '', hasMore: false, nextCursor: null },
     guide: guideView.closedState(),
@@ -385,5 +388,7 @@ Object.assign(base, require('./parts/transfer-flow'));
 Object.assign(base, require('./parts/piece-flow'));
 // 批 31（D73）：一次性订阅「开启新单提醒」/接单续订接线（从 page-actions 拆出，守页面 ≤500 行）
 Object.assign(base, require('./parts/subscribe-wiring'));
+// D81：已转出折叠 + 只读进度浮层接线（页面零业务判据）
+Object.assign(base, require('./parts/handover'));
 
 Page(Object.assign(base, require('./parts/page-actions')));

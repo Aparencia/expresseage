@@ -340,6 +340,31 @@ function validatePatternRows(list) {
 }
 
 /**
+ * D80（2026-11-14）：识图站点与取件码反推站点不一致时**不静默采信任一方**（不猜）。
+ * 开关语义与 shared/stations.stationInferOf 同源（由调用方传入归一后的 switches）：
+ * fromImage=false ⇒ 不采信识图站点；fromCode=false ⇒ 不采信码反推站点。
+ * @param {{id?:string,name?:string,by?:string}|null} textStation 识图站点
+ * @param {{id?:string,name?:string}|null} codeStation 码反推站点
+ * @param {{fromImage?:boolean,fromCode?:boolean}} switches 双判据开关
+ * @returns {{id:string,name:string,by:string,conflict:boolean,textStation:object|null,codeStation:object|null}}
+ */
+function resolveInferredStation(textStation, codeStation, switches) {
+  const source = switches && typeof switches === 'object' ? switches : {};
+  const text = source.fromImage !== false && textStation && textStation.id
+    ? { id: textStation.id, name: textStation.name || '', by: textStation.by || 'name' } : null;
+  const code = source.fromCode !== false && codeStation && codeStation.id
+    ? { id: codeStation.id, name: codeStation.name || '', by: 'code' } : null;
+  if (text && code && text.id !== code.id) {
+    return { id: '', name: '', by: '', conflict: true, textStation: text, codeStation: code };
+  }
+  const hit = code || text;
+  if (!hit) {
+    return { id: '', name: '', by: '', conflict: false, textStation: text, codeStation: code };
+  }
+  return { id: hit.id, name: hit.name, by: hit.by, conflict: false, textStation: text, codeStation: code };
+}
+
+/**
  * 取件码 → 站点（D70）：整串匹配各站点格式；恰好一个站点命中才采信，零/多命中返回 null（不猜）。
  * @param {string} code 取件码原文（保留分隔符，如 64-4-4033 / T-0-2051）
  * @param {Array<{id:string,name:string,codePatterns:string[]}>} stations 净化后的站点表（顺序即优先级）
@@ -382,5 +407,6 @@ module.exports = {
   orderIdsOf,
   normalizeStations,
   validateStationConfig,
+  resolveInferredStation,
   matchCodeStation
 };

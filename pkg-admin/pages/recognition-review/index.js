@@ -54,6 +54,10 @@ Page({
     stationOptions: STATION_PICKER,
     stationIndex: 0,
     pickupCode: '',
+    // 批 39（D83）：一键建议 / 复核归因（0=未选）
+    suggestions: [],
+    rootCauseOptions: [],
+    rootCauseIndex: 0,
     notifyUploader: true,
     ignoreNote: '',
     submitting: false,
@@ -160,11 +164,20 @@ Page({
       stationIndex: 0,
       pickupCode: '',
       ignoreNote: '',
+      suggestions: [],
+      rootCauseOptions: [],
+      rootCauseIndex: 0,
       notifyUploader: true,
       error: ''
     });
     admin.getRecognitionFailure({ failureNo: failureNo }).then((data) => {
-      this.setData({ detail: vm.decorateDetail(data || {}), detailLoading: false });
+      this.setData({
+        detail: vm.decorateDetail(data || {}),
+        detailLoading: false,
+        suggestions: (data && data.suggestions) || [],
+        rootCauseOptions: (data && data.rootCauseOptions) || [],
+        notifyUploader: !!data && data.canNotify === true
+      });
       this.refreshRows();
     }).catch((err) => {
       this.setData({ detailLoading: false, expandedNo: '' });
@@ -230,6 +243,33 @@ Page({
     this.setData({ pickupCode: event.detail.value });
   },
 
+  // 批 39（D83）：一键填入建议（站点/取件码；仍可手改，保存前服务端校验）
+  onApplySuggestion(event) {
+    const index = Number(event.currentTarget.dataset.index);
+    const suggestion = (this.data.suggestions || [])[index];
+    if (!suggestion) {
+      return;
+    }
+    const stationIndex = STATION_PICKER.indexOf(suggestion.stationId);
+    this.setData({
+      stationIndex: stationIndex > 0 ? stationIndex : this.data.stationIndex,
+      pickupCode: typeof suggestion.pickupCode === 'string' && suggestion.pickupCode
+        ? suggestion.pickupCode : this.data.pickupCode
+    });
+    feedback.toast('已填入建议，请核对后保存');
+  },
+
+  onRootCauseChange(event) {
+    const index = Number(event.detail && event.detail.value);
+    this.setData({ rootCauseIndex: Number.isInteger(index) && index >= 0 ? index : 0 });
+  },
+
+  rootCauseOf() {
+    const index = this.data.rootCauseIndex;
+    const option = index > 0 ? (this.data.rootCauseOptions || [])[index - 1] : null;
+    return option && option.code ? option.code : '';
+  },
+
   onIgnoreNoteInput(event) {
     this.setData({ ignoreNote: event.detail.value });
   },
@@ -266,6 +306,8 @@ Page({
     const payload = { failureNo: failureNo, notifyUploader: this.data.notifyUploader };
     if (stationId) payload.stationId = stationId;
     if (pickupCode) payload.pickupCode = pickupCode;
+    const rootCause = this.rootCauseOf();
+    if (rootCause) payload.rootCause = rootCause;
     this.setData({ submitting: true });
     admin.fixRecognitionFailure(payload).then((result) => {
       const orderNo = (result && result.orderNo) || this.data.detail.orderNo;
@@ -298,11 +340,14 @@ Page({
 
   submitIgnore(note) {
     this.setData({ submitting: true });
-    admin.ignoreRecognitionFailure({
+    const payload = {
       failureNo: this.data.detail.failureNo,
       note: note,
       notifyUploader: this.data.notifyUploader
-    }).then(() => {
+    };
+    const rootCause = this.rootCauseOf();
+    if (rootCause) payload.rootCause = rootCause;
+    admin.ignoreRecognitionFailure(payload).then(() => {
       this.setData({ submitting: false });
       feedback.toast('已标记忽略。');
       this.collapse();

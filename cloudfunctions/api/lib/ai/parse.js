@@ -223,21 +223,23 @@ function normalizeAiFields(raw, options) {
   const pickupCode = normalizePickupCode(rawCode);
   const confidence = normalizeConfidence(input.confidence);
   // D70 开关：fromImage=false 时「从截图文本识别站点」能力关闭，模型给的站点不采信
-  let stationId = switches.fromImage ? normalizeStationId(input.stationId, stationIds) : '';
-  // D70：取件码格式反推站点为权威（唯一命中才采信；未命中保留模型给的合法站点）；fromCode=false 时不做反推
-  if (pickupCode && switches.fromCode) {
-    const inferred = stationsLib.inferStationFromCode(rawCode, { stations: stations });
-    if (inferred) {
-      stationId = inferred.id;
-    }
-  }
+  const modelStationId = switches.fromImage ? normalizeStationId(input.stationId, stationIds) : '';
+  const modelStation = modelStationId
+    ? { id: modelStationId, name: resolveStationName(modelStationId, stations), by: 'model' }
+    : null;
+  // D70/D80：码反推与模型站点不一致时不静默采信（conflict → 站点留空 + LOW，触发复核）
+  const codeStation = pickupCode && switches.fromCode
+    ? stationsLib.inferStationFromCode(rawCode, { stations: stations })
+    : null;
+  const resolved = stationsLib.resolveStationOf(modelStation, codeStation, { stationInfer: switches });
+  const stationId = resolved.id;
   return {
     stationId,
     stationName: resolveStationName(stationId, stations),
     pickupCode,
     trackingTail: normalizeTrackingTail(input.trackingTail),
     lockerNo: normalizeLockerNo(input.lockerNo),
-    confidence,
+    confidence: resolved.conflict ? FALLBACK_CONFIDENCE : confidence,
     recognized: stationId !== '' && pickupCode !== '',
   };
 }

@@ -16,6 +16,19 @@ function syncNoteError(page) {
   page.setData({ noteError: precheck.noteErrorOf(page.data.serviceCode, page.data.note) });
 }
 
+// D84（2026-11-14）：附加服务预览（零金额口径）——只列"做什么"与说明，不出现任何交易/费用字段。
+// 输入 = 选中 code 数组；输出固定形状 {visible,countText,items[{code,name,desc}]}，供 Step4 与测试共用。
+function addonPreviewOf(addons) {
+  const list = Array.isArray(addons) ? addons : [];
+  const items = enums.ADDONS.filter(function hit(item) { return list.indexOf(item.code) >= 0; })
+    .map(function itemOf(item) { return { code: item.code, name: item.name, desc: item.desc }; });
+  return {
+    visible: items.length > 0,
+    countText: items.length > 0 ? '共 ' + items.length + ' 项' : '',
+    items: items
+  };
+}
+
 // 附加服务（D77，2026-11-08）：多选 chip，订单级 0~3 项；toggle 后清空提交幂等键
 function toggleAddon(page, code) {
   const target = String(code || '');
@@ -34,6 +47,7 @@ function toggleAddon(page, code) {
     addonOptions: options,
     addonText: names.join('、'),
     addonHintText: descs.join('；'),
+    addonPreview: addonPreviewOf(next),
     submission: model.clearSubmission()
   });
 }
@@ -146,12 +160,20 @@ function goNext(page) {
     return;
   }
   const submission = model.ensureSubmission(page.data.submission, page.submitFingerprint());
-  page.setData({ step: 4, submission: submission, submitError: '', deliveryErrors: {}, noteError: '' });
+  page.setData({
+    step: 4,
+    submission: submission,
+    addonPreview: addonPreviewOf(page.data.addons),
+    submitError: '',
+    deliveryErrors: {},
+    noteError: ''
+  });
 }
 
 module.exports = {
   NOTE_MAX,
   syncNoteError,
+  addonPreviewOf,
   toggleAddon,
   setLatestDate,
   setLatestTime,

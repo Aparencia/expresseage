@@ -32,8 +32,10 @@ const sharedActions = require(path.join(ROOT, 'cloudfunctions/api/shared/actions
 // v1.0（D23/D24/D25）用例表：拆出以控本文件 ≤1000 行（门禁 #18），断言数合并计
 const v1Cases = require(path.join(__dirname, 'lib', 'admin-v1-cases.js'));
 const customerCases = require(path.join(__dirname, 'lib', 'admin-customer-cases.js'));
+const reviewGuardCases = require(path.join(__dirname, 'lib', 'admin-review-guard-cases.js'));
 
-const EXPECTED_ASSERTIONS = 220 + v1Cases.EXPECTED_ASSERTIONS + 14 + 5 + customerCases.EXPECTED_ASSERTIONS; // +14：v1.1/D32 站点名称配置；+5：D41 服务目录迁移/读层归一/公开子集；+20：D68 顾客停用/恢复
+const EXPECTED_ASSERTIONS = 220 + v1Cases.EXPECTED_ASSERTIONS + 14 + 5 + customerCases.EXPECTED_ASSERTIONS
+  + reviewGuardCases.EXPECTED_ASSERTIONS; // +14：v1.1/D32 站点名称配置；+5：D41 服务目录迁移/读层归一/公开子集；+20：D68 顾客停用/恢复；+6：批 36 复核状态/手填保护/识别来源可纠正
 
 const NOW = Date.UTC(2026, 9, 22, 4, 0, 0);
 const MINUTE = 60 * 1000;
@@ -793,11 +795,11 @@ async function sectionF(h) {
     const list = await api.call('admin.listRecognitionFailures', {});
     t.eq(list.data.list.map((row) => row.failureNo),
       ['F-20260101-ABCDEF', 'F-20260101-ABGHJK', 'F-20260101-ABJKLM'], 'F1 默认 status=PENDING 且列表按 createdAt desc');
-    t.eq(keysOf(list.data.counts), ['FIXED', 'IGNORED', 'PENDING'], 'F2 counts 三档键齐全（服务端计数不前端推算）');
+    t.eq(keysOf(list.data.counts), ['FIXED', 'IGNORED', 'PENDING', 'pendingOver24h'], 'F2 counts 三档键齐全 + 积压观测（服务端计数不前端推算）');
     t.eq([list.data.counts.PENDING, list.data.counts.FIXED, list.data.counts.IGNORED], [3, 1, 1],
       'F3 counts 与服务端状态计数一致');
     t.eq(keysOf(list.data.list[0]), ['aiErrorCode', 'aiTried', 'createdAt', 'failureCode', 'failureNo', 'hasImage',
-      'orderNo', 'reviewedAt', 'sourceRole', 'status', 'uploaderDisplayName', 'uploaderNo'],
+      'orderNo', 'reviewedAt', 'rootCause', 'sourceRole', 'status', 'uploaderDisplayName', 'uploaderNo'],
     'F4 列表行字段白名单（无 fileId/uploaderOpenid/原图 URL）');
     t.eq(list.data.list[0].uploaderDisplayName, '小***', 'F5 上传人昵称脱敏（编号+脱敏昵称）');
     t.eq(bannedKeysOf(list.data.list, ['fileId', 'uploaderOpenid', 'openid', 'ocrTextMasked', 'imageUrl'],
@@ -943,6 +945,9 @@ function register(h) {
   sectionE(h);
   sectionF(h);
   sectionG(h);
+  reviewGuardCases.register(h, {
+    world, apiOf, expectCode, nextCrid, orderDoc, failureDoc, auditsOf, NOW, ADMIN
+  });
   customerCases.register(h, { world, apiOf, auditsOf, nextCrid, bannedKeysOf, ADMIN, C1, C2, TEST_C });
   v1Cases.register(h, {
     world,

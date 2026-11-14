@@ -56,6 +56,8 @@ Page({
     }),
     addonText: '',
     addonHintText: '',
+    // D84：Step4 附加服务预览（零金额口径；只列做什么/说明，不出现交易字段）
+    addonPreview: { visible: false, countText: '', items: [] },
     // 预约（2026-11-08 用户指令）：只保留「最晚时间」（30 分钟粒度、≤7 天、最小提前 30 分钟）
     appoint: appointUtil.createState(0, 'LATEST'),
     note: '',

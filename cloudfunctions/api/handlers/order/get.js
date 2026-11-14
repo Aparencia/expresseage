@@ -10,6 +10,7 @@ const dto = require('./_dto');
 const transfer = require('./_transfer');
 const access = require('./_transfer-access');
 const expire = require('./_transfer-expire');
+const handover = require('./_handover');
 
 // 读权限：当前履约人/顾客/admin 走原判定；他人仅当"PENDING 邀请目标本人"放行（转派完成后原履约人失联）。
 // 返回 {side, partner, transferTarget, maskCustomer}：transferTarget 只决定"邀请卡"视图与剪裁，遮蔽见 maskCustomer。
@@ -29,6 +30,10 @@ async function resolveReadAccess(ctx, order) {
   }
   if (partner && transfer.isPendingTargetOf(order, partner._id)) {
     return { side: '', partner, transferTarget: true, maskCustomer: true };
+  }
+  // D81：转派发起者（原履约人）只读跟踪——只给进度，不给顾客身份/地址/取件码/动作
+  if (partner && handover.isInitiatorOf(order, partner._id)) {
+    return { side: '', partner, handover: true, maskCustomer: true };
   }
   throw common.errors.forbidden('无权查看该订单');
 }
@@ -53,6 +58,17 @@ module.exports = async function orderGet(ctx, payload) {
     orderBy: [['at', 'asc']],
     limit: common.EVENT_LIST_LIMIT
   });
+  // D81：已转出单走最小投影（只回进度与转派结果；事件按顾客侧白名单，隐藏私有转派事件）
+  if (granted.handover) {
+    if (!handover.isInitiatorOf(order, granted.partner._id)) {
+      throw common.errors.forbidden('无权查看该订单');
+    }
+    return {
+      handover: true,
+      order: handover.summaryOf(order),
+      events: dto.buildEventDtos(events, 'CUSTOMER')
+    };
+  }
   // D58（批 26）：顾客侧事件时间线拉黑 4 个私有转派事件（与 message.list 同口径），TRANSFER_ACCEPTED 可见；
   // 兼职（含转派目标/新履约人）/admin 全量下发（双方与后台需要完整留痕）。
   const eventSide = granted.side || (granted.transferTarget ? 'PARTNER' : '');

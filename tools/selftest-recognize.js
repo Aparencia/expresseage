@@ -29,7 +29,7 @@ const recognizeModel = require(path.join(ROOT, 'pkg-partner/pages/create-on-beha
 const viewModel = require(path.join(ROOT, 'pkg-partner/pages/create-on-behalf/parts/view-model.js'));
 const pickerState = require(path.join(ROOT, 'components/image-picker/state.js'));
 
-const EXPECTED_ASSERTIONS = 313; // 250 + 13：⑦ 噪声语料；+13：D44 代客下单多图/识别预填/上传并发；+19：D57 本机取件码粘贴解析；+10：D70 真实截图取证；+3：D72③「尾号」优先词多行语料；+5：柜号前缀码/两张真实截图各出一件
+const EXPECTED_ASSERTIONS = 315; // 250 + 13：⑦ 噪声语料；+13：D44 代客下单多图/识别预填/上传并发；+19：D57 本机取件码粘贴解析；+10：D70 真实截图取证；+3：D72③「尾号」优先词多行语料；+5：柜号前缀码/两张真实截图各出一件；+2：D80 识图/码反推冲突不猜
 
 // v3 真机语料（sha256 指纹钉：改动语料必须同步改这里的期望与解析断言）
 const CORPUS_ONE = [
@@ -894,6 +894,12 @@ function sectionD44(h) {
       'D70 站点名不在配置里时由取件码格式反推 P3（T-0-2051 含字母组）');
     const s09Off = recognize.parseOcrText(S09, { stationInfer: { fromCode: false } });
     t.eq(s09Off.items[0].stationId, '', 'D70 后台关闭「取件码反推」后不再按码补站点（开关有牙）');
+    // D80（2026-11-14）：识图站点与码反推指向不同驿站 → 不静默覆盖（站点留空 + 提示手选）
+    const s10 = recognize.parseOcrText('西苑京东快递（西苑五食堂）\n取件码 64-4-4033');
+    t.eq([s10.items[0].stationId, s10.items[0].stationConflict, s10.items[0].confidence], ['', true, 'LOW'],
+      'D80 识图 P2 与码反推 P3 冲突 → 站点留空 + LOW（不静默错填）');
+    t.check(s10.items[0].stationConflictText.indexOf('不一致') >= 0,
+      'D80 冲突行内提示可上屏（用户手选站点兜底）');
     const aiPhone = recognize.applyAiSuggestion(recognize.makeEmptyParcel(), {
       stationId: 'P2', pickupCode: '1855213376', trackingTail: '31601',
       confidence: 'HIGH', source: 'DEEPSEEK', recognized: true
@@ -903,8 +909,9 @@ function sectionD44(h) {
     const aiCode = recognize.applyAiSuggestion(recognize.makeEmptyParcel(), {
       stationId: 'P2', pickupCode: '64-4-4033', confidence: 'HIGH', source: 'DEEPSEEK', recognized: true
     });
-    t.eq([aiCode.parcel.pickupCode, aiCode.parcel.stationId], ['64-4-4033', 'P3'],
-      'D70 AI 码命中格式 → 站点以码为准（覆盖模型给的 P2）');
+    t.eq([aiCode.parcel.pickupCode, aiCode.parcel.stationId, aiCode.parcel.stationConflict],
+      ['64-4-4033', '', true],
+      'D80 AI 站点与码反推冲突 → 不静默覆盖（站点留空 + 冲突标记 + 需复核）');
     const adopted = recognize.adoptAiSuggestion(recognize.makeEmptyParcel(), {
       pickupCode: '18552133176', confidence: 'LOW', source: 'DEEPSEEK'
     });

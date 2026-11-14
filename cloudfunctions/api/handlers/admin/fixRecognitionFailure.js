@@ -57,14 +57,50 @@ function buildResolution(scope, input, fields) {
     stationName: fields.stationName || '',
     pickupCode: fields.pickupCode || '',
     note: noteResult.value || '',
+    // 批 39（D83）：复核归因（可选枚举；空串=未填）
+    rootCause: review.normalizeRootCause(input.rootCause, errors),
     by: scope.developerNo,
     at: scope.nowDate
   };
 }
 
+// 复核补录只允许在「订单尚未取件」的状态下进行（与 order.correct 的站点/码可改状态同口径）；
+// 已取件/已送达/已完成/已取消只能走「忽略」写备注——避免改动已履约记录。
+const PATCHABLE_STATUS = [
+  enums.ORDER_STATUS.SUBMITTED,
+  enums.ORDER_STATUS.ACCEPTED,
+  enums.ORDER_STATUS.EXCEPTION
+];
+
+function isEmptyOf(value) {
+  return value === undefined || value === null || value === '';
+}
+
+// 复核是「修正识别错误」：识别来源（RULE/DEEPSEEK/空）可改写为复核值；
+// **用户/兼职手填（recognitionSource=MANUAL）不可覆盖**——只补它的空位，避免改掉人填的数。
+function patchFieldsOf(source, fields, allowOverwrite) {
+  const patch = {};
+  Object.keys(fields).forEach((key) => {
+    if (allowOverwrite || isEmptyOf(source && source[key])) {
+      patch[key] = fields[key];
+    }
+  });
+  return Object.keys(patch).length > 0 ? patch : null;
+}
+
+// 单件是否允许复核覆盖：手填来源（MANUAL）只补空；其余（规则/AI/缺省）允许纠正
+function canOverwriteOf(parcel) {
+  return parcel.recognitionSource !== 'MANUAL';
+}
+
+function matchesRecordOf(parcel, recordId, itemIndex, index) {
+  const byFailure = recordId !== '' && parcel.failureId === recordId;
+  const byIndex = Number.isInteger(itemIndex) && itemIndex >= 0 && index === itemIndex;
+  return byFailure || byIndex;
+}
+
 // v1.0（D23 逐件）：按 failureId 命中本记录的件补录；记录带 `itemIndex†`（DATA_MODEL §2.14，未建单 -1）时
 // 一并按序号定位（两个定位任一命中即回填，兼容入队时尚未回填 failureId 的场次）。
-// 历史单（单 parcel{}）走 legacy 字段；v1.0 新单绝不写不存在的 parcel 字段。
 // 返回 null 表示订单里没有本记录的关联件 —— 不回填（避免把码写到错误的件上）。
 function patchedParcelsOf(order, record, fields) {
   const list = Array.isArray(order.parcels) ? order.parcels : null;
@@ -73,21 +109,20 @@ function patchedParcelsOf(order, record, fields) {
   }
   const recordId = String((record && record._id) || '');
   const itemIndex = Number(record && record.itemIndex);
-  const hasIndex = Number.isInteger(itemIndex) && itemIndex >= 0 && itemIndex < list.length;
-  let changed = 0;
+  let patch = null;
   const next = list.map((parcel, index) => {
-    if (!parcel || typeof parcel !== 'object') {
+    if (!parcel || typeof parcel !== 'object' || !matchesRecordOf(parcel, recordId, itemIndex, index)) {
       return parcel;
     }
-    const byFailure = recordId !== '' && parcel.failureId === recordId;
-    const byIndex = hasIndex && index === itemIndex;
-    if (!byFailure && !byIndex) {
+    const found = patchFieldsOf(parcel, fields, canOverwriteOf(parcel));
+    if (!found) {
       return parcel;
     }
-    changed += 1;
-    return Object.assign({}, parcel, fields, { recognitionSource: 'MANUAL' });
+    patch = patch || {};
+    Object.keys(found).forEach((key) => { patch[key] = found[key]; });
+    return Object.assign({}, parcel, found, { recognitionSource: 'MANUAL' });
   });
-  return changed > 0 ? next : null;
+  return patch ? { next: next, patch: patch } : { next: null, patch: null };
 }
 
 async function patchOrder(scope, orderId, record, fields) {
@@ -100,20 +135,30 @@ async function patchOrder(scope, orderId, record, fields) {
     if (!order) {
       return;
     }
-    const patch = {
+    if (PATCHABLE_STATUS.indexOf(order.status) < 0) {
+      throw errors.invalidState('订单已取件或已结束，不能再改站点/取件码；如需说明请在「忽略」里写备注');
+    }
+    const matched = patchedParcelsOf(order, record || {}, fields);
+    if (!matched && (!order.parcel || typeof order.parcel !== 'object')) {
+      throw errors.validation('pickupCode', '订单没有可回填的包裹信息，请改用「忽略」并说明');
+    }
+    const patch = matched ? matched.patch : patchFieldsOf(order.parcel, fields, order.manualEntry !== true);
+    if (!patch) {
+      throw errors.validation('pickupCode', matched
+        ? '未找到该记录对应的包裹（可能已删除或合并），请刷新后重试'
+        : '该件是用户手填，复核不能覆盖；如需更正请让兼职改码');
+    }
+    const data = {
       version: (Number(order.version) || 1) + 1,
       updatedAt: scope.nowDate
     };
-    const parcels = patchedParcelsOf(order, record || {}, fields);
-    if (parcels) {
-      patch.parcels = parcels;
-    } else if (order.parcel && typeof order.parcel === 'object') {
-      patch.parcel = Object.assign({}, order.parcel, fields, { recognitionSource: 'MANUAL' });
+    if (matched) {
+      data.parcels = matched.next;
     } else {
-      return; // 无关联件：只更新复核记录，不回填订单
+      data.parcel = Object.assign({}, order.parcel, patch, { recognitionSource: 'MANUAL' });
     }
-    await trx.update(COLLECTIONS.ORDERS, order._id, patch);
-    Object.keys(fields).forEach(function push(field) {
+    await trx.update(COLLECTIONS.ORDERS, order._id, data);
+    Object.keys(patch).forEach(function push(field) {
       patched.push(field);
     });
   });
@@ -186,7 +231,7 @@ async function handler(ctx, payload) {
     {
       failureNo: failureNo,
       fields: patched.patched,
-      orderPatched: patched.patched.length > 0,
+      orderPatched: patched.patched.length > 0, rootCause: resolution.rootCause || '',
       notified: notified
     },
     auditKeyOf(ctx)

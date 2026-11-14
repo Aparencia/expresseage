@@ -92,7 +92,9 @@ function summarize(results) {
 
 // §10.2 步骤 11：一轮一条 CLEANUP 汇总审计（detail.counts 记录本轮 total/ok/failed/scanned/acted；
 // requestKey = 本轮 requestId，重跑同一轮不重复写；审计写入失败不阻断本轮）。
-async function writeSummaryAudit(ctx, summary) {
+// 批 36：detail 增 failedSweeps/actedSweeps —— 「跑了但某个 sweep 失败」可被后台审计看见
+// （旧实现只有 failed 计数，看不出是 autoComplete 失败还是别的；触发器健康排查依赖这条）。
+async function writeSummaryAudit(ctx, summary, results) {
   if (!ctx || !ctx.dao) {
     return false;
   }
@@ -114,7 +116,10 @@ async function writeSummaryAudit(ctx, summary) {
           failed: summary.failed,
           scanned: summary.scanned,
           acted: summary.acted
-        }
+        },
+        failedSweeps: (results || []).filter((item) => !item.ok).map((item) => item.name),
+        actedSweeps: (results || []).filter((item) => item.acted > 0)
+          .map((item) => ({ name: item.name, acted: item.acted }))
       },
       at: new Date(ctx.now),
       requestKey
@@ -138,7 +143,7 @@ async function runAll(ctx, options) {
     results.push(await runSweep(sweeps[i], ctx));
   }
   const summary = summarize(results);
-  const auditWritten = await writeSummaryAudit(ctx, summary);
+  const auditWritten = await writeSummaryAudit(ctx, summary, results);
   return {
     ok: true,
     total: summary.total,

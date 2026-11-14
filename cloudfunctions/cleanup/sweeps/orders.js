@@ -112,7 +112,9 @@ async function runAutoComplete(ctx) {
   const now = util.msOf(ctx.now);
   const clockText = ctx.config && ctx.config.autoCompleteAt;
   const rows = await util.scanPage(ctx, C.ORDERS, { status: util.enums.ORDER_STATUS.DELIVERED },
-    [['deliveredAt', 'asc']]);
+    // 排序锚用 statusUpdatedAt（命中 DATA_MODEL §5.2/§5.1 的 idx_status_updated）；到期判断仍按 deliveredAt。
+    // 旧实现按 deliveredAt 排序 → 该字段无索引，云库可能慢查询/失败，且与文档查询路径漂移。
+    [['statusUpdatedAt', 'asc']]);
   let scanned = 0;
   let acted = 0;
   let failed = 0;

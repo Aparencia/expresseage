@@ -251,116 +251,135 @@
             </view>
             <view wx:if="{{row.otherPiecesText}}" class="small piece-other">{{row.otherPiecesText}}</view>
           </view>
-
-          <view wx:if="{{panel && panel.orderNo === row.orderNo}}" class="panel-card" catchtap="noop">
-            <view class="panel-title">{{panel.title}}</view>
-            <block wx:if="{{panel.type === 'reason' || panel.type === 'exception'}}">
-              <view class="row panel-options">
-                <view
-                  wx:for="{{panel.options}}"
-                  wx:key="code"
-                  wx:for-item="opt"
-                  class="chip {{panel.selected === opt.code ? 'chip-active' : ''}}"
-                  data-code="{{opt.code}}"
-                  catchtap="onPanelPick"
-                >{{opt.text}}</view>
-              </view>
-              <textarea
-                wx:if="{{panel.type === 'exception'}}"
-                class="form-textarea"
-                value="{{panel.text}}"
-                maxlength="{{panel.textMax}}"
-                placeholder="补充说明（选「其他异常」必填）"
-                data-field="text"
-                bindinput="onPanelInput"
-              />
-              <input
-                wx:else
-                class="form-input"
-                value="{{panel.note}}"
-                maxlength="{{panel.noteMax}}"
-                placeholder="补充说明（选「其他原因」必填）"
-                data-field="note"
-                bindinput="onPanelInput"
-              />
-            </block>
-            <block wx:elif="{{panel.type === 'code'}}">
-              <view wx:if="{{panel.multi}}" class="row panel-pieces">
-                <view
-                  wx:for="{{panel.items}}"
-                  wx:key="index"
-                  wx:for-item="piece"
-                  class="chip {{panel.itemIndex === piece.index ? 'chip-active' : ''}}"
-                  data-index="{{piece.index}}"
-                  catchtap="onPanelPiece"
-                >{{piece.indexText}}{{piece.needCode ? ' · 需查明' : ''}}</view>
-              </view>
-              <view wx:if="{{panel.multi}}" class="small panel-piece-hint">正在改：{{panel.itemIndexText}}{{panel.stationName ? ' · ' + panel.stationName : ''}}</view>
-              <view class="form-row">
-                <view class="form-label">取件码（必填，最多 40 字符）</view>
-                <input class="form-input" value="{{panel.code}}" maxlength="{{panel.codeMax}}" placeholder="驿站短信 / 取件页上的取件码" data-field="code" bindinput="onPanelInput" />
-              </view>
-              <view class="form-row">
-                <view class="form-label">柜号（可空）</view>
-                <input class="form-input" value="{{panel.lockerNo}}" placeholder="如 3号柜" data-field="lockerNo" bindinput="onPanelInput" />
-              </view>
-              <view class="form-row">
-                <view class="form-label">运单尾号（恰好 5 位数字，可空）</view>
-                <input class="form-input" type="number" value="{{panel.trackingTail}}" maxlength="{{panel.tailLength}}" placeholder="运单后 5 位" data-field="trackingTail" bindinput="onPanelInput" />
-              </view>
-            </block>
-            <block wx:elif="{{panel.type === 'deliver'}}">
-              <view class="row panel-options">
-                <view
-                  wx:for="{{panel.quickTags}}"
-                  wx:key="*this"
-                  wx:for-item="tag"
-                  class="chip"
-                  data-tag="{{tag}}"
-                  catchtap="onPanelQuickTag"
-                >{{tag}}</view>
-              </view>
-              <input class="form-input" value="{{panel.note}}" maxlength="{{panel.noteMax}}" placeholder="送达备注（可空，最多 100 字）" data-field="note" bindinput="onPanelInput" />
-            </block>
-            <block wx:elif="{{panel.type === 'batchStation'}}">
-              <view class="row panel-options">
-                <view
-                  wx:for="{{panel.options}}"
-                  wx:key="id"
-                  wx:for-item="opt"
-                  class="chip {{panel.selected === opt.id ? 'chip-active' : ''}}"
-                  data-code="{{opt.id}}"
-                  catchtap="onPanelPick"
-                >{{opt.id}} {{opt.name}}</view>
-              </view>
-            </block>
-            <view wx:if="{{panel.error}}" class="panel-error">{{panel.error}}</view>
-            <view class="row panel-actions">
-              <view class="mini-btn btn btn-ghost" catchtap="onPanelClose">取消</view>
-              <view class="mini-btn btn btn-primary" catchtap="onPanelSubmit">保存</view>
-            </view>
-          </view>
         </view>
       </view>
     </view>
   </block>
 
-  <view wx:if="{{panel && panel.batchMode}}" class="card panel-page-card">
-    <view class="panel-title">{{panel.title}}</view>
-    <view class="row panel-options">
-      <view
-        wx:for="{{panel.options}}"
-        wx:key="id"
-        wx:for-item="opt"
-        class="chip {{panel.selected === opt.id ? 'chip-active' : ''}}"
-        data-code="{{opt.id}}"
-        bindtap="onPanelPick"
-      >{{opt.id}} {{opt.name}}</view>
+  <!-- 批 38（D81）：已转出——首次展开才请求；行=服务端最小进度投影（无顾客身份/地址/取件码） -->
+  <view class="card handover-fold" bindtap="onHandoverToggle">
+    <view class="row between">
+      <text class="strong">已转出</text>
+      <text class="small">{{handover.expanded ? '收起' : (handover.loading ? '读取中…' : '查看进度')}}</text>
     </view>
-    <view wx:if="{{panel.error}}" class="panel-error">{{panel.error}}</view>
-    <view class="row panel-actions">
-      <view class="mini-btn btn btn-ghost" bindtap="onPanelClose">取消</view>
-      <view class="mini-btn btn btn-primary" bindtap="onPanelSubmit">保存</view>
+  </view>
+  <view wx:if="{{handover.expanded}}" class="card handover-card">
+    <view wx:if="{{handover.error}}" class="small panel-error">{{handover.error}}</view>
+    <view wx:if="{{handover.loaded && !handover.rows.length}}" class="small">还没有转出的订单</view>
+    <view
+      wx:for="{{handover.rows}}"
+      wx:key="orderNo"
+      class="handover-line"
+      data-order-no="{{item.orderNo}}"
+      bindtap="onHandoverTap"
+    >
+      <view class="strong">{{item.orderNo}}</view>
+      <view class="small">{{item.statusText}} · 接手 {{item.fulfillmentPartnerNo}} · {{item.timeText}}</view>
+    </view>
+  </view>
+
+  <!-- 批 37：动作面板统一为页面级模态浮层（遮罩 + 底部面板；行内不再撑开列表、批量不再落页底） -->
+  <view wx:if="{{panel}}" class="panel-mask" catchtap="onPanelClose">
+    <view class="panel" catchtap="noop">
+      <view class="panel-grip"></view>
+      <view class="panel-title">{{panel.title}}</view>
+      <block wx:if="{{panel.type === 'reason' || panel.type === 'exception'}}">
+        <view class="row panel-options">
+          <view
+            wx:for="{{panel.options}}"
+            wx:key="code"
+            wx:for-item="opt"
+            class="chip {{panel.selected === opt.code ? 'chip-active' : ''}}"
+            data-code="{{opt.code}}"
+            catchtap="onPanelPick"
+          >{{opt.text}}</view>
+        </view>
+        <textarea
+          wx:if="{{panel.type === 'exception'}}"
+          class="form-textarea"
+          value="{{panel.text}}"
+          maxlength="{{panel.textMax}}"
+          placeholder="补充说明（选「其他异常」必填）"
+          data-field="text"
+          bindinput="onPanelInput"
+        />
+        <input
+          wx:else
+          class="form-input"
+          value="{{panel.note}}"
+          maxlength="{{panel.noteMax}}"
+          placeholder="补充说明（选「其他原因」必填）"
+          data-field="note"
+          bindinput="onPanelInput"
+        />
+      </block>
+      <block wx:elif="{{panel.type === 'code'}}">
+        <view wx:if="{{panel.multi}}" class="row panel-pieces">
+          <view
+            wx:for="{{panel.items}}"
+            wx:key="index"
+            wx:for-item="piece"
+            class="chip {{panel.itemIndex === piece.index ? 'chip-active' : ''}}"
+            data-index="{{piece.index}}"
+            catchtap="onPanelPiece"
+          >{{piece.indexText}}{{piece.needCode ? ' · 需查明' : ''}}</view>
+        </view>
+        <view wx:if="{{panel.multi}}" class="small panel-piece-hint">正在改：{{panel.itemIndexText}}{{panel.stationName ? ' · ' + panel.stationName : ''}}</view>
+        <view class="form-row">
+          <view class="form-label">取件码（必填，最多 40 字符）</view>
+          <input class="form-input" value="{{panel.code}}" maxlength="{{panel.codeMax}}" placeholder="驿站短信 / 取件页上的取件码" data-field="code" bindinput="onPanelInput" />
+        </view>
+        <view class="form-row">
+          <view class="form-label">柜号（可空）</view>
+          <input class="form-input" value="{{panel.lockerNo}}" placeholder="如 3号柜" data-field="lockerNo" bindinput="onPanelInput" />
+        </view>
+        <view class="form-row">
+          <view class="form-label">运单尾号（恰好 5 位数字，可空）</view>
+          <input class="form-input" type="number" value="{{panel.trackingTail}}" maxlength="{{panel.tailLength}}" placeholder="运单后 5 位" data-field="trackingTail" bindinput="onPanelInput" />
+        </view>
+      </block>
+      <block wx:elif="{{panel.type === 'deliver'}}">
+        <view class="row panel-options">
+          <view
+            wx:for="{{panel.quickTags}}"
+            wx:key="*this"
+            wx:for-item="tag"
+            class="chip"
+            data-tag="{{tag}}"
+            catchtap="onPanelQuickTag"
+          >{{tag}}</view>
+        </view>
+        <input class="form-input" value="{{panel.note}}" maxlength="{{panel.noteMax}}" placeholder="送达备注（可空，最多 100 字）" data-field="note" bindinput="onPanelInput" />
+      </block>
+      <block wx:elif="{{panel.type === 'batchStation'}}">
+        <view class="row panel-options">
+          <view
+            wx:for="{{panel.options}}"
+            wx:key="id"
+            wx:for-item="opt"
+            class="chip {{panel.selected === opt.id ? 'chip-active' : ''}}"
+            data-code="{{opt.id}}"
+            catchtap="onPanelPick"
+          >{{opt.id}} {{opt.name}}</view>
+        </view>
+      </block>
+      <block wx:elif="{{panel.type === 'tracking'}}">
+        <view class="tracking-row"><text class="muted">当前状态</text><text>{{panel.tracking.statusText}}</text></view>
+        <view class="tracking-row"><text class="muted">当前履约</text><text>{{panel.tracking.fulfillmentPartnerNo}}</text></view>
+        <view class="tracking-row" wx:if="{{panel.tracking.transferTimeText}}"><text class="muted">转出时间</text><text>{{panel.tracking.transferTimeText}}</text></view>
+        <view class="tracking-row"><text class="muted">状态更新</text><text>{{panel.tracking.timeText}}</text></view>
+        <view class="tracking-row" wx:if="{{panel.tracking.deliveredTimeText}}"><text class="muted">送达时间</text><text>{{panel.tracking.deliveredTimeText}}</text></view>
+        <view class="tracking-row" wx:if="{{panel.tracking.completedTimeText}}"><text class="muted">完成时间</text><text>{{panel.tracking.completedTimeText}}</text></view>
+        <view class="small muted tracking-hint">只读跟踪：顾客身份、地址、取件码与截图不会展示；如需操作请联系接手人。</view>
+      </block>
+      <view wx:if="{{panel.error}}" class="panel-error">{{panel.error}}</view>
+      <view class="row panel-actions" wx:if="{{panel.type !== 'tracking'}}">
+        <view class="mini-btn btn btn-ghost" catchtap="onPanelClose">取消</view>
+        <view class="mini-btn btn btn-primary" catchtap="onPanelSubmit">保存</view>
+      </view>
+      <view class="row panel-actions" wx:else>
+        <view class="mini-btn btn btn-primary" catchtap="onPanelClose">关闭</view>
+      </view>
     </view>
   </view>
 

@@ -17,6 +17,7 @@ const dto = require('./_dto');
 const summaryPure = require('./_summary');
 const access = require('./_transfer-access');
 const listTransfer = require('./_list-transfer');
+const listHandover = require('./_list-handover');
 const { readKeyword, readOptionalBindingId, parseTimeBound } = require('./_list-query');
 
 const WORKBENCH_VIEW = 'workbench';
@@ -25,6 +26,8 @@ const HISTORY_VIEW = 'history';
 const CUSTOMER_VIEW = 'customer';
 // D58/Q1：待接收转派列表（目标兼职视角，见 _list-transfer.js）
 const TRANSFER_VIEW = 'transfer';
+// D81：已转出（转派发起者只读跟踪，见 _list-handover.js）
+const HANDOVER_VIEW = 'handover';
 const YESTERDAY_MS = time.DAY_MS;
 // 今日流水行内不显示写操作（D54/批 20）：待确认（delivered 桶）与已完结（history 桶）只读
 const DAY_READONLY_BUCKETS = ['delivered', 'history'];
@@ -37,7 +40,7 @@ function resolveView(input) {
     return WORKBENCH_VIEW;
   }
   if (raw === WORKBENCH_VIEW || raw === DAY_VIEW || raw === HISTORY_VIEW || raw === CUSTOMER_VIEW
-    || raw === TRANSFER_VIEW) {
+    || raw === TRANSFER_VIEW || raw === HANDOVER_VIEW) {
     return raw;
   }
   throw errors.validation('view', '视图参数不正确，请刷新页面后重试');
@@ -340,6 +343,8 @@ module.exports = async function orderListPartner(ctx, payload) {
   if (view === TRANSFER_VIEW) {
     return listTransfer.listTransferOrders(ctx, partner, input);
   }
+  // D81：已转出（发起者只读跟踪；服务端过滤）
+  if (view === HANDOVER_VIEW) { return listHandover.listHandoverOrders(ctx, partner, input); }
   // bindingId 只服务 customer 视图；在其它视图静默忽略参数会让「按顾客筛」变成全量返回。
   if (readOptionalBindingId(input)) {
     throw errors.validation('bindingId', '仅顾客订单视图支持按绑定顾客筛选');

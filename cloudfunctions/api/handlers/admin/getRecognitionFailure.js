@@ -12,6 +12,7 @@ const {
 } = require('./_common');
 const dto = require('./_dto');
 const review = require('./_review');
+const suggest = require('./_suggest');
 const time = require('../../lib/time');
 
 const IMAGE_URL_TTL_MINUTES = 5;
@@ -72,7 +73,12 @@ async function handler(ctx, payload) {
     no: uploader.no,
     displayName: uploader.displayName,
     orderNo: orderNo
-  }, image);
+  }, image, {
+    // 批 39（D83）：建议只读推导；未建单记录（orderNo=''）无法站内通知，页面据此禁用开关
+    suggestions: suggest.suggestionsOf(record, scope.config),
+    rootCauseOptions: review.rootCauseOptions(),
+    canNotify: orderNo !== ''
+  });
 }
 
 module.exports = handler;

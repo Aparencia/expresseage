@@ -15,6 +15,7 @@ const path = require('path');
 const fs = require('fs');
 const { createHarness, installCrashGuard } = require('./selftest');
 const cases = require('./lib/order-transfer-cases');
+const handoverCases = require('./lib/transfer-handover-cases');
 
 const {
   ROOT, API, ORDERS_DIR, NOW, MINUTE, DAY, C1, P1, PID1, P2, PID2, P3, PID3,
@@ -514,8 +515,10 @@ async function sectionT10(h) {
       'T10-9 customer 视图保持严格 {list,nextCursor} 形状（无角标；TD-050 口径不扩全视图）');
     await p2.call('order.acceptTransfer', { orderNo: '20261103-1001' }, { clientRequestId: nextCrid('t10acc') });
     const oldRead = await p1.call('order.get', { orderNo: '20261103-1001' });
-    t.eq([oldRead.ok, oldRead.code], [false, 'FORBIDDEN'],
-      'T10-10 完成后原兼职 order.get → FORBIDDEN（已非履约人，不是 transfer.fromPartnerId 放行）');
+    t.eq([oldRead.ok, oldRead.data.handover, oldRead.data.order.handover,
+      oldRead.data.order.customerNo === undefined, oldRead.data.order.actions === undefined],
+    [true, true, true, true, true],
+    'T10-10 完成后原兼职只剩 D81 跟踪视图（操作/顾客身份为零；不再整单 FORBIDDEN）');
     const oldWorkbench = await p1.call('order.listPartner', { view: 'workbench' });
     t.eq(oldWorkbench.data.list.map((row) => row.orderNo), [],
       'T10-11 完成后原兼职工作台不再返回该单（服务端按当前归属过滤）');
@@ -900,7 +903,7 @@ function cleanupCollectionsOf(key) {
 }
 
 // ================================================================ 注册
-const EXPECTED_ASSERTIONS = 140; // 实跑回填（node tools/selftest-transfer.js | Select-Object -Last 2）
+const EXPECTED_ASSERTIONS = 140 + handoverCases.EXPECTED_ASSERTIONS; // 实跑回填（node tools/selftest-transfer.js | Select-Object -Last 2）
 
 function register(h) {
   h.setExpected(EXPECTED_ASSERTIONS);
@@ -918,6 +921,10 @@ function register(h) {
   sectionT12(h);
   sectionT13(h);
   sectionT14(h);
+  handoverCases.register(h, {
+    world, orderDoc, acceptedTransferBlock, transferBlock, apiOf, nextCrid, expectCode,
+    topKeysOf, jsonOf, ORDER_STATUS, PID1, PID2, P1, P2, P3
+  });
 }
 
 module.exports = { register, EXPECTED_ASSERTIONS };

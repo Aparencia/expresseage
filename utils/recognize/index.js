@@ -22,6 +22,7 @@ const FORM_ERROR = {
   trackingTail: '运单后 5 位要正好 5 位数字',
   codeStatus: '还没有取件码：可手动填写，或填运单后 5 位先提交'
 };
+const STATION_CONFLICT_TEXT = station.STATION_CONFLICT_TEXT;
 
 function makeEmptyParcel() {
   return {
@@ -93,17 +94,19 @@ function buildParcel(base) {
 }
 
 /**
- * 单件站点解析器（D70）：取件码命中格式时以码为准，否则回退截图识图结果。
+ * 单件站点解析器（D70/D80）：码命中格式时与识图站点做双判据归一；
+ * 两者指向不同站点 → 冲突不猜（id='' + conflict=true），由页面提示用户手选。
  */
-function stationForCodeOf(switches, options, imageStation) {
+function stationForCodeOf(options, imageStation) {
   return function stationForCode(code) {
-    if (switches.fromCode && code) {
-      const hit = station.inferFromCode(code, options);
-      if (hit) {
-        return { id: hit.id, name: hit.name, by: 'code' };
-      }
-    }
-    return imageStation;
+    const hit = station.resolveStation(imageStation, code, options);
+    return {
+      id: hit.id,
+      name: hit.name,
+      by: hit.by || '',
+      conflict: hit.conflict === true,
+      conflictStations: hit.conflict ? { text: hit.textStation, code: hit.codeStation } : null
+    };
   };
 }
 
@@ -115,9 +118,12 @@ function buildCodeItems(codeList, base, stationFor) {
       stationId: target.id,
       stationName: target.name,
       stationBy: target.by,
+      stationConflict: target.conflict,
+      stationConflictText: target.conflict ? STATION_CONFLICT_TEXT : '',
+      stationConflictStations: target.conflictStations,
       pickupCode: item.value,
       recognized: !!(target.id && item.value),
-      confidence: target.id ? 'MEDIUM' : 'LOW',
+      confidence: target.conflict ? 'LOW' : (target.id ? 'MEDIUM' : 'LOW'),
       index: index
     }));
   });
@@ -168,7 +174,7 @@ function parseOcrText(rawText, options) {
   const codeList = candidates.filter(function compact(item) { return item.compact && item.numericOnly !== true; });
   const unalignedCodes = candidates.filter(function odd(item) { return !item.compact || item.numericOnly === true; }).map(function value(item) { return item.value; });
   const lockerNo = pickLocker(lines);
-  const stationFor = stationForCodeOf(switches, options, imageStation);
+  const stationFor = stationForCodeOf(options, imageStation);
   const base = {
     trackingTail: tail.value || '',
     lockerNo: lockerNo,
@@ -244,9 +250,10 @@ function isManualStationOf(parcel) {
   return value.source === enums.RECOGNITION_SOURCE.MANUAL && !!value.stationId;
 }
 
-// D70：码 → 站点同步（唯一命中才改；码是权威来源，可覆盖识图/AI/码推断站点，但**不覆盖手选站点**）
+// D70/D80：码 → 站点同步（唯一命中才改；**已有站点与码反推不一致时不覆盖**，只标冲突让用户核对；
+// 手选站点仍最高优先，码不得抢手填）
 function syncStationFromCode(target, options) {
-  if (!target || !target.pickupCode) {
+  if (!target || !target.pickupCode || target.stationConflict === true) {
     return false;
   }
   if (isManualStationOf(target)) {
@@ -258,6 +265,14 @@ function syncStationFromCode(target, options) {
   }
   const hit = station.inferFromCode(target.pickupCode, options);
   if (!hit) {
+    return false;
+  }
+  if (target.stationId && target.stationId !== hit.id && target.stationBy !== 'code') {
+    station.markConflict(target, {
+      conflict: true,
+      textStation: { id: target.stationId, name: target.stationName || '' },
+      codeStation: { id: hit.id, name: hit.name }
+    });
     return false;
   }
   if (target.stationId === hit.id) {
@@ -293,7 +308,9 @@ function applyAiSuggestion(parcel, suggestion, options) {
     return { parcel: target, changed: [], suggestion: lowSuggestionOf(ai) };
   }
   const changed = [];
-  if (!target.stationId && ai.stationId && station.stationName(ai.stationId)) {
+  // D80：AI 站点与它给的码反推不一致 → 不写站点（留冲突提示，用户手选）
+  const aiResolved = station.resolveStation({ id: ai.stationId, name: ai.stationName, by: 'ai' }, ai.pickupCode, options);
+  if (!station.markConflict(target, aiResolved) && !target.stationId && ai.stationId && station.stationName(ai.stationId)) {
     target.stationId = ai.stationId;
     target.stationName = ai.stationName || station.stationName(ai.stationId);
     changed.push('station');
@@ -324,7 +341,7 @@ function applyAiSuggestion(parcel, suggestion, options) {
     changed.push('station');
   }
   target.failureId = ai.failureId || target.failureId || '';
-  target.needsReview = ai.needsReview === true || !target.recognized;
+  target.needsReview = ai.needsReview === true || !target.recognized || target.stationConflict === true;
   finishParcel(target);
   return { parcel: target, changed: changed, suggestion: null };
 }
@@ -341,6 +358,8 @@ function adoptAiSuggestion(parcel, suggestion, options) {
   const rejected = [];
   // D70：手选站点标记必须在来源改写前捕获（采纳会把 source 改成 AI 来源），否则码反推覆盖手选站点
   const manualStation = isManualStationOf(target);
+  // D80：采纳前先判 AI 站点与码反推是否冲突（冲突则不写站点）
+  station.markConflict(target, station.resolveStation({ id: (suggestion || {}).stationId, by: 'ai' }, (suggestion || {}).pickupCode, options));
   adoptAiFields(target, suggestion || {}, changed, rejected);
   if (changed.length > 0) {
     target.source = AI_SOURCE;
@@ -360,7 +379,7 @@ function adoptAiSuggestion(parcel, suggestion, options) {
 
 // 采纳时逐字段只填空位（手填优先）；非法值进 rejected 留痕、不写入
 function adoptAiFields(target, ai, changed, rejected) {
-  if (!target.stationId && ai.stationId) {
+  if (!target.stationConflict && !target.stationId && ai.stationId) {
     if (station.stationName(ai.stationId)) {
       target.stationId = ai.stationId;
       target.stationName = ai.stationName || station.stationName(ai.stationId);

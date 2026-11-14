@@ -49,8 +49,8 @@ async function handler(ctx, payload) {
   }
   const resolution = {
     note: noteResult.value,
-    by: scope.developerNo,
-    at: scope.nowDate
+    rootCause: review.normalizeRootCause(input.rootCause, errors),
+    by: scope.developerNo, at: scope.nowDate
   };
   await scope.dao.update(COLLECTIONS.RECOGNITION_FAILURES, record._id, {
     status: enums.FAILURE_STATUS.IGNORED,
@@ -66,7 +66,7 @@ async function handler(ctx, payload) {
     { type: 'recognition_failure', id: failureNo },
     {
       failureNo: failureNo,
-      noteLength: noteResult.value.length,
+      noteLength: noteResult.value.length, rootCause: resolution.rootCause || '',
       notified: notified
     },
     auditKeyOf(ctx)

@@ -186,6 +186,9 @@ function nameOfTable(table, stationId) {
   return table.byId[stationId] || '';
 }
 
+// D80：双判据结果归一（识图 vs 码反推冲突不猜）；switches 单源 = stationInferOf
+const resolveStationOf = (t, c, o) => rules.resolveInferredStation(t, c, stationInferOf(o));
+
 // 展示用列表（选择器/分组标题）：只暴露 id/name，别名与格式属于识别口径、不进页面数据
 function listStations(options) {
   return cloneStations(resolveTable(options).stations).map((item) => ({ id: item.id, name: item.name }));
@@ -482,6 +485,7 @@ module.exports = {
   listStations,
   stationInferOf,
   inferStationFromCode,
+  resolveStationOf,
   validateStationConfig: rules.validateStationConfig,
   stationErrorText: rules.stationErrorText,
   STATION_ALIAS_MAX: rules.STATION_ALIAS_MAX,

@@ -204,6 +204,8 @@
 .addon-row { flex-wrap: wrap; }
 .addon-chip { margin: 0 12rpx 12rpx 0; }
 .addon-hint { margin-top: 8rpx; }
+/* D84：Step4 附加服务预览（零金额；只列做什么/说明） */
+.addon-preview { margin-top: 12rpx; padding-top: 12rpx; border-top: 1rpx solid #EEF1F6; }
 /* 2026-11-08：核对页截图入口吸顶（下滑时固定在顶部） */
 .shot-sticky {
   position: sticky;

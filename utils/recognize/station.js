@@ -63,9 +63,31 @@ function inferFromCode(code, options) {
   return { id: hit.id, name: hit.name, by: 'code', pattern: hit.pattern, kind: 'code' };
 }
 
+// D80：识图站点 vs 码反推站点的双判据归一（冲突不猜，返回 conflict=true 且 id=''）
+function resolveStation(textStation, code, options) {
+  const codeStation = code ? inferFromCode(code, options) : null;
+  return shared.resolveStationOf(textStation, codeStation, options);
+}
+
+// D80：冲突落到件上（统一文案 + 双方候选快照，供页面提示与复核排障）；返回 true=确有冲突
+const STATION_CONFLICT_TEXT = '截图站点与取件码格式不一致，请手动选站点核对';
+function markConflict(parcel, resolved) {
+  if (!parcel || !resolved || resolved.conflict !== true) {
+    return false;
+  }
+  parcel.stationConflict = true;
+  parcel.stationConflictText = STATION_CONFLICT_TEXT;
+  parcel.stationConflictStations = {
+    text: resolved.textStation || null,
+    code: resolved.codeStation || null
+  };
+  return true;
+}
+
 module.exports = {
   STATIONS,
   ALIASES,
+  STATION_CONFLICT_TEXT,
   canonical,
   listStations,
   stationName,
@@ -73,5 +95,7 @@ module.exports = {
   matchStation,
   inferOptionsOf,
   inferFromCode,
+  resolveStation,
+  markConflict,
   normalizeStation: shared.normalizeStation
 };

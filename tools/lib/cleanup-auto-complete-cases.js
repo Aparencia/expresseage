@@ -12,6 +12,10 @@
 const DEFAULT_AT = '22:00';
 const CUTOFF_10_21 = Date.parse('2026-10-21T22:00:00+08:00');
 const CUTOFF_10_22 = Date.parse('2026-10-22T22:00:00+08:00');
+const fs = require('fs');
+const path = require('path');
+const ORDERS_SWEEP_SRC = fs.readFileSync(
+  path.resolve(__dirname, '../../cloudfunctions/cleanup/sweeps/orders.js'), 'utf8');
 
 function ms(iso) {
   return Date.parse(iso);
@@ -152,9 +156,12 @@ async function autoCompleteChecks(t, deps) {
     config: { autoCompleteAt: '25:99' }, now: ms('2026-10-22T22:30:00+08:00')
   }));
   t.eq(cfgResult4.acted, 1, '§C autoCompleteAt 非法 → 回落出厂默认 22:00（22:30 批命中 16:00 送达单；旧 23:50 则不命中）');
+  // 批 36：扫描排序锚必须命中 DATA_MODEL §5.2 的 idx_status_updated（deliveredAt 无索引，旧实现会慢查询/失败）
+  t.check(ORDERS_SWEEP_SRC.indexOf("[['statusUpdatedAt', 'asc']]") >= 0,
+    '§C 日结扫描排序锚=statusUpdatedAt（命中 idx_status_updated，不按无索引的 deliveredAt 排序）');
 }
 
-const EXPECTED_ASSERTIONS = 35;
+const EXPECTED_ASSERTIONS = 36;
 
 module.exports = {
   EXPECTED_ASSERTIONS,

@@ -25,11 +25,12 @@ const parcelView = require(path.join(ROOT, 'pkg-customer/pages/order-detail/part
 const partnerOrderView = require(path.join(ROOT, 'pkg-partner/pages/order-detail/parts/order-view.js'));
 const voucherPart = require(path.join(ROOT, 'pkg-partner/pages/order-detail/parts/voucher.js'));
 const bindServiceView = require(path.join(ROOT, 'pkg-customer/pages/bind/parts/service-view.js'));
+const step3Part = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/step3.js'));
 const backfill = require('./backfill-pickup-low.js');
 const zeroMoney = require('./zero-money-scan.js');
 
 // 实际断言总数（本套件自身完整性闸：与实际断言数精确相等，少算/多算都判红）
-const EXPECTED_ASSERTIONS = 63;
+const EXPECTED_ASSERTIONS = 66;
 
 const NOW_MS = Date.parse('2026-10-22T10:00:00+08:00');
 const LOW_CODE = backfill.LOW_CODE;
@@ -260,6 +261,14 @@ function register(h) {
       'C4 附加服务说明样式落点 .addon-hint 存在（与 Step3 复选区同一视觉层级）');
     t.eq([wxml.indexOf('不上楼'), wxml.indexOf('需要上楼')], [-1, -1],
       'C5 页面不硬编码层级文案（「不上楼/需要上楼」只在 shared/enums desc 单源，前端不复制一份）');
+    // D84：附加服务预览（零金额口径）——纯件固定形状 + Step4 渲染接线
+    const preview = step3Part.addonPreviewOf(['UPSTAIRS', 'TRASH']);
+    t.eq([preview.visible, preview.countText, preview.items.map((item) => item.name)],
+      [true, '共 2 项', ['上楼', '丢垃圾']], 'C6 D84 附加服务预览纯件：只列选中项名称/说明（零金额口径）');
+    t.eq([step3Part.addonPreviewOf([]).visible, step3Part.addonPreviewOf([]).items.length], [false, 0],
+      'C7 D84 未选附加服务 → 预览不展示（空态不占位）');
+    t.check(/addonPreview\.visible/.test(wxml) && /附加服务预览/.test(wxml),
+      'C8 D84 Step4 渲染预览块（与纯件同源）');
   });
 
   // ---------------------------------------------------------------- D 兼职详情停用标记

@@ -351,6 +351,10 @@
     <view class="panel" catchtap="noop">
       <view class="section-title">{{transferPanel.title}}</view>
       <view class="small">{{transferPanel.hint}}</view>
+      <!-- D82：本队成员快选（主兼职=队员 / 子队员=队长）；失败时列表为空，手输编号仍可用 -->
+      <picker wx:if="{{transferCandidates.length}}" range="{{transferCandidates}}" range-key="label" value="{{transferPickIndex}}" bindchange="onTransferPick">
+        <view class="form-input picker-value">{{transferPickIndex >= 0 ? transferCandidates[transferPickIndex].label : '从本队选择（也可手输编号）'}}</view>
+      </picker>
       <view class="form-row">
         <view class="form-label">对方兼职编号</view>
         <input class="form-input" maxlength="{{transferPanel.maxLength}}" placeholder="{{transferPanel.placeholder}}" value="{{transferInput}}" bindinput="onTransferInput" />

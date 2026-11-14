@@ -1704,3 +1704,127 @@ check.ps1：全部通过（4 步，退出码 0）
 - **文档**：CONTRACT §13 D79、UX_PARTNER §3.11、QA §AK14、CHANGELOG。
 - **真机项（agent 不代勾）**：QA §AK14。
 - **提交**：`7d68e5c`（代码/判据/文档）+ 本节证据回填提交。
+
+## 39. 批 36 识别站点冲突不猜（D80）+ 复核补录保护 + 22 点结单排查（2026-11-14）
+
+- **口径**：CONTRACT §13 D80（v1.14）；`D_MAX` 79→80。
+- **锚点**：工作树 `dsh-006db18a-b8f6`，基线 HEAD `9cca898` + 本批未提交改动。
+- **用户问题**：①DeepSeek 是否真用上/站点被错误识别和填写；②识别失败复核逻辑；⑤22 点自动结单触发器失效。本批先做 P0 止血：①③⑤ 与 ② 的状态保护。
+- **交付（代码）**：
+  - 站点双判据冲突不猜：`shared/station-rules.resolveInferredStation` + `shared/stations.resolveStationOf`；客户端 `utils/recognize/{station,index}.js`（初始解析/AI 建议/采纳三路同判 + `stationConflict/conflictStations` + 行内文案）、`pkg-customer/pages/order-create/index.wxml`（红字提示）；服务端 `handlers/ai/_common.buildRuleResult`（`STATION_CODE_DISAGREE`）、`lib/ai/parse.normalizeAiFields`（冲突→站点空+LOW）、`handlers/ai/parseParcel`（传完整站点表，含后台 aliases/codePatterns）。
+  - 复核补录保护：`handlers/admin/fixRecognitionFailure.js`（终态拒绝、手填 MANUAL 不可覆盖、识别来源可纠正、按 failureId/itemIndex 命中件才回填）。
+  - 22 点结单：`cleanup/sweeps/orders.js` 排序锚改 `statusUpdatedAt`（命中 `idx_status_updated`）；`cleanup/run.js` 汇总审计增 `failedSweeps/actedSweeps`；RUNBOOK §3.6.1 七步排查。
+- **判据**：`selftest-recognize` 313→315（D80 冲突不猜）；`selftest-ai`/`ai-station-cases` 改判 D80；`selftest-order-flow` 手改码语义保持；新增 `tools/lib/admin-review-guard-cases.js`（6 断言）；`selftest-cleanup` §O 审计明细、`cleanup-auto-complete-cases` §C 排序锚（增量见 check.ps1 真实输出）。
+- **门禁真实输出（2026-11-14，工作树 dsh-006db18a-b8f6）**：
+```text
+$ powershell -File check.ps1
+PASS  check.js 代码/配置门禁（39 条）
+PASS  check-docs.js 设计文档门禁（--batch 1）
+PASS  zero-money-scan.js 零金额扫描（源码+页面+文档）
+PASS  selftest.js 全部断言 suite（EXPECTED_ASSERTIONS 闸）
+selftest：运行 39 套；失败 0 套；SKIP 0 套（无）；完整性 0 项（非聚合辅助文件 4 件已声明）
+check.ps1：全部通过（4 步，退出码 0）
+```
+- **文档**：CONTRACT §4.2/§13 D80、DATA_MODEL §2.10/§2.14、UX_CUSTOMER §3.7.2 文案、QA §AL、RUNBOOK §3.6.1、CHANGELOG、`tools/check-docs.js D_MAX=80`。
+- **环境说明**：工作树缺 `.env.example`（`.gitignore` 忽略且 HEAD 未跟踪）导致 check.js #05 基线红；本机已补该未跟踪文件（仅键名示例）后才绿，**不入库**，需 Lead 评估把该文件从 REQUIRED_FILES/忽略规则中二选一收口。
+- **真机项（agent 不代勾）**：QA §AL1~AL3；触发器/索引/22:00 日志取证按 RUNBOOK §3.6.1 由用户执行。
+- **未完成（后续批）**：③兼职端送达改模态浮窗；④转派发起者跟踪+本队选人；②批量/建议/根因/积压看板；⑥整体优化；⑦逐情景回放；⑧附加服务（零金额）预览。
+
+## 40. 批 37 工作台动作浮窗（2026-11-14）
+
+- **用户指令**：兼职端点「已送达」时应跳出浮窗，而不是把面板加在 UI 下方（行内展开/页底追加）。
+- **交付**：`pages/partner/workbench/index.wxml` 把「补码/原因/异常/送达备注/批量改站点」五类面板合并为一个**页面级模态浮层**（遮罩 + 底部面板；点遮罩或取消关闭，面板内点击不关闭）；`parts/overlay.wxss` 新增 `.panel-mask/.panel/.panel-grip`（`position:fixed` + `padding-bottom:env(safe-area-inset-bottom)` + `z-index:700` + `max-height:82vh` 可滚动），删除 `.panel-card/.panel-page-card` 行内样式；订单详情页原本同口径，两页一致。
+- **判据**：`selftest-order-workbench` +2（F35 页面级浮层存在、F36 行内/页底面板已移除），套件 436/436 PASS。
+- **门禁真实输出（2026-11-14，工作树 dsh-006db18a-b8f6）**：
+```text
+$ powershell -File check.ps1
+PASS  check.js 代码/配置门禁（39 条）
+PASS  check-docs.js 设计文档门禁（--batch 1）
+PASS  zero-money-scan.js 零金额扫描（源码+页面+文档）
+PASS  selftest.js 全部断言 suite（EXPECTED_ASSERTIONS 闸）
+selftest：运行 39 套；失败 0 套；SKIP 0 套（无）；完整性 0 项（非聚合辅助文件 4 件已声明）
+check.ps1：全部通过（4 步，退出码 0）
+```
+- **文档**：UX_PARTNER §3.2（动作面板口径）、QA §AL4、CHANGELOG。
+- **真机项（agent 不代勾）**：QA §AL4（五类动作逐个点开、遮罩关闭、面板内操作、保存回读）。
+- **未完成**：④ 转派发起者跟踪 + 本队选人（下一批）。
+
+## 41. 批 38 转派发起者只读跟踪 + 本队选人（D81/D82，2026-11-14）
+
+- **用户指令**：④「订单转派时，转派发起者应该能够继续跟踪订单，且应该支持选择兼职人员而非仅能手动填写」。
+- **口径**：CONTRACT §13 D81（发起者只读跟踪）/D82（本队选人）；`D_MAX` 81→82；§5.3 `order.listPartner` 增 `view='handover'`。
+- **交付（服务端）**：新增 `handlers/order/_handover.js`（发起者判定/最小进度投影）、`_list-handover.js`（`view='handover'` 游标列表）；`order.get` 增第三读关系（仅 `transfer.fromPartnerId=me` 且 `transfer.status=ACCEPTED` 且已非履约人；返回 `{handover:true, order, events}`，事件走顾客侧白名单）；`listPartner` 增第六视图（拒绝 bindingId/keyword/status/from/to）。**零顾客身份/地址/取件码/截图/动作；写动作仍 FORBIDDEN**。
+- **交付（客户端）**：工作台新增「已转出」折叠（首次展开才请求）+ 只读进度浮层（`parts/{handover,handover-view}.js` + WXML/CSS）；订单详情转派面板新增本队候选 picker（主兼职=ACTIVE 成员，子队员=队长；候选来自已有 `partner.listSubMembers`，失败保留手输）。
+- **判据**：`selftest-transfer` 140→**150**（D81-1~10；原 T10-10 由「整单 FORBIDDEN」改判为「跟踪视图且零动作/零顾客身份」）；`partner-transfer-ui-cases` +3（K41~K43，DETAIL 77→80）；`selftest-order-workbench` F35 扩为「浮层 + 已转出接线」静态守卫（断言总数不变）。
+- **门禁真实输出（2026-11-14，工作树 dsh-006db18a-b8f6）**：
+```text
+$ powershell -File check.ps1
+PASS  check.js 代码/配置门禁（39 条）
+PASS  check-docs.js 设计文档门禁（--batch 1）
+PASS  zero-money-scan.js 零金额扫描（源码+页面+文档）
+PASS  selftest.js 全部断言 suite（EXPECTED_ASSERTIONS 闸）
+selftest：运行 39 套；失败 0 套；SKIP 0 套（无）；完整性 0 项（非聚合辅助文件 4 件已声明）
+check.ps1：全部通过（4 步，退出码 0）
+```
+- **文档**：CONTRACT §5.3/§13 D81/D82、DATA_MODEL §5.1（`idx_transfer_from`）/§5.2（查询路径）、RUNBOOK §3.4（索引创建）、UX_PARTNER §3.2/§3.3、QA §AL5/§AL6、CHANGELOG。
+- **用户侧动作**：控制台创建 `orders.idx_transfer_from(transfer.fromPartnerId, transfer.status, statusUpdatedAt desc)`；重新部署 `api`。
+- **真机项（agent 不代勾）**：QA §AL5（已转出跟踪）/§AL6（本队选人）。
+- **未完成**：②复核闭环增强（批量/建议/根因/积压看板）、⑥整体优化、⑦逐情景回放、⑧附加服务（零金额）预览。
+## 42. 批 39 复核闭环增强（D83，2026-11-14）
+
+- **用户指令**：②「检查识别失败待复核的复核代码逻辑，并优化复核机制与流程」。
+- **口径**：CONTRACT §13 D83；`D_MAX` 82→83；响应只增字段，零新集合/索引/动作。
+- **交付**：①**一键建议**（`handlers/admin/_suggest.js`）：规则快照 / 冲突双方（取件码格式 vs 截图文字）/ AI 结果 / 码格式反推，最多 3 条、只读推导、去重；复核页点选填入仍可改。②**复核归因**（`_review.js` 枚举 6 项）：fix/ignore 可选 `rootCause`，写 `resolution.rootCause`，审计 `detail.rootCause` 只记码；非法值 `VALIDATION_FAILED`。③**积压观测**：`listRecognitionFailures.counts.pendingOver24h`（PENDING 且 createdAt<NOW-24h，单次服务端 count；页面红字）。④**通知可达性**：详情 `canNotify`（无关联订单=false），页面禁用通知开关并说明「站内消息按订单投递不可达」，不谎称已通知。
+- **判据**：`selftest-admin` +6（F40 审计归因 / F41 建议两条+不可通知+归因 6 项 / F42 忽略归因 / F43 非法归因 / F44 积压计数），套件 300/300 PASS；复核页字段白名单/计数键集合同批更新。
+- **门禁真实输出（2026-11-14，工作树 dsh-006db18a-b8f6）**：
+```text
+$ powershell -File check.ps1
+PASS  check.js 代码/配置门禁（39 条）
+PASS  check-docs.js 设计文档门禁（--batch 1）
+PASS  zero-money-scan.js 零金额扫描（源码+页面+文档）
+PASS  selftest.js 全部断言 suite（EXPECTED_ASSERTIONS 闸）
+selftest：运行 39 套；失败 0 套；SKIP 0 套（无）；完整性 0 项（非聚合辅助文件 4 件已声明）
+check.ps1：全部通过（4 步，退出码 0）
+```
+- **文档**：CONTRACT §13 D83、DATA_MODEL §2.14（`resolution.rootCause`）、UX_DEVELOPER §1.2、QA §AL7、CHANGELOG。
+- **真机项（agent 不代勾）**：QA §AL7（后台复核页建议/归因/通知禁用/积压提示）。
+- **被否（P1 再议）**：新增批量补录/多选动作——逐条审计更清晰；无订单记录改全局站内信（需新集合/通道）。
+- **未完成**：⑧附加服务（零金额）预览、⑦逐情景回放报告、⑥整体优化池。
+## 43. 批 40 附加服务预览（D84，2026-11-14）
+
+- **用户指令**：⑧「支持额外代价预览（先思考这个能不能做）」。
+- **口径**：CONTRACT §13 D84（`D_MAX` 83→84）。**裁决=不做任何交易类预览**（D5/D6 用户硬口径；要做需废止口径并连带数据模型/隐私/提审/门禁，列 P2 单独立项）。**落地=附加服务预览**：Step4 显示「附加服务预览（共 N 项）」+ 逐项名称/说明（`shared/enums.ADDONS` 单源）+ 本单件数；未选不占位；纯展示、零新字段/接口/集合。
+- **交付**：`parts/step3.addonPreviewOf` 纯件 + `goNext/toggleAddon` 同步、`index.js` data、Step4 WXML 预览块、WXSS `.addon-preview`。
+- **判据**：`selftest-pickup-low` 63→66（C6 纯件形状/C7 空态不占位/C8 Step4 接线）。
+- **门禁真实输出**：`check.ps1` 4 步 PASS（见 §42 同格式：check 39/39、docs 12/12、零金额 0 命中、selftest 39 套 0 失败）。
+- **文档**：CONTRACT §13 D84、UX_CUSTOMER §3.7.4、QA §AL8、CHANGELOG。
+- **真机项（agent 不代勾）**：QA §AL8。
+
+## 44. 整体优化池盘点（⑥，2026-11-14）
+
+> 只列「方向 → 项 → 结论」，不新造需求；P1/P2 为后续批次候选，需用户/Lead 排期。
+
+| 方向 | 优化项 | 结论 |
+| :-- | :-- | :-- |
+| 识别 | 站点码格式治理（P1~P8 `codePatterns` 按真实样本收紧/互斥） | 建议 P1：D80 已止血，仍建议按样本调配置（控制台） |
+| 识别 | 站点别名补齐（TD-025：缺西苑顺丰/京东/北部/南苑/五食堂22栋/东苑邮政） | P1（改 `shared/stations` + 同步副本 + 语料） |
+| 识别 | DeepSeek 真正上场（打开 `aiFallback.enabled`） | 用户侧 E11 合规确认后执行；打开后看 `aiTried/aiErrorCode` 与复核积压 |
+| 识别 | AI 交叉校验（规则结果也送 AI 复核） | **已自然生效**：D80 冲突→站点空→触发兜底；无需新开关 |
+| 复核 | 批量补录/多选 | 已评估（D83 被否），P1 再议 |
+| 复核 | 无关联订单的通知通道 | 需新集合/通道，P1 |
+| 复核 | 归因 TOP 报表 | 归因已落库（D83），P1 做聚合页 |
+| 履约 | 送达/批量浮窗统一 | 已完成（批 37） |
+| 履约 | 转派发起者跟踪 + 本队选人 | 已完成（D81/D82） |
+| 履约 | 批量撤销/多选交互统一 | P2 |
+| 可靠性 | cleanup 健康看板/失败告警 | P1（当前靠 CLEANUP 审计 `failedSweeps` + RUNBOOK §3.6.1） |
+| 可靠性 | 索引巡检 | 控制台人工（RUNBOOK §3.4；D81 新增 `idx_transfer_from`） |
+| 观测 | AI 上场率/识别冲突率/复核积压趋势 | P1（数据已具备：`aiTried`、`ruleResult.stationConflict`、`counts.pendingOver24h`） |
+| 性能 | cleanup 每 10 分钟查询成本 | TD-013 保留，上线后按控制台日志评估 |
+| 工程 | `.env.example` 基线红（`.gitignore` 忽略但 check.js #05 要求） | 需 Lead 裁决：入库或调整必需清单（本机已临时补齐，未入库） |
+| 文档 | 文档/代码漂移（AI 站点表、结单排序锚） | 已修（D80/批 36） |
+
+## 45. 批 40 逐情景模拟回放（⑦，2026-11-14）
+
+- 交付：QA 附录 F「逐情景模拟回放（批 36~40）」——17 个场景（F1~F17），逐条给触发/期望/自动证据/真机项。
+- 口径：自动证据=本轮 `check.ps1` 全绿下对应套件断言；真实触发器/云库索引/真机 UI 不在自动模拟范围，按 RUNBOOK §3.6.1 与 QA §AL 由用户执行。
+- 文档：QA 附录 F + 索引行（§AL 8 项，合计 388）。

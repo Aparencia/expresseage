@@ -15,6 +15,8 @@ const MAX_OCR_TEXT_LENGTH = 2000;
 const MAX_FILE_ID_LENGTH = 512;
 const CONFLICT_STATION_MISMATCH = 'STATION_MISMATCH';
 const CONFLICT_CODE_CONFLICT = 'CODE_CONFLICT';
+// D80：识图站点与取件码反推站点指向不同驿站（不静默采信任一方，站点留空待复核/手选）
+const CONFLICT_STATION_CODE_DISAGREE = 'STATION_CODE_DISAGREE';
 const DEFAULT_RETENTION_DAYS = 30;
 // 取件码候选 token：支持 207-3-1014 这类连字符/分隔符组；掩码片段（含 *）与运单上下文先剔除，避免把 JT22 当码
 const CODE_TOKEN_RE = /[0-9A-Za-z]+(?:[-—–_#][0-9A-Za-z]+)*/g;
@@ -168,13 +170,14 @@ function stationSwitchesOf(config) {
 
 // 服务端规则快照（入队 ruleResult）：输入只有去敏文本与尾号提示，故由服务端在同一文本上重跑规则归一。
 // D70 开关：fromImage 门控「截图文本 → 站点」归一、fromCode 门控「取件码格式 → 站点」反推（码抽取不受影响）。
+// D80：两者指向不同站点时**不猜**——站点留空并记 conflict，让用户手选 / 复核补录。
 function buildRuleResult(maskedText, hintTrackingTail, ticketStatus, config) {
   const switches = stationSwitchesOf(config);
   const conflicts = [];
-  const textStation = switches.fromImage
+  const textHit = switches.fromImage
     ? normalizeStationFromText(maskedText, config)
     : { id: '', name: '', conflict: false };
-  if (textStation.conflict) {
+  if (textHit.conflict) {
     conflicts.push(CONFLICT_STATION_MISMATCH);
   }
   const code = normalizeCodeFromText(maskedText);
@@ -182,13 +185,18 @@ function buildRuleResult(maskedText, hintTrackingTail, ticketStatus, config) {
     conflicts.push(CONFLICT_CODE_CONFLICT);
   }
   const pickupCode = code.value;
-  // D70：取件码格式反推站点为权威（唯一命中才采信；未命中才回退识图站点）；fromCode=false 时不做反推
   const codeStation = switches.fromCode
     ? inferStationFromCodeOf(code.raw || pickupCode, config)
     : null;
-  const station = codeStation
-    ? { id: codeStation.id, name: codeStation.name }
-    : { id: textStation.id, name: textStation.name };
+  const resolved = stations.resolveStationOf(
+    { id: textHit.id, name: textHit.name, by: 'image' },
+    codeStation,
+    config
+  );
+  if (resolved.conflict) {
+    conflicts.push(CONFLICT_STATION_CODE_DISAGREE);
+  }
+  const station = { id: resolved.id, name: resolved.name };
   const trackingTail = normalizeTailFromText(maskedText) || hintTrackingTail || '';
   return {
     stationId: station.id,
@@ -198,6 +206,10 @@ function buildRuleResult(maskedText, hintTrackingTail, ticketStatus, config) {
     lockerNo: '',
     codeStatus: pickupCode === '' ? enums.CODE_STATUS.NEED_CODE : enums.CODE_STATUS.OK,
     conflicts,
+    stationConflict: resolved.conflict === true,
+    conflictStations: resolved.conflict
+      ? { text: resolved.textStation, code: resolved.codeStation }
+      : null,
     ticketInvalid: !ticketStatus.valid
   };
 }

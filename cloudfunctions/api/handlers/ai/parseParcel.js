@@ -86,8 +86,10 @@ module.exports = async function aiParseParcel(ctx, payload) {
   );
   // 原图入队关联：上传票据归属/purpose=TICKET/未过期未消费 + fileId 恰好落在票据云路径上，才写入真实 fileId
   const fileId = ticketStatus.valid ? uploadCommon.resolveTicketFileId(ticket, input.fileId) : '';
-  // 服务端规则与 AI prompt 都使用「当前配置站点名」（D32：后台可改正式名），只认注入站点表
-  const stationTable = stations.listStations({ stations: stations.stationsFromConfig(config) });
+  // 服务端规则与 AI prompt 都使用「当前配置站点名」（D32：后台可改正式名），只认注入站点表；
+  // 批 36 修复：必须传**完整**站点表（含 aliases/codePatterns）——旧实现 listStations() 只留 id+name，
+  // 导致 prompt 看不到后台别名、AI 侧「码→站点」退回内置默认（与规则路径不同源）。
+  const stationTable = stations.stationsFromConfig(config);
   const aiFieldsEmpty = {
     stationId: ruleResult.stationId,
     stationName: ruleResult.stationName,

@@ -166,6 +166,25 @@ function requestPanel() {
   };
 }
 
+// D82：本队候选（主兼职=成员，子队员=队长）。只做展示投影，不做权限判断——服务端 requestTransfer 仍唯一权威。
+// 队伍数据来自 partner.listSubMembers（已有动作，零新增接口）：主兼职 {members[]}；子队员 {team:{parentPartnerNo}}。
+function candidatesOf(team) {
+  const value = team && typeof team === 'object' ? team : {};
+  const options = [];
+  (Array.isArray(value.members) ? value.members : []).forEach(function add(member) {
+    if (!member || member.status !== enums.PARTNER_STATUS.ACTIVE || !member.partnerNo) {
+      return;
+    }
+    const label = (member.displayName ? member.displayName + ' · ' : '') + member.partnerNo;
+    options.push({ partnerNo: member.partnerNo, label: label });
+  });
+  const parentNo = value.team && typeof value.team.parentPartnerNo === 'string' ? value.team.parentPartnerNo : '';
+  if (options.length === 0 && parentNo) {
+    options.push({ partnerNo: parentNo, label: '队长 · ' + parentNo });
+  }
+  return options;
+}
+
 function requestConfirmOf(partnerNo) {
   const target = String(partnerNo || '');
   return {
@@ -312,6 +331,7 @@ module.exports = {
   cardOf,
   closedCard,
   requestPanel,
+  candidatesOf,
   requestConfirmOf,
   declineConfirmOf,
   cancelConfirmOf,

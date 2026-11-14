@@ -134,6 +134,7 @@
       </view>
 
       <view class="small error-text" wx:if="{{item.formErrors.station}}">{{item.formErrors.station}}</view>
+      <view class="small error-text" wx:if="{{item.stationConflictText}}">{{item.stationConflictText}}</view>
       <view class="small error-text" wx:if="{{item.formErrors.pickupCode}}">{{item.formErrors.pickupCode}}</view>
       <view class="small error-text" wx:if="{{item.formErrors.lockerNo}}">{{item.formErrors.lockerNo}}</view>
       <view class="small error-text" wx:if="{{item.formErrors.trackingTail}}">{{item.formErrors.trackingTail}}</view>
@@ -276,6 +277,12 @@
         </view>
         <view class="muted small">服务：标准代取{{addonText ? ' · 附加：' + addonText : ''}} · 预约：{{appoint.summary}}</view>
         <view class="muted small" wx:if="{{addonHintText}}">{{addonHintText}}</view>
+        <!-- D84：附加服务预览（零金额口径）——只说明本单会做哪些附加服务、共几件 -->
+        <view class="addon-preview" wx:if="{{addonPreview.visible}}">
+          <view class="muted small">附加服务预览（{{addonPreview.countText}}）</view>
+          <view wx:for="{{addonPreview.items}}" wx:key="code" class="muted small">{{item.name}}：{{item.desc}}</view>
+          <view class="muted small">服务类型：标准代取 · 本单共 {{items.length}} 件包裹；附加服务只说明要做什么。</view>
+        </view>
         <view class="muted small" wx:if="{{note}}">备注：{{note}}</view>
         <view class="muted small">送达：{{deliveryText}}</view>
         <view class="small link-text" wx:if="{{files.length}}" bindtap="onPreviewImage">点击查看截图（{{files.length}} 张）</view>

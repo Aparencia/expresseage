@@ -394,6 +394,7 @@ function testAccountBrief(user, profile) {
 function failureBrief(record, uploader) {
   const doc = record || {};
   const person = uploader || {};
+  const resolution = doc.resolution && typeof doc.resolution === 'object' ? doc.resolution : {};
   return {
     failureNo: doc.failureNo || '',
     failureCode: doc.failureCode || '',
@@ -405,14 +406,17 @@ function failureBrief(record, uploader) {
     hasImage: typeof doc.fileId === 'string' && doc.fileId !== '',
     aiTried: doc.aiTried === true,
     aiErrorCode: doc.aiErrorCode || '',
+    // 批 39（D83）：复核归因（受控枚举；未填为空串）
+    rootCause: typeof resolution.rootCause === 'string' ? resolution.rootCause : '',
     createdAt: dateValue(doc.createdAt),
     reviewedAt: dateValue(doc.reviewedAt)
   };
 }
 
-function failureDetail(record, uploader, image) {
+function failureDetail(record, uploader, image, extras) {
   const doc = record || {};
   const person = uploader || {};
+  const extra = extras && typeof extras === 'object' ? extras : {};
   const out = failureBrief(doc, person);
   out.ocrTextMasked = typeof doc.ocrTextMasked === 'string' ? doc.ocrTextMasked : '';
   out.ruleResult = doc.ruleResult || {};
@@ -421,6 +425,10 @@ function failureDetail(record, uploader, image) {
   out.resolution = doc.resolution || null;
   out.retentionDays = typeof doc.retentionDays === 'number' ? doc.retentionDays : 0;
   out.orderNo = person.orderNo || '';
+  // 批 39（D83）：一键建议（只读推导）+ 归因选项 + 是否可站内通知（未建单记录没有 orderId，通知不可达）
+  out.suggestions = Array.isArray(extra.suggestions) ? extra.suggestions : [];
+  out.rootCauseOptions = Array.isArray(extra.rootCauseOptions) ? extra.rootCauseOptions : [];
+  out.canNotify = extra.canNotify === true;
   if (image && image.url) {
     out.imageUrl = image.url;
     out.expiresAt = image.expiresAt;

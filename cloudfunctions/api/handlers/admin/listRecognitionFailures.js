@@ -14,6 +14,7 @@ const review = require('./_review');
 const paging = require('./_paging');
 
 const STATUS_LIST = enums.FAILURE_STATUS_LIST;
+const STALE_MS = 24 * 60 * 60 * 1000;
 
 function normalizeStatus(value, fallback) {
   if (value === undefined || value === null || value === '') {
@@ -42,6 +43,13 @@ async function countsOf(scope) {
   const counts = {};
   STATUS_LIST.forEach(function setCount(status, index) {
     counts[status] = list[index] || 0;
+  });
+  // 批 39（D83）：积压观测——PENDING 中超 24h 未处理（红点分级/页面提醒；单次 count，零新集合）
+  counts.pendingOver24h = await scope.dao.count(COLLECTIONS.RECOGNITION_FAILURES, {
+    where: {
+      status: enums.FAILURE_STATUS.PENDING,
+      createdAt: scope.dao.command('lt', new Date(scope.now - STALE_MS))
+    }
   });
   return counts;
 }

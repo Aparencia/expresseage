@@ -1,10 +1,35 @@
-/* 行内浮层（补码/原因/异常/送达备注/批量改站点） */
-.panel-card {
-  margin-top: 16rpx;
-  padding: 20rpx;
-  border-radius: 14rpx;
-  background: #F8FAFD;
-  border: 1rpx solid #E1E7F0;
+/* 批 37：动作面板统一为页面级模态浮层（遮罩 + 底部面板）。
+   z-index 必须高于底部操作条（600），否则面板被压住；bottom:0 + env(safe-area) 由门禁 #38 核对。 */
+.panel-mask {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: flex-end;
+  z-index: 700;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.panel {
+  width: 100%;
+  max-height: 82vh;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 24rpx;
+  background: #FFFFFF;
+  border-radius: 24rpx 24rpx 0 0;
+}
+
+/* 顶部小横条：一眼看出这是可下拉关闭的底部浮层 */
+.panel-grip {
+  width: 72rpx;
+  height: 8rpx;
+  margin: 0 auto 16rpx;
+  border-radius: 8rpx;
+  background: #D8DEE9;
 }
 
 .panel-title {
@@ -39,18 +64,50 @@
   justify-content: flex-end;
 }
 
-/* 批量改站点浮层挂在页级（不属于某一行） */
-.panel-page-card {
-  padding: 20rpx 24rpx;
-  border: 1rpx solid #E1E7F0;
-  background: #F8FAFD;
-}
-
 /* 已完结自然日分区 */
 .completed-fold {
   padding: 24rpx;
   color: #2B6DE5;
   font-size: 28rpx;
+}
+
+/* D81 已转出：折叠入口 + 行（只读，无操作）；与已完结分区同卡风格 */
+.handover-fold {
+  padding: 24rpx;
+  color: #2B6DE5;
+  font-size: 28rpx;
+}
+
+.handover-card {
+  padding: 8rpx 24rpx 16rpx;
+}
+
+.handover-line {
+  padding: 16rpx 0;
+  border-top: 1rpx solid #EEF1F6;
+}
+
+.handover-line:first-child {
+  border-top: 0;
+}
+
+/* 只读进度浮层（D81）：键值两列，右侧值自动换行 */
+.tracking-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 24rpx;
+  padding: 14rpx 0;
+  border-bottom: 1rpx solid #F0F3F8;
+  font-size: 28rpx;
+}
+
+.tracking-row:last-of-type {
+  border-bottom: 0;
+}
+
+.tracking-hint {
+  margin-top: 16rpx;
+  line-height: 1.5;
 }
 
 .completed-card {

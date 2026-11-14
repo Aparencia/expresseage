@@ -23,7 +23,7 @@ const enums = require(path.join(CLEANUP, 'shared/enums.js')); const auditActions
 // harness 完整性闸：先占位，首跑按真实断言数回填（少算/多算都判红）。
 const cleanupV1 = require(path.join(__dirname, 'lib', 'cleanup-v1-cases.js'));
 const autoCompleteCases = require(path.join(__dirname, 'lib', 'cleanup-auto-complete-cases.js'));
-const EXPECTED_ASSERTIONS = 177 + cleanupV1.EXPECTED_ASSERTIONS + autoCompleteCases.EXPECTED_ASSERTIONS;
+const EXPECTED_ASSERTIONS = 178 + cleanupV1.EXPECTED_ASSERTIONS + autoCompleteCases.EXPECTED_ASSERTIONS;
 // ↑ 177 为 §A/§B/§D~§M 基线；§C 整节在 cleanup-auto-complete-cases.js（D51：22:00 日结批 + 追平窗口）。
 const NOW = Date.parse('2026-10-22T12:00:00+08:00');
 const MINUTE = 60 * 1000, HOUR = 60 * MINUTE, DAY = 24 * HOUR;
@@ -920,6 +920,9 @@ async function runnerSection(t) {
   t.eq(summaryAudits.length, 1, '§O 一轮一条 CLEANUP 汇总审计（detail.counts）');
   t.eq(summaryAudits[0].detail.counts, { total: 3, ok: 2, failed: 1, scanned: 3, acted: 2 },
     '§O 汇总审计 detail.counts 记录 total/ok/failed/scanned/acted');
+  t.eq([summaryAudits[0].detail.failedSweeps, summaryAudits[0].detail.actedSweeps],
+    [['autoComplete'], [{ name: 'orderTimeout', acted: 2 }]],
+    '§O 汇总审计记 failedSweeps/actedSweeps（触发器健康可看出是哪个 sweep 失败）');
   t.eq(summaryAudits[0].adminOpenid, 'SYSTEM', '§O 系统审计 adminOpenid=SYSTEM');
   t.eq(result.auditWritten, true, '§O 有实际动作/失败 → 写汇总审计');
   const rerun = await RUN.runAll(ctx, {

@@ -48,7 +48,7 @@ const QUEUE_KEYS = ['failureNo', 'requestKey', 'failureCode', 'sourceRole', 'upl
   'fileId', 'orderId', 'ocrTextMasked', 'ruleResult', 'aiTried', 'aiModel', 'aiResult', 'aiErrorCode',
   'status', 'retentionDays', 'createdAt', 'reviewedAt', '_id'].sort();
 const RULE_RESULT_KEYS = ['stationId', 'stationName', 'pickupCode', 'trackingTail', 'lockerNo', 'codeStatus',
-  'conflicts', 'ticketInvalid'].sort();
+  'conflicts', 'stationConflict', 'conflictStations', 'ticketInvalid'].sort();
 const AI_RESULT_KEYS = ['recognized', 'stationId', 'stationName', 'pickupCode', 'trackingTail', 'lockerNo',
   'confidence'].sort();
 const PII_TEXT = '丰巢 取件 电话13800138000 证件110101199003071234 D4-522 收件人：张三';

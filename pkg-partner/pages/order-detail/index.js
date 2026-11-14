@@ -3,6 +3,7 @@
 // 边界：页面零状态机判断（动作/状态/编号/凭证全部消费服务端 DTO 与 parts 纯件）；只经 api/modules 出入。
 // TD-076：页面只留生命周期与 setData 编排——轮询/撤销倒计时 → parts/page-timers；浮层开关与提交 → parts/panel-actions。
 const orderApi = require('../../../api/modules/order');
+const partnerApi = require('../../../api/modules/partner');
 const messageApi = require('../../../api/modules/message');
 const modeGuard = require('../../../api/mode-guard');
 const client = require('../../../api/client');
@@ -53,6 +54,9 @@ Page(Object.assign({
     transferPanel: transferPart.requestPanel(),
     transferInput: '',
     transferError: '',
+    // D82：本队候选（主兼职=成员/子队员=队长；来自 partner.listSubMembers，失败则只留手输）
+    transferCandidates: [],
+    transferPickIndex: -1,
     loading: true,
     error: '',
     readonly: false,
@@ -258,7 +262,24 @@ Page(Object.assign({
     if (this.guardReadonly()) {
       return;
     }
-    this.setData({ panel: 'transfer', transferInput: '', transferError: '' });
+    this.setData({
+      panel: 'transfer', transferInput: '', transferError: '', transferCandidates: [], transferPickIndex: -1
+    });
+    // D82：本队候选（失败不阻断转派，保留手输编号兜底）
+    partnerApi.listSubMembers({}).then((team) => {
+      this.setData({ transferCandidates: transferPart.candidatesOf(team) });
+    }).catch(() => {
+      this.setData({ transferCandidates: [] });
+    });
+  },
+  // D82：选中本队成员即回填编号（仍走「下一步」二次确认；服务端校验不变）
+  onTransferPick(event) {
+    const index = Number(event.detail && event.detail.value);
+    const option = (this.data.transferCandidates || [])[index];
+    if (!option) {
+      return;
+    }
+    this.setData({ transferPickIndex: index, transferInput: option.partnerNo, transferError: '' });
   },
   onTransferInput(event) {
     this.setData({ transferInput: ((event.detail && event.detail.value) || '').slice(0, transferPart.INPUT_MAX) });

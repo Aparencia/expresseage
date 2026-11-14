@@ -321,6 +321,14 @@ async function detailTransferChecks(t) {
   t.eq(transferPart.inputOf(' P-8F3-K2M '), { ok: true, toPartnerNo: 'P8F3K2M', message: '' },
     'K39 合法输入归一后提交（形态校验交给服务端，页面零业务判据）');
   t.eq(transferPart.inputOf('P').ok, true, 'K40 过短编号不在本地拦截（由服务端 VALIDATION_FAILED 文案说真话）');
+  // D82：本队候选（主兼职=ACTIVE 成员；子队员=队长；非 ACTIVE/无编号剔除）
+  t.eq(transferPart.candidatesOf({ members: [
+    { partnerNo: 'PBBB001', displayName: '小王', status: 'ACTIVE' },
+    { partnerNo: 'PCCC002', displayName: '小李', status: 'SUSPENDED' }
+  ] }), [{ partnerNo: 'PBBB001', label: '小王 · PBBB001' }], 'K41 D82 主兼职候选只留 ACTIVE 成员（昵称+编号）');
+  t.eq(transferPart.candidatesOf({ team: { parentPartnerNo: 'PAAA001', memberCount: 3 } }),
+    [{ partnerNo: 'PAAA001', label: '队长 · PAAA001' }], 'K42 D82 子队员候选=队长（不暴露其他成员）');
+  t.eq(transferPart.candidatesOf({}), [], 'K43 D82 无队伍信息 → 空候选（手输编号兜底）');
   const mixedSplit = transferPart.splitActions([
     { key: 'pick', label: '标记已取件' },
     { key: 'requestTransfer', label: '转派给其他兼职' },
@@ -687,7 +695,7 @@ function layerHitsWorkbench(code) {
 }
 
 module.exports = {
-  DETAIL_EXPECTED_ASSERTIONS: 77,
+  DETAIL_EXPECTED_ASSERTIONS: 80,
   WORKBENCH_EXPECTED_ASSERTIONS: 43,
   detailTransferChecks,
   workbenchTransferChecks

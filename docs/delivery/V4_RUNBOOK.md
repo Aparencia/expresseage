@@ -71,6 +71,7 @@
   3. `partners.idx_parent`：字段 `parentPartnerId`（升序）、`status`（升序）——`listSubMembers` 与主兼职停用/注销级联扫描（每页 ≤100）。
   - **退化方案（控制台不支持四段复合索引时）**：`idx_transfer_target` 退为 `(transfer.toPartnerId, transfer.status)`，服务端查询再下推 `where(status:'ACCEPTED')`；**仍必须服务端过滤，禁止客户端过滤**；退化在 §13 记录并在后续批次评估（不阻塞上线，查询量级可控）。
   - 建后验证：`order.listPartner({view:'transfer'})` 在测试账号下能返回 `transferPending` 且不报「索引不存在」；控制台慢查询中该路径无全表扫描告警。
+- **D81 新增 1 个索引（用户控制台创建；`admin.bootstrap` 不自动建）**：`orders.idx_transfer_from`：字段 `transfer.fromPartnerId`（升序）、`transfer.status`（升序）、`statusUpdatedAt`（**降序**）——转派发起者「已转出」跟踪列表（`order.listPartner({view:'handover'})`）主路径；退化方案：控制台不支持三段复合时退为 `(transfer.fromPartnerId, transfer.status)` + 服务端状态过滤（仍服务端过滤、禁客户端过滤）。建后验证：发起者账号列表返回 `handover:true` 且不报「索引不存在」。
   - **本批无新增集合/触发器/云函数**：14 集合不变、`cleanup` 触发器配置不变、无新云函数部署单元；`shared/**` 变更后需 `node tools/sync-cloud-shared.js` 并重部署 `api`（`cleanup` 因副本同步亦建议重部署，行为无 sweep 变更）。
 - 核对集合名：云函数 `api` → 测试 → 入参 `{"action":"admin.bootstrap","data":{}}`，返回的 `missingCollections` 必须为 `[]` 才算集合就位；**若控制台里出现拼错的集合（例如 `inbitation_codes`）**，先确认里面没有数据，删除后按正确名字新建，并补权限与索引。
 - 证据：集合列表截图 + 索引导出/截图 + 每个集合安全规则截图。
@@ -84,6 +85,20 @@
 - 证据：触发器配置截图（频率/下一次执行时间 + 启用开关）+ 首次执行日志。**日结批取证**：跨 22:00 的两轮日志（`autoComplete` 的 `scanned/acted/failed`）+ 控制台 `orders`/`order_events` 抽查（`status=COMPLETED`、`AUTO_COMPLETED`、actor=SYSTEM），并记录当次 `config.autoCompleteAt` 的实际值。
 - 失败处理：不执行时检查触发器是否启用、函数版本是否最新、日志里是否有超时；可先在控制台手工测试调用一次。**判正常不能只看 `ok:true`**：注册表加载失败现返回 `ok:false/INTERNAL_ERROR`（M-20），须标记异常并排查 sweep 文件是否缺失。
 - **入口来源校验（批 10 / M-14）**：`cleanup` 入口只接受「无 OPENID」的调用方（定时触发器/控制台/部署脚本）；客户端 `wx.cloud.callFunction({name:'cleanup'})` 携带 OPENID → `FORBIDDEN`，拒绝执行任何 sweep 且不写审计。**控制台手工调用与定时触发器在函数内不可区分**（平台无更细来源字段）——控制台权限即运维边界；不要把控制台权限授予不可信人员。
+
+#### 3.6.1 22:00 自动结单失效排查（批 36，用户报障口径）
+
+> 结论先行：结单算法本身（UTC+8 日结、每单 cutoff、条件更新+唯一 requestKey）在单测里是绿的；历史「失效」集中在**调度未生效 / 函数版本旧 / 失败被计数掩盖**三层。按下面顺序取证，任一步不符即该层根因。
+
+1. **调度层**：云开发控制台 → 云函数 → `cleanup` → 触发管理，确认**存在且启用**一条「每 10 分钟」触发器，记下「下一次执行时间」截图（§13 一行）。没有触发器 ⇒ 代码永远不会跑，与算法无关。
+2. **版本层**：确认 `cleanup` 最近一次部署时间晚于批 20（D51 日结改造，提交 `a7c3127`）。旧版本可能仍按「小时数」逻辑，22:00 不会触发。
+3. **执行层**：控制台日志看 22:00~22:10 一轮的 `autoComplete` 计数（`scanned/acted/failed`）；再看整轮返回的 `sweeps[]`。**`ok:true` 不代表都成功**——单 sweep 失败只落在 `sweeps[].ok=false`（隔离设计，M-20 口径）。
+4. **审计层**：后台「审计」筛 `CLEANUP`，看最新一条的 `detail.counts` 与（批 36 起）`detail.failedSweeps / detail.actedSweeps`。**超过 20 分钟没有新 `CLEANUP` 审计 = 触发器没跑**；有审计但 `failedSweeps` 含 `autoComplete` = 查询/写入失败。
+5. **配置层**：`config/global.autoCompleteAt` 实际值（默认 `22:00`，UTC+8 `HH:MM`）；若被改成 `23:50` 等值，22:00 自然不动。
+6. **索引层**：`orders` 的 `idx_status_updated(status,statusUpdatedAt)` 已建（§3.4 清单）。批 36 起 `autoComplete` 扫描排序锚统一为 `statusUpdatedAt`（旧实现按无索引的 `deliveredAt` 排序，可能慢查询/失败）。
+7. **手工复现**：控制台「测试」调用 `cleanup` 一次（无 OPENID，属受信运维入口）→ 看返回 `sweeps[]` 与日志；再查 24h 内送达单是否转 `COMPLETED`（`order_events.type=AUTO_COMPLETED`、actor=SYSTEM）。
+
+> 取证归档：以上 7 步截图/日志与当次 `autoCompleteAt` 值记入 §13；不要用「后台看起来正常」代替真实日志。
 
 ### 3.7 配置云存储权限
 

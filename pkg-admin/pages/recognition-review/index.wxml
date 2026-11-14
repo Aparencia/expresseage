@@ -17,6 +17,9 @@
     </view>
   </scroll-view>
 
+  <!-- 批 39（D83）：积压观测——PENDING 超 24h 的服务端计数（红字提醒优先处理） -->
+  <view class="small ai-status" wx:if="{{counts.pendingOver24h}}">有 {{counts.pendingOver24h}} 条待复核已超过 24 小时，请优先处理。</view>
+
   <view class="filter-pickers">
     <picker range="{{codeLabels}}" value="{{codeIndex}}" bindchange="onCodeChange">
       <view class="pick-item">{{codeLabels[codeIndex]}}</view>
@@ -97,6 +100,16 @@
         </view>
 
         <block wx:if="{{detail.canReview}}">
+          <view class="detail-block" wx:if="{{suggestions.length}}">
+            <text class="detail-label">一键建议（只读推导，保存前可再改）</text>
+            <view
+              wx:for="{{suggestions}}"
+              wx:key="index"
+              class="btn btn-ghost btn-small"
+              data-index="{{index}}"
+              bindtap="onApplySuggestion"
+            >{{item.stationName || item.stationId}}{{item.pickupCode ? ' · ' + item.pickupCode : ''}} · {{item.reasonText}}</view>
+          </view>
           <view class="detail-block">
             <text class="detail-label">补录站点</text>
             <picker range="{{stationOptions}}" value="{{stationIndex}}" bindchange="onStationChange">
@@ -107,10 +120,17 @@
             <text class="detail-label">补录取件码</text>
             <input class="form-input" value="{{pickupCode}}" maxlength="40" placeholder="取件码（可留空，最多 40 位）" bindinput="onPickupCodeInput" />
           </view>
+          <view class="detail-block">
+            <text class="detail-label">复核归因（选填，用于反哺规则/配置）</text>
+            <picker range="{{rootCauseOptions}}" range-key="label" value="{{rootCauseIndex}}" bindchange="onRootCauseChange">
+              <view class="pick-item">{{rootCauseIndex > 0 ? rootCauseOptions[rootCauseIndex - 1].label : '未选择'}}</view>
+            </picker>
+          </view>
           <view class="row between detail-row">
             <text class="muted">同时站内通知上传者</text>
-            <switch checked="{{notifyUploader}}" color="#1F7A5C" bindchange="onNotifyChange" />
+            <switch checked="{{notifyUploader}}" disabled="{{!detail.canNotify}}" color="#1F7A5C" bindchange="onNotifyChange" />
           </view>
+          <view class="small muted" wx:if="{{!detail.canNotify}}">该记录没有关联订单，站内消息按订单投递、不可达；补录后请让用户重新识别或手填。</view>
           <view class="btn btn-primary btn-block action-gap" bindtap="onFix">{{submitting ? '提交中…' : '保存补录'}}</view>
 
           <view class="detail-block">

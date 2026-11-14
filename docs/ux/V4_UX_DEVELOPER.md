@@ -92,6 +92,7 @@
 | 测试账号管理 | `account-switch`（测试账号 tab） | `admin.createTestAccount`/`listTestAccounts`/`deleteTestAccount`/`purgeTestData` | 写 | `TEST_ACCOUNT_CREATE`/`TEST_ACCOUNT_DELETE`/`TEST_DATA_PURGE` |
 | 识别失败复核 | `recognition-review` | `admin.listRecognitionFailures`/`getRecognitionFailure`/`fixRecognitionFailure`/`ignoreRecognitionFailure` | 写（补录/忽略） | `FAILURE_IMAGE_VIEW`/`FAILURE_FIX`/`FAILURE_IGNORE` |
 > v0.9 admin 动作表共 **23 个**（CONTRACT §5.3：含 `viewAsStart({role,targetNo,mode})`/`viewAsEnd` + `createTestAccount`/`listTestAccounts`/`deleteTestAccount`/`purgeTestData`）；本文动作名逐字引用，不自造。
+> **D83 复核页增强（2026-11-14）**：详情顶部给「一键建议」（规则快照/冲突双方/码格式反推/AI，最多 3 条，**只读推导**；点选填入后仍可手改）、「复核归因」选填枚举（取件码格式/别名/文字噪声/AI 不可用/OCR 质量/其他，fix 与 ignore 都记，非法值打回）；`canNotify=false`（无关联订单）时通知开关禁用并写明「站内消息按订单投递、不可达」，不谎称已通知；列表 `counts.pendingOver24h>0` 时红字提醒优先处理。建议/归因只进响应与 `resolution`，不新增集合/动作/索引。
 
 ### 1.3 与顾客/兼职身份的关系
 - 同一 openid 可同时是顾客与兼职（§1），但开发者 openid 默认**不**创建这两种业务身份；后台无「进入我的顾客/兼职身份」入口。

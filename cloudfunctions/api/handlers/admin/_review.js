@@ -9,6 +9,39 @@ const { createDeepSeekClient } = require('../../lib/ai/deepseek');
 const NOTIFY_TEMPLATE = 'RECOGNITION_REVIEW';
 const NOTIFY_TEXT = '你的截图识别失败，开发者已处理；如需补充取件码，请到订单页面手动填写。';
 
+// 批 39（D83）：复核归因枚举 —— 复核完成时记录「为什么识别失败」，供后台按月看 TOP 原因反哺规则/配置。
+// 只进复核记录 resolution.rootCause（受控枚举），不新增集合/索引/客户端可见字段。
+const ROOT_CAUSE = Object.freeze({
+  CODE_PATTERN: 'CODE_PATTERN',
+  ALIAS: 'ALIAS',
+  TEXT_NOISE: 'TEXT_NOISE',
+  AI_UNAVAILABLE: 'AI_UNAVAILABLE',
+  OCR_QUALITY: 'OCR_QUALITY',
+  OTHER: 'OTHER'
+});
+const ROOT_CAUSE_LABELS = Object.freeze({
+  CODE_PATTERN: '取件码格式配置',
+  ALIAS: '站点别名缺失',
+  TEXT_NOISE: '截图文字噪声',
+  AI_UNAVAILABLE: 'AI 兜底不可用',
+  OCR_QUALITY: 'OCR 质量差',
+  OTHER: '其他'
+});
+function rootCauseOptions() {
+  return Object.keys(ROOT_CAUSE).map((code) => ({ code: code, label: ROOT_CAUSE_LABELS[code] }));
+}
+// 可选入参：只接受枚举值或空串（页面可不填）；非法值 VALIDATION_FAILED 由调用方转错误码。
+function normalizeRootCause(value, errors) {
+  if (value === undefined || value === null || value === '') {
+    return '';
+  }
+  const text = typeof value === 'string' ? value.trim().toUpperCase() : '';
+  if (!ROOT_CAUSE[text]) {
+    throw errors.validation('rootCause', '复核归因不正确');
+  }
+  return text;
+}
+
 // 只读 AI 兜底状态（供开发者判断开关/Key 未配/模型；hasKey 只返回布尔，绝不下发 Key 值）。
 function aiStatusOf(ctx, config, nowMs) {
   const client = createDeepSeekClient({ env: ctx && ctx.env, config: config, now: nowMs });
@@ -80,6 +113,10 @@ async function notifyUploader(scope, record, failureNo) {
 module.exports = {
   NOTIFY_TEMPLATE,
   NOTIFY_TEXT,
+  ROOT_CAUSE,
+  ROOT_CAUSE_LABELS,
+  rootCauseOptions,
+  normalizeRootCause,
   aiStatusOf,
   loadUploader,
   orderNoOf,
