@@ -225,7 +225,8 @@ function register(h) {
     // D64：取件码页是本机 L3 明文页，明确禁分享——既不在清单、也不得私挂钩子（其余业务页仍双向对帐）
     // D59：团队页含子邀请码/成员信息（治理数据不外传），同样禁分享
     // 2026-11-08：审核页含顾客截图与订单信息，禁分享
-    const NO_SHARE = ['pages/customer/pickcodes/index.js', 'pkg-partner/pages/team/index.js', 'pkg-partner/pages/review/index.js'];
+    const NO_SHARE = ['pages/customer/pickcodes/index.js', 'pkg-partner/pages/team/index.js',
+      'pkg-partner/pages/review/index.js', 'pkg-customer/pages/gate-create/index.js'];
     const noShareSource = readText(NO_SHARE[0]);
     t.check(noShareSource.indexOf('onShareAppMessage') === -1 && noShareSource.indexOf('onShareTimeline') === -1
       && sharePages.APP_MESSAGE.indexOf(NO_SHARE[0]) === -1,

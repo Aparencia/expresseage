@@ -723,6 +723,8 @@ check.ps1：全部通过（4 步，退出码 0）
 19. **测试文件拆件 backlog（TD-086）**：`selftest-cloud` 1000、`selftest-ai` 999、`selftest-admin-pages` 996、`selftest-deletion` 990、`selftest-bind-cloud` 982、`selftest-admin` 978、`selftest-cleanup` 977、`selftest-profile` 973、`selftest-order-lifecycle` 969、`selftest-bind` 962——下次触碰前按 ENGINEERING §7.2 拆到 `tools/lib/<suite>-cases.js`（纯搬移 `EXPECTED_ASSERTIONS` 恒等、主套件 ≤950）。
 20. **批 20 收口后的用户操作（按序）**：①云函数重部署——`node tools/sync-cloud-shared.js` → 上传 `cloudfunctions/api`（云端安装依赖）→ 上传 `cloudfunctions/cleanup` → 控制台确认 10 分钟触发器（D51 前置）；②控制台「开启智能识别兜底」（RUNBOOK §16.2：`config/global.aiFallback.enabled=true` + `DEEPSEEK_API_KEY` 有效 + 配置页验证「已开启」+ 失败图冒烟）；③上传体验版（含批 16~20 客户端改动）；④真机点检 QA §AC1~AC6 与 §AB/§Z/§AA 未勾项，回签证据；⑤D57 需求理解确认（顾客端多取件码上传的边界/存储/兼职可见性）。
 21. **批 20 贴边文件拆件**：优先 `selftest-cloud`（1000 行，须先拆 `tools/lib/*-cases.js`）、`partner/_customer.js`（497）、`pick-list/index.js`（496）、`workbench/index.js`（495）；`selftest-order-customer` 981 与 `selftest-partner-pages` 903 接近上限。
+22. **2026-11-16 E 校门代取（D80）代码实施已落地**：`orders.line='GATE'` + `gate` 块、内部 1 件占位包裹、DTO 隐藏件级字段；`gateEnabled`（默认关）/`gatePoints` 公开配置；顾客新页 `pkg-customer/pages/gate-create/index`、顾客/兼职详情分支、工作台单列、取件清单排除 GATE；角色页去强制二选一；页数 34→35；`check-docs` D_MAX 79→80；`selftest-order` 156→175（+19）、全套 39 套 0 失败；`check.ps1` 4 步退出码 0；真机/提审/备案描述变更待用户；本次不做校园墙。
+23. **2026-11-14 校园墙/外卖代取可行性与角色模型研究 + 2026-11-16 方案稿已交付**（`docs/archive/research/2026-11-14_CAMPUS_WALL_TAKEOUT_FEASIBILITY.md`、`docs/archive/reviews/2026-11-16_CAMPUS_WALL_TAKEOUT_PLAN.md`）：结论=**E 校门代取（外卖已送达东门后的二次代取）与快递同形态，可在现有主体内做**（备案描述补充/变更；不做商家/餐品/公开抢单/支付）；**B 公开接单池/校园墙需主体升级，本次不做墙**。**本次只做 Phase 1 = E + 角色入口 M1**（现有个人主体/现有小程序，不新增小程序、不换主体）；**待用户裁决方案 §7 Q1~Q6**（E 范围/校门点/命名/角色 M1/备案/兼职开关）。未改代码/口径，未登记新 D#；用户裁决后再按“先口径后代码”开批。
 
 ## 10. 维护规则
 

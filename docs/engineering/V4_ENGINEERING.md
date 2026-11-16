@@ -871,7 +871,7 @@ expressage_college_v4/
 2. CONTRACT §7 页面路径全集 = app.json 声明（主包 8 + 分包 25 = **33 页**；批 1 后生效，v1.0 含 `pickup-list`→D64 迁主包 `pickcodes`；v1.4/D46 增 `pick-list`；**v1.10/D59 增 `pkg-partner/pages/team/index`（32→33）**）。
 3. CONTRACT §5.3 action 表 = `shared/actions.js`（双向；`visibility=internal` 单列，不对客户端开放；**`admin.createInvites/revokeInvite/listInvites/listCustomers/getCustomer/listPartners/setPartnerStatus/listOrders/getOrder/listAudit/updateConfig/stats/viewAsStart/viewAsEnd/createTestAccount/listTestAccounts/deleteTestAccount/purgeTestData/listRecognitionFailures/getRecognitionFailure/fixRecognitionFailure/ignoreRecognitionFailure`、`ai.parseParcel` 全部在册**）；DATA_MODEL §7 的 action 名 ⊆ CONTRACT 表，**且 CONTRACT 的客户端动作（`cleanup.*` 除外）必须反向出现在 §7**；§7 章节标题缺失或动作 token 解析为空集直接判红（TD-079①）。
 4. CONTRACT §4 集合表 = `shared/collections.js`（**14 集合**，含 `invitation_codes`、`admin_view_sessions`、`recognition_failures`）；`shared/error-codes.js` **恰好等于** CONTRACT §5.3 的 13 码（双向，旧码零命中；AI 兜底失败不入码）。
-5. D#/E# 引用可解析：CONTRACT §13 的 **D1~D73 连续**（上限单源 = `tools/check-docs.js` 的 `D_MAX`，随裁决扩展；引用编号超出该上限即判红）；本文 §13 的工程缺口 **E1~E12 全部已定义且连续**；文内**方括号显式引用 `[E#]` 未在定义集内即判红**（`docs/archive/**` 历史快照与 QA §E / 提审材料 §5 的另一命名空间不在本判据内）。
+5. D#/E# 引用可解析：CONTRACT §13 的 **D1~D80 连续**（上限单源 = `tools/check-docs.js` 的 `D_MAX`，随裁决扩展；引用编号超出该上限即判红；D80 = 2026-11-16 E 校门代取 + 角色 M1）；本文 §13 的工程缺口 **E1~E12 全部已定义且连续**；文内**方括号显式引用 `[E#]` 未在定义集内即判红**（`docs/archive/**` 历史快照与 QA §E / 提审材料 §5 的另一命名空间不在本判据内）。
 6. 正文无未完成占位标记（英文待办缩写、\"以后再补\"类措辞、单字占位符）；`[E#]`、`[R#]`、`P1/P2`、`[D#]`、`⏳` 不算占位。
 7. **零金额文档扫描**：docs/ + 根 md 按 §7.6 词表命中 0（白名单精确项例外），失败输出 `file:line`。
 8. **编号规格一致性**：CONTRACT §3.1 表 = 本文 §5.3 表 = `utils/ids.js` 导出的字母表/长度/展示分组常量；错前缀三句文案在 `shared/error-copy.js` 存在且被引用；`developerNo` 只来自 `ADMIN_OPENIDS` 映射。

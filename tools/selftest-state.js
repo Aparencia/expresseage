@@ -286,7 +286,7 @@ function sectionBatch26Frozen(h) {
     t.eq(defaults.CONFIG_LIMITS.teamMaxMembers, { min: 1, max: 10 }, '§4.2/D59 队伍上限范围 1~10 人');
     t.eq(defaults.CONFIG_LIMITS.subInviteRate, { perMinute: { min: 1, max: 30 }, perDay: { min: 1, max: 200 } },
       '§4.2/D59 子码限流范围（逐窗口对象形制）');
-    t.eq(defaults.PUBLIC_CONFIG_KEYS.length, 12, '§4.2 公开子集 12 项（批 26 的 11 项 + D70 stationInfer 开关）');
+    t.eq(defaults.PUBLIC_CONFIG_KEYS.length, 14, '§4.2 公开子集 14 项（批 26 的 11 项 + D70 stationInfer 开关 + E 校门代取 gateEnabled/gatePoints）');
 
     // validate：子码备注 ≤50（可缺省）+ 有效期三值
     t.eq(validate.TEXT_LIMITS.teamNote, 50, '§3/D59 子码备注上限 50 字（单源常量）');

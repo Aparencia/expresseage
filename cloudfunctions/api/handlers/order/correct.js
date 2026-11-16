@@ -9,6 +9,7 @@ const enums = require('../../shared/enums');
 const stations = require('../../shared/stations');
 const { errors } = require('../../lib/errors');
 const common = require('./_common');
+const gateUtil = require('./_gate');
 
 const PICKED_ALLOWED_FIELDS = ['lockerNo', 'trackingTail'];
 const CODE_FILLED_NOTE = '兼职已补齐取件码';
@@ -136,6 +137,9 @@ module.exports = async function orderCorrect(ctx, payload) {
     action: 'order.correct',
     acceptsBatchActionId: true,
     guard(input) {
+      if (gateUtil.isGate(input.order)) {
+        throw errors.invalidState('校门代取没有取件码可修改');
+      }
       return applyPatch(input);
     },
     build(input) {

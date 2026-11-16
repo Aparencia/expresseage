@@ -95,7 +95,7 @@ docs/
 
 | 文档 | 摘要 |
 | :-- | :-- |
-| `docs/contract/V4_CONTRACT.md` | 唯一口径卡 v1.13：角色与账号（含账号切换两模式）、术语与字段唯一拼写、14 集合摘要、订单状态机七态、action 表与 13 错误码、**34 页页面地图**（D64 起顾客第 3 格「取件码」伪 tab；2026-11-08 起兼职「取件清单」伪 tab；D59 起团队页、2026-11-08 第 34 页审核核对页）、权限矩阵、隐私与留存、裁决索引 D1~D79、写作纪律。门禁直接解析其 §4/§5.3/§7/§13 等章节。 |
+| `docs/contract/V4_CONTRACT.md` | 唯一口径卡 v1.14：角色与账号（含账号切换两模式）、术语与字段唯一拼写、14 集合摘要、订单状态机七态、action 表与 13 错误码、**35 页页面地图**（D64 起顾客第 3 格「取件码」伪 tab；2026-11-08 起兼职「取件清单」伪 tab；D59 起团队页、2026-11-08 第 34 页审核核对页、2026-11-16 第 35 页 E 校门代取 `gate-create`）、权限矩阵、隐私与留存、裁决索引 D1~D80、写作纪律。门禁直接解析其 §4/§5.3/§7/§13 等章节。 |
 | `docs/contract/V4_DECISIONS.md` | D1~D42 裁决台账：每条含用户原文留痕、推荐与被否方案、代价与落点；是理解「为什么这样设计」的第一手材料。 |
 | `docs/contract/V4_REBUILD_SPEC.md` | 重建主规格（v1.0 / 2026-10-21）：产品定义、铁律、架构、角色权限、流程、批次验收、风险。**历史快照**：与 CONTRACT 冲突处按 CONTRACT，文内冲突点已加更新指针。 |
 
@@ -142,7 +142,7 @@ docs/
 
 | 层 | 真实结构（2026-10-31 盘点） | 口径/文档对应 |
 | :-- | :-- | :-- |
-| 页面 | **34 页** = 主包 9（launch/role/customer home/orders/customer pickcodes/partner workbench/customers/**partner pick-list**/profile）+ `pkg-customer` 5（bind/order-create/order-detail/messages/help）+ `pkg-partner` **9**（activate/order-detail/create-on-behalf/customer-detail/service-settings/stats/messages/**team（D59）**/**review（2026-11-08）**）+ `pkg-admin` 11（overview/invite-codes/customers/customer-detail/partners/orders/order-detail/config/account-switch/messages/recognition-review） | `docs/contract/V4_CONTRACT.md` §7（`check-docs` #2 校验它 = `app.json`） |
+| 页面 | **35 页** = 主包 9（launch/role/customer home/orders/customer pickcodes/partner workbench/customers/**partner pick-list**/profile）+ `pkg-customer` 6（bind/order-create/**gate-create（E 2026-11-16）**/order-detail/messages/help）+ `pkg-partner` **9**（activate/order-detail/create-on-behalf/customer-detail/service-settings/stats/messages/**team（D59）**/**review（2026-11-08）**）+ `pkg-admin` 11（overview/invite-codes/customers/customer-detail/partners/orders/order-detail/config/account-switch/messages/recognition-review） | `docs/contract/V4_CONTRACT.md` §7（`check-docs` #2 校验它 = `app.json`） |
 | 组件/工具 | `components/` 18 套（含维护遮罩、切换条、测试角标、头像、空态/骨架、D64 `tab-bar-view`、D65 `bottom-bar`）+ 根 `custom-tab-bar/`；`api/` 唯一网络出口 + 10 个域模块 + upload/privacy/mode-guard；`store/` 内存快照；`shared/` 口径纯件；`utils/` 纯件（识别/OCR/编号/roomTag/头像/存储/隐私策略等） | `docs/engineering/V4_ARCHITECTURE.md` §3 |
 | 云函数 | `cloudfunctions/api`（入口/router/app + 7 中间件 + db/dao + lib + 11 域 handlers）与 `cloudfunctions/cleanup`（13 个幂等 sweep + 独立 dao）；依赖只 `wx-server-sdk` | `docs/engineering/V4_ARCHITECTURE.md` §4、`V4_ENGINEERING.md` §4 |
 | 数据 | 14 集合（users/customers/partners/bindings/orders/order_events/order_messages/invitation_codes/admin_view_sessions/counters/config/admin_audit/upload_tickets/recognition_failures）、13 错误码、16 审计枚举、**89 动作**（client 74 / internal 15；v1.10 批 26 新增 8 个 client 动作） | `docs/contract/V4_CONTRACT.md` §4/§5.3、`docs/data/V4_DATA_MODEL.md` §1~§7 |
@@ -204,8 +204,8 @@ powershell -File tools/doctor.ps1
 | 范围 | 内容 | 时效与用法 |
 | :-- | :-- | :-- |
 | `docs/archive/overview/` | `V4_INTERIM_OVERVIEW_2026-10-23.md`（临时总览 v1.3，2026-10-23/28 快照） | 已由本文件取代；仅用于追溯当时的进度/门禁读数。 |
-| `docs/archive/research/` | `CONVENIENCE_2026-10-22.md`（便利性调研）、`LOCATION_2026-10-22.md` + `_v2`（D27 位置方案调研，**D27 仍待用户裁决**）、`PERFORMANCE_2026-10-22.md`（性能基线）、`PERFORMANCE_2026-11-01.md`（性能增量研究，HEAD `9526e37` 快照）、`2026-11-01_WORKBENCH_DATE_GROUPING.md`（工作台按日期分类设计研究，D45）、`2026-11-08_SERVICE_NOTIFICATION_FEASIBILITY.md`（「服务通知」可行性研究，**已裁决 D73 / 已实施、默认关闭**）、`_BRIEF.md`（调研简报） | 2026-10-22 基线；D27 未决前「不采集定位」口径不变；性能增量研究已按 Q10 并入批 16/17 实施；D45 研究推荐 M1（批 17 实施）；订阅消息研究结论=只能一次性订阅；模板已由用户提供、模板 ID 下发通道已按 D73 定（公开子集启用时下发 ID、不下发字段映射）。 |
-| `docs/archive/reviews/` | `CODE_2026-10-22_v4-full.md` + `_parts/`（10 份分域审查）、`2026-10-28_USER_FEEDBACK_TRIAGE.md`（用户反馈定位报告）、`2026-11-01_USER_FEEDBACK_PROPOSAL.md`（用户反馈方案探讨稿，**已裁决 D43~D50**）、`2026-11-08_BATCH31_SUBSCRIBE_NOTIFY_PLAN.md`（批 31 服务通知实行方案，**机器侧已收口、待部署与真机点检**）、`2026-11-08_REVIEW_FIX_REPORT.md`（11-07/08 变更独立审查与修复报告） | 历史审查证据；P1×3 已修，M-03 无单独收口记录；反馈项多已由 c9af8cd / D37~D42 落地，遗留四项见 TECH_DEBT；本方案裁决后按 D43~D50 分批实施；批 31 方案 P0-3 真机额度验证待用户。 |
+| `docs/archive/research/` | `CONVENIENCE_2026-10-22.md`（便利性调研）、`LOCATION_2026-10-22.md` + `_v2`（D27 位置方案调研，**D27 仍待用户裁决**）、`PERFORMANCE_2026-10-22.md`（性能基线）、`PERFORMANCE_2026-11-01.md`（性能增量研究，HEAD `9526e37` 快照）、`2026-11-01_WORKBENCH_DATE_GROUPING.md`（工作台按日期分类设计研究，D45）、`2026-11-08_SERVICE_NOTIFICATION_FEASIBILITY.md`（「服务通知」可行性研究，**已裁决 D73 / 已实施、默认关闭**）、`2026-11-14_CAMPUS_WALL_TAKEOUT_FEASIBILITY.md`（校园墙/外卖代取可行性与角色模型研究：**当前个人主体不可直接新增，需主体升级+类目+备案；外卖分「本人订单整理 A / 校门代取已送达物品 E / 公开接单池 B」，待用户裁决**）、`_BRIEF.md`（调研简报） | 2026-10-22 基线；D27 未决前「不采集定位」口径不变；性能增量研究已按 Q10 并入批 16/17 实施；D45 研究推荐 M1（批 17 实施）；订阅消息研究结论=只能一次性订阅；模板已由用户提供、模板 ID 下发通道已按 D73 定（公开子集启用时下发 ID、不下发字段映射）。 |
+| `docs/archive/reviews/` | `CODE_2026-10-22_v4-full.md` + `_parts/`（10 份分域审查）、`2026-10-28_USER_FEEDBACK_TRIAGE.md`（用户反馈定位报告）、`2026-11-01_USER_FEEDBACK_PROPOSAL.md`（用户反馈方案探讨稿，**已裁决 D43~D50**）、`2026-11-08_BATCH31_SUBSCRIBE_NOTIFY_PLAN.md`（批 31 服务通知实行方案，**机器侧已收口、待部署与真机点检**）、`2026-11-08_REVIEW_FIX_REPORT.md`（11-07/08 变更独立审查与修复报告）、`2026-11-16_CAMPUS_WALL_TAKEOUT_PLAN.md`（校门代取 E + 角色入口 M1 方案与 Phase 1 实施记录；**D80 已实施，本次不做校园墙**；待真机/备案/提审） | 历史审查证据；P1×3 已修，M-03 无单独收口记录；反馈项多已由 c9af8cd / D37~D42 落地，遗留四项见 TECH_DEBT；本方案裁决后按 D43~D50 分批实施；批 31 方案 P0-3 真机额度验证待用户。 |
 | `docs/governance/lessons/`（非归档，持续更新） | 28 张踩坑卡（2026-10-22 ~ 2026-10-30） | 按主题：口径/数据一致性、门禁与工具链、UI 与组件、平台能力（OCR/分享/编码）、清理与注销。新增前先查重。 |
 
 > 归档原则：归档文档只保留历史价值，**不参与验收、不冒充现行口径**；归档目录留在 `docs/` 内，继续受 `check-docs` 与零金额扫描覆盖（移出 `docs/` 会退出扫描，属门禁假绿，禁止）。

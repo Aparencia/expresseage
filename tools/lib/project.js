@@ -25,6 +25,7 @@ const SUBPACKAGES = {
   'pkg-customer': [
     'pages/bind/index',
     'pages/order-create/index',
+    'pages/gate-create/index',
     'pages/order-detail/index',
     'pages/messages/index',
     'pages/help/index',

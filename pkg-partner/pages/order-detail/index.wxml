@@ -81,8 +81,31 @@
       </view>
     </view>
 
+    <!-- E 校门代取：没有站点/取件码/截图；只展示校门、物品类型、送达地址与取到状态 -->
+    <view class="card" wx:if="{{order.isGate}}">
+      <view class="row between">
+        <view class="section-title">校门代取</view>
+        <text class="{{order.gatePicked ? 'tag tag-picked' : 'tag tag-pending'}}">{{order.gatePickedText}}</text>
+      </view>
+      <view class="form-row">
+        <view class="form-label">校门</view>
+        <view class="form-input">{{order.gatePointText}}</view>
+      </view>
+      <view class="form-row">
+        <view class="form-label">物品类型</view>
+        <view class="form-input">{{order.gateItemText}}</view>
+      </view>
+      <view class="form-row">
+        <view class="form-label">送达地址</view>
+        <view class="form-input">{{order.deliveryText || '—'}}</view>
+      </view>
+      <view wx:if="{{order.noteText}}" class="small">备注：{{order.noteText}}</view>
+      <view wx:if="{{order.appointText}}" class="small">预约：{{order.appointText}}</view>
+      <view class="small muted">到校门取到后点「标记已取件」；送达后点「标记已送达」。</view>
+    </view>
+
     <!-- 取件信息（v1.0 一单多包裹：逐件站点/码/柜/尾号/识别来源；D61 逐件已取状态 + 独立按钮） -->
-    <view class="card">
+    <view class="card" wx:if="{{!order.isGate}}">
       <view class="row between">
         <view class="section-title">取件信息（{{order.parcelCountText}}）</view>
         <view class="row">

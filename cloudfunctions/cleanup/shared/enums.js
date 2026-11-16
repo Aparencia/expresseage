@@ -3,7 +3,6 @@
 // 纪律：枚举字面量只在本文件出现一次；长度/字母表/前缀、状态中文、取消原因等中文都由这里下发，
 //       页面与云函数禁止各写一份。本文件不含任何生成/存储逻辑（编号与 roomTag 的生成只在云端）。
 'use strict';
-
 // ── 角色与账号 ────────────────────────────────────────────────────────────────
 const ROLES = {
   CUSTOMER: 'CUSTOMER',
@@ -11,7 +10,6 @@ const ROLES = {
 };
 const ROLE_LIST = [ROLES.CUSTOMER, ROLES.PARTNER];
 const ROLE_LABELS = { CUSTOMER: '顾客', PARTNER: '兼职' };
-
 // D68：顾客/用户账号三态——SUSPENDED 可恢复（资料/绑定/订单不动），DEACTIVATED 为注销（不可逆）。
 const USER_STATUS = {
   ACTIVE: 'ACTIVE',
@@ -23,7 +21,6 @@ const USER_STATUS_LABELS = {
   SUSPENDED: '已停用',
   DEACTIVATED: '已注销'
 };
-
 const PARTNER_STATUS = {
   ACTIVE: 'ACTIVE',
   SUSPENDED: 'SUSPENDED',
@@ -35,7 +32,6 @@ const PARTNER_STATUS_LABELS = {
   SUSPENDED: '已停用',
   CLOSED: '已注销'
 };
-
 // ── 顾客性别（2026-10-27 用户口径：按「苑+楼栋」推断 + 支持手动修改；未知不阻塞资料保存）──
 // 推断规则与读写容错在 shared/gender.js；枚举字面量与中文标签只登记在本文件（唯一来源）。
 const GENDER = {
@@ -49,7 +45,6 @@ const GENDER_LABELS = {
   FEMALE: '女',
   UNKNOWN: '未知'
 };
-
 // ── 订单七状态（CONTRACT §5 唯一口径）────────────────────────────────────────
 const ORDER_STATUS = {
   SUBMITTED: 'SUBMITTED',
@@ -98,12 +93,10 @@ const ORDER_PROGRESS_STEPS = [
   ORDER_STATUS.DELIVERED,
   ORDER_STATUS.COMPLETED
 ];
-
 const ORDER_SOURCE = {
   CUSTOMER: 'CUSTOMER',
   PARTNER: 'PARTNER'
 };
-
 const CANCELLED_BY = {
   CUSTOMER: 'CUSTOMER',
   PARTNER: 'PARTNER',
@@ -116,7 +109,6 @@ const CANCELLED_BY_LABELS = {
   SYSTEM: '系统取消',
   ADMIN: '开发者介入'
 };
-
 // 取消原因：顾客 5 / 兼职 4 / 系统 1（CONTRACT §5.2）；OTHER 必填备注，中文文案由服务端下发
 const OTHER_REASON_CODE = 'OTHER';
 const CANCEL_REASONS = {
@@ -172,6 +164,12 @@ SERVICES.forEach((item) => {
   SERVICE_NAME[item.code] = item.name;
 });
 const DROP_OFF_SERVICE_CODE = 'DROP_OFF';
+// E 校门代取：不进 SERVICES/SERVICE_CODES（保持现有 5 类口径）；服务码由订单直接写入，DTO 按 line 分支。
+const GATE_SERVICE_CODE = 'GATE_PICKUP', GATE_SERVICE_NAME = '校门代取';
+const ORDER_LINE = { EXPRESS: 'EXPRESS', GATE: 'GATE' }, ORDER_LINE_LIST = [ORDER_LINE.EXPRESS, ORDER_LINE.GATE];
+const GATE_ITEM_KIND = { FOOD: 'FOOD', OTHER: 'OTHER', UNKNOWN: 'UNKNOWN' }, GATE_ITEM_KIND_LIST = [GATE_ITEM_KIND.FOOD, GATE_ITEM_KIND.OTHER, GATE_ITEM_KIND.UNKNOWN], GATE_ITEM_KIND_TEXT = { FOOD: '外卖/餐品', OTHER: '其他物品', UNKNOWN: '未说明' };
+const DEFAULT_GATE_POINTS = [{ id: 'EAST', name: '东门' }];
+SERVICE_NAME[GATE_SERVICE_CODE] = GATE_SERVICE_NAME;
 // TD-070：「其他代办」码显式常量（客户端预检与服务端校验共用一个值；不从 SERVICES 顺序推导，
 // 未来在目录末尾新增服务码不会改变 CUSTOM 语义）。
 const CUSTOM_SERVICE_CODE = 'CUSTOM';
@@ -430,6 +428,8 @@ module.exports = {
   SERVICE_NAME,
   DROP_OFF_SERVICE_CODE,
   CUSTOM_SERVICE_CODE,
+  GATE_SERVICE_CODE, GATE_SERVICE_NAME, ORDER_LINE, ORDER_LINE_LIST,
+  GATE_ITEM_KIND, GATE_ITEM_KIND_LIST, GATE_ITEM_KIND_TEXT, DEFAULT_GATE_POINTS,
   ADDONS,
   ADDON_CODES,
   ADDON_NAME,

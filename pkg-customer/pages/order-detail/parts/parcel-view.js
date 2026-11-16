@@ -251,21 +251,29 @@ function appointView(order, nowMs) {
 
 /** 页面可直接 Object.assign 的扩展字段（含 image，覆盖旧单图 imageView；D61 部分取件进度） */
 function pageExtras(order, config, nowMs) {
-  const parcels = parcelsView(order);
+  const isGate = !!(order && order.line === enums.ORDER_LINE.GATE);
+  const parcels = isGate ? [] : parcelsView(order);
   const delivery = deliveryView(order);
   const service = serviceView(order, config);
   const appoint = appointView(order, nowMs);
   const pickup = pickupView(order);
+  const gate = order && order.gate && typeof order.gate === 'object' ? order.gate : {};
+  const gatePicked = isGate && (pickup.pickedCount > 0 || order.allPicked === true);
   return {
+    isGate: isGate,
+    gatePointText: textOf(gate.pointName) || '校门',
+    gateItemText: textOf(gate.itemKindText) || '未说明',
+    gatePicked: gatePicked,
+    gatePickedText: gatePicked ? '已取到' : '待取到',
     parcels: parcels,
-    parcelCount: parcels.length,
+    parcelCount: isGate ? 1 : parcels.length,
     pickupSummary: pickup.summaryText,
     pickupPartialHint: pickup.partialHint,
     deliveryText: delivery.text,
     deliveryRecipient: delivery.recipientName,
     deliveryIsOther: delivery.isOther,
-    manualEntryText: order && order.manualEntry === true ? '无截图·手填' : '',
-    image: imagesView(order),
+    manualEntryText: !isGate && order && order.manualEntry === true ? '无截图·手填' : '',
+    image: isGate ? { state: 'NONE', canView: false, text: '校门代取无需截图', count: 0, cleanedCount: 0, list: [] } : imagesView(order),
     serviceText: service.serviceText,
     serviceDesc: service.serviceDesc,
     // 附加服务（D77）：服务端 DTO addons[{code,name,desc}]，历史单无该字段 → []

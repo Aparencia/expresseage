@@ -177,7 +177,8 @@
             <!-- D45/M1：跨日未送达行标签（文案单源 parts/day-view.js；当日单/待确认/已完结不显示） -->
             <view wx:if="{{row.delayDaysText}}" class="tag delay-tag">{{row.delayDaysText}}</view>
             <view wx:if="{{row.isGuest}}" class="tag guest-tag">代客单</view>
-            <view wx:if="{{row.parcelCountText}}" class="tag parcel-tag">{{row.parcelCountText}}</view>
+            <view wx:if="{{row.isGate}}" class="tag parcel-tag">校门代取 · {{row.gatePointText}}</view>
+            <view wx:if="{{row.parcelCountText && !row.isGate}}" class="tag parcel-tag">{{row.parcelCountText}}</view>
             <!-- D61：整单取件进度摘要「已取 n/m 件」（多件单才显示） -->
             <view wx:if="{{row.pickedSummaryText}}" class="tag picked-summary-tag">{{row.pickedSummaryText}}</view>
             <view wx:if="{{row.stationSummaryText}}" class="small station-summary">{{row.stationSummaryText}}</view>
@@ -213,7 +214,7 @@
 
           <!-- D61/D62：订单摘要行（含工具条）之下，缩进逐件行（单件单不缩进、不显示「第 1 件」）；
                件行只列本站件，动作只消费服务端 parcel.actions（已取件 / 撤销已取，逐件免二次确认） -->
-          <view class="piece-list {{row.pieceIndent ? 'piece-list--indent' : ''}}">
+          <view wx:if="{{!row.isGate}}" class="piece-list {{row.pieceIndent ? 'piece-list--indent' : ''}}">
             <view
               wx:for="{{row.pieceRows}}"
               wx:key="key"

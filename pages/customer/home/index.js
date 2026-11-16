@@ -393,6 +393,10 @@ Page({
     wx.navigateTo({ url: BIND_PAGE + '?mode=rebind' });
   },
 
+  onGateTap() {
+    wx.navigateTo({ url: route.GATE_CREATE_PAGE });
+  },
+
   onOrderCreateTap() {
     if (this.maintenanceBlocked()) {
       return;

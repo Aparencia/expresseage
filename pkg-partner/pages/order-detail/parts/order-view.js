@@ -147,6 +147,30 @@ function addonTextOf(order) {
     .filter(Boolean).join('、');
 }
 
+// E 校门代取：把件级字段统一派生为「1 件 + 订单级已取到」，避免页面出现空站点/空取件码。
+function summaryFieldsOf(item, section) {
+  const isGate = item.line === enums.ORDER_LINE.GATE;
+  const gate = item.gate && typeof item.gate === 'object' ? item.gate : {};
+  const gatePicked = isGate && (Number(item.pickedCount) > 0 || item.allPicked === true);
+  return {
+    isGate: isGate,
+    gatePointText: textOf(gate.pointName) || '校门',
+    gateItemText: textOf(gate.itemKindText) || '未说明',
+    gatePicked: gatePicked,
+    gatePickedText: gatePicked ? '已取到' : '待取到',
+    parcels: isGate ? [] : section.parcels,
+    parcelCountText: isGate ? '1 件' : section.parcels.length + ' 件',
+    pickedCount: isGate ? (gatePicked ? 1 : 0) : section.picked.pickedCount,
+    allPicked: isGate ? gatePicked : section.picked.allPicked,
+    pickedSummaryText: isGate ? (gatePicked ? '已取到' : '') : section.picked.pickedCountText,
+    stationSummaryText: isGate ? '' : section.parcels.map((row) => row.stationText).filter((row, i, all) => all.indexOf(row) === i).join(' / '),
+    needCode: isGate ? false : section.parcels.some((row) => row.needCode),
+    failureHint: isGate ? false : section.parcels.some((row) => row.failureHint),
+    manualEntry: isGate ? false : section.manualEntry,
+    manualEntryText: !isGate && section.manualEntry ? '无截图·手填' : ''
+  };
+}
+
 function buildDetail(order, nowMs, options) {
   const opts = options || {};
   const item = order || {};
@@ -154,7 +178,8 @@ function buildDetail(order, nowMs, options) {
   const counterpart = item.counterpart || {}; const exception = item.exception || {};
   const section = parcelSectionOf(item, opts.readonly === true);
   const delivery = deliveryOf(item);
-  return {
+  const summary = summaryFieldsOf(item, section);
+  return Object.assign({}, summary, {
     isGuest: textOf(item.source) === enums.ORDER_SOURCE.PARTNER,
     counterpartName: textOf(counterpart.displayName),
     counterpartAvatarFileId: textOf(counterpart.avatarFileId),
@@ -168,16 +193,6 @@ function buildDetail(order, nowMs, options) {
     imageCount: section.images.length || (section.image.fileId || section.image.hasImage ? 1 : 0),
     serviceName: serviceNameOfOrder(item),
     addonText: addonTextOf(item),
-    parcels: section.parcels,
-    parcelCountText: section.parcels.length + ' 件',
-    pickedCount: section.picked.pickedCount,
-    allPicked: section.picked.allPicked,
-    pickedSummaryText: section.picked.pickedCountText,
-    stationSummaryText: section.parcels.map((row) => row.stationText).filter((row, i, all) => all.indexOf(row) === i).join(' / '),
-    needCode: section.parcels.some((row) => row.needCode),
-    failureHint: section.parcels.some((row) => row.failureHint),
-    manualEntry: section.manualEntry,
-    manualEntryText: section.manualEntry ? '无截图·手填' : '',
     deliveryText: delivery.deliveryText,
     deliveryRecipientText: delivery.deliveryRecipientText,
     deliveryIsDefault: delivery.deliveryIsDefault,
@@ -195,7 +210,7 @@ function buildDetail(order, nowMs, options) {
     noteText: textOf(item.note),
     cancelReasonText: textOf(item.cancelReasonText),
     cancelledByText: textOf(item.cancelledByText)
-  };
+  });
 }
 
 module.exports = {

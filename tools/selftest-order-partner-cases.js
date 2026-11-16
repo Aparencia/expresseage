@@ -50,6 +50,7 @@ const COUNTS_KEYS = ['submitted', 'accepted', 'picked', 'delivered', 'exception'
 // D58（批 26）：订单级增 transfer（恒返回，无则 null）+ fulfillmentPartnerNo（当前实际履约兼职编号快照）。
 const DTO_ROW_KEYS = [
   'orderNo', 'status', 'statusText', 'bucket', 'progressIndex', 'needCode', 'failureHint', 'source',
+  'line', 'gate',
   'service', 'addons', 'appoint', 'parcel', 'parcels', 'pickedCount', 'parcelCount', 'allPicked',
   'note', 'phoneTail', 'dorm', 'delivery', 'manualEntry',
   'guest', 'exception', 'deliveryNote',

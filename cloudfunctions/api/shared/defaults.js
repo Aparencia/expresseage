@@ -26,8 +26,12 @@ const DEFAULT_CONFIG = {
     B: zones.ZONE_LABELS.B,
     C: zones.ZONE_LABELS.C
   },
-  // 服务类型目录：只有类型名与说明（CONTRACT §6）
+  // 服务类型目录：只有类型名与说明（CONTRACT §6）。校门代取 E 不进入该目录（避免改变 5 类服务口径）；
+  // 其服务名/线型由 shared/enums 的 GATE_* 常量单源，订单按 line 分支展示。
   serviceCatalog: enums.SERVICES.map((item) => ({ code: item.code, name: item.name, desc: item.desc })),
+  // E 校门代取：全局开关 + 校门点（首期只放东门；数组顺序=展示顺序，进公开子集）。
+  gateEnabled: false,
+  gatePoints: enums.DEFAULT_GATE_POINTS.map((item) => ({ id: item.id, name: item.name })),
   // v1.1（D32）：站点正式名（固定 P1~P8；名称非空、1~20 字、唯一；后台可改，进公开子集）
   // D70/D71（2026-11-08）：站点可配别名（仅识别归一）与取件码格式（`*`=1 位以上字母数字），数组顺序即展示顺序
   stations: stations.stationsFromConfig(null),
@@ -114,6 +118,8 @@ const PUBLIC_CONFIG_KEYS = [
   'stations',
   'stationInfer',
   'serviceCatalog',
+  'gateEnabled',
+  'gatePoints',
   'announcement',
   'maintenance',
   'privacyVersion',
@@ -152,6 +158,25 @@ function createDefaultConfig() {
   return JSON.parse(JSON.stringify(DEFAULT_CONFIG));
 }
 
+// E 校门点净化：只认 {id,name} 两键、去空/去重、最多 5 个；非法/空数组回落出厂东门。
+// 顺序即展示顺序（与 stations 的「数组顺序=展示顺序」同口径），客户端不自行排序。
+const GATE_POINT_MAX = 5;
+function gatePointsOf(value) {
+  const fallback = enums.DEFAULT_GATE_POINTS.map((item) => ({ id: item.id, name: item.name }));
+  const list = Array.isArray(value) ? value : [];
+  const out = [];
+  const ids = {};
+  list.forEach((item) => {
+    if (!item || typeof item !== 'object' || out.length >= GATE_POINT_MAX) return;
+    const id = typeof item.id === 'string' ? item.id.trim().toUpperCase() : '';
+    const name = typeof item.name === 'string' ? item.name.trim() : '';
+    if (!/^[A-Z][A-Z0-9_]{1,15}$/.test(id) || !name || name.length > 20 || ids[id]) return;
+    ids[id] = true;
+    out.push({ id, name });
+  });
+  return out.length ? out : fallback;
+}
+
 // 公开子集裁剪：subscribeEnabled 由 subscribeTemplates.enabled 派生；D73 起 enabled 时另下发模板 ID
 function pickPublicConfig(config) {
   const source = config && typeof config === 'object' ? config : DEFAULT_CONFIG;
@@ -163,6 +188,8 @@ function pickPublicConfig(config) {
   out.stations = stations.stationsFromConfig(source);
   // D70：双判据开关按布尔净化（缺省=开；显式 false 才关），避免脏配置把能力意外关掉
   out.stationInfer = stations.stationInferOf({ stationInfer: source.stationInfer });
+  out.gateEnabled = source.gateEnabled === true;
+  out.gatePoints = gatePointsOf(source.gatePoints);
   out.subscribeEnabled = !!(source.subscribeTemplates && source.subscribeTemplates.enabled);
   // 批 31（D73）：客户端授权必须拿到模板 ID（非密钥）；只下发 ID，不下发字段映射/其它治理配置。
   if (out.subscribeEnabled && source.subscribeTemplates) {
@@ -184,6 +211,7 @@ module.exports = {
   TEST_ACCOUNT_TOTAL_MAX,
   CLOCK_TEXT_PATTERN,
   normalizeClockText,
+  gatePointsOf,
   createDefaultConfig,
   pickPublicConfig
 };

@@ -164,7 +164,8 @@ Page(Object.assign({
     if (this._unloaded || token !== this._loadToken) {
       return false;
     }
-    const list = data && Array.isArray(data.list) ? data.list : [];
+    const list = (data && Array.isArray(data.list) ? data.list : [])
+      .filter((order) => order && order.line !== 'GATE');
     const nextCursor = (data && data.nextCursor) || null;
     this._orders = more ? this._orders.concat(list) : list;
     const groups = view.buildGroups(view.rowsOf(this._orders));

@@ -25,6 +25,8 @@ function pickVm() {
     isDeveloper: snapshot.isDeveloper === true,
     customer: snapshot.customer || { profileComplete: false },
     partner: snapshot.partner || { profileComplete: false, status: '' },
+    config: snapshot.config || {},
+    isPartner: (snapshot.roles || []).indexOf(route.ROLES.PARTNER) >= 0,
     viewContext: snapshot.viewContext || null
   };
 }
@@ -42,6 +44,7 @@ function redirect(url) {
 Page({
   data: {
     vm: pickVm(),
+    isPartner: pickVm().isPartner,
     suggestedRole: readSuggestedRole(pickVm()),
     bindLoading: false,
     bindCard: null,
@@ -113,7 +116,7 @@ Page({
 
   sync() {
     const vm = pickVm();
-    this.setData({ vm: vm, suggestedRole: readSuggestedRole(vm) });
+    this.setData({ vm: vm, isPartner: vm.isPartner, suggestedRole: readSuggestedRole(vm) });
   },
 
   hydrateBootstrap() {
@@ -178,6 +181,12 @@ Page({
     store.set('activeRole', route.ROLES.CUSTOMER);
     storage.setLastRole(route.ROLES.CUSTOMER);
     redirect(customer.profileComplete ? route.CUSTOMER_HOME : route.PROFILE_PAGE);
+  },
+
+  onGateTap() {
+    store.set('activeRole', route.ROLES.CUSTOMER);
+    storage.setLastRole(route.ROLES.CUSTOMER);
+    wx.navigateTo({ url: route.GATE_CREATE_PAGE });
   },
 
   onPartnerTap() {

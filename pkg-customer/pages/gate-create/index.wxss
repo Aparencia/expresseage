@@ -1,0 +1,52 @@
+.gate-points {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+  margin-top: 20rpx;
+}
+
+.gate-point {
+  min-width: 160rpx;
+  padding: 18rpx 28rpx;
+  border: 2rpx solid #d9dee5;
+  border-radius: 16rpx;
+  text-align: center;
+  color: #333;
+  background: #fff;
+}
+
+.gate-point-active {
+  border-color: #1f7a5c;
+  color: #1f7a5c;
+  background: #eef8f3;
+}
+
+.gate-tip {
+  margin-top: 12rpx;
+}
+
+.gate-note {
+  width: 100%;
+  min-height: 160rpx;
+  margin-top: 16rpx;
+  padding: 16rpx;
+  box-sizing: border-box;
+  border: 2rpx solid #d9dee5;
+  border-radius: 12rpx;
+  font-size: 28rpx;
+}
+
+.gate-count {
+  margin-top: 8rpx;
+  text-align: right;
+}
+
+.gate-error {
+  border-color: #f0c7c7;
+  background: #fff7f7;
+}
+
+.gate-foot {
+  margin: 20rpx 8rpx 0;
+  text-align: center;
+}

@@ -1,0 +1,73 @@
+<view class="page-body">
+  <switch-bar />
+
+  <view class="card" wx:if="{{loading}}">
+    <view class="empty-text">加载中…</view>
+  </view>
+
+  <block wx:else>
+    <view class="card">
+      <view class="section-title">校门代取</view>
+      <view class="muted">外卖员或快递员已经把物品送到校门后，请兼职从校门取到宿舍。只代取已送达物品，不含商家、餐品选择、站内下单或公开抢单。</view>
+    </view>
+
+    <view class="card" wx:if="{{!gateEnabled}}">
+      <view class="muted">{{unavailable || '校门代取暂未开放，请稍后再试。'}}</view>
+      <button class="btn btn-ghost btn-small" bindtap="onRetry">重新加载</button>
+      <button class="btn btn-ghost btn-small" bindtap="onBackTap">返回</button>
+    </view>
+
+    <view class="card" wx:elif="{{!profileComplete}}">
+      <view class="section-title">还差一步</view>
+      <view class="muted">请先完善个人资料（苑/楼栋/宿舍号/昵称），才能提交校门代取。</view>
+      <button class="btn btn-primary btn-block" bindtap="onProfileTap">去完善资料</button>
+    </view>
+
+    <view class="card" wx:elif="{{!binding}}">
+      <view class="section-title">还没有绑定兼职</view>
+      <view class="muted">校门代取由你绑定的兼职接单。先输入完整兼职编号完成绑定。</view>
+      <button class="btn btn-primary btn-block" bindtap="onBindTap">去绑定</button>
+    </view>
+
+    <block wx:else>
+      <view class="card">
+        <view class="section-title">选择校门</view>
+        <view class="gate-points">
+          <view
+            wx:for="{{gatePoints}}"
+            wx:key="id"
+            class="gate-point {{pointId === item.id ? 'gate-point-active' : ''}}"
+            data-id="{{item.id}}"
+            bindtap="onPointTap"
+          >{{item.name}}</view>
+        </view>
+        <view class="small muted gate-tip" wx:if="{{gatePoints.length === 0}}">暂未配置校门点，请联系开发者。</view>
+      </view>
+
+      <view class="card">
+        <view class="section-title">送到哪里</view>
+        <view class="muted">默认送到你的宿舍：{{deliveryText}}</view>
+        <view class="small muted gate-tip">如需送到其他宿舍，请先在「我的」更新宿舍资料；首期不支持教学楼等其他地点。</view>
+      </view>
+
+      <view class="card">
+        <view class="section-title">备注（可选）</view>
+        <textarea
+          class="gate-note"
+          value="{{note}}"
+          placeholder="例如：在东门保安亭旁边，到了打电话/发消息"
+          maxlength="{{noteMax}}"
+          bindinput="onNoteInput"
+        />
+        <view class="small muted gate-count">{{note.length}}/{{noteMax}}</view>
+      </view>
+
+      <view class="card gate-error" wx:if="{{error}}">
+        <view class="muted">{{error}}</view>
+      </view>
+
+      <button class="btn btn-primary btn-block" loading="{{submitting}}" disabled="{{submitting}}" bindtap="onSubmit">提交校门代取</button>
+      <view class="small muted gate-foot">提交后在订单详情看进度；兼职接单、取到、送达都会同步。</view>
+    </block>
+  </block>
+</view>

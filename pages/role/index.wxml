@@ -2,7 +2,7 @@
   <switch-bar />
 
   <view class="role-hero">
-    <view class="title">校园快递代取</view>
+    <view class="title">校园服务</view>
     <view class="subtitle">下单后请兼职代取，送到宿舍。</view>
   </view>
 
@@ -37,19 +37,24 @@
   <view class="role-cards">
     <view class="card role-card {{suggestedRole === 'CUSTOMER' ? 'role-card-suggested' : ''}}" bindtap="onCustomerTap">
       <view wx:if="{{suggestedRole === 'CUSTOMER'}}" class="role-suggest">上次使用</view>
-      <view class="section-title">我是顾客</view>
+      <view class="section-title">快递代取</view>
       <view class="subtitle">上传取件码，请兼职代取。</view>
-      <view class="role-action">进入顾客端</view>
+      <view class="role-action">去下单</view>
     </view>
-    <view class="card role-card {{suggestedRole === 'PARTNER' ? 'role-card-suggested' : ''}}" bindtap="onPartnerTap">
+    <view wx:if="{{vm.config.gateEnabled}}" class="card role-card" bindtap="onGateTap">
+      <view class="section-title">校门代取</view>
+      <view class="subtitle">外卖等已送到校门，请兼职取到宿舍。</view>
+      <view class="role-action">去下单</view>
+    </view>
+    <view wx:if="{{isPartner}}" class="card role-card {{suggestedRole === 'PARTNER' ? 'role-card-suggested' : ''}}" bindtap="onPartnerTap">
       <view wx:if="{{suggestedRole === 'PARTNER'}}" class="role-suggest">上次使用</view>
-      <view class="section-title">我是兼职</view>
-      <view class="subtitle">凭邀请码开通，接单取件。</view>
-      <view class="role-action">进入兼职端</view>
+      <view class="section-title">接单工作台</view>
+      <view class="subtitle">已开通兼职，去接单取件。</view>
+      <view class="role-action">进入工作台</view>
     </view>
   </view>
 
-  <view wx:if="{{suggestedRole}}" class="muted role-suggest-tip">上次使用的是{{suggestedRole === 'CUSTOMER' ? '顾客' : '兼职'}}身份，点对应卡片继续。</view>
+  <view wx:if="{{suggestedRole}}" class="muted role-suggest-tip">上次使用的是{{suggestedRole === 'CUSTOMER' ? '快递代取' : '接单工作台'}}，点对应卡片继续。</view>
 
   <view class="muted role-tip">同一个微信号可以同时是顾客和兼职，两边的数据互相隔离。</view>
 

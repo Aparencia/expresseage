@@ -14,6 +14,8 @@ const ROLE_PAGE = '/pages/role/index';
 const LAUNCH_PAGE = '/pages/launch/index';
 const PROFILE_PAGE = '/pages/profile/index';
 const BIND_PAGE = '/pkg-customer/pages/bind/index';
+// E 校门代取：顾客本人从校门取已送达物品的登记页（2026-11-16）
+const GATE_CREATE_PAGE = '/pkg-customer/pages/gate-create/index';
 const CUSTOMER_ORDER_DETAIL = '/pkg-customer/pages/order-detail/index';
 const PARTNER_ORDER_DETAIL = '/pkg-partner/pages/order-detail/index';
 const PROFILE_EDIT_QUERY = '?edit=1';
@@ -224,6 +226,7 @@ module.exports = {
   LAUNCH_PAGE,
   PROFILE_PAGE,
   BIND_PAGE,
+  GATE_CREATE_PAGE,
   CUSTOMER_ORDER_DETAIL,
   PARTNER_ORDER_DETAIL
 };

@@ -69,6 +69,18 @@ function buildDormDto(dorm) {
   };
 }
 
+// E 校门代取：只下发校门点/物品分类（不涉及商家、餐品、款项）；顾客/兼职页面按 line 分支渲染。
+function buildGateDto(gate) {
+  const input = gate && typeof gate === 'object' ? gate : {};
+  const itemKind = textOf(input.itemKind) || enums.GATE_ITEM_KIND.UNKNOWN;
+  return {
+    pointId: textOf(input.pointId),
+    pointName: textOf(input.pointName),
+    itemKind,
+    itemKindText: enums.GATE_ITEM_KIND_TEXT[itemKind] || enums.GATE_ITEM_KIND_TEXT[enums.GATE_ITEM_KIND.UNKNOWN]
+  };
+}
+
 function buildGuestDto(guest) {
   if (!guest || typeof guest !== 'object') {
     return null;
@@ -122,6 +134,13 @@ function buildAppointDto(appoint) {
 
 function pushAction(list, key) {
   list.push({ key, label: ACTION_LABELS[key] || '' });
+}
+
+// E 校门代取没有取件码/站点，不广告「改取件码」；动作按钮仍由服务端状态机给出。
+function pushCorrectIfExpress(list, order) {
+  if (!order || order.line !== enums.ORDER_LINE.GATE) {
+    pushAction(list, 'correct');
+  }
 }
 
 function withinUndoWindow(value, nowMs) {
@@ -206,12 +225,12 @@ function buildActions(order, side, nowMs, options) {
     if (status === enums.ORDER_STATUS.SUBMITTED) {
       pushAction(actions, 'accept');
       pushAction(actions, 'reject');
-      pushAction(actions, 'correct');
+      pushCorrectIfExpress(actions, order);
       pushAction(actions, 'cancel');
     } else if (status === enums.ORDER_STATUS.ACCEPTED) {
       pushAction(actions, 'pick');
       pushAction(actions, 'exception');
-      pushAction(actions, 'correct');
+      pushCorrectIfExpress(actions, order);
       pushAction(actions, 'cancel');
     } else if (status === enums.ORDER_STATUS.PICKED) {
       pushAction(actions, 'deliver');
@@ -219,7 +238,7 @@ function buildActions(order, side, nowMs, options) {
         pushAction(actions, 'undoPick');
       }
       pushAction(actions, 'exception');
-      pushAction(actions, 'correct');
+      pushCorrectIfExpress(actions, order);
       pushAction(actions, 'cancel');
     } else if (status === enums.ORDER_STATUS.DELIVERED) {
       if (withinUndoWindow(order.deliveredAt, nowMs)) {
@@ -231,7 +250,7 @@ function buildActions(order, side, nowMs, options) {
       pushAction(actions, 'cancel');
     } else if (status === enums.ORDER_STATUS.EXCEPTION) {
       pushAction(actions, 'resolve');
-      pushAction(actions, 'correct');
+      pushCorrectIfExpress(actions, order);
       pushAction(actions, 'cancel');
     }
     // 兼职侧沿用现有键；终态（COMPLETED/CANCELLED）不再给 message（只读归档）
@@ -250,10 +269,11 @@ function buildActions(order, side, nowMs, options) {
 function buildServiceDto(service) {
   const input = service && typeof service === 'object' ? service : {};
   const code = textOf(input.code);
+  const known = enums.SERVICE_CODES.indexOf(code) >= 0 || code === enums.GATE_SERVICE_CODE;
   return {
     code: code,
     name: textOf(input.name),
-    deprecated: code !== '' && enums.SERVICE_CODES.indexOf(code) < 0
+    deprecated: code !== '' && !known
   };
 }
 
@@ -279,6 +299,8 @@ function buildOrderFields(order, parts) {
     needCode: needCodeOf(order),
     failureHint: failureHintOf(order),
     source: textOf(order.source),
+    line: textOf(order.line) || enums.ORDER_LINE.EXPRESS,
+    gate: order.line === enums.ORDER_LINE.GATE ? buildGateDto(order.gate) : null,
     service: buildServiceDto(order.service),
     addons: buildAddonDtos(order.addons),
     appoint: buildAppointDto(order.appoint),
@@ -343,6 +365,21 @@ async function buildOrderDto(ctx, order, options) {
     images: buildImageDtos(order),
     delivery: deliveryOf(order)
   });
+  // E 校门代取：内部占位包裹不下发；件数/取件进度由订单级 pickedAt 派生，避免页面出现「取件码/站点」空字段。
+  if (dto.line === enums.ORDER_LINE.GATE) {
+    const pickedMs = msOf(order.pickedAt);
+    dto.parcels = [];
+    dto.parcel = buildParcelDto(null);
+    dto.images = [];
+    dto.image = buildImageDto(null);
+    dto.parcelCount = 1;
+    dto.pickedCount = pickedMs ? 1 : 0;
+    dto.allPicked = !!pickedMs;
+    dto.needCode = false;
+    dto.failureHint = false;
+    dto.manualEntry = false;
+    dto.gate = buildGateDto(order.gate);
+  }
   // 遮蔽视图（草案 §1.4 目标列 / P2-11）：不给顾客昵称头像与客户编号；清键而非置空值（字符串级零泄漏断言）
   if (maskCustomer) {
     delete dto.customerNo;

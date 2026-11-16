@@ -17,7 +17,8 @@ module.exports = {
     if (this._unloaded || token !== this._loadToken || this.data.tab !== pickView.TAB_PICK) {
       return false;
     }
-    const list = data && Array.isArray(data.list) ? data.list : [];
+    const list = (data && Array.isArray(data.list) ? data.list : [])
+      .filter((order) => order && order.line !== 'GATE');
     const nextCursor = (data && data.nextCursor) || null;
     this._pickOrders = more ? this._pickOrders.concat(list) : list;
     this._pickGroups = pickView.buildGroups(this._pickOrders);

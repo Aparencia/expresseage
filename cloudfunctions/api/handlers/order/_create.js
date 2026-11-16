@@ -11,13 +11,16 @@ const common = require('./_common');
 const parcelUtil = require('./_parcel');
 const parcelsInput = require('./_parcels-input');
 const merge = require('./_merge');
+const gateUtil = require('./_gate');
 const dto = require('./_dto');
 const subscribe = require('../../lib/subscribe-message');
 
 // 入参白名单（DATA_MODEL §12 #12）：不认识字段一律 VALIDATION_FAILED 并回 data.field（不静默忽略）；v1.0 新增多包裹/配送/手填位。
 // ticket/image 为旧单图形态兼容位（内部折算为 images[0]/tickets[0]）。
 const CREATE_FIELDS = ['parcels', 'images', 'tickets', 'ticket', 'image', 'serviceCode', 'appoint', 'note', 'delivery',
-  'addons', 'guest', 'bindingId', 'manualEntry', 'mergeAppend', 'recognition', 'batchActionId'];
+  'addons', 'guest', 'bindingId', 'manualEntry', 'mergeAppend', 'recognition', 'batchActionId',
+  // E 校门代取（2026-11-16）：line 缺省=EXPRESS；GATE 用 gate{pointId,pointName,itemKind}，不接收快递包裹/截图字段
+  'line', 'gate'];
 
 function assertKnownFields(input, allowed) {
   const value = parcelUtil.isPlainObject(input) ? input : {};
@@ -199,9 +202,44 @@ function readMergeAppend(input) {
   return value;
 }
 
+// E 校门代取：不走进截图/取件码/包裹识别链路；内部仍落 1 件占位包裹（引擎零大改），
+// DTO 按 line=GATE 隐藏该件并下发 gate 摘要；商家/餐品/抢单/支付一律不进本线。
+async function normalizeGateOrder(ctx, context, input, now) {
+  if (context.mode === 'PARTNER') {
+    throw errors.forbidden('校门代取仅支持顾客本人下单');
+  }
+  gateUtil.assertGateShape(input);
+  const gate = gateUtil.normalizeGate(input.gate, context.config);
+  const delivery = parcelsInput.normalizeDelivery(input, defaultDeliveryOf(context));
+  await assertRecipientNameSafe(ctx, delivery);
+  parcelUtil.assertServiceRange(context.partner, delivery.zone);
+  return {
+    line: enums.ORDER_LINE.GATE,
+    gate,
+    parcels: [gateUtil.syntheticParcelOf(gate)],
+    images: [],
+    tickets: [],
+    manualEntry: false,
+    delivery,
+    service: { code: enums.GATE_SERVICE_CODE, name: enums.GATE_SERVICE_NAME },
+    addons: [],
+    appoint: parcelUtil.normalizeAppoint(input.appoint, now),
+    note: parcelUtil.normalizeOrderNote(input.note, enums.GATE_SERVICE_CODE),
+    batchActionId: common.readBatchActionId(input),
+    mergeAppend: false
+  };
+}
+
 // 下单入参归一（包裹/截图/配送/服务/预约/备注 + 票据校验 + 内容安全）
 async function normalizeOrderInput(ctx, context, payload, now) {
   const input = parcelUtil.isPlainObject(payload) ? payload : {};
+  const line = gateUtil.readLine(input);
+  if (line === enums.ORDER_LINE.GATE) {
+    return normalizeGateOrder(ctx, context, input, now);
+  }
+  if (input.gate !== undefined && input.gate !== null) {
+    throw errors.validation('gate', '快递代取不能填写校门代取信息，请刷新页面后重试');
+  }
   if (context.mode === 'PARTNER' && context.customerMode === 'GUEST') {
     context.guest = parcelUtil.normalizeGuest(input.guest);
   }
@@ -220,6 +258,8 @@ async function normalizeOrderInput(ctx, context, payload, now) {
     tickets.push(ticket);
   }
   return {
+    line: enums.ORDER_LINE.EXPRESS,
+    gate: null,
     parcels,
     images: imageParts.images,
     tickets,
@@ -309,6 +349,9 @@ function buildOrderDocument(options) {
     isTest: opt.context.isTest === true,
     impersonatedBy: opt.context.impersonatedBy || '',
     status: enums.ORDER_STATUS.SUBMITTED,
+    // E：line 缺省=EXPRESS（旧客户端/旧单零迁移）；GATE 单 gate 块只在 GATE 下存在。
+    line: opt.input.line || enums.ORDER_LINE.EXPRESS,
+    gate: opt.input.gate || null,
     parcels: opt.input.parcels,
     images: parcelsInput.storedImagesOf(opt.input.images),
     manualEntry: opt.input.manualEntry,
@@ -345,6 +388,8 @@ function buildCreatedEvent(order, context, clientRequestId, nowDate) {
     note: '',
     payload: {
       source: order.source,
+      line: order.line || enums.ORDER_LINE.EXPRESS,
+      gate: order.line === enums.ORDER_LINE.GATE ? (order.gate || null) : null,
       serviceCode: order.service ? order.service.code : '',
       isTest: order.isTest === true,
       parcels: order.parcels.length,
@@ -422,6 +467,10 @@ async function createOne(ctx, payload) {
   }
   const normalized = await normalizeOrderInput(ctx, context, input, context.now);
   const associations = await resolveFailureAssociations(ctx, context, normalized);
+  // E 校门代取不参与快递合并窗口（每次都是一次独立的校门取送）
+  if (normalized.line === enums.ORDER_LINE.GATE) {
+    return createNewOrder(ctx, context, normalized, clientRequestId, associations);
+  }
   const replay = await merge.findReplayOrder(ctx, context, clientRequestId);
   if (replay) {
     return replayResult(ctx, await common.getOrderById(ctx, replay._id), context.mode, true);

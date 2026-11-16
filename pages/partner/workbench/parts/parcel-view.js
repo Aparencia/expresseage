@@ -143,6 +143,10 @@ function tierTextOf(tier) {
 
 // D62：按件的站点分区——每件恰好落一个站点组（未识别站点=空串键，由调用方归「站点未知」）
 function stationGroupsOf(order) {
+  // E 校门代取没有站点件；单列一个「校门代取」组，避免被站点分组逻辑丢弃。
+  if (order && order.line === enums.ORDER_LINE.GATE) {
+    return [{ stationId: '__GATE__', stationName: '校门代取', pieces: [] }];
+  }
   const map = {};
   const keys = [];
   piecesOf(order).forEach((piece) => {

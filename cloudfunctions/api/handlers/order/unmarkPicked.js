@@ -8,6 +8,7 @@ const enums = require('../../shared/enums');
 const { errors } = require('../../lib/errors');
 const common = require('./_common');
 const pickedState = require('./_picked');
+const gateUtil = require('./_gate');
 
 const STATUS = enums.ORDER_STATUS;
 
@@ -17,6 +18,9 @@ function checkedOf(input) {
   const nowDate = new Date(input.now);
   const itemIndex = pickedState.readItemIndexOf(input.payload);
   const parcels = pickedState.materializeOf(input.order, nowDate);
+  if (gateUtil.isGate(input.order) && itemIndex !== null) {
+    throw errors.validation('itemIndex', '校门代取不支持逐件操作');
+  }
   if (itemIndex === null) {
     if (input.order.status !== STATUS.PICKED) {
       throw errors.invalidTransition('仅已取件订单可整单撤销，逐件撤销请在对应包裹上操作');

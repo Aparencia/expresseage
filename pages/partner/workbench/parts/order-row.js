@@ -260,6 +260,46 @@ function dedupeSinglePieceActions(row) {
 // DTO 行（order/_dto.buildOrderDto）；scope = {stationId, stationName, readonly}（D62 站点组内行）
 function toRow(order, nowMs, scope) {
   const item = order || {};
+  // E 校门代取：没有件级码/站点；单独给稳定行字段（不走件聚合），toolbar 仍只消费服务端 actions[]。
+  if (item.line === enums.ORDER_LINE.GATE) {
+    const identity = identityOf(item);
+    const base = baseFieldsOf(item, identity, nowMs);
+    const picked = Number(item.pickedCount) > 0 || item.allPicked === true;
+    const gate = item.gate && typeof item.gate === 'object' ? item.gate : {};
+    const row = Object.assign({}, base, {
+      isGate: true,
+      gatePointText: textOf(gate.pointName) || '校门',
+      gateItemText: textOf(gate.itemKindText) || '未说明',
+      gatePicked: picked,
+      gatePickedText: picked ? '已取到' : '待取到',
+      parcelCount: 1,
+      parcelCountText: '1 件',
+      pickedCount: picked ? 1 : 0,
+      allPicked: picked,
+      pickedSummaryText: picked ? '已取到' : '',
+      codeText: '',
+      pickupCode: '',
+      trackingTail: '',
+      lockerText: '',
+      needCode: false,
+      needCodeCountText: '',
+      stationSummaryText: '',
+      stationId: '__GATE__',
+      stationName: '校门代取',
+      tierText: '',
+      routeTier: 4,
+      routeNumber: Number.MAX_SAFE_INTEGER,
+      pieceRows: [],
+      parcelRows: null,
+      otherPiecesText: '',
+      pieceIndent: false,
+      reviewText: '',
+      manualEntry: false,
+      manualEntryText: ''
+    });
+    row.toolbar = rowActions.buildToolbar(row, { readonly: !!(scope && scope.readonly) });
+    return row;
+  }
   const row = rowFieldsOf(item, identityOf(item), parcelFieldsOf(item, scope), nowMs, scope);
   // 行工具条也进行视图：服务端 actions 变化时随行级补丁一起更新（只消费 actions[]，不判状态）
   row.toolbar = rowActions.buildToolbar(row, { readonly: !!(scope && scope.readonly) });

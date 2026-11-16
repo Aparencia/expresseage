@@ -8,6 +8,7 @@ const enums = require('../../shared/enums');
 const { errors } = require('../../lib/errors');
 const common = require('./_common');
 const pickedState = require('./_picked');
+const gateUtil = require('./_gate');
 
 const STATUS = enums.ORDER_STATUS;
 
@@ -34,6 +35,13 @@ function checkedOf(input) {
   const parcels = pickedState.materializeOf(input.order, nowDate);
   const dropOff = isDropOff(input.order);
   const pickedByNo = pickedState.partnerNoOf(input.order);
+  // E 校门代取：整单一次取到，不支持逐件；内部 1 件占位包裹无需取件码。
+  if (gateUtil.isGate(input.order)) {
+    if (itemIndex !== null) {
+      throw errors.validation('itemIndex', '校门代取不支持逐件操作');
+    }
+    return { itemIndex, parcels: pickedState.applyAll(parcels, nowDate, pickedByNo) };
+  }
   if (itemIndex === null) {
     if (!dropOff && !hasEveryCode(input.order)) {
       throw errors.invalidState('还有包裹没有取件码，请先补录后再标记已取件');

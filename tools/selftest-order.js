@@ -42,7 +42,7 @@ const {
   lowercaseCollectionKeyHitsInText, listJs, scanLowercaseKeys, serial
 } = caseLib;
 
-const EXPECTED_ASSERTIONS = 156; // 153 + 3：D77 附加服务合法建单落库/DTO 名称、枚举外、重复 // 140 + 13：D47 预约 LATEST 服务端归一/拒绝样例/落库/DTO/合并同值 // 137 + 3：D40 10 张截图合法 / 11 张截图拒绝 / 合并追加将超 10 张不并入
+const EXPECTED_ASSERTIONS = 175; // 156 + 19：E 校门代取（line=GATE）形态/落库/DTO/取到/转派/无合并/负向闸 + 角色/页面静态接线
 
 function register(h) {
   const asyncSection = (title, fn) => h.section(title, (t) => serial(() => {
@@ -774,6 +774,96 @@ function register(h) {
     const parcelSrc = fsutil.stripComments(fs.readFileSync(path.join(API, 'handlers/order/_parcel.js'), 'utf8'));
     t.check(parcelSrc.indexOf('normalizeLatestAt') !== -1 && parcelSrc.indexOf('APPOINT_TYPE.LATEST') !== -1,
       'I13 _parcel.normalizeAppoint 走 shared/appoint.normalizeLatestAt（服务端校验单源，不端侧自拼）');
+  });
+
+  // ---------------------------------------------------------------- J E 校门代取
+  asyncSection('J. E 校门代取（line=GATE：形态/落库/DTO/取件/转派/无合并/负向闸）', async (t) => {
+    const world = seedWorld();
+    world.db.seed('config', [{ _id: 'global', gateEnabled: true, gatePoints: [{ id: 'EAST', name: '东门' }] }]);
+    const cApi = apiOf(world.db, world.customerOpenid);
+    const pApi = apiOf(world.db, world.partnerOpenid);
+    const privacy = { version: 'v4.0.0' };
+    await cApi.call('user.acceptPrivacy', privacy, { clientRequestId: nextCrid('j-pv-c') });
+    await pApi.call('user.acceptPrivacy', privacy, { clientRequestId: nextCrid('j-pv-p') });
+    const gatePayload = {
+      line: 'GATE',
+      gate: { pointId: 'EAST', itemKind: 'FOOD' },
+      note: '放在东门架子上',
+      appoint: { type: 'ASAP' }
+    };
+    const created = await cApi.call('order.create', gatePayload, { clientRequestId: nextCrid('j1') });
+    t.eq([created.ok, created.data.order.line, created.data.order.service.code,
+      created.data.order.gate.pointName, created.data.order.gate.itemKind],
+    [true, 'GATE', 'GATE_PICKUP', '东门', 'FOOD'],
+    'J1 校门代取建单成功：line=GATE、服务码 GATE_PICKUP、校门/物品类型来自服务端规范化');
+    t.eq([created.data.order.parcelCount, created.data.order.parcels.length,
+      created.data.order.needCode, created.data.order.manualEntry],
+    [1, 0, false, false],
+    'J2 DTO 按 1 件展示但不下发内部占位包裹；无需取件码/手填标记');
+    t.eq(created.data.order.actions.map((item) => item.key).indexOf('correct'), -1,
+      'J3 校门代取动作条不出现「改取件码」（无码可改）');
+    const row = world.db.dump('orders').filter((item) => item.orderNo === created.data.orderNo)[0] || {};
+    const storedKeys = Array.from(collectKeys(row, new Set()));
+    t.check(row.line === 'GATE' && row.gate && row.gate.pointId === 'EAST'
+      && storedKeys.indexOf('merchant') === -1 && storedKeys.indexOf('meal') === -1,
+    'J4 落库 line=GATE + gate；无商家/餐品/款项字段');
+    t.eq([row.parcels.length, row.parcels[0].stationId, row.parcels[0].stationName, row.parcels[0].pickupCode],
+      [1, '', '东门', ''],
+      'J5 内部保留 1 件占位包裹（引擎兼容）；站点为空、站名=校门、取件码为空');
+    const accepted = await pApi.call('order.accept', { orderNo: created.data.orderNo }, { clientRequestId: nextCrid('j2') });
+    t.check(accepted.ok === true, 'J6 兼职接单成功（绑定关系仍走既有 1:1）');
+    const pickedAgain = await pApi.call('order.markPicked',
+      { orderNo: created.data.orderNo, itemIndex: 0 }, { clientRequestId: nextCrid('j4') });
+    t.eq([pickedAgain.ok, pickedAgain.code, pickedAgain.data && pickedAgain.data.field], [false, 'VALIDATION_FAILED', 'itemIndex'],
+      'J7 校门代取在 ACCEPTED 拒绝 itemIndex（不支持逐件取件）');
+    const picked = await pApi.call('order.markPicked', { orderNo: created.data.orderNo }, { clientRequestId: nextCrid('j3') });
+    t.eq([picked.ok, picked.data.order.status, picked.data.order.pickedCount, picked.data.order.allPicked],
+      [true, 'PICKED', 1, true],
+      'J8 校门代取整单取到：PICKED、pickedCount=1、allPicked=true（无逐件语义）');
+    const correct = await pApi.call('order.correct',
+      { orderNo: created.data.orderNo, patch: { pickupCode: 'X1' } }, { clientRequestId: nextCrid('j5') });
+    t.eq([correct.ok, correct.code], [false, 'INVALID_STATE'],
+      'J9 校门代取拒绝改取件码（订单状态即使允许，GATE 守卫也拒绝）');
+    const delivered = await pApi.call('order.markDelivered',
+      { orderNo: created.data.orderNo, deliveryNote: '已放门口' }, { clientRequestId: nextCrid('j6') });
+    t.eq([delivered.ok, delivered.data.order.status], [true, 'DELIVERED'], 'J10 校门代取送达闭环');
+    const beforeMerge = world.db.dump('orders').length;
+    const mergedTry = await cApi.call('order.create', gatePayload, { clientRequestId: nextCrid('j7') });
+    t.eq([mergedTry.ok, mergedTry.data.merged, world.db.dump('orders').length], [true, false, beforeMerge + 1],
+      'J11 校门代取不参与快递合并窗口（每次独立建单）');
+    const badPoint = await cApi.call('order.create',
+      { line: 'GATE', gate: { pointId: 'WEST' } }, { clientRequestId: nextCrid('j8') });
+    t.eq([badPoint.ok, badPoint.code, badPoint.data && badPoint.data.field], [false, 'VALIDATION_FAILED', 'gate'],
+      'J12 校门点不在配置内 → VALIDATION(gate)');
+    const badParcel = await cApi.call('order.create',
+      { line: 'GATE', gate: { pointId: 'EAST' }, parcels: [] }, { clientRequestId: nextCrid('j9') });
+    t.eq([badParcel.ok, badParcel.code, badParcel.data && badParcel.data.field], [false, 'VALIDATION_FAILED', 'parcels'],
+      'J13 校门代取混入 parcels → VALIDATION(parcels)（不静默忽略）');
+    const badService = await cApi.call('order.create',
+      { line: 'GATE', gate: { pointId: 'EAST' }, serviceCode: 'PICKUP_STD' }, { clientRequestId: nextCrid('j10') });
+    t.eq([badService.ok, badService.code, badService.data && badService.data.field], [false, 'VALIDATION_FAILED', 'serviceCode'],
+      'J14 校门代取混入快递服务码 → VALIDATION(serviceCode)');
+    const disabled = seedWorld();
+    disabled.db.seed('config', [{ _id: 'global', gateEnabled: false }]);
+    const dApi = apiOf(disabled.db, disabled.customerOpenid);
+    await dApi.call('user.acceptPrivacy', privacy, { clientRequestId: nextCrid('j-pv-d') });
+    const off = await dApi.call('order.create', gatePayload, { clientRequestId: nextCrid('j11') });
+    t.eq([off.ok, off.code], [false, 'INVALID_STATE'], 'J15 gateEnabled=false → INVALID_STATE（服务端开关，非仅前端隐藏）');
+    const badExtra = await cApi.call('order.create',
+      { line: 'GATE', gate: { pointId: 'EAST', merchant: '某店' } }, { clientRequestId: nextCrid('j12') });
+    t.eq([badExtra.ok, badExtra.code, badExtra.data && badExtra.data.field], [false, 'VALIDATION_FAILED', 'gate'],
+      'J16 校门块混入商家等未知字段 → VALIDATION(gate)');
+    const roleWxml = fs.readFileSync(path.join(ROOT, 'pages/role/index.wxml'), 'utf8');
+    t.check(roleWxml.indexOf('校门代取') >= 0 && roleWxml.indexOf('我是顾客') < 0 && roleWxml.indexOf('我是兼职') < 0,
+      'J17 角色页去掉「我是顾客/我是兼职」强制二选一，改为快递/校门服务卡');
+    const gateWxml = fs.readFileSync(path.join(ROOT, 'pkg-customer/pages/gate-create/index.wxml'), 'utf8');
+    t.check(gateWxml.indexOf('校门代取') >= 0 && gateWxml.indexOf('外卖下单') < 0
+      && gateWxml.indexOf('不含商家') >= 0,
+    'J18 校门页文案：叫校门代取、不出现「外卖下单」，并明确不涉及商家/餐品选择');
+    const gateModelSrc = fs.readFileSync(path.join(ROOT, 'pkg-customer/pages/gate-create/parts/model.js'), 'utf8');
+    t.check(gateModelSrc.indexOf("line: enums.ORDER_LINE.GATE") >= 0
+      && gateModelSrc.indexOf('merchant') < 0 && gateModelSrc.indexOf('itemKind') < 0,
+    'J19 校门页载荷只带 line=GATE + pointId；无商家/餐品字段（物品类型由服务端可选默认）');
   });
 }
 
