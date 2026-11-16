@@ -23,7 +23,8 @@ function roleLabel(role) {
   return enums.ROLE_LABELS[role] || '';
 }
 
-// 多角色 openid 的"当前使用角色"：优先记住的偏好，否则按角色优先级（兼职优先于顾客）
+// 多角色 openid 的"当前工作区"：优先记住的偏好，否则默认顾客（D86：双角色不再兼职优先）。
+// 偏好只是展示/导航提示，服务端鉴权仍按 users.roles + 资源归属（不依赖本函数）。
 function pickActiveRole(roles, preferredRole) {
   if (!Array.isArray(roles) || roles.length === 0) {
     return null;
@@ -31,11 +32,11 @@ function pickActiveRole(roles, preferredRole) {
   if (preferredRole && roles.indexOf(preferredRole) !== -1) {
     return preferredRole;
   }
-  if (roles.indexOf(ROLES.PARTNER) !== -1) {
-    return ROLES.PARTNER;
-  }
   if (roles.indexOf(ROLES.CUSTOMER) !== -1) {
     return ROLES.CUSTOMER;
+  }
+  if (roles.indexOf(ROLES.PARTNER) !== -1) {
+    return ROLES.PARTNER;
   }
   return null;
 }

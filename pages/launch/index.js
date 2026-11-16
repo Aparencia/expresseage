@@ -276,10 +276,34 @@ Page({
     });
   },
 
+  // D86：绑定卡是明确的顾客意图。账号含 CUSTOMER 时用 CUSTOMER 偏好补一次水合，
+  // 让邀请卡拿到 binding 块并直接显示绑定按钮（不再要求「先切顾客身份」）；失败不阻断分流。
+  ensureEntryWorkspace() {
+    const entry = this._entry || {};
+    if (!entry.bind) {
+      return Promise.resolve();
+    }
+    const snapshot = store.snapshot();
+    const roles = Array.isArray(snapshot.roles) ? snapshot.roles : [];
+    if (snapshot.viewContext || roles.indexOf(launchRoute.ROLES.CUSTOMER) < 0) {
+      return Promise.resolve();
+    }
+    if (snapshot.activeRole === launchRoute.ROLES.CUSTOMER) {
+      return Promise.resolve();
+    }
+    return userApi.bootstrap(launchRoute.ROLES.CUSTOMER).then((data) => {
+      store.hydrateFromBootstrap(data);
+      return data;
+    }).catch(function ignore() {
+      return null;
+    });
+  },
+
   // 进入角色：分流只用 config/route.js 纯函数；入口参数（bind/orderNo）优先于常规分流（D37）。
   // 顺便把「本次进入的角色」记到本地偏好 lastRole（utils/storage 白名单；双角色下次在角色页给建议）。
   // 切换会话/开发者/纯入口跳转不写 lastRole（票据与视角一律不落盘，ENGINEERING §5.6）。
-  route() {
+  async route() {
+    await this.ensureEntryWorkspace();
     const snapshot = store.snapshot();
     const entry = this._entry || { bind: '', orderNo: '' };
     const decision = launchRoute.decideEntryRoute(entry, snapshot);

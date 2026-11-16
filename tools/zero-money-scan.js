@@ -41,8 +41,8 @@ const FEN_RE = /(?:^|[^A-Za-z0-9_$])([A-Za-z_$][A-Za-z0-9_$]*Fen)(?![A-Za-z0-9_$
 const ZERO_TERM = '零金额';
 
 const SOURCE_EXT = new Set(['.js', '.json', '.wxml', '.wxss']);
-const SKIP_DIRS = new Set(['.git', 'node_modules', 'miniprogram_npm', '.dsh-code-index', 'docs']);
-const SKIP_DOC_DIRS = new Set(['.git', 'node_modules', '.dsh-code-index']);
+const SKIP_DIRS = new Set(['.git', 'node_modules', 'miniprogram_npm', '.dsh-code-index', '.agents', 'docs']);
+const SKIP_DOC_DIRS = new Set(['.git', 'node_modules', '.dsh-code-index', '.agents']);
 
 function posix(p) {
   return p.replace(/\\/g, '/');

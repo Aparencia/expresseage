@@ -25,6 +25,14 @@
         <view wx:if="{{canEdit && !editMode}}" class="head-edit" bindtap="onToggleEdit">编辑资料</view>
       </view>
 
+      <!-- D86：一处切换工作区（双角色才显示；直接切，不回角色页） -->
+      <view wx:if="{{showSwitchRole && !editMode}}" class="card list-card">
+        <view class="row-item" bindtap="onSwitchRole">
+          <text>{{isCustomer ? '切换到兼职工作台' : '切换到顾客首页'}}</text>
+          <text class="row-arrow">›</text>
+        </view>
+      </view>
+
       <!-- 编辑资料（昵称必填 ≤20 字；头像 chooseAvatar 可跳过→默认头像） -->
       <view wx:if="{{editMode}}" class="card form-card">
         <view class="form-row">
@@ -214,10 +222,6 @@
 
         <view class="card list-card">
           <view class="list-title">账号</view>
-          <view wx:if="{{showSwitchRole}}" class="row-item" bindtap="onSwitchRole">
-            <text>{{isCustomer ? '切换到兼职身份' : '切换到顾客身份'}}</text>
-            <text class="row-arrow">›</text>
-          </view>
           <view wx:if="{{subscribeVisible}}" class="row-item" bindtap="onSubscribeTap">
             <view class="row">
               <text>微信提醒</text>

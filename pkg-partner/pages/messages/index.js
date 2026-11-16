@@ -70,7 +70,7 @@ Page({
       return;
     }
     if (snapshot.activeRole !== 'PARTNER') {
-      wx.reLaunch({ url: route.ROLE_PAGE });
+      wx.reLaunch({ url: route.workspaceHomeOf(snapshot.activeRole) });
     }
   },
 

@@ -70,7 +70,7 @@
 ### 1.2 旅程阶段表
 | 阶段 | 触发 | 页面 | 成功标准 | 失败出口 |
 | :-- | :-- | :-- | :-- | :-- |
-| 邀请码激活 | 拿到开发者邀请码，进入 role 页点「我是兼职」 | `pkg-partner/pages/activate/index` | `partners.status=ACTIVE`、角色含 partner、`displayName`（昵称必填）/`avatarFileId`（可空→默认头像）、分配 `partnerNo`、`serviceConfig{services 默认 5 类全开（D41）, acceptingOrders=false}` | 错误码分类提示（`NOT_FOUND/INVITE_EXPIRED/INVITE_USED/VALIDATION_FAILED`）；失败 5 次/日限流（§10）；联系开发者 |
+| 邀请码激活 | 拿到开发者邀请码，进入 role 页点「去接单」 | `pkg-partner/pages/activate/index` | `partners.status=ACTIVE`、角色含 partner、`displayName`（昵称必填）/`avatarFileId`（可空→默认头像）、分配 `partnerNo`、`serviceConfig{services 默认 5 类全开（D41）, acceptingOrders=false}` | 错误码分类提示（`NOT_FOUND/INVITE_EXPIRED/INVITE_USED/VALIDATION_FAILED`）；失败 5 次/日限流（§10）；联系开发者 |
 | 配置 | 激活成功 / 我的 → 服务类型与范围 | `pkg-partner/pages/service-settings/index` | 至少 1 个服务类型启用；苑范围非空；保存成功 | 未配置时工作台顶部黄条"先配置服务类型才能接单" |
 | 被绑定 | 顾客凭完整 `partnerNo`/卡片**自己发起**绑定 | 顾客端 `pkg-customer/pages/bind/index`（**兼职端无入口**） | `bindings.status=ACTIVE`、分配**大写** `roomTag`（A/B/C…） | 顾客取消/失败 → 无绑定；兼职不能代绑（`bind.create` 仅 CUSTOMER，PARTNER 调用 `FORBIDDEN`） |
 | 接单 | 顾客下单 / 代客下单 / 收到红点 | `pages/partner/workbench/index` | `SUBMITTED→ACCEPTED` 且顾客可见（**多包裹单一次整单生效**） | 超时自动取消（`orderTimeoutMinutes` 默认 120，§5）；**不设接单撤销**：误接单走 `order.cancel` + 原因枚举（§5.2）并通知顾客 |
@@ -90,7 +90,7 @@
 | 页面路径 | 归属 | 进入方式/参数 | 职责 |
 | :-- | :-- | :-- | :-- |
 | `pages/launch/index` | 主包 | 唯一启动页 | 读角色/资料完成度/是否开发者/切换会话上下文（`READONLY`/`TEST_WRITE`）→ `reLaunch` 到目标页 |
-| `pages/role/index` | 主包 | 启动分流、`?bind=CODE` | 身份选择 + 邀请码入口 + 绑定卡片落地（D3） |
+| `pages/role/index` | 主包 | 启动分流、`?bind=CODE` | 工作区入口（去下单/去接单）+ 邀请码入口 + 绑定卡片落地（D3/D86） |
 | `pages/partner/workbench/index` | 主包 tab | tab「工作台」 | 取件清单：接单/取件/送达/异常/筛选/批量/撤销（见 §4；v1.0 行展示件数/站点聚合/需查明聚合/无截图·手填，§4.16） |
 | `pages/partner/customers/index` | 主包 tab | tab「客户」 | 已绑定顾客档案（**绑定由顾客发起**）、搜索、代客下单、邀请顾客自己绑定、解绑 |
 | `pages/profile/index` | 主包 tab | tab 5「我的」（双方共用） | 兼职版：**头像/昵称**/兼职编号/分享绑定卡/服务类型/单量统计/消息/切换角色 |
@@ -107,7 +107,7 @@
 ### 2.2 导航规则（照 CONTRACT §7）
 - `launch` 是唯一启动页；`role` 不属于任何 tab。角色不匹配的 tab 页在 `onShow` 里 `reLaunch` 回本角色首页（兼职回工作台）。
 - **tabBar 只有 5 项（平台上限）**：`pages/customer/home/index`、`pages/customer/orders/index`、`pages/partner/workbench/index`、`pages/partner/customers/index`、`pages/profile/index`（双方共用）；`custom: true`，自定义 tabBar 组件固定在**项目根目录 `custom-tab-bar/`**（平台硬要求，不是 components/），按全局角色只渲染 3 格：顾客=首页/订单/我的，兼职=工作台/客户/我的。兼职"工作台"格显示待处理红点/数字。
-- 兼职"我的"不建独立页：ID/兼职编号/分享绑定卡片/服务类型/单量统计/切换身份全部在共用 `pages/profile/index` 的兼职视图里渲染（§7）。
+- 兼职"我的"不建独立页：ID/兼职编号/分享绑定卡片/服务类型/单量统计/切换工作台全部在共用 `pages/profile/index` 的兼职视图里渲染（§7）。
 - **绑定只能由顾客发起（v0.9）**：卡片 `?bind={partnerNo}` 落在顾客侧 `pkg-customer/pages/bind/index`（`bind.create` 仅 CUSTOMER 可调）；兼职端**没有任何**"添加顾客/绑定顾客/导入顾客/扫码绑定"入口或页面，兼职调用 `bind.create` 返回 `FORBIDDEN`。
 - 绑定卡片 `?bind={partnerNo}` 可落在 `role` 或 `bind` 页（由登录态决定）：未登录 → role → 登录后转 `pkg-customer/pages/bind/index?code=`；已登录 → 直接进 bind；顾客须输入或确认**完整兼职编号**（P-XXX-XXX）。
 - 订单深链 `?orderNo=` 统一落订单详情：兼职端落 `pkg-partner/pages/order-detail/index`；云函数 `order.get` 校验订单 `partnerOpenid` 必须等于当前 partner，失败统一 toast"订单不存在或不属于你"并回工作台。
@@ -115,7 +115,7 @@
 - **取件清单入口（2026-11-08 升一级，伪装 tab）**：兼职底栏第 2 格「取件清单」，与工作台/客户/我的同级；点击 `wx.reLaunch('/pages/partner/pick-list/index')`（该页不在 `app.json` tabBar.list，页面内自绘共用 `components/tab-bar-view` 四格，顾客端「取件码」同款）；其余三格是真 tab 用 `wx.switchTab`；工作台顶部不再保留「取件清单」按钮（避免双入口）；本页 onShow/下拉/切阶段刷新，不挂定时轮询。
 - **团队入口（D59）**：服务配置页（`pkg-partner/pages/service-settings/index`）→「我的团队」行 → `wx.navigateTo('/pkg-partner/pages/team/index')`；该页不是 tab、不显示 tabBar，返回落服务配置页；主兼职可发子码/按批次作废/移除成员，子队员只读队伍
 - **审核入口（2026-11-08）**：工作台顶部「审核」→ `wx.navigateTo('/pkg-partner/pages/review/index')`；该页不是 tab、不显示 tabBar，返回落工作台；READONLY 不显示入口且页内隐藏保存摘要（§3.12）。
-- 切换角色：我的 → 切换身份 → `wx.reLaunch` 到 role/顾客首页，自定义 tabBar 重新渲染。
+- 切换工作台（D86）：我的 → 切换工作台 → `utils/workspace.switchTo` 水合目标工作区后 `reLaunch` 目标首页（不经 role），自定义 tabBar 重新渲染。
 - **开发者分流**：`user.bootstrap` 返回 `isDeveloper=true` ⇒ `wx.reLaunch('/pkg-admin/pages/overview/index')`（不需要 `?admin=1`，服务端白名单是唯一门槛）。开发者不进兼职业务 tab；后台「切换账号」入口在 `pkg-admin/pages/account-switch/index`（真实账号只读 / 测试账号可写，见 §6）。
 - **切换会话分流（v0.9）**：`app.globalData.viewContext`（仅内存）存在时，按 `viewContext.role` 渲染目标角色三格；`READONLY`（真实账号）= 顶部黄条 + 写控件置灰/隐藏 + 服务端拒写；`TEST_WRITE`（测试账号）= 顶部蓝条 + 每页 `TEST` 角标 + 写操作可用（只能写测试数据）；两种会话都隐藏分享/转发，退出回「切换账号」页（详见 §6）。
 ### 2.3 页面通用状态（所有页面必须实现）
@@ -142,7 +142,7 @@
 
 ```
 ┌──────────────────────────────┐
-│ ← 返回身份选择                │
+│ ← 返回开始使用                │
 │                              │
 │   成为兼职                    │  ← 40rpx 大标题
 │   邀请码由开发者发放，一次性   │
@@ -462,7 +462,7 @@
 │ 服务类型与范围 >  单量统计 >   │
 │ 消息（2）>                    │
 │ ── 账号 ───────────────────│
-│ 切换身份 >  帮助与隐私 >       │
+│ 切换工作台 >  帮助与隐私 >     │
 │ 版本（运行时取版本号）        │
 └──────────────────────────────┘
 ```
@@ -471,11 +471,11 @@
 - **头像/昵称编辑（v0.9）**：点「头像与昵称」→ 头像 `button open-type="chooseAvatar"`（可选「恢复默认」）；昵称 `input type="nickname"` 一键取微信昵称、可手填；保存调 `partner.saveProfile`；昵称**必填**，头像可拒绝→默认头像；默认头像 = 昵称首字色块 + 浅底（头像加载失败同样回默认，不裂图）。
 - **头像缓存（v0.9；D42 修订）**：页面 `onShow` 重新拉取头像与临时 URL；**换头像后重新拉取即显示新头像（临时链接约 5 分钟，过期自动刷新；加载失败可点默认头像位重试，不永久锁死）**；`avatarFileId` 仅作回退键、客户端不把 `cloud://` 直接塞 `<image>`；本人设备已缓存的旧副本无法技术撤回（只在隐私文本说明，页面不提示）。
 - **分享绑定卡片（D37/D38 修订）**：标题"我在做校园代取，凭兼职编号找我下单"（UX 文案固定，中性不诱导），卡片只带 `partnerNo`（**不带头像/昵称**/宿舍/尾号/订单信息，CONTRACT §3.1 第 6 条）；**路径改为 `/pages/launch/index?bind={partnerNo}`**（D37，通用卡 `/pages/launch/index` 零 query）；卡片不计为绑定：顾客点开后先过隐私同意闸→role 邀请卡→点「绑定这位兼职」，隐私同意且资料完整时**自动完成绑定**（D38，不再要求顾客手点确认）；兼职侧无任何"确认绑定"动作（仍然只能顾客发起）。
-- **入口**：头像与昵称编辑（`partner.saveProfile`）、服务类型与范围、单量统计、消息、帮助与隐私（用户协议/隐私政策/版本/联系开发者）、切换身份；**D59 起**服务配置页（`pkg-partner/pages/service-settings/index`）新增「我的团队」入口行（主兼职显示"成员 {used}/{max}"、子队员显示"所属队伍 P-XXX"），点击进 `/pkg-partner/pages/team/index`（§3.12）；「关于」固定两句："本程序只提供下单、接单履约与信息整理，不涉及任何费用收付。"与"识别失败时去敏文本会发给第三方 AI 服务做识别辅助，原图不出本程序云存储；失败原图仅用于开发者复核。"
+- **入口**：头像与昵称编辑（`partner.saveProfile`）、服务类型与范围、单量统计、消息、帮助与隐私（用户协议/隐私政策/版本/联系开发者）、**切换工作台（D86：头部下方一行，直接切，不回角色页）**；**D59 起**服务配置页（`pkg-partner/pages/service-settings/index`）新增「我的团队」入口行（主兼职显示"成员 {used}/{max}"、子队员显示"所属队伍 P-XXX"），点击进 `/pkg-partner/pages/team/index`（§3.12）；「关于」固定两句："本程序只提供下单、接单履约与信息整理，不涉及任何费用收付。"与"识别失败时去敏文本会发给第三方 AI 服务做识别辅助，原图不出本程序云存储；失败原图仅用于开发者复核。"
 - **停用/注销态**：`SUSPENDED` 只显示停用说明 + 联系开发者；`CLOSED` 显示"账号已注销，无法恢复"，隐藏所有业务入口；停用/注销后顾客端不再展示你的头像/昵称（解绑即失联，§7）。
-- **状态**：加载骨架/错误重试（通用态 §2.3）；SUSPENDED/CLOSED 专用全屏态；顾客/兼职角色切换时 `onShow` 重判；`READONLY` 下头像/昵称编辑与切换身份置灰，`TEST_WRITE` 可用（仅测试数据），退出走会话条（§6）。
-- **文案**：复制成功"兼职编号已复制"；切换身份确认"切换后回到身份选择页，未提交的操作会丢失。"
-- **跳转**：分包页 `navigateTo`；切换身份 `wx.reLaunch` 回 role。
+- **状态**：加载骨架/错误重试（通用态 §2.3）；SUSPENDED/CLOSED 专用全屏态；顾客/兼职角色切换时 `onShow` 重判；`READONLY` 下头像/昵称编辑与切换工作台置灰/隐藏（切换会话走会话条退出），`TEST_WRITE` 可用（仅测试数据）。
+- **文案**：复制成功"兼职编号已复制"；切换工作台失败"切换工作台失败，请重试"（成功不弹二次确认，直接回目标首页）。
+- **跳转**：分包页 `navigateTo`；切换工作台 `utils/workspace.switchTo` 水合后 `wx.reLaunch` 目标首页（D86，不经 role）。
 
 ### 3.11 取件清单 `pages/partner/pick-list/index`（D46，第 32 页；2026-11-08 迁主包为伪 tab）
 **目标**：跑站时按「苑 → 栋 → 楼层」看已取件待送达的单，逐层送达，避免在工作台长列表里反复翻找。**独立分包页、不新增服务端动作**：数据源 `order.listPartner` 工作台视图 + 已取件状态（现成动作），客户端用 `shared/zones.floorOf(room)` 派生楼层（`floor(room/100)`，room≥100 恒 ≥1）。
@@ -857,7 +857,7 @@
 | 代客下单 `order.create`、识别兜底 `ai.parseParcel` | 入口隐藏 | 可用（仅测试账号建测试单） |
 | 客户列表/详情：解绑 `partner.unbindCustomer`、私有备注 `partner.saveCustomerNote` | 置灰/隐藏 | 可用（仅测试绑定） |
 | 服务类型与范围 `partner.saveServiceConfig` | 全部置灰 | 可用（仅测试账号配置） |
-| 我的：头像/昵称编辑 `partner.saveProfile`、切换身份、（若存在）注销 | 置灰；切换身份隐藏 | 可用（仅测试账号） |
+| 我的：头像/昵称编辑 `partner.saveProfile`、切换工作台、（若存在）注销 | 置灰；切换工作台隐藏 | 可用（仅测试账号） |
 | 消息中心 `message.markRead` | 置灰 | 可用（仅测试数据） |
 | 激活页 `partner.activate` | 不出现 | 不出现（测试账号后台创建，不走邀请码，D3/D18） |
 | 绑定/添加顾客（`bind.create`） | **兼职端零入口** | **兼职端零入口** |

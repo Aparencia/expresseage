@@ -1,7 +1,8 @@
 # V4_DECISIONS · v4 开工裁决清单（D1~D73）
 
 > 版本：v1.13（2026-11-08 增补 D68/D69（顾客停用/恢复、退出登录）、D70~D72（站点识别与信息补全）、D73（服务通知：顾客送达 + 兼职新订单）；v1.7 2026-11-02 增补 D58~D67 用户 11 条新需求裁决；v1.6 2026-11-01 增补 D43~D50 用户反馈裁决；v1.5 2026-10-28 追记 D36 分享与朋友圈、D37~D42 用户拍板；v1.4 已含 2026-10-27 **批 11 追记 D35 取件码回填修复**）
-> 状态：**D1~D73（D27 除外）已裁决**（D58~D67 于 2026-11-02 用户对《用户新需求理解、扩展与补全（2026-11-02）》Q1~Q11 逐条答复；D68/D69 与 D70~D72 于 2026-11-08 按用户指令实现；D73 于 2026-11-08 用户确认范围）；**A 批 P1 十项按推荐采纳并已实现（2026-10-23）**；D27 待定（定位可行性研究 v2 已交付，等用户裁决）
+> 状态：**D1~D86（D27 除外）已裁决**（D58~D67 于 2026-11-02 用户对《用户新需求理解、扩展与补全（2026-11-02）》Q1~Q11 逐条答复；D68/D69 与 D70~D72 于 2026-11-08 按用户指令实现；D73 于 2026-11-08 用户确认范围；D74~D85 见 CONTRACT §13/CHANGELOG，本文件不重复展开）；**A 批 P1 十项按推荐采纳并已实现（2026-10-23）**；D27 待定（定位可行性研究 v2 已交付，等用户裁决）
+> 2026-11-16：增补 **D86**（角色入口 M1+，见文末）。
 > 用法：主规格书 `docs/contract/V4_REBUILD_SPEC.md` §13 与 `docs/contract/V4_CONTRACT.md` §13 是索引，本文件是每条的展开。裁决人只能是你（用户）；agent 只出推荐与证据。
 > 裁决方式：本条回复即最终裁决（2026-10-22）；D20/D21 早前已按用户指示定。裁决后由 agent 写「裁决留痕」并同步 CONTRACT/主规格/README/STATE。
 
@@ -759,6 +760,26 @@ C中的隐私合规中的C1 见上文
 **被否**：长期订阅（个人主体+工具类目不可用）；顾客全生命周期状态提醒（用户收敛为只做送达）；兼职新单作为主通道（量大、按条消耗额度，仍以 30s 轮询为主）；模板 ID 走新增客户端读动作（改动大，选公开子集下发 ID）。
 **代价/落点**：`config/defaults.js`、`cloudfunctions/api/db/config.js`（一层合并且后台只写 enabled 不丢 ID）、`cloudfunctions/api/lib/subscribe-message.js`（新）、`handlers/order/{_common,_create}.js`（事务后发送）、`cloudfunctions/api/config.json`（新：云调用权限）、`utils/subscribe.js`（新：真值判定/20004 引导）、下单页/工作台/「我的」接线、`tools/{selftest-messages,selftest-message-pages,selftest-cloud-fixtures,selftest-privacy-text}.js`；CONTRACT §9/§11.2/§13、DATA_MODEL §2.10/§7、ENGINEERING §3.6/§4.1/§12、RUNBOOK §8/§14、UX_CUSTOMER §8.4/§9.2、UX_PARTNER §4.12、QA §AJ、隐私文本 v1.11、CHANGELOG/STATE；**无新增集合/索引/触发器/云函数单元，需重部署 `api`（config.json + shared 副本）**。
 **真机项**：QA §AJ1~AJ6（授权弹窗/送达通知/新单通知/拒绝不阻断/20004/模板类型=2/额度 P0-3；用户点检，agent 不代勾）。`enabled` 默认 false，P0-3 与模板类型未确认前不得宣布生效。
+
+---
+
+## D86 · 2026-11-16 角色入口 M1+（工作区模型）
+
+**来源**：用户 2026-11-16「针对目前强制用户选择顾客和兼职的机制你有什么好的优化方案吗？」→ 现状/目标/验收方案 →「制定实施计划，并开始执行」。**结论**：登记 D86；按四项默认执行（双角色无偏好默认顾客；`user.bootstrap` 收 `preferredRole`；角色页保留邀请码/工作台入口；绑定卡按 CUSTOMER 放行）。
+
+**裁决**：
+1. **偏好只作提示**：`user.bootstrap` 接受可选 `preferredRole`（必须属于 `users.roles`；`viewContext` 会话忽略）；服务端仍按 `users.roles` + 资源归属鉴权，`activeRole` 只是展示/导航状态。
+2. **默认客户优先**：`pickActiveRole(roles, preferred)` 先看偏好；无有效偏好时双角色默认 `CUSTOMER`（原「兼职优先」废止）；单角色直进；无角色回角色页。
+3. **投影完整**：`binding/me` 按解析后的 `activeRole` 返回；偏好为 CUSTOMER 时返回绑定块，不再出现「切到顾客但绑定块为空」。
+4. **本机偏好单通道**：`lastRole` 仍只存本机、只经 `utils/storage`，但允许作为 `preferredRole` 进 `user.bootstrap` 请求体（仅角色枚举，不含票据/PII/视角上下文）；这是 ENGINEERING §5.6 的**唯一例外**，需在该节显式登记。
+5. **一处切换**：`utils/workspace.switchTo(role)` = `bootstrap(目标工作区)` → 水合 → `reLaunch` 目标首页；不经过角色页；失败不改变当前工作区；`lastRole` 在 reLaunch 成功后写。
+6. **守卫回退**：页面守卫发现 `activeRole` 与当前页不匹配时，回退到 `activeRole` 对应的工作区首页（`route.workspaceHomeOf`），不再回角色页；无角色才回角色页。
+7. **上下文直达**：`?bind=` 在含 CUSTOMER 的账号上以 CUSTOMER 偏好水合（launch 补一次 bootstrap），邀请卡直接显示绑定按钮；`?orderNo=` 仍按当前工作区打开，跨侧自动回退列 P1。
+8. **入口页降级**：角色页不再作为启动必经页；无角色/邀请卡落地才出现；文案改任务式（去下单/去接单），保留「有邀请码？开通接单」与「接单工作台」入口；新兼职通路不能断。
+
+**被否**：本批做能力授权/服务线模型（改动/回归面过大，与方案稿 Q4「只改入口」冲突）；保留兼职优先默认（与用户「不强制选择」目标相反）；客户端硬改 `activeRole` 不重水合（binding/角标会缺）；统一 4 tab 重写（34 页/整套状态动作回归面）；页面级草稿恢复（草稿指针三件套已删，需另立项）；`orderNo` 启动期真归属解析（需额外查单/链接带角色，P1）。
+
+**代价/落点**：`shared/role.js`（默认序）、`cloudfunctions/api/handlers/user/bootstrap.js`（入参/偏好）、`api/modules/user.js`、`app.js`、`pages/launch/index.js`（bind 上下文）、`pages/role/**`（文案/绑定卡判定）、`pages/profile/**`（切换入口）、`config/route.js`（`workspaceHomeOf`）、新增 `utils/workspace.js`、7 处页面守卫；判据 `selftest-{cloud,state,profile,switch}`；无集合/索引/鉴权变更、无页数变更；真机项 QA §AK 交用户点检。
 
 ---
 

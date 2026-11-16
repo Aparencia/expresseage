@@ -68,7 +68,7 @@ Page({
       return true;
     }
     if (snapshot.activeRole !== 'CUSTOMER') {
-      wx.reLaunch({ url: route.ROLE_PAGE });
+      wx.reLaunch({ url: route.workspaceHomeOf(snapshot.activeRole) });
       return false;
     }
     return true;

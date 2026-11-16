@@ -33,7 +33,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const ADMIN_OPENID = 'openid-admin-dev01';
 const ADMIN_ENV = { ADMIN_OPENIDS: JSON.stringify({ [ADMIN_OPENID]: 'DEV-01' }) };
 
-const EXPECTED_ASSERTIONS = 192 + adminOrdersCases.SERVER_ASSERTIONS + orderDayCases.SERVER_ASSERTIONS; // 192=180+12 D43；另加 admin 订单行称呼与 day 视图用例（tools/lib/*-cases.js）
+const EXPECTED_ASSERTIONS = 197 + adminOrdersCases.SERVER_ASSERTIONS + orderDayCases.SERVER_ASSERTIONS; // 192 + 5（D86 preferredRole/默认工作区）；另加 admin 订单行称呼与 day 视图用例（tools/lib/*-cases.js）
 const API_PENDING_ASSERTS = 22;
 const CLEANUP_PENDING_ASSERTS = 14;
 
@@ -858,8 +858,8 @@ function register(h) {
     const bView = await apiOf(bDb, ADMIN_OPENID).call('user.bootstrap', {}, { viewTicket: 'TK-VIEW1' });
     t.eq(bView.data.viewContext, { viewMode: VIEW_MODE.READONLY, role: ROLES.CUSTOMER, targetNo: 'CABCDEFGH', targetDisplayName: '小王', targetIsTest: false, expiresAt: NOW + 3600000 }, '§7.3 viewContext 形状={viewMode,role,targetNo,targetDisplayName,targetIsTest,expiresAt}（切换会话目标上下文）');
     t.eq([bView.data.roles, bView.data.activeRole, bView.data.isDeveloper], [[ROLES.CUSTOMER], ROLES.CUSTOMER, false], '§7.3 切换会话 bootstrap 返回目标角色且 isDeveloper=false（不再分流后台）');
-    // 2) user.acceptPrivacy：版本闸 / 同版本幂等 / users.privacyConsent 落库（与 saveProfile/upload 共用一库）
-    const sDb = createTestDb();
+    await require('./lib/role-workspace-cases').run(t, { apiOf, bDb, userOf, ROLES, ADMIN_OPENID, PARTNER_STATUS }); // D86：拆到 lib，保持套件 ≤1000 行
+    const sDb = createTestDb(); // 2) user.acceptPrivacy：版本闸 / 同版本幂等 / users.privacyConsent 落库（与 saveProfile/upload 共用一库）
     sDb.seed('config', [{ _id: 'global', privacyVersion: 'v4.0', avatarMaxBytes: 102400 }]);
     sDb.seed('users', [userOf('openid-privacy', [], { privacyConsent: null }), userOf('openid-sp-a'), userOf('openid-sp-b'), userOf('openid-sp-g'), userOf('openid-sp-h'), userOf('openid-up-c', [ROLES.CUSTOMER]), userOf('openid-up-p', [ROLES.PARTNER]), userOf('openid-up-victim'), userOf('openid-up-lim', [ROLES.CUSTOMER])]);
     sDb.seed('partners', [{ _id: 'partner-up-p', openid: 'openid-up-p', partnerNo: 'PABC23', displayName: '小李', status: PARTNER_STATUS.ACTIVE, serviceConfig: { acceptingOrders: true } }]);

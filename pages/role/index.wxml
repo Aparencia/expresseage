@@ -21,7 +21,7 @@
       </view>
     </view>
     <button wx:if="{{!bindBlocked}}" class="btn btn-primary btn-block" bindtap="onBindTap">{{bindBound ? '已绑定·去下单' : '绑定这位兼职'}}</button>
-    <view wx:if="{{bindBlocked}}" class="muted">这是顾客绑定入口，请先进入顾客身份后再绑定。</view>
+    <view wx:if="{{bindBlocked}}" class="muted">这是顾客绑定入口；先完善顾客资料（昵称/苑/楼栋/宿舍号）后再绑定。</view>
     <view wx:if="{{bindBound}}" class="muted">你已绑定这位兼职，点上方按钮直接去下单即可。</view>
   </view>
 
@@ -37,23 +37,23 @@
   <view class="role-cards">
     <view class="card role-card {{suggestedRole === 'CUSTOMER' ? 'role-card-suggested' : ''}}" bindtap="onCustomerTap">
       <view wx:if="{{suggestedRole === 'CUSTOMER'}}" class="role-suggest">上次使用</view>
-      <view class="section-title">我是顾客</view>
+      <view class="section-title">去下单</view>
       <view class="subtitle">上传取件码，请兼职代取。</view>
-      <view class="role-action">进入顾客端</view>
+      <view class="role-action">进入顾客首页</view>
     </view>
     <view class="card role-card {{suggestedRole === 'PARTNER' ? 'role-card-suggested' : ''}}" bindtap="onPartnerTap">
       <view wx:if="{{suggestedRole === 'PARTNER'}}" class="role-suggest">上次使用</view>
-      <view class="section-title">我是兼职</view>
+      <view class="section-title">去接单</view>
       <view class="subtitle">凭邀请码开通，接单取件。</view>
-      <view class="role-action">进入兼职端</view>
+      <view class="role-action">进入兼职工作台</view>
     </view>
   </view>
 
-  <view wx:if="{{suggestedRole}}" class="muted role-suggest-tip">上次使用的是{{suggestedRole === 'CUSTOMER' ? '顾客' : '兼职'}}身份，点对应卡片继续。</view>
+  <view wx:if="{{suggestedRole}}" class="muted role-suggest-tip">上次使用的是{{suggestedRole === 'CUSTOMER' ? '顾客' : '兼职'}}工作区，点对应卡片继续。</view>
 
-  <view class="muted role-tip">同一个微信号可以同时是顾客和兼职，两边的数据互相隔离。</view>
+  <view class="muted role-tip">同一个微信号可以同时是顾客和兼职，两边的数据互相隔离；开通两个身份后可在「我的」一键切换工作区。</view>
 
-  <button class="btn btn-ghost btn-block" bindtap="onInviteTap">有邀请码？去开通兼职身份</button>
+  <button class="btn btn-ghost btn-block" bindtap="onInviteTap">有邀请码？去开通接单</button>
 
   <view class="empty-text" wx:if="{{bindError}}" bindtap="onRetryBootstrap">重新加载</view>
 </view>

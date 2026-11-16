@@ -117,20 +117,23 @@ async function loadBootState(ctx, scope) {
   };
 }
 
-// 角色解析（切换会话=票据角色；真实会话=users.roles，双角色兼职优先）并记一次 lastLoginAt（失败只告警）
-async function resolveRoleState(ctx, scope, user, viewContext) {
+// 工作区解析（D86）：切换会话=票据角色；真实会话=users.roles + 本机 preferredRole 提示。
+// 偏好不属于当前 roles 时忽略；双角色无偏好默认顾客（见 shared/role.pickActiveRole）。
+// activeRole 只决定本响应返回哪一侧的投影，**不参与鉴权**（服务端仍按 users.roles + 归属）。
+async function resolveRoleState(ctx, scope, user, viewContext, preferredRole) {
   if (viewContext) {
     return { roles: scope.role ? [scope.role] : [], activeRole: scope.role || null, isDeveloper: false };
   }
   const rawRoles = user && Array.isArray(user.roles) ? user.roles : [];
   const roles = rawRoles.filter((item) => item === enums.ROLES.CUSTOMER || item === enums.ROLES.PARTNER);
+  const preferred = roles.indexOf(preferredRole) >= 0 ? preferredRole : '';
   const nowDate = identity.nowDate(ctx);
   try {
     await ctx.dao.update(COLLECTIONS.USERS, scope.openid, { lastLoginAt: nowDate, updatedAt: nowDate });
   } catch (error) {
     console.warn('[api] 登录时间更新失败', ctx.requestId);
   }
-  return { roles, activeRole: roleLib.pickActiveRole(roles), isDeveloper: !!scope.developerNo };
+  return { roles, activeRole: roleLib.pickActiveRole(roles, preferred), isDeveloper: !!scope.developerNo };
 }
 
 function avatarFileIdOf(doc) {
@@ -153,14 +156,17 @@ async function signBootAvatarUrls(ctx, customer, partner, boundPartner) {
   };
 }
 
-async function handler(ctx) {
+async function handler(ctx, payload) {
   const scope = identity.scopeOf(ctx);
   const nowMs = identity.nowMs(ctx);
   const state = await loadBootState(ctx, scope);
   const user = state.user;
   const customer = state.customer;
   const viewContext = identity.buildViewContext(state.viewSession);
-  const roleState = await resolveRoleState(ctx, scope, user, viewContext);
+  // D86：preferredRole 只接受两个业务角色枚举；其它值/伪造值一律忽略（roles 校验在 resolveRoleState）。
+  const rawPreferred = payload && typeof payload.preferredRole === 'string' ? payload.preferredRole.trim() : '';
+  const preferredRole = rawPreferred === enums.ROLES.CUSTOMER || rawPreferred === enums.ROLES.PARTNER ? rawPreferred : '';
+  const roleState = await resolveRoleState(ctx, scope, user, viewContext, preferredRole);
   const avatarUrls = await signBootAvatarUrls(ctx, customer, state.partner, state.boundPartner);
 
   const customerBlock = buildCustomerBlock(customer, state.binding, avatarUrls.customer);

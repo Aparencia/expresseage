@@ -8,7 +8,9 @@ const path = require('path');
 const crypto = require('crypto');
 
 const ROOT = path.resolve(__dirname, '..', '..');
-const DEFAULT_SKIP = new Set(['.git', 'node_modules', 'miniprogram_npm', '.dsh-code-index']);
+// `.agents/` 是并行 agent 的 worktree/元数据（非发布源码、非 git 跟踪内容），与 .dsh-code-index 同理跳过；
+// 否则同一个文件会在主仓与 worktree 副本里被重复扫描，产生假红（行数/openid/旧码/零金额等）。
+const DEFAULT_SKIP = new Set(['.git', 'node_modules', 'miniprogram_npm', '.dsh-code-index', '.agents']);
 
 function posix(p) {
   return String(p).replace(/\\/g, '/');

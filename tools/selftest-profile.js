@@ -29,11 +29,12 @@ const validate = require(path.join(ROOT, 'shared/validate.js'));
 const enums = require(path.join(ROOT, 'shared/enums.js'));
 const gender = require(path.join(ROOT, 'shared/gender.js'));
 const launchRoute = require(path.join(ROOT, 'config/route.js'));
+const workspaceCases = require(path.join(ROOT, 'tools/lib/workspace-cases.js'));
 const uploadCommon = require(path.join(ROOT, 'cloudfunctions/api/handlers/upload/_common.js'));
 const profileVm = require(path.join(ROOT, 'pages/profile/parts/view-model.js'));
 const avatarSave = require(path.join(ROOT, 'pages/profile/parts/avatar-save.js'));
 
-const EXPECTED_ASSERTIONS = 200; // 194 - 2（批 16 草稿指针三件套删除）+ 7（D69 本机退出登录）+ 1（P2-A8 DEACTIVATED 文案时限）
+const EXPECTED_ASSERTIONS = 211; // 200 + 8（D86 工作区/切换编排 + 静态接线）+ 3（workspaceHomeOf）
 
 const TOKEN = 'T'.repeat(32);
 const CONSENT_AT = 1700000000000;
@@ -271,8 +272,7 @@ function register(h) {
       '开发者后台不写 lastRole（不是业务角色）');
   });
 
-  // ---------------------------------------------------------------- §5.6 lastRole 生产接入点
-  h.section('§5.6 lastRole 生产接入点（TD-008 关闭证据：只经 utils/storage）', (t) => {
+  h.section('§5.6 lastRole 生产接入点（TD-008 关闭证据：只经 utils/storage）', async (t) => {
     const launchJs = readSource('pages/launch/index.js');
     const roleJs = readSource('pages/role/index.js');
     const profileJs = readSource('pages/profile/index.js');
@@ -284,7 +284,6 @@ function register(h) {
       && roleJs.indexOf('suggestedRoleOf') !== -1,
     'pages/role 读 lastRole + 调纯件给「上次使用」建议（生产调用点 2）');
     t.check(roleJs.indexOf('setLastRole') !== -1, 'pages/role 选身份后写 lastRole（生产调用点 3）');
-    t.check(profileJs.indexOf('setLastRole') !== -1, 'pages/profile 切换身份前写 lastRole（生产调用点 4）');
     t.check(activateJs.indexOf('setLastRole') !== -1, 'activate 成功进入兼职身份后写 lastRole（生产调用点 5）');
     t.check(!/wx\.(get|set|remove)StorageSync/.test(pageJs),
       '页面不直接摸平台 storage API（只经 utils/storage 唯一写口，门禁 #15 的判据侧）');
@@ -302,6 +301,8 @@ function register(h) {
     'D68/P2-A8 DEACTIVATED 文案补时限（不承诺注销后可立即重新使用）');
   });
 
+  // D86 工作区切换判据（拆到 tools/lib/workspace-cases.js，保持本套件 ≤1000 行）
+  workspaceCases.register(h);
   // ---------------------------------------------------------------- §11 隐私同意
   h.section('§11 隐私同意三态与降级（fail-closed）', (t) => {
     const config = { privacyVersion: '1.0.0' };

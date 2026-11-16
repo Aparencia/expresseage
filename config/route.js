@@ -1,6 +1,7 @@
 // config/route.js · 启动分流纯函数（零 wx、零 storage，可直测）
 // snapshot 形状见 docs/engineering/V4_ARCHITECTURE.md §3.6；返回 { url, reason }。
-// 角色解析口径（批 2）：显式 activeRole 优先 > 单角色直进 > 双角色回角色页由用户选择。
+// 工作区解析口径（D86）：显式 activeRole 优先（服务端按 preferredRole/默认顾客给出）> 单角色直进 >
+// 双角色无 activeRole 才回角色页（兜底）；页面守卫用 workspaceHomeOf 回当前工作区首页。
 // 「上次使用」建议由 pages/role 在显示层读 utils/storage 处理（本文件不 require storage、
 // 不接收 lastRole，路由输入保持 ARCHITECTURE §3.6 冻结形状）。
 // D37（2026-10-28 用户拍板 1=A）：分享卡统一落 launch；launch.onLoad 只认 bind/orderNo 白名单，
@@ -24,6 +25,18 @@ const ROLES = { CUSTOMER: 'CUSTOMER', PARTNER: 'PARTNER' };
 
 function isBusinessRole(role) {
   return role === ROLES.CUSTOMER || role === ROLES.PARTNER;
+}
+
+// D86：页面守卫的"回退首页"单源。工作区不匹配时回当前工作区首页，而不是总回角色页；
+// 只有无工作区（null/未知）才回角色页（首次/无角色场景）。
+function workspaceHomeOf(role) {
+  if (role === ROLES.CUSTOMER) {
+    return CUSTOMER_HOME;
+  }
+  if (role === ROLES.PARTNER) {
+    return PARTNER_WORKBENCH;
+  }
+  return ROLE_PAGE;
 }
 
 function roleListOf(snapshot) {
@@ -206,6 +219,7 @@ module.exports = {
   ROLES,
   ENTRY_REASON,
   isBusinessRole,
+  workspaceHomeOf,
   resolveLaunchRole,
   suggestedRoleOf,
   roleOfDecision,

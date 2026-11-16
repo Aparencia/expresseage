@@ -1,4 +1,4 @@
-// pages/role/index.js · 身份选择 / 邀请码入口 / 邀请卡落地（D37：由 launch 分流进入）/ 开发者分流
+// pages/role/index.js · 工作区入口（D86：仅首次/无角色/邀请卡落地，不再是启动必经页）/ 邀请码 / 开发者分流
 // 只做：取参 → 调 api → setData → 事件转发；不出现 action 字符串与集合名。
 'use strict';
 
@@ -77,7 +77,7 @@ Page({
   },
 
   // 隐私闸放行后的邀请卡初始化（原 onLoad 下半段；只在闸通过后执行，未同意时不做任何绑定动作）。
-  enter() {
+  async enter() {
     this.sync();
     if (this.data.vm.viewContext) {
       const role = this.data.vm.viewContext.role === 'PARTNER' ? 'PARTNER' : 'CUSTOMER';
@@ -88,9 +88,27 @@ Page({
       redirect(ACCOUNT_SWITCH_PAGE);
       return;
     }
+    // D86：旧绑定卡可能直落本页（未经 launch）。账号含 CUSTOMER 时补一次顾客上下文水合，
+    // 让「已绑定·去下单」与绑定按钮拿到 binding 块；纯兼职/无角色不补（仍走原有资料/激活路径）。
+    await this.ensureCustomerContext();
+    this.sync();
     this.applyBindContext(this._bindNo || '');
     if (this._bindNo) this.loadBindCard(this._bindNo);
     if (!this.data.vm.roles || this.data.vm.roles.length === 0) this.hydrateBootstrap();
+  },
+
+  ensureCustomerContext() {
+    const snap = store.snapshot();
+    const roles = Array.isArray(snap.roles) ? snap.roles : [];
+    if (!this._bindNo || snap.viewContext || roles.indexOf(route.ROLES.CUSTOMER) < 0
+      || snap.activeRole === route.ROLES.CUSTOMER) {
+      return Promise.resolve();
+    }
+    return userApi.bootstrap(route.ROLES.CUSTOMER).then((data) => {
+      store.hydrateFromBootstrap(data);
+    }).catch(function ignore() {
+      return null;
+    });
   },
 
   onShow() {
@@ -119,7 +137,7 @@ Page({
   hydrateBootstrap() {
     // user.bootstrap 平铺 DTO 的唯一水合口在 store（roles/customer/partner/binding/configPublic），
     // 页面不再自己猜字段名拼接嵌套快照。
-    return userApi.bootstrap().then((data) => {
+    return userApi.bootstrap(storage.getLastRole()).then((data) => {
       store.hydrateFromBootstrap(data);
       this.sync();
       this.applyBindContext(this._bindNo || '');
@@ -129,21 +147,23 @@ Page({
     });
   },
 
-  // D38：邀请卡落地显示态判定（只读 store 快照，不改业务）：已绑定同号 / 兼职身份不可绑。
+  // D38/D86：邀请卡落地显示态判定（只读 store 快照，不改业务）：已绑定同号 / 无顾客角色不可绑。
+  // D86 修订：不再按 activeRole 拦——双角色账号当前在兼职工作区也算顾客本人；
+  // 只有「有角色但不含 CUSTOMER」（纯兼职）才挡，避免把顾客邀请误当兼职绑定入口。
   applyBindContext(bindNo) {
     if (!bindNo) {
       this.setData({ bindBound: false, bindBlocked: false });
       return;
     }
     const vm = this.data.vm;
+    const roles = Array.isArray(vm.roles) ? vm.roles : [];
     const binding = store.snapshot().binding || {};
-    // D37 落地卡按目标角色渲染：兼职身份不显示顾客绑定入口（顾客身份才显示）
-    const partnerOnly = vm.activeRole === route.ROLES.PARTNER;
+    const noCustomerRole = roles.length > 0 && roles.indexOf(route.ROLES.CUSTOMER) < 0;
     const same = !!(binding.partnerNo && binding.partnerNo === bindNo);
-    if (same || partnerOnly) {
+    if (same || noCustomerRole) {
       pendingInvite.clear();
     }
-    this.setData({ bindBound: same, bindBlocked: partnerOnly });
+    this.setData({ bindBound: same, bindBlocked: noCustomerRole });
   },
 
   loadBindCard(bindNo) {

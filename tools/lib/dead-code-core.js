@@ -9,7 +9,8 @@ const F = require('./fsutil');
 const ROOT = F.ROOT;
 
 const BASELINE_REL = 'tools/dead-export-baseline.json';
-const SKIP = new Set(['.git', 'node_modules', 'miniprogram_npm', '.dsh-code-index', 'docs']);
+// `.agents/` 是并行 agent 的 worktree/元数据（与 fsutil.DEFAULT_SKIP 同口径）：不参与生产/测试引用计数。
+const SKIP = new Set(['.git', 'node_modules', 'miniprogram_npm', '.dsh-code-index', '.agents', 'docs']);
 // wxml 供 #36 事件绑定判定；json 供 #36 组件 selectComponent 选择器 → usingComponents 解析
 const TEXT_EXTS = new Set(['.js', '.wxml', '.json']);
 // #35 导出扫描范围 = 小程序生产源码（云端 `shared/` 是生成副本，只作生产引用计数、不重复登记）

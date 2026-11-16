@@ -20,6 +20,7 @@ const inviteFlow = require('./parts/invite-continuation');
 const deletion = require('./parts/delete-account');
 const logout = require('./parts/logout');
 const subscribeRow = require('./parts/subscribe-row');
+const workspace = require('../../utils/workspace');
 
 const BIND_PAGE = '/pkg-customer/pages/bind/index';
 const CUSTOMER_ORDERS_PAGE = '/pages/customer/orders/index';
@@ -417,20 +418,22 @@ Page({
     wx.navigateTo({ url: doc ? HELP_PAGE + '?doc=' + doc : HELP_PAGE });
   },
 
+  // D86：一处切换工作区——直接水合目标工作区并 reLaunch 目标首页，不再回角色页。
+  // 失败保持当前工作区；lastRole 由 utils/workspace 在 reLaunch 成功后写。
   onSwitchRole() {
     if (!this.data.canEdit || this.data.viewSession) {
       return;
     }
     const currentRole = this.data.isCustomer ? enums.ROLES.CUSTOMER : enums.ROLES.PARTNER;
-    wx.showModal({
-      title: '切换身份',
-      content: '切换后回到身份选择页，未提交的操作会丢失。',
-      success(res) {
-        if (res.confirm) {
-          // 记下「上一次使用的角色」供角色页给建议（只经 utils/storage 白名单）
-          storage.setLastRole(currentRole);
-          wx.reLaunch({ url: route.ROLE_PAGE });
-        }
+    const target = workspace.otherRoleOf(store.get('roles') || [], currentRole);
+    if (!target) {
+      return;
+    }
+    wx.showLoading({ title: '切换中', mask: true });
+    workspace.switchTo(target).then((res) => {
+      wx.hideLoading();
+      if (!res || !res.ok) {
+        wx.showToast({ title: (res && res.message) || workspace.FAIL_COPY, icon: 'none' });
       }
     });
   },

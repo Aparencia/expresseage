@@ -607,7 +607,7 @@ expressage_college_v4/
 - **审计感知**：页面不展示审计细节；帮助/隐私页说明"开发者后台默认脱敏；真实账号只读查看，测试账号为后台合成账号，均留审计"。
 ### 5.6 store 与本地存储
 - `store/index.js`：单例内存快照 `{roles,activeRole,me,customer,partner,binding,config,badges,messageReadAt,serverTimeSkew,viewContext}` + `get/set/patch/subscribe`；页面按 key 订阅做行级 `setData` 补丁。
-- 本地存储**两个键**，均由 `utils/storage.js` 单一出口读写：①`ex_college_v4.store`（lastRole、引导已读、取件清单勾选）——`draftPointer` 历史键只保留在 normalize 白名单里用于剥旧脏值（草稿指针三件套生产 0 引用，批 16 已删除）；⛔ **不存 `viewContext`/`viewTicket`/`viewMode`/`targetIsTest`**、不读不写 v1/v2/v3 键（D2）；**L3 敏感字段（尾号/取件码/openid）不入本地存储**——**唯一例外（D57，2026-11-01 用户拍板）**：②`ex_college_v4.pickcodes` = 顾客「我的取件码（本机）」清单，允许 L3 明文存本机，约束：仅顾客角色、只存本机、不上传/不共享、不进日志/通知/分享卡片/URL、只读视角与后台不可见、上限 50 条按码去重、可一键清空、换机/清缓存丢失；页面/其它模块**不得直接拼接该键或绕过 `utils/storage.js`**（门禁 #15 扫描该键字面量只允许出现在 `utils/storage.js` 与测试/文档）。
+- 本地存储**两个键**，均由 `utils/storage.js` 单一出口读写：①`ex_college_v4.store`（lastRole、引导已读、取件清单勾选）——`draftPointer` 历史键只保留在 normalize 白名单里用于剥旧脏值（草稿指针三件套生产 0 引用，批 16 已删除）；⛔ **不存 `viewContext`/`viewTicket`/`viewMode`/`targetIsTest`**、不读不写 v1/v2/v3 键（D2）；**L3 敏感字段（尾号/取件码/openid）不入本地存储**——**唯一例外（D57，2026-11-01 用户拍板）**：②`ex_college_v4.pickcodes` = 顾客「我的取件码（本机）」清单，允许 L3 明文存本机，约束：仅顾客角色、只存本机、不上传/不共享、不进日志/通知/分享卡片/URL、只读视角与后台不可见、上限 50 条按码去重、可一键清空、换机/清缓存丢失；页面/其它模块**不得直接拼接该键或绕过 `utils/storage.js`**（门禁 #15 扫描该键字面量只允许出现在 `utils/storage.js` 与测试/文档）。**D86 例外**：`lastRole` 可作为 `preferredRole` 进入 `user.bootstrap` 请求体——仅角色枚举、只作展示/导航偏好、不参与鉴权、不落库；其余本地值（票据/视角上下文/草稿/L3）仍**不得**进请求体。
 - `config` 缓存 TTL 5 分钟 + onShow 刷新；维护模式只读放行。
 ### 5.7 组件清单
 | 组件 | 职责 | 约束 |

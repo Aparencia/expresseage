@@ -6,6 +6,7 @@ const store = require('./store/index');
 const userModule = require('./api/modules/user');
 const bindModule = require('./api/modules/bind');
 const configModule = require('./api/modules/config');
+const storage = require('./utils/storage');
 const sharePlatform = require('./utils/share/platform');
 // 主包公共依赖声明：分包共享模块只在主包存放，显式 require 让主包可达（代码质量扫描不误报未使用）。
 // 模块零副作用，不改变启动网络/存储行为；若后续把这些模块迁入分包，可同步删除本行。
@@ -63,7 +64,9 @@ App({
       return { ok: false, code: 'CLOUD_INIT_FAILED' };
     }
     try {
-      const data = await userModule.bootstrap();
+      // D86：本机上次工作区作为 preferredRole 提示；无偏好/非法值由服务端回落默认（顾客）。
+      // 该值只经 utils/storage 白名单键，不含票据/视角上下文/PII（ENGINEERING §5.6）。
+      const data = await userModule.bootstrap(storage.getLastRole());
       store.hydrateFromBootstrap(data);
       // P0-2：bootstrap 已回 configPublic → 直接灌入 api/modules/config 的 5 分钟缓存，
       // 首页/任何页面本次会话首次 getPublic 命中缓存（零云调用）；失败语义不变（页面按默认值降级）。

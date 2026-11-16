@@ -16,6 +16,9 @@
 
 ### 用户可见变更
 
+- **2026-11-16 角色入口 M1+（D86，批 44）**：不再强制用户先选「我是顾客/我是兼职」。①**老用户零选择**：双角色账号按本机上次工作区直达（无偏好默认顾客），单角色直进、无角色才进「开始使用」任务页；②**一处切换**：「我的」头部新增「切换工作台」，直接进目标首页，不再回角色页、不再弹「未提交操作会丢失」；③**绑定卡直达**：双角色账号当前在兼职工作区时，点顾客绑定卡也直接显示「绑定这位兼职」（不再要求先切顾客身份）；④**入口任务化**：首次页两张卡改为「去下单 / 去接单」，保留「有邀请码？去开通接单」；⑤**守卫不再弹回身份页**：页面角色不匹配时回当前工作区首页。**不动鉴权/数据隔离**：服务端仍按 `users.roles` + 资源归属判权。
+- **2026-11-16 角色入口 M1+ 工程细节（D86，批 44）**：`shared/role.js` `pickActiveRole` 默认顾客（原兼职优先废止）；`handlers/user/bootstrap.js` 增可选 `preferredRole`（必须属于 `users.roles`，只作展示/导航偏好，不落库/不鉴权；`viewContext` 忽略）；`api/modules/user.js`/`app.js`/`pages/launch|role` 接入 `lastRole`；新增 `utils/workspace.js`（`otherRoleOf/canSwitch/switchTo`，可注入依赖）与 `config/route.workspaceHomeOf`；7 处页面守卫改回工作区首页；`pages/role` 文案任务化 + 绑定卡按 roles 判定；`pages/profile` 一处切换 + 去掉旧确认弹窗。判据：`selftest-cloud` 214/214、`selftest-profile` 211/211、`selftest-state` 405/405、`selftest-performance` 149/149、全量 39 套 0 失败；`check.js` 39/39、`check-docs` 12/12、零金额 0 命中（白名单 108 项）。工具链同时把 `.agents/`（并行 worktree，非发布源码）排除出扫描，避免重复副本造成假红。**无新集合/索引/触发器/云函数单元；需用户重新部署 `api`（bootstrap 入参 + shared 副本）并重新上传体验版后真机复测（QA §AM）。**
+
 - **2026-11-14 主包打包体积/代码质量修复（批 43，DevTools 报 main package 24574KB > 2048KB）**：`project.config.json` 的 `packOptions.ignore` 增加 `.agents`——仓库把 agent 工作树放在项目内的 `.agents/worktrees/`，每个工作树含完整 docs/截图副本（约 25MB），此前未忽略导致主包被撑到 24MB；忽略后主包约 1.0MB（< 1.5M 代码质量线、< 2M 硬限），图片资源 36.5KB（< 200K）。
 - **2026-11-14 主包未使用 JS 收口（批 43）**：`api/modules/ai`、`api/privacy`、`shared/appoint`、`shared/audit-actions`、`utils/order-edit`、`utils/rebind`、`utils/recognize/index` 只被分包引用、按单源纪律放在主包；新增 `config/main-deps.js` 由 `app.js` 显式 require 一次，声明为主包公共依赖（模块零副作用），消除 DevTools「主包内不应存在主包未使用的 JS 文件」误报。判据 `selftest-performance` J9/J10（147→149）。
 - **2026-11-14 微信提醒状态与快捷关闭（批 42）**：工作台「开启新单提醒」改为读取微信真实订阅状态——**已开启时不再显示按钮**（此前只看本次会话，重进页面又冒出来）；「我的 → 微信提醒」在已开启时显示「关闭」快捷入口，**一键进小程序设置页**关闭（顾客/兼职同一行、各用各的模板；平台不允许应用内代关）。

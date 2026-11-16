@@ -130,7 +130,7 @@ function register(h) {
   // ---------------------------------------------------------------- A. P0-1 启动关键路径
   asyncSection('A. P0-1 启动关键路径：只 await bootstrap、绑定摘要后台推进、config 预热接线', async (t) => {
     const app = codeOf('app.js');
-    t.check(app.indexOf('await userModule.bootstrap()') >= 0, 'A1 启动仍 await user.bootstrap（唯一必须等待的云调用）');
+    t.check(/await userModule\.bootstrap\(/.test(app), 'A1 启动仍 await user.bootstrap（唯一必须等待的云调用；D86 允许带 preferredRole 提示）');
     t.check(app.indexOf('await this.refreshBinding()') < 0, 'A2 启动链不再 await bind.getCurrent（B1 串行 RTT 消除）');
     t.check(app.indexOf('await this.refreshConfig()') < 0, 'A3 启动链不再 await 公开配置（bootstrap 已回 configPublic）');
     t.check(app.indexOf('this.startBinding()') >= 0, 'A4 绑定摘要在启动后台发起（非关键路径）');

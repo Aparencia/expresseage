@@ -137,7 +137,7 @@ Page({
       return;
     }
     if (snapshot.activeRole !== 'CUSTOMER') {
-      wx.reLaunch({ url: route.ROLE_PAGE });
+      wx.reLaunch({ url: route.workspaceHomeOf(snapshot.activeRole) });
     }
   },
 

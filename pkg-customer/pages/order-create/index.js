@@ -101,7 +101,7 @@ Page({
   onShow() {
     const snapshot = store.snapshot();
     if (snapshot.viewContext) return;
-    if (snapshot.activeRole !== 'CUSTOMER') wx.reLaunch({ url: route.ROLE_PAGE });
+    if (snapshot.activeRole !== 'CUSTOMER') wx.reLaunch({ url: route.workspaceHomeOf(snapshot.activeRole) });
   },
 
   // 配置 + 对方公开资料 + 本人资料（配送地址默认值）→ 服务类型选项；装配在 parts/bootstrap
