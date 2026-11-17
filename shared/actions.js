@@ -39,6 +39,13 @@ const CLIENT_RULES = defineRules('client', [
   ['partner.createSubInvites', true],
   ['partner.revokeSubInvite', true],
   ['partner.listSubMembers', false],
+  // D87：转派候选检索（只读；仅转派场景，限流+无游标+结果上限，DATA_MODEL §2.3 读屏蔽改写）
+  ['partner.searchTransferTargets', false],
+  // D88：转派码（本人签发/轮换 1 个有效码；对方凭码解析出编号，转派动作本身零改动）
+  ['partner.createTransferCode', true],
+  ['partner.resolveTransferCode', false],
+  // D90：最近使用（只回本人转派成功过的对象，≤5；不构成目录）
+  ['partner.recentTransferTargets', false],
   ['partner.removeSubMember', true],
   // bind（create 仅顾客可调；claimGuestOrder 为 P1 预留）
   ['bind.create', true],
@@ -63,6 +70,10 @@ const CLIENT_RULES = defineRules('client', [
   ['order.correct', true],
   ['order.undo', true],
   ['order.deleteRecord', true],
+  // D92 审核（订单级两级状态 + 件数增删；审核不改订单状态，件数增删仅未取件阶段）
+  ['order.reviewMark', true],
+  ['order.reviewReopen', true],
+  ['order.reviewParcels', true],
   ['order.imageUrl', false],
   // D58：转派四动作（acceptTransfer 是唯一订单归属改写点；全部写动作）
   ['order.requestTransfer', true],

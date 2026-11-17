@@ -335,8 +335,8 @@ function register(h) {
     'D33b guest 提示块自动完成时刻随公开配置 config.autoCompleteAt（TD-083：22:30 不再写死 23:50）');
     const guestDefault = resultModel.buildResult({ orderNo: '20261022-0034' },
       { customerMode: 'GUEST', config: { autoCompleteAt: '25:99' } });
-    t.check(guestDefault.hintLines[3].indexOf('每天 22:00 自动完成') >= 0,
-      'D33c 配置缺失/非法（25:99）回退出厂默认 22:00（D51；config/defaults 唯一默认）');
+    t.check(guestDefault.hintLines[3].indexOf('每天 22:30 自动完成') >= 0,
+      'D33c 配置缺失/非法（25:99）回退出厂默认 22:30（D91；config/defaults 唯一默认）');
     const oneOrderResult = resultModel.buildResult({ orderNo: '20261022-0031', parcels: [{}, {}, {}] }, { customerMode: 'BOUND' });
     t.check(oneOrderResult.rows.length === 1 && oneOrderResult.title === '订单已提交'
       && oneOrderResult.rows[0].label === '点开查看进度',

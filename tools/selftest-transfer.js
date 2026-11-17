@@ -16,6 +16,9 @@ const fs = require('fs');
 const { createHarness, installCrashGuard } = require('./selftest');
 const cases = require('./lib/order-transfer-cases');
 const handoverCases = require('./lib/transfer-handover-cases');
+const searchCases = require('./lib/transfer-search-cases');
+const codeCases = require('./lib/transfer-code-cases');
+const recentCases = require('./lib/transfer-recent-cases');
 
 const {
   ROOT, API, ORDERS_DIR, NOW, MINUTE, DAY, C1, P1, PID1, P2, PID2, P3, PID3,
@@ -25,6 +28,7 @@ const {
   SUBMITTED, ACCEPTED, PICKED, DELIVERED, COMPLETED, CANCELLED, EXCEPTION,
   enums, retention, apiOf, handlerCtxOf, handlerCtxWithCrid, nextCrid, iso,
   orderDoc, transferBlock, acceptedTransferBlock, configDoc, world,
+  userDoc, partnerDoc,
   rowOf, eventsFor, eventTypesOf, countersOf, sameJson, transferKeysOf, jsonOf, bannedHitsOf,
   topKeysOf, expectCode, expectField, errorCodeOf, orderFiles, relOf, cleanupTestDb, cleanupCtx
 } = cases;
@@ -676,8 +680,8 @@ async function sectionT14(h) {
     const bKeys = (bGet.data.order.actions || []).map((item) => item.key);
     t.eq([bKeys.indexOf('pick') >= 0, bKeys.indexOf('exception') >= 0, bKeys.indexOf('correct') >= 0,
       bKeys.indexOf('cancel') >= 0, bKeys.indexOf('requestTransfer') >= 0, bKeys.indexOf('acceptTransfer')],
-    [true, true, true, true, true, -1],
-    'P0-1 确认后新履约人 order.get 动作条含 pick/exception/correct/cancel/requestTransfer，不再回邀请卡动作');
+    [true, true, true, true, false, -1],
+    'P0-1 确认后新履约人 order.get 动作条含 pick/exception/correct/cancel；D89 起不再下发 requestTransfer（禁止二次转派）');
     t.eq([Object.prototype.hasOwnProperty.call(bGet.data.order, 'customerNo'), bGet.data.order.counterpart],
       [false, null], 'P0-1b 动作矩阵解耦后顾客身份遮蔽仍生效（customerNo 缺键 / counterpart=null）');
     const pickedDb = world({ orders: [orderDoc('20261103-1402', PICKED, {
@@ -770,11 +774,15 @@ async function sectionT14(h) {
       jsonOf(bRow).indexOf('顾客甲') < 0, (bRow.actions || []).some((item) => item.key === 'pick')],
     [false, true, true, true],
     'P1-3b 转入后 workbench 行字符串级零 customerNo/displayName，动作矩阵保留');
-    await lp2.call('order.requestTransfer', { orderNo: '20261103-1431', toPartnerNo: 'PCCCCCC' },
+    const secondReq = await lp2.call('order.requestTransfer', { orderNo: '20261103-1431', toPartnerNo: 'PCCCCCC' },
       { clientRequestId: nextCrid('t14l2req') });
+    t.eq([secondReq.ok, secondReq.code], [false, 'INVALID_STATE'],
+      'P2-11 D89：转派成功后再次 requestTransfer → INVALID_STATE（禁止二次转派，不再覆盖 transfer 块）');
     const bSecond = await lp2.call('order.get', { orderNo: '20261103-1431' });
-    t.eq([Object.prototype.hasOwnProperty.call(bSecond.data.order, 'customerNo'), bSecond.data.order.counterpart],
-      [false, null], 'P2-11 二次转派（transfer 块被新 PENDING 覆盖）后现任履约人仍遮蔽顾客身份');
+    t.eq([Object.prototype.hasOwnProperty.call(bSecond.data.order, 'customerNo'), bSecond.data.order.counterpart,
+      bSecond.data.order.transfer && bSecond.data.order.transfer.toPartnerNo],
+    [false, null, 'PBBBBBB'],
+    'P2-11b 二次转派被拒后原转派块零变化（toPartnerNo 仍是 B）+ 现任履约人仍遮蔽顾客身份');
 
     // --- P1-4：事务外旧快照不得覆盖已推进的转派（CAS：零写、零事件）---
     const casDb = world({ orders: [orderDoc('20261103-1441', ACCEPTED, {
@@ -903,7 +911,8 @@ function cleanupCollectionsOf(key) {
 }
 
 // ================================================================ 注册
-const EXPECTED_ASSERTIONS = 140 + handoverCases.EXPECTED_ASSERTIONS; // 实跑回填（node tools/selftest-transfer.js | Select-Object -Last 2）
+const EXPECTED_ASSERTIONS = 141 + handoverCases.EXPECTED_ASSERTIONS + searchCases.EXPECTED_ASSERTIONS
+  + codeCases.EXPECTED_ASSERTIONS + recentCases.EXPECTED_ASSERTIONS; // +20：D87-a T15 检索 20 条；实跑回填（node tools/selftest-transfer.js | Select-Object -Last 2）
 
 function register(h) {
   h.setExpected(EXPECTED_ASSERTIONS);
@@ -921,6 +930,9 @@ function register(h) {
   sectionT12(h);
   sectionT13(h);
   sectionT14(h);
+  searchCases.register(h);
+  codeCases.register(h);
+  recentCases.register(h);
   handoverCases.register(h, {
     world, orderDoc, acceptedTransferBlock, transferBlock, apiOf, nextCrid, expectCode,
     topKeysOf, jsonOf, ORDER_STATUS, PID1, PID2, P1, P2, P3

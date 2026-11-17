@@ -185,7 +185,7 @@ expressage_college_v4/
 | `serviceCatalog` | 服务类型目录 `[{code,name,desc}]`（**只有类型名与说明**） | CONTRACT §6 五类 | admin.updateConfig |
 | `announcement` / `maintenance` | 公告 / 维护模式开关+文案 | `''` / `{enabled:false,text:''}` | admin.updateConfig |
 | `orderTimeoutMinutes` | 未接单超时 | 120 | admin.updateConfig |
-| `autoCompleteAt`（D43） | 送达单日结批时刻（UTC+8 的 `HH:MM`，默认 `22:00`；cutoff=该单送达日所在自然日的该时刻，10 分钟触发器 ⇒ 实际完成落该时刻~+10 分钟） | `22:00` | admin.updateConfig（HH:MM 格式闸） |
+| `autoCompleteAt`（D43/D91） | 送达单日结批时刻（UTC+8 的 `HH:MM`，默认 `22:30`；cutoff=该单送达日所在自然日的该时刻；**该时刻及之后送达的送达即完成**，该时刻前送达的 10 分钟触发器 ⇒ 实际完成落该时刻~+10 分钟） | `22:30` | admin.updateConfig（HH:MM 格式闸） |
 | `screenshotRetentionDays` | 截图留存 | 7 | admin.updateConfig |
 | `viewTicketTtlMinutes` | **切换会话票据时长（v0.7；v0.9 两模式共用）** | 30，范围 5~60 | admin.updateConfig |
 | `recognitionFailureRetentionDays`（v0.8） | **识别失败原图/记录保留** | 30，范围 7~30 | admin.updateConfig |
@@ -367,7 +367,7 @@ expressage_college_v4/
 | 任务（内部 action） | 到期条件（幂等） | 动作 | 上限 |
 | :-- | :-- | :-- | :-- |
 | `cleanup.orderTimeout` | `SUBMITTED` 且超 `orderTimeoutMinutes` 未接单 | CANCELLED + `TIMEOUT_CANCELLED`（SYSTEM） | 每轮 100 条 |
-| `cleanup.autoComplete` | `DELIVERED` 且 `deliveredAt ≤ 该单送达日当天 autoCompleteAt`（UTC+8 日结批，默认 22:00；**含 guest 单**） | COMPLETED + `AUTO_COMPLETED`（SYSTEM） | 100 |
+| `cleanup.autoComplete` | `DELIVERED` 且 `deliveredAt ≤ 该单送达日当天 autoCompleteAt`（UTC+8 日结批，默认 22:30；**含 guest 单**；该时刻及之后送达的已由 `order.markDelivered` 同事务完成，本 sweep 兜底存量/漏批） | COMPLETED + `AUTO_COMPLETED`（SYSTEM） | 100 |
 | `cleanup.files` | 终态超 `screenshotRetentionDays`（默认 7） | 按 `images[].fileId` 引用计数归零删云文件（`orders/{ticket}/image.jpg`）并写 `orders.images[].cleanedAt`、清订单图片引用；**无主 `avatars/` 自动清 MVP 不可行（TD-051，见本节末）** | 100 |
 | `cleanup.tickets` | `upload_tickets` 过期（宽限 24h，含已使用） | 删票据（无主文件扫描 MVP 不可行，TD-051） | 100 |
 | `cleanup.viewSessions`（v0.7） | 票据 `expiresAt` 已过或 `endedAt` 超 7 天 | 过期未结束 → 补写 `endedAt` + 记一条 `ACCOUNT_SWITCH_EXPIRED`（每票至多一条）；结束超 7 天 → 物理删会话 | 100 |
@@ -793,8 +793,13 @@ expressage_college_v4/
 | M35 | 放行"顾客无 ACTIVE 绑定也发绑定卡" | `selftest-share` S3 红（`utils/share` 放行式失效） |
 | M36 | 卡片 path 拼 `?inviter=`/新增 query | S5/S7 红（零泄漏/`check-share` 白名单失败） |
 | M37 | 切换会话（`viewSession=true`）不禁分享 | S4 红（切会话仍可发绑定卡 → 泄漏目标编号） |
+| M38 | `handlers/partner/searchTransferTargets.js` 关键词闸失效（`if (!codeOk && !nameOk)` → `if (false)`，1 字也能搜=可枚举） | `selftest-transfer` T15-6 首红（`VALIDATION_FAILED(field=keyword)` 期望 [false,VALIDATION_FAILED,keyword] 实得 [true,null,null]）；还原后 SHA256 `B5E54FA8…F9B34539D` 逐字节一致 + 168/168 复绿（D87-a，2026-11-17） |
+| M39 | `handlers/partner/resolveTransferCode.js` 过期判定失效（`transferCode.isExpired(...)` 条件 → `false`，过期码仍可解析） | `selftest-transfer` T16-10 首红（期望 [false,NOT_FOUND] 实得 [true,null]）；还原后 SHA256 `9C542591…496A37D2D` 逐字节一致 + 188/188 复绿（D88，2026-11-17） |
+| M40 | `handlers/order/requestTransfer.js` 禁止二次转派失效（`transfer.isAccepted(order)` 条件 → `false`，转派成功后仍可再转，并覆盖原转派块） | `selftest-transfer` P2-11 首红（期望 [false,INVALID_STATE] 实得 [true,null]）+ P2-11b 转派块被覆盖（toPartnerNo 变 PCCCCCC）；还原后 SHA256 `9D88BEA9…3F56528A9` 逐字节一致 + 189/189 复绿（D89，2026-11-17） |
+| M41 | `handlers/partner/recentTransferTargets.js` 去重失效（`codes.indexOf(no) < 0` 条件被删，"最近使用"出现重复对象并挤掉真实最近的 5 个） | `selftest-transfer` T18-3 首红（期望 [2,1] 实得 [3,2]）；还原后 SHA256 `5BAD2EDA…B1261BB` 逐字节一致 + 200/200 复绿（D90，2026-11-17） |
+| M42 | `handlers/order/reviewMark.js` 重复标记闸失效（`review.isReviewed(order)` 条件 → `false`，已审核单可反复标记） | `selftest-order` J4 首红（期望 `INVALID_STATE` 实得 `undefined`）；还原后 SHA256 `EC4D755D…5D1FAAD2` 逐字节一致 + 169/169 复绿（D92，2026-11-18） |
 
-**批 26/27 变异电池（M25~M37）已跑**：13/13 全部被对应套件捕获（首红断言 + 还原后 SHA256 逐字节一致；证据见 STATE 收口行/本批证据提交）。
+**批 26/27 变异电池（M25~M37）已跑**：13/13 全部被对应套件捕获（首红断言 + 还原后 SHA256 逐字节一致；证据见 STATE 收口行/本批证据提交）。**D87-a 补 M38 / D88 补 M39（2026-11-17）**：关键词闸与转派码过期判定各自单点变异，均被单条断言捕获，还原后逐字节一致。**D89 补 M40（2026-11-17）**：禁止二次转派的条件失效被 P2-11/P2-11b 双断言捕获（含"转派块被覆盖"后果）。**D90 补 M41**：最近使用去重失效被 T18-3 单点捕获。**D92 补 M42**：重复标记闸失效被 J4 单点捕获。
 
 - 流程：`Copy-Item` 复制被测文件 → 注入变异（锚点尽量 ASCII）→ 跑目标测试记录首红断言 → 还原 → SHA256 逐字节比对 → 复跑全绿；证据（首红 + hash 相等）写进 CHANGELOG。判绿的变异 = 判据没牙，当场补断言。
 **v1.1 安全基线测试（D34）**：新增 `tools/selftest-security.js` 并注册进聚合 SUITES（EXPECTED_ASSERTIONS 闸）：入参总闸（体积/层级/键数/字符串/嵌套危险键/链首装配）、写动作 clientRequestId 强校验、限流覆盖与打满行为（fake DAO 计数）、管理员闸 fail-closed、切换会话读白名单/禁止项、云函数层零 `userInfo` 伪造入口、日志语句不含敏感变量、错误包络不回堆栈、错误码恰 13、admin handler 均经 `createAdminScope`。
@@ -1111,7 +1116,7 @@ powershell -File tools/mutation.ps1 -Case M19
 
 ## 15. 批 20 工程变更（2026-11-01，D51~D56）
 
-- **cleanup.autoComplete（D51）**：判据改为「逐单 cutoff = 该单 `deliveredAt` 所在 UTC+8 自然日的 `config.autoCompleteAt`（默认 `22:00`），`now ≥ cutoff` 即完成」；删除「最近一个已过 cutoff + 顺延次日」实现与注释；22:00–24:00 送达的下一轮 10 分钟批内完成；跨 0 点按送达日补扫；事件/幂等/guest 同路径不变；config 默认值与 sync 副本（`cloudfunctions/*/shared/defaults.js`）同批。`selftest-cleanup`、`selftest-cloud`、`selftest-state`、`selftest-order-detail-partner`、`selftest-admin-pages`、`selftest-performance` 断言同批更新；断言总数以 `node tools/selftest.js` 汇总输出为准（不写死）。
+- **cleanup.autoComplete（D51，D91 修订）**：判据「逐单 cutoff = 该单 `deliveredAt` 所在 UTC+8 自然日的 `config.autoCompleteAt`（默认 `22:30`），`now ≥ cutoff` 即完成」的**公式单源迁到 `shared/auto-complete.js`**（`cutoffOf`/`isDue`；cleanup `sweeps/_util.js` 与 api `handlers/order/_auto-complete.js` 共用，禁止各写一份）；删除「最近一个已过 cutoff + 顺延次日」实现与注释；**该时刻及之后送达的送达即完成**（`order.markDelivered` 同事务写 `AUTO_COMPLETED`），本 sweep 兜底存量/漏批；api 读路径（`order.get`/`order.listPartner`/`order.listCustomer`）对已过该单日结时刻的 `DELIVERED` 单「读到即补完成」（单次读最多 5 单）；跨 0 点按送达日补扫；事件/幂等/guest 同路径不变；config 默认值与 sync 副本（`cloudfunctions/*/shared/defaults.js`）同批。`selftest-cleanup`、`selftest-cloud`、`selftest-state`、`selftest-order-detail-partner`、`selftest-admin-pages`、`selftest-performance` 断言同批更新；断言总数以 `node tools/selftest.js` 汇总输出为准（不写死）。
 - **order.listPartner view=day（D52/D53）**：新增今日流水视图与 `summary{scope:'deliveredToday'}`；`workbench` 视图零改动（旧 D48 summary 形状保留）；服务端测试拆件 `tools/lib/order-day-cases.js`（由 `selftest-cloud` 注册），客户端断言在 `selftest-order-workbench`（拆件 `tools/lib/order-workbench-cases.js`）；`tools/selftest-cloud.js` 已贴 1000 行上限，后续新增断言先拆件。
 - **partner.listBindings（D54）**：空 `dormKey` 桶置底（游标同全序）、`activeOrderCount` 只统计本页 ≤limit 顾客；服务端断言并入 `selftest-cloud`，纯件断言并入 `selftest-partner-pages`（拆件 cases lib）；`partner/_customer.js` 已 497/500，后续先拆件。
 - **pick-list 双阶段（D55）**：纯件拆为 `parts/pick-view.js`（待取件）、`parts/stage-flows.js`（阶段页面方法）；`index.js` 496/500 贴边；无服务端/ app.json/页数变化；`selftest-pick-list` 断言以实跑为准。

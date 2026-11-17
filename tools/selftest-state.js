@@ -134,7 +134,7 @@ function sectionActionRules(h) {
     t.eq(state.nextStatus('order.unmarkPicked', STATUS.ACCEPTED), STATUS.ACCEPTED,
       '§5.1/D61 逐件撤销目标=同状态 ACCEPTED（状态不变但 statusUpdatedAt 仍更新）');
     t.check(['PARCEL_PICKED', 'PARCEL_PICKED_REVERTED'].every((type) => enums.ORDER_EVENTS.indexOf(type) >= 0)
-      && enums.ORDER_EVENT_COUNT === 24, '§5.1/D61 件级事件 2 种已登记且事件总数=24（批 26/D58 由 19 增至 24）');
+      && enums.ORDER_EVENT_COUNT === 24, '§5.1/D61 件级事件 2 种已登记且事件总数=24（批 26/D58 由 19 增至 24；D91 审核复用 ORDER_CORRECTED 不新增事件）');
 
     t.check(state.canAct('order.accept', STATUS.SUBMITTED, 'PARTNER'), '§5.1 兼职可接待接单');
     t.check(!state.canAct('order.accept', STATUS.SUBMITTED, 'CUSTOMER'), '§5.1 顾客不可接单');
@@ -204,7 +204,7 @@ function sectionActionRules(h) {
 function sectionBatch26Frozen(h) {
   h.section('§5.1/§4.2/§3 批 26 冻结层（D58 转派 / D59 子队员 / 出厂默认）', (t) => {
     // D58：5 个 TRANSFER_* 事件（19→24），追加在 GUEST_ORDER_CLAIMED 之后；顾客消息中心拉黑 4 个私有事件
-    t.eq(enums.ORDER_EVENTS.length, 24, '§5.1/D58 事件类型 24 种（19→24）');
+    t.eq(enums.ORDER_EVENTS.length, 24, '§5.1/D58 事件类型 24 种（19→24；D91 不新增事件类型）');
     t.eq(enums.ORDER_EVENT_COUNT, 24, '§5.1/D58 事件登记数与枚举同源（24）');
     t.eq(enums.ORDER_EVENTS.slice(-5), ['TRANSFER_REQUESTED', 'TRANSFER_ACCEPTED', 'TRANSFER_DECLINED',
       'TRANSFER_CANCELLED', 'TRANSFER_EXPIRED'], '§5.1/D58 转派 5 事件追加在 GUEST_ORDER_CLAIMED 之后');
@@ -708,13 +708,13 @@ function sectionStatusViewPart(h) {
     t.check(statusView.waitingHint({ status: STATUS.DELIVERED }, config, format).indexOf('每天 21:40 自动完成') !== -1,
       '§7 送达后按配置时刻提示自动完成（D51，显式注入 21:40 非出厂默认）');
     t.check(statusView.waitingHint({ status: STATUS.DELIVERED }, config, format).indexOf('该时刻前送达的当天完成') !== -1
-      && statusView.waitingHint({ status: STATUS.DELIVERED }, config, format).indexOf('下一轮自动完成') !== -1
+      && statusView.waitingHint({ status: STATUS.DELIVERED }, config, format).indexOf('该时刻及之后送达的送达即完成') !== -1
       && statusView.waitingHint({ status: STATUS.DELIVERED }, config, format).indexOf('顺延') === -1,
-    '§7 送达自动完成提示为 D51 新口径（该时刻前当天完成/该时刻后下一轮，无旧顺延文案）');
+    '§7 送达自动完成提示为 D91 新口径（该时刻前当天完成/该时刻及之后送达即完成，无旧顺延文案）');
     t.check(statusView.waitingHint({ status: STATUS.DELIVERED }, { autoCompleteAt: '07:05' }, format).indexOf('07:05') !== -1,
       '§7 自动完成提示跟随配置时刻（非写死默认）');
-    t.check(statusView.waitingHint({ status: STATUS.DELIVERED }, { autoCompleteAt: 'bad' }, format).indexOf('22:00') !== -1,
-      '§7 配置时刻非法 → 提示回落出厂默认 22:00');
+    t.check(statusView.waitingHint({ status: STATUS.DELIVERED }, { autoCompleteAt: 'bad' }, format).indexOf('22:30') !== -1,
+      '§7 配置时刻非法 → 提示回落出厂默认 22:30');
     t.eq(statusView.waitingHint({ status: STATUS.ACCEPTED }, config, format), '', '§7 其他状态无等待提示');
     t.eq(statusView.waitingHint(submitted, null, format), '', '§7 缺配置时不展示截止时间');
   });

@@ -106,9 +106,10 @@ async function completeDelivered(ctx, order, nowDate) {
 
 async function runAutoComplete(ctx) {
   const C = util.collectionsOf(ctx);
-  // D51（CONTRACT §13）：迟到完成按送达日补算——每单 cutoff =「该单 deliveredAt 所在 UTC+8 自然日的
-  // config.autoCompleteAt（默认 22:00）」，now ≥ cutoff 即完成：22:00 前送达 → 当天 22:00 批完成；
-  // 22:00~24:00 送达 → 当天该时刻已过，下一轮 10 分钟批即完成（≤10 分钟）；跨 0 点补扫按送达日补算。
+  // D91（CONTRACT §13）：时刻改 22:30；每单 cutoff =「该单 deliveredAt 所在 UTC+8 自然日的
+  // config.autoCompleteAt（默认 22:30）」，now ≥ cutoff 即完成：22:30 前送达 → 当天 22:30 批完成；
+  // 22:30 及之后送达 → **送达即完成**（api 侧 order.markDelivered 同事务已转 COMPLETED，本批只兜底漏批/存量）；
+  // 跨 0 点补扫按送达日补算。本批同时是「触发器未配/漏跑」时的最终兜底（api 读路径另有一次补完成）。
   const now = util.msOf(ctx.now);
   const clockText = ctx.config && ctx.config.autoCompleteAt;
   const rows = await util.scanPage(ctx, C.ORDERS, { status: util.enums.ORDER_STATUS.DELIVERED },

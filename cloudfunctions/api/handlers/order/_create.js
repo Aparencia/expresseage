@@ -5,6 +5,7 @@
 
 const { COLLECTIONS } = require('../../shared/collections');
 const enums = require('../../shared/enums');
+const orderState = require('../../shared/order-state');
 const idGenerator = require('../../lib/id-generator');
 const { errors } = require('../../lib/errors');
 const common = require('./_common');
@@ -309,6 +310,8 @@ function buildOrderDocument(options) {
     isTest: opt.context.isTest === true,
     impersonatedBy: opt.context.impersonatedBy || '',
     status: enums.ORDER_STATUS.SUBMITTED,
+    // D92：审核为订单级两级状态，建单即「未审核」（无截图单不进审核列表，但状态字段始终存在，零迁移）
+    review: { status: orderState.REVIEW_STATUS.UNREVIEWED, at: null, byPartnerNo: '' },
     parcels: opt.input.parcels,
     images: parcelsInput.storedImagesOf(opt.input.images),
     manualEntry: opt.input.manualEntry,

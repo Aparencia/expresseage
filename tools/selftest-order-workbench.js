@@ -912,8 +912,8 @@ function register(h) {
     const at2230 = batchView.plan('deliver', pickedRows, { config: { autoCompleteAt: '22:30' } });
     t.check(at2230.confirmText.indexOf('系统每天 22:30 自动完成送达单') >= 0,
       'L01 TD-083 合法基线：注入 config.autoCompleteAt=22:30 → 送达确认文案按配置时刻生成');
-    t.eq([(at2230.confirmText.match(/22:30/g) || []).length, at2230.confirmText.indexOf(fallbackAt)],
-      [1, -1], 'L02 文案时刻按配置值单处渲染（D51 文案只提一次时刻；缺省值不出现在配置生效文案里）');
+    const at2115 = batchView.plan('deliver', pickedRows, { config: { autoCompleteAt: '21:15' } });
+    t.eq([(at2115.confirmText.match(/21:15/g) || []).length, at2115.confirmText.indexOf(fallbackAt)], [1, -1], 'L02 文案时刻按配置值单处渲染（D91 文案只提一次时刻；缺省值不出现在配置生效文案里）');
     const noConfig = batchView.plan('deliver', pickedRows, {});
     t.check(noConfig.confirmText.indexOf('系统每天 ' + fallbackAt + ' 自动完成送达单') >= 0,
       'L03 缺配置 → 回退出厂默认（唯一默认单源 = config/defaults.DEFAULT_CONFIG.autoCompleteAt）');
@@ -942,10 +942,9 @@ function register(h) {
     t.check(batchSrc.indexOf('defaults.DEFAULT_CONFIG.autoCompleteAt') >= 0
       && batchSrc.indexOf('defaults.normalizeClockText(') >= 0,
       'L11 默认值/归一判据都引用 config/defaults（唯一默认值来源），零件不本地写死时刻');
-    t.check(at2230.confirmText.indexOf('该时刻前送达的当天完成') >= 0
-      && at2230.confirmText.indexOf('该时刻后送达的下一轮自动完成') >= 0
-      && at2230.confirmText.indexOf('顺延次日') === -1,
-      'L12 D51 文案语义：该时刻前送达的当天完成、该时刻后送达的下一轮自动完成（不再写「顺延次日」）');
+    t.check(at2230.confirmText.indexOf('该时刻前送达的当天完成') >= 0 && at2230.confirmText.indexOf('下一轮') === -1
+      && at2230.confirmText.indexOf('该时刻及之后送达的送达即完成') >= 0 && at2230.confirmText.indexOf('顺延次日') === -1,
+      'L12 D91 文案语义：该时刻前送达的当天完成、该时刻及之后送达的送达即完成（旧「下一轮/顺延次日」作废）');
     const at2350 = batchView.plan('deliver', pickedRows, { config: { autoCompleteAt: '23:50' } });
     t.check(at2350.confirmText.indexOf('系统每天 23:50 自动完成送达单') >= 0,
       'L13 显式注入 23:50 的可配置用例：文案按注入值生效（旧默认已成配置可改项）');

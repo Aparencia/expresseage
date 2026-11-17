@@ -8,6 +8,10 @@ const enums = require('./enums');
 
 const STATUS = enums.ORDER_STATUS;
 const STATUS_LIST = enums.ORDER_STATUS_LIST;
+// D92 审核：订单级两级状态（中文文案由服务端 DTO 下发，页面零判据）；放这里而不是 enums，
+// 因为 shared/enums.js 已到 500 行门禁上限（新增枚举必须迁到别的单源，不许顶线）。
+const REVIEW_STATUS = { UNREVIEWED: 'UNREVIEWED', REVIEWED: 'REVIEWED' };
+const REVIEW_STATUS_TEXT = { UNREVIEWED: '未审核', REVIEWED: '已审核' };
 const STATUS_TEXT = enums.ORDER_STATUS_TEXT;
 const TERMINAL_STATUSES = [STATUS.COMPLETED, STATUS.CANCELLED];
 const ACTIVE_STATUSES = enums.ORDER_ACTIVE_STATUSES;
@@ -89,6 +93,17 @@ const ACTION_RULES = {
   },
   'order.cancelTransfer': {
     from: [STATUS.ACCEPTED], to: 'SAME', event: 'TRANSFER_CANCELLED', roles: [enums.ROLES.PARTNER], changesStatus: false
+  },
+  // D92 审核：订单级两级状态（未审核/已审核），审核动作不改订单状态；件数增删复用 ORDER_CORRECTED 事件。
+  // 件数增删只允许未取件阶段（SUBMITTED/ACCEPTED），已取件后审核只读；撤销重审允许到 PICKED（只是标记回退）。
+  'order.reviewMark': {
+    from: [STATUS.SUBMITTED, STATUS.ACCEPTED, STATUS.PICKED], to: 'SAME', event: 'ORDER_CORRECTED', roles: [enums.ROLES.PARTNER], changesStatus: false
+  },
+  'order.reviewReopen': {
+    from: [STATUS.SUBMITTED, STATUS.ACCEPTED, STATUS.PICKED], to: 'SAME', event: 'ORDER_CORRECTED', roles: [enums.ROLES.PARTNER], changesStatus: false
+  },
+  'order.reviewParcels': {
+    from: [STATUS.SUBMITTED, STATUS.ACCEPTED], to: 'SAME', event: 'ORDER_CORRECTED', roles: [enums.ROLES.PARTNER], changesStatus: false
   },
   'cleanup.orderTimeout': {
     from: [STATUS.SUBMITTED], to: STATUS.CANCELLED, event: 'TIMEOUT_CANCELLED', roles: [enums.CANCELLED_BY.SYSTEM], changesStatus: true
@@ -219,6 +234,8 @@ function canAct(action, fromStatus, role, order) {
 module.exports = {
   STATUS,
   STATUS_LIST,
+  REVIEW_STATUS,
+  REVIEW_STATUS_TEXT,
   STATUS_TEXT,
   TERMINAL_STATUSES,
   ACTIVE_STATUSES,

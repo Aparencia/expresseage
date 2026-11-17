@@ -3,7 +3,8 @@
 //   · 可写：orderTimeoutMinutes/autoCompleteAt/screenshotRetentionDays/recognitionFailureRetentionDays/
 //     viewTicketTtlMinutes/avatarMaxBytes/testAccountMaxPerRole/testDataRetentionDays/privacyVersion +
 //     zoneLabels/serviceCatalog/announcement/maintenance；
-//   · D43/D51（用户拍板）：autoCompleteAt 为 UTC+8 的 HH:MM 时刻文本键（D51 默认 22:00，逐单 cutoff=该单送达日该时刻）；
+//   · D43/D51（用户拍板；D91 修订时刻与语义）：autoCompleteAt 为 UTC+8 的 HH:MM 时刻文本键（默认 22:30，
+//     逐单 cutoff=该单送达日该时刻；该时刻及之后送达的送达即完成）；
 //     旧的「小时数」键作废、不在白名单（不留半死兼容键）；格式归一单源 = shared/defaults.normalizeClockText；
 //   · v1.0（D23）：orderMergeWindowMinutes 合并窗口 0~60（整数，默认 10，0=关闭；DATA_MODEL §2.10），
 //     仅服务端判定、不进 config.getPublic 公开子集；
@@ -42,7 +43,7 @@ const NUMBER_RULES = {
   orderMergeWindowMinutes: { min: 0, max: 60 }
 };
 const TEXT_KEYS = ['privacyVersion'];
-// D43/D51：时刻文本键（HH:MM，UTC+8；D51 默认 22:00）；旧的「小时数」键作废，不进白名单
+// D43/D51（D91 修订）：时刻文本键（HH:MM，UTC+8；默认 22:30）；旧的「小时数」键作废，不进白名单
 const CLOCK_KEYS = ['autoCompleteAt'];
 const OBJECT_KEYS = ['zoneLabels', 'serviceCatalog', 'announcement', 'maintenance', 'stations', 'stationInfer'];
 const WHITELIST = Object.keys(NUMBER_RULES).concat(TEXT_KEYS, CLOCK_KEYS, OBJECT_KEYS);
@@ -72,7 +73,7 @@ function normalizeNumber(key, value) {
 function normalizeClock(key, value) {
   const clock = sharedDefaults.normalizeClockText(value);
   if (!clock) {
-    throw errors.validation(key, '自动完成时间请填 HH:MM（00:00~23:59，如 22:00）');
+    throw errors.validation(key, '自动完成时间请填 HH:MM（00:00~23:59，如 22:30）');
   }
   return clock;
 }

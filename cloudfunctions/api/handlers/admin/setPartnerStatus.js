@@ -272,6 +272,9 @@ async function updatePartnerDoc(trx, scope, partner, status, reason) {
     patch.suspendedReason = '';
     patch.closedReason = '';
     patch.openid = identity.closedOpenidOf(partner);
+    // D88：转派码随注销清空（DATA_MODEL §2.3；码本身只是短凭证，清掉避免旧码残留命中）。
+    patch.transferCode = '';
+    patch.transferCodeExpiresAt = null;
   }
   await trx.update(COLLECTIONS.PARTNERS, partner._id, patch);
 }

@@ -43,6 +43,8 @@
          邀请/等待/结果看 order.transfer 块（白名单键，无 statusText，中文文案来自 shared 枚举单源）；
          剩余分钟在纯件算（parts/transfer），页面只渲染；READONLY 不出现写按钮 -->
     <view wx:if="{{transferCard.visible}}" class="card transfer-card">
+      <!-- D91：发起者视角——这单已转出但仍有操作权（必须一眼看出，别以为没转成功） -->
+      <view wx:if="{{transferCard.away.visible}}" class="transfer-away">{{transferCard.away.text}}</view>
       <!-- 发起入口（DTO actions[] 含 order.requestTransfer） -->
       <view wx:if="{{transferCard.request.visible}}" class="transfer-request">
         <view class="row between">
@@ -351,14 +353,31 @@
     <view class="panel" catchtap="noop">
       <view class="section-title">{{transferPanel.title}}</view>
       <view class="small">{{transferPanel.hint}}</view>
-      <!-- D82：本队成员快选（主兼职=队员 / 子队员=队长）；失败时列表为空，手输编号仍可用 -->
-      <picker wx:if="{{transferCandidates.length}}" range="{{transferCandidates}}" range-key="label" value="{{transferPickIndex}}" bindchange="onTransferPick">
-        <view class="form-input picker-value">{{transferPickIndex >= 0 ? transferCandidates[transferPickIndex].label : '从本队选择（也可手输编号）'}}</view>
-      </picker>
+      <!-- D87-a/b：候选文字卡片（本队成员先上屏；可检索在岗兼职）——无头像、无 openid、无内部 id -->
+      <view class="transfer-search">
+        <input class="form-input transfer-search-input" maxlength="{{transferSearch.maxLength}}" placeholder="{{transferSearch.placeholder}}"
+               value="{{transferKeyword}}" bindinput="onTransferKeywordInput" bindconfirm="onTransferSearch" confirm-type="search" />
+        <view class="btn btn-ghost mini-btn" bindtap="onTransferSearch">{{transferSearching ? transferSearch.searchingText : transferSearch.actionText}}</view>
+      </view>
+      <view wx:if="{{transferCards.length}}" class="transfer-cards">
+        <view wx:for="{{transferCards}}" wx:key="partnerNo" data-index="{{index}}" bindtap="onTransferPickCard"
+              class="transfer-card-item {{transferPickIndex === index ? 'is-picked' : ''}}">
+          <view class="transfer-card-title">{{item.title}}</view>
+          <view wx:if="{{item.meta}}" class="small transfer-card-meta">{{item.meta}}</view>
+        </view>
+      </view>
+      <view wx:if="{{transferEmpty.visible}}" class="small transfer-empty">{{transferEmpty.text}}</view>
       <view class="form-row">
         <view class="form-label">对方兼职编号</view>
         <input class="form-input" maxlength="{{transferPanel.maxLength}}" placeholder="{{transferPanel.placeholder}}" value="{{transferInput}}" bindinput="onTransferInput" />
       </view>
+      <!-- D88：转派码（对方在「服务设置 → 我的转派码」生成 6 位码；输码即解析出编号并回填） -->
+      <view class="form-row transfer-code-row">
+        <view class="form-label">转派码</view>
+        <input class="form-input" maxlength="8" placeholder="{{transferCodePlaceholder}}" value="{{transferCodeInput}}" bindinput="onTransferCodeInput" bindconfirm="onTransferCodeFill" confirm-type="done" />
+        <view class="btn btn-ghost mini-btn" bindtap="onTransferCodeFill">{{transferCodeFilling ? '填入中…' : '填入'}}</view>
+      </view>
+      <view wx:if="{{transferCodeTip}}" class="small transfer-code-tip">{{transferCodeTip}}</view>
       <view wx:if="{{transferError}}" class="error-text">{{transferError}}</view>
       <view class="row panel-actions">
         <view class="btn btn-ghost mini-btn" bindtap="onPanelClose">取消</view>

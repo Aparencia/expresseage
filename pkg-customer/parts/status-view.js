@@ -356,10 +356,11 @@ function waitingHint(order, config, format) {
     return '等待接单，超时将自动取消（截止 ' + format.formatDateTime(deadline) + '）';
   }
   if (isStatus(order.status, STATUS.DELIVERED)) {
-    // D51：每天 config.autoCompleteAt（默认 22:00）完成送达单——该时刻前送达的当天完成，该时刻后送达的下一轮完成。
+    // D91：每天 config.autoCompleteAt（默认 22:30）完成送达单——该时刻前送达的当天该时刻完成，
+    // 该时刻及之后送达的送达即完成（服务端 order.markDelivered 同事务转 COMPLETED）。
     // 提示只读配置、不在客户端推算完成时刻（完成以服务端 AUTO_COMPLETED 事件为准）。
     const at = defaults.normalizeClockText(config.autoCompleteAt) || defaults.DEFAULT_CONFIG.autoCompleteAt;
-    return '系统每天 ' + at + ' 自动完成（该时刻前送达的当天完成；该时刻后送达的下一轮自动完成，无需你操作）';
+    return '系统每天 ' + at + ' 自动完成（该时刻前送达的当天完成；该时刻及之后送达的送达即完成，无需你操作）';
   }
   return '';
 }

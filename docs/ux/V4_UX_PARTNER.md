@@ -12,6 +12,7 @@
 > **v1.3 增量（D37~D42，2026-10-28 用户拍板）**：①**分享卡 path 改 `/pages/launch/index`**（D37：绑定卡 `?bind=`、通用卡零 query；顾客点开先过隐私同意闸再进 role 邀请卡）；②顾客按「隐私同意→资料补齐」后**自动完成绑定**（D38，兼职侧无需操作、仍只由顾客发起，兼职端零绑定入口不变），兼职在分享时应提醒顾客"点开卡片即可绑定"；③**截图上限 10 张/单**（D40，兼职端按张展示缩略图）、AI 兜底不设每人每日次数（D40，保留全应用日配额）；④**服务类型两档**（D41：`PICKUP_STD` 标准代取=送到寝室门口（上楼）、新增 `PICKUP_LOW` 送至楼下（不上楼）；原「送寝上门」停用、仅历史订单展示）；⑤**头像改临时 URL 展示**（D42：约 5 分钟临时链接、换头像 onShow 立即生效、加载失败可重试）；⑥顾客绑定限流改滚动 60 秒/5 次（D39，兼职侧无感）。
 > **v1.2 增补（D36 分享与朋友圈，2026-10-28 用户指令「转发功能是不是没有，朋友圈转发也要」）**：顾客/兼职 19 个业务页支持「转发给朋友」（兼职端经右上角菜单转发，卡片构造单源 `utils/share`）；**兼职端页面不挂朋友圈**（朋友圈仅 `pages/role`、`pages/customer/home`、`pkg-customer/pages/help` 三页）；卡片只有「兼职绑定卡（只带 `partnerNo`）」与「通用邀请卡（零 query）」两种、**固定中性封面、禁止页面截图、卡片零 L3**；切换会话隐藏转发/朋友圈入口（O3/M-33 关闭）。详见 §7/§11。
 > **v1.4 增补（D43，2026-11-01 用户拍板）**：送达单自动完成改为 **UTC+8 日结批**——`cleanup.autoComplete` 取「最近一个已过的 `config.autoCompleteAt`（`HH:MM`，默认 `22:00`）」为 cutoff，`deliveredAt ≤ cutoff` 的 `DELIVERED` 单批量 `COMPLETED`（`AUTO_COMPLETED`、actor=SYSTEM），guest 单同路径；该时刻后送达的下一轮 10 分钟批内自动完成、10 分钟触发器粒度 ⇒ 实际完成落 22:00~22:10；**不额外保留顾客确认窗口**；送达浮层/批量送达确认/代客单结果块与详情提示统一为「系统每天 22:00 自动完成…」（旧「24h/24 小时」口径作废），见 §3.3/§3.4/§4.2/§4.14/§5/§7。
+> **D91 增补（2026-11-17 用户拍板）**：自动完成时刻默认 **22:30**；**该时刻（含）之后送达的订单送达即完成**（`order.markDelivered` 同事务写 `AUTO_COMPLETED`，不再等 10 分钟批；代价是该时段送达没有 5s「撤销已送达」）；该时刻前送达的仍由当天日结批完成；`api` 读路径对已过该单日结时刻的送达单「读到即补完成」。文案统一为「该时刻前送达的当天完成；该时刻及之后送达的送达即完成」。
 > v0.3~v0.6 已吸收（继续有效）：代客单 guest 落库、`bindings.partnerNote`、苑级范围、显式时间戳、`partners.status=CLOSED`、`bindings.activeKey`、站点仅 P1~P8；tabBar 上限 5 项、共用 `pages/profile/index`、根目录 `custom-tab-bar/`、`模块.动作` 命名；不设接单撤销（取件/送达可 `order.undo`）、guest 单自动完成、`order.listPartner` 返回 `counts` 6 项、批量=客户端循环逐单+同一 `batchActionId`、`order.createBatch`（v1.0 起已移除，一图多码并入 `order.create` 一单多包裹）；`serviceConfig.acceptingOrders` 归属与 `PARTNER_CLOSED`、列表 DTO 分级、`bindingId` 参数、异常备注 ≤200、数据级别 L1/L2/L3（v0.9 起采集头像/昵称，见 §3.10）。
 
 ---
@@ -59,7 +60,7 @@
 送达：行内"送达"（可填 deliveryNote）→ 状态 DELIVERED（整单；按本单 delivery 地址送达）
       │
       ├── 顾客确认 ──► COMPLETED
-      └── 每日日结批（默认 22:00，UTC+8）/ 代客单（guest）无顾客确认 ──► 系统自动 COMPLETED（§5，cleanup 定时任务；D43）
+      └── 每日日结批（默认 22:30，UTC+8）+ 该时刻后送达即完成 / 代客单（guest）无顾客确认 ──► 系统自动 COMPLETED（§5，cleanup 定时任务 + order.markDelivered；D43/D91）
       ▼
 [stats] 当日单量日报（完成量/状态分布/异常数，按订单计；无费用口径）
 ```
@@ -103,7 +104,7 @@
 | `pkg-partner/pages/messages/index` | 分包 | 我的/工作台铃铛 | 订单事件+留言+公告聚合消息中心（**未读=留言+状态事件**，D29，§3.9） |
 | `pages/partner/pick-list/index` | 主包（第 32 页，伪 tab） | 兼职底栏第 2 格「取件清单」 | **独立楼层配送清单（D46）**：苑→栋→楼层（`floor(room/100)`）分组展示已取件待送达单；分页/分片 ≤20 行、不做定时轮询、切页/下拉才刷新；复用批量送达（§3.11） |
 | `pkg-partner/pages/team/index` | 分包（第 33 页，D59） | 服务配置页「我的团队」行 | 团队：成员列表（编号/昵称/状态/加入时间，**不显示头像/fileId**）+ 发子邀请码（1~5 个、24H/72H/7D/长期（FOREVER，永不过期）、备注可选；**完整码仅本次响应**并提示「一次性，请当面告知」）
-| `pkg-partner/pages/review/index` | 分包（第 34 页，2026-11-08） | 工作台顶部「审核」 | **审核核对（MVP）**：只列今天「有截图 + 待接单/已接单/已取件」的单；一屏显示每张截图与其订单信息，可就地改站点/取件码/柜号/尾号（复用 `order.correct`）；不改状态、不阻塞取件、不留审核记录（§3.13） |+ 待用子码列表（**按 `batchId` 分组**，只显示尾 4 位/到期，「作废本批」二次确认）+ 移除成员（二次确认，说明移除后对方被停用、需联系管理员恢复）+ 名额 `quota{used,reserved,max}`（展示 `reserved/{max}`，含待用子码）；子队员视角只看「所属队伍：P-XXX / 成员数 N」（§3.12）；**本页不提供分享/转发（子邀请码/成员信息不外传，不在 `tools/lib/share-pages.js` 好友转发清单）** |
+| `pkg-partner/pages/review/index` | 分包（第 34 页，2026-11-08） | 工作台顶部「审核」 | **审核核对（MVP → D92 审核域）**：只列今天「有截图 + 待接单/已接单/已取件」的单；一屏显示每张截图与其订单信息，可就地改站点/取件码/柜号/尾号（复用 `order.correct`）；**D92 起留审核状态（订单级「未审核/已审核」，可撤销重审）**、行内 chip；**未取件阶段可增减件数**（新增一件/删除这一件，1~10 件，已取件的件不可删）；审核不改订单状态、不阻塞取件、**顾客不另行通知**（§3.13） |+ 待用子码列表（**按 `batchId` 分组**，只显示尾 4 位/到期，「作废本批」二次确认）+ 移除成员（二次确认，说明移除后对方被停用、需联系管理员恢复）+ 名额 `quota{used,reserved,max}`（展示 `reserved/{max}`，含待用子码）；子队员视角只看「所属队伍：P-XXX / 成员数 N」（§3.12）；**本页不提供分享/转发（子邀请码/成员信息不外传，不在 `tools/lib/share-pages.js` 好友转发清单）** |
 ### 2.2 导航规则（照 CONTRACT §7）
 - `launch` 是唯一启动页；`role` 不属于任何 tab。角色不匹配的 tab 页在 `onShow` 里 `reLaunch` 回本角色首页（兼职回工作台）。
 - **tabBar 只有 5 项（平台上限）**：`pages/customer/home/index`、`pages/customer/orders/index`、`pages/partner/workbench/index`、`pages/partner/customers/index`、`pages/profile/index`（双方共用）；`custom: true`，自定义 tabBar 组件固定在**项目根目录 `custom-tab-bar/`**（平台硬要求，不是 components/），按全局角色只渲染 3 格：顾客=首页/订单/我的，兼职=工作台/客户/我的。兼职"工作台"格显示待处理红点/数字。
@@ -114,6 +115,7 @@
 - 返回逻辑：tab 页之间用 `wx.switchTab`；分包页用 `navigateBack`；从消息/深链进详情后，返回落工作台（不是顾客页）。
 - **取件清单入口（2026-11-08 升一级，伪装 tab）**：兼职底栏第 2 格「取件清单」，与工作台/客户/我的同级；点击 `wx.reLaunch('/pages/partner/pick-list/index')`（该页不在 `app.json` tabBar.list，页面内自绘共用 `components/tab-bar-view` 四格，顾客端「取件码」同款）；其余三格是真 tab 用 `wx.switchTab`；工作台顶部不再保留「取件清单」按钮（避免双入口）；本页 onShow/下拉/切阶段刷新，不挂定时轮询。
 - **团队入口（D59）**：服务配置页（`pkg-partner/pages/service-settings/index`）→「我的团队」行 → `wx.navigateTo('/pkg-partner/pages/team/index')`；该页不是 tab、不显示 tabBar，返回落服务配置页；主兼职可发子码/按批次作废/移除成员，子队员只读队伍
+- **我的转派码（D88）**：同一个服务配置页内「我的转派码」卡片——点「生成转派码」调 `partner.createTransferCode`，页内大字显示 `ABC-DEF`（可复制）+「有效至 MM-DD HH:mm」；**30 分钟内有效、可随时「重新生成」**（旧码立即失效）；说明文案「把 6 位码给对方，对方在转派面板输码就能把这单转给你」。只读视角置灰、不显示写按钮。对方侧在订单详情转派面板「转派码」行输码 → 「填入」→ 解析出编号与昵称并回填（仍走二次确认）。
 - **审核入口（2026-11-08）**：工作台顶部「审核」→ `wx.navigateTo('/pkg-partner/pages/review/index')`；该页不是 tab、不显示 tabBar，返回落工作台；READONLY 不显示入口且页内隐藏保存摘要（§3.12）。
 - 切换工作台（D86）：我的 → 切换工作台 → `utils/workspace.switchTo` 水合目标工作区后 `reLaunch` 目标首页（不经 role），自定义 tabBar 重新渲染。
 - **开发者分流**：`user.bootstrap` 返回 `isDeveloper=true` ⇒ `wx.reLaunch('/pkg-admin/pages/overview/index')`（不需要 `?admin=1`，服务端白名单是唯一门槛）。开发者不进兼职业务 tab；后台「切换账号」入口在 `pkg-admin/pages/account-switch/index`（真实账号只读 / 测试账号可写，见 §6）。
@@ -250,7 +252,7 @@
 | `SUBMITTED` | 接单 | 拒单、补码、改码 | 拒单 = 取消并填原因，顾客看到"已取消" |
 | `ACCEPTED` | 已取件 | 异常上报、补码/改码、取消（填原因）、**转派给其他兼职（凭完整 `partnerNo`，未取件时；D58）** | 顾客仍可取消（未取件前）；**已取件（`pickedCount>0`）后不允许转派** |
 | `PICKED` | 标记送达（可填 deliveryNote ≤100） | 异常上报、改柜号/运单尾号、撤销已取件 | 顾客不可单方取消（§5） |
-| `DELIVERED` | —（只读待确认） | 撤销已送达、异常上报、留言 | 等顾客确认；每日日结批（默认 22:00，UTC+8）自动完成（**guest 单无顾客确认路径，直接由系统自动完成**，§5；D43） |
+| `DELIVERED` | —（只读待确认） | 撤销已送达、异常上报、留言 | 等顾客确认；每日日结批（默认 22:30，UTC+8）自动完成；**该时刻及之后送达的送达即完成（D91，此时不再有撤销）**（**guest 单无顾客确认路径，直接由系统自动完成**，§5；D43） |
 | `COMPLETED` | — | 留言只读 | 不可删除订单、不可修改 |
 | `CANCELLED` | — | 查看原因、留言只读 | 不可恢复 |
 | `EXCEPTION` | 解除异常（恢复 `exception.fromStatus`） | 取消（填原因）、留言 | 仅恢复 ACCEPTED/PICKED/DELIVERED，否则回 ACCEPTED（§5.1） |
@@ -259,8 +261,8 @@
 - **不设接单撤销**：`order.undo` **只覆盖取件/送达**（`order.markPicked/markDelivered` → 对应 `unmarkPicked/unmarkDelivered`），**不覆盖** `ACCEPTED→SUBMITTED`，不提供 `order.unmarkAccepted`；误接单只能「取消订单」→ `order.cancel` + 必填原因（`TOO_BUSY/OUT_OF_RANGE/SERVICE_OFF/OTHER`，§5.2）并通知顾客；取消后订单为终态、不可恢复，顾客端看到取消原因。
 - **改码/改站点（v1.0 逐件）**：打开逐件面板（件切换器 + 行内「改正这一件」）；字段：取件码 ≤40 / 柜号 ≤10 / 运单尾号 5 位 / 站点 P1~P8；**只能改自己订单**（服务端按 `partnerOpenid` 校验；不改状态/归属/不代顾客确认）；提交 `order.correct` 带 `itemIndex`（首件 0 可缺省，越界 `VALIDATION_FAILED`）；`codeStatus` 由服务端按"该件取件码是否非空"派生 `OK/NEED_CODE`（整单 `needCode` = 任一件需查明）；`PICKED` 只允许柜号/运单尾号；改站点/取件码只在 `SUBMITTED/ACCEPTED/EXCEPTION`；一次只改一件、一次写盘、记一条 `ORDER_CORRECTED`（payload 带 `itemIndex`）；保存成功 toast"第 2 件已更正，顾客端同步"，不回显取件码。
 - **整单动作与件的边界（D61 修订）**：接单/整单已取件/送达/取消/整单撤销已取件/撤销送达/异常上报/解除异常均**整单生效**（作用于全部包裹）；确认框与按钮文案带件数（"标记送达（本单 3 件）"、"本单 3 件会一起变更"）；`order.confirmDelivery` **一次确认整单全部包裹**。**件级动作只有两类**：逐件取件/撤销已取（D61，详情每件卡独立按钮，只消费 `parcel.actions`）与补码/改码/改站点（`itemIndex`）；件级取件不改其他件，也不前端假装推进订单状态（全部件取完由服务端聚合转 `PICKED`）。
-- **转派（D58/v1.10，ACCEPTED 且一件未取时）**：底部操作区在 `actions[]` 含 `order.requestTransfer` 时显示「转派给其他兼职」（**页面零判据，只看 DTO actions**）→ 填目标完整 `partnerNo`（`P-XXX-XXX`，错前缀/格式给 `error-copy` 人话）；**D82 本队快选**：面板顶部先给候选 picker——主兼职列出本队 `ACTIVE` 成员的「昵称 · 编号」，子队员只列队长，选中即回填输入框（仍走二次确认），候选拉取失败/不在队内时保留手输 → 二次确认（免责一句："转派后你将失去该单，对方确认接收前订单仍归你，可撤回"）→ `order.requestTransfer`；成功后本页转为**发起方视角**：显示「等待对方确认（剩余 N 分钟）」+「撤回转派」（`order.cancelTransfer`，仅 PENDING 且未过期）；结果态显示「已转派 / 对方已拒收 / 已撤回 / 邀请已过期」对应文案（`transfer.statusText` 由服务端下发），转派成功后订单不再出现在你的工作台列表，但**你仍保留控制权**（D85）：从「已转出」或深链进入**完整订单详情**，可继续取件/送达/改码/异常/取消/留言；**转派邀请动作**（发起/撤回/确认/拒收）仍只归当前履约人。**目标兼职视角（邀请卡）**：进入详情时若 DTO `transfer.status='PENDING'` 且 `toPartnerId=me`，顶部显示邀请卡——发起方 `partnerNo`、「剩余 N 分钟」（纯件按 `expiresAt-now` 计算，文案在 `parts/transfer.js`）+「确认接收」/「拒收」；**本页对该兼职遮蔽顾客头像/昵称/`customerNo`**（仅站点/取件码/柜号/配送地址/备注等履约必需信息，服务端 DTO 已剪裁，页面不得自行补取）；过期/已撤回只读提示并给返回工作台。**转派全程不提供 5 秒撤销条**（撤回按钮另设），过期由服务端惰性判定（打开即刷新状态）。
-- **送达**：点「标记送达」→ 底部浮层填 `deliveryNote`（可空，≤100，快捷标签"放宿舍门口/交到室友手里/放 3 号柜"）→ 确认"确认已送达？本单 N 件一起变更，顾客会看到进度到'已送达'"→ 调 `order.markDelivered`，`PICKED→DELIVERED`（整单）。成功后出现撤销条（§4.7）；guest 单（代客单）确认框改为"该顾客未绑定，无需确认；系统每天 {autoCompleteAt} 自动完成"（§5；`{autoCompleteAt}` 取公开配置，缺配置回退出厂默认 22:00，UTC+8 日结批，D43）。
+- **转派（D58/v1.10，ACCEPTED 且一件未取时）**：底部操作区在 `actions[]` 含 `order.requestTransfer` 时显示「转派给其他兼职」（**页面零判据，只看 DTO actions**）→ 填目标完整 `partnerNo`（`P-XXX-XXX`，错前缀/格式给 `error-copy` 人话）；**D82 本队快选 → D87 文字卡片**：面板顶部先给候选**文字卡片**——主兼职列出本队 `ACTIVE` 成员的「昵称 · 编号」+「本队」标签，子队员只列队长；**D87-a 检索**：搜索框按编号前缀（≥3 位）或昵称前缀（中文 ≥2 字 / 任意 ≥4 字）调 `partner.searchTransferTargets`，结果卡片带「接单中 / 已暂停接单」标签、**上限 20 条、无分页**，**无头像**；点卡片即回填编号（仍走二次确认），候选为空 / 检索失败 / 无结果 / 搜索中**四态各有下一步文案**，且始终保留手输编号兜底 → 二次确认（免责一句："转派后你将失去该单，对方确认接收前订单仍归你，可撤回"）→ `order.requestTransfer`；成功后本页转为**发起方视角**：显示「等待对方确认（剩余 N 分钟）」+「撤回转派」（`order.cancelTransfer`，仅 PENDING 且未过期）；结果态显示「已转派 / 对方已拒收 / 已撤回 / 邀请已过期」对应文案（`transfer.statusText` 由服务端下发），转派成功后订单不再出现在你的工作台列表，但**你仍保留控制权**（D85）：从「已转出」或深链进入**完整订单详情**，可继续取件/送达/改码/异常/取消/留言；**转派邀请动作**（发起/撤回/确认/拒收）仍只归当前履约人。**目标兼职视角（邀请卡）**：进入详情时若 DTO `transfer.status='PENDING'` 且 `toPartnerId=me`，顶部显示邀请卡——发起方 `partnerNo`、「剩余 N 分钟」（纯件按 `expiresAt-now` 计算，文案在 `parts/transfer.js`）+「确认接收」/「拒收」；**本页对该兼职遮蔽顾客头像/昵称/`customerNo`**（仅站点/取件码/柜号/配送地址/备注等履约必需信息，服务端 DTO 已剪裁，页面不得自行补取）；过期/已撤回只读提示并给返回工作台。**转派全程不提供 5 秒撤销条**（撤回按钮另设），过期由服务端惰性判定（打开即刷新状态）。**D89（转派后边界）**：①转派成功（`ACCEPTED`）后，**发起人 A 在详情页顶部看到黄条「这单已转给 P-XXX，你仍有操作权：取件/送达/改码/异常/取消/留言」**（仅发起人、仅 ACCEPTED）；②**不再提供「转派」入口**（服务端 `INVALID_STATE` + DTO 不下发 `requestTransfer`），接手人 B 同样不能二次转派；③工作台「已转出的单」首次展开后标题带条数，并写明转出后仍可操作。**D90（候选三段式）**：面板候选顺序 = **最近使用（≤5，meta 标「最近使用」，暂停接单的追加「· 已暂停接单」）→ 本队成员（meta「本队」）→ 搜索结果（覆盖显示）**；同编号只出现一次（保留靠前的那条）；两段预置候选并行拉取，任一失败不阻断（仍有检索与手输）；**不做全量在岗目录**。
+- **送达**：点「标记送达」→ 底部浮层填 `deliveryNote`（可空，≤100，快捷标签"放宿舍门口/交到室友手里/放 3 号柜"）→ 确认"确认已送达？本单 N 件一起变更，顾客会看到进度到'已送达'"→ 调 `order.markDelivered`，`PICKED→DELIVERED`（整单）。成功后出现撤销条（§4.7）；guest 单（代客单）确认框改为"该顾客未绑定，无需确认；系统每天 {autoCompleteAt} 自动完成"（§5；`{autoCompleteAt}` 取公开配置，缺配置回退出厂默认 22:30，UTC+8 日结批，D43/D91；该时刻及之后送达的送达即完成）。
 - **按本单地址送达（v1.0/D25）**：配送以本单 `delivery` 为准（可不同于顾客本人宿舍）；送达备注写清交接位置；地址为他人宿舍时，禁止在留言/备注里写完整手机号或第三方姓名以外的隐私。
 - **留言**：调 `message.send`；≤200 字、30 条/日/订单（§10），过 `security.msgSecCheck`；快捷模板 3 条（"放宿舍门口了"/"稍等，路上"/"柜门坏了，等我处理"）；10s 轮询可见时拉新。
 - **轮询（2026-11-01 P0-3）**：留言 10s 轮询仅页面可见时启动；`COMPLETED`/`CANCELLED` 终态订单**不再轮询**（`applyDetail` 落地终态即停、重新进入也不启动），仅在 `onShow`/下拉刷新拉一次最新；进行中单维持 10s。
@@ -295,7 +297,7 @@
 └──────────────────────────────┘
 ```
 - **顾客两条路**：① 已绑定顾客（锚+键选择，走正常订单，顾客可见进度）；② 新顾客（guest）：填 `guest{displayName,phoneTail,zone,buildingNo,room,dormKey}`（**默认头像 + "代客单"标签**），落库 `source='PARTNER'`、`customerId=''`、`customerOpenid=''`、`customerNo=''`；MVP **不提供认领**，页面无"顾客认领"入口（`claimTokenHash/claimExpiresAt/claimedAt` 只作 P1 预留，§4.2）。
-- **guest 单提示**：提交成功后必须展示"该顾客尚未绑定，进度需线下告知；可分享绑定卡片邀请对方**自己**绑定（兼职不能代绑）。顾客绑定后只能看到绑定之后下的单。送达后由系统每天 {autoCompleteAt} 自动完成（该时刻后送达的下一轮 10 分钟批内自动完成；`{autoCompleteAt}` 取公开配置、缺配置回退默认 22:00，UTC+8 日结批，D43），无需顾客确认。"；工作台/详情带"代客单·未绑定"标记 + 默认头像 + "代客单"标签。
+- **guest 单提示**：提交成功后必须展示"该顾客尚未绑定，进度需线下告知；可分享绑定卡片邀请对方**自己**绑定（兼职不能代绑）。顾客绑定后只能看到绑定之后下的单。送达后由系统每天 {autoCompleteAt} 自动完成（该时刻及之后送达的送达即完成；`{autoCompleteAt}` 取公开配置、缺配置回退默认 22:30，UTC+8 日结批，D43/D91），无需顾客确认。"；工作台/详情带"代客单·未绑定"标记 + 默认头像 + "代客单"标签。
 - **绑定边界（v0.9）**：代客下单**不产生绑定**（不写 `bindings`）；页面没有"给他绑定/添加为顾客/扫码绑定"入口；分享卡片只是邀请，绑定必须顾客本人在顾客端发起（`bind.create` 仅 CUSTOMER）。
 - **取图（v1.0/D23/D24；D40 修订图数；D44 多图与自动识别）**：相册/拍照/微信聊天文件（§5.2）三入口；**一单 1~10 件包裹**、**截图 0~10 张**（D40/D44；一张截图可拆多件、多张截图合成同单，按"图"逐张识别）；一次可选多张、可多次追加，已上传可删除/追加，超 10 张明确提示「最多只能添加 10 张截图，可以先删除一张再添加」；上传按**并发 2** 分批（`UPLOAD_CONCURRENCY=2`），半途失败保留已上传图并给「重试/换图/无截图手填」出路；**可完全不上传截图**（D24 无截图·手填，`manualEntry=true`）；识别失败时原图仅留私有云存储并进入开发者复核队列（兼职端无原图/队列入口）。
 - **件与图上限（D40/D44）**：`parcels` 1~10 件/单、`images` **0~10 张/单**（原 0~5 保留留痕；服务端硬上限，超出按另建新单/`VALIDATION_FAILED` 口径见 CONTRACT）；代客端与顾客端同口径，不再「按 10 件/1 图收敛」；多图逐张识别、一图多码按件拆；**识别合并结果超 10 件时显式提示「一单最多 10 件，请分单」**（唯一文案 `form-model.PARCEL_LIMIT_TEXT`，识别与提交校验共用；不静默丢弃，见 TD-084③）。
@@ -539,12 +541,12 @@
 - **导航**：`/pkg-partner/pages/team/index`（`app.json` 第 33 页）；入口 = 服务配置页（`pkg-partner/pages/service-settings/index`）新增「我的团队」行；返回 `navigateBack`。
 
 ---
-### 3.13 审核核对 `pkg-partner/pages/review/index`（2026-11-08 MVP，第 34 页）
+### 3.13 审核核对 `pkg-partner/pages/review/index`（2026-11-08 MVP；D92 升级为审核域，第 34 页）
 
 - **入口**：工作台顶部「审核」（READONLY 不显示）→ `wx.navigateTo('/pkg-partner/pages/review/index')`；返回落工作台。
 - **列表**：`order.listPartner({view:'day'})` 后客户端筛「有截图 + 状态为待接单/已接单/已取件」；行 = 状态 pill + 订单号 + 截图张数 + 宿舍锚 + 件数；空态「今天没有需要核对的截图单。顾客上传截图后，订单会出现在这里。」
 - **核对屏**：一屏顶部截图 `swiper`（逐张 `order.imageUrl` 临时 URL，点开 `previewImage` 看全组；全失败提示「截图暂时打不开」）+ 每件卡（站点 picker / 取件码 / 柜号 / 运单尾号）+「保存这件」；保存走 `order.correct({orderNo,itemIndex,patch},{expectedVersion})`，成功 toast「第 N 件已更正，顾客端同步」并刷新订单与截图；**无改动不发送**。
-- **边界**：不改订单状态、不阻塞取件、不留审核记录、不加集合；审核页禁分享；截图被清理时如实提示；**PICKED 单服务端只允许改柜号/运单尾号 → 站点与取件码输入锁定**；站点选项取后台配置（改名/顺序同源）；加载中显示「正在加载截图与订单…」而不是先显示「没有截图」；保存成功但刷新失败不误报「保存失败」。
+- **D92 审核域**：审核是**订单级两级状态**（未审核/已审核），详情顶部「标记已审核」/「撤销审核（重新审）」，行内显示状态 chip；**未取件阶段可增减件数**（`order.reviewParcels`，新增一件/删除这一件，1~10 件，已取件的件不可删，已取件后整单只读）；审核**不改订单状态**、顾客**不另行通知**（件数变化只在顾客详情按件显示）。边界：不改订单状态、不阻塞取件、不加集合；审核页禁分享；截图被清理时如实提示；**PICKED 单服务端只允许改柜号/运单尾号 → 站点与取件码输入锁定**；站点选项取后台配置（改名/顺序同源）；加载中显示「正在加载截图与订单…」而不是先显示「没有截图」；保存成功但刷新失败不误报「保存失败」。
 - **校验**：码/尾号至少一个；尾号恰 5 位；码 ≤40、柜号 ≤10（服务端 `order.correct` 仍唯一权威）。
 
 ## 4. 工作台（取件清单）专章
@@ -596,7 +598,7 @@
 | `CANCELLED` | 已完结（折叠） | 灰 chip「已取消」 | — | 查看原因 |
 
 - **待接单池只来自自己**：订单创建时已带 `partnerId`（绑定关系 1:1，D4），不存在"抢单市场"（§0 不做）；"新订单"=绑定自己的顾客新下的单。
-- **代客单（guest）**：`source='PARTNER'` 且 `customerId/customerOpenid/customerNo=''`；行锚用 `guest.dormKey/displayName/phoneTail`（无 `roomTag`），行首加"代客单·未绑定"chip + **默认头像 + "代客单"标签**；**没有顾客确认路径**：`DELIVERED` 后不等待顾客，由 `cleanup` 的日结批在「该单送达日所在自然日的 `config.autoCompleteAt`（默认 22:00，UTC+8）」后转 `COMPLETED`（记 `AUTO_COMPLETED`，actor=SYSTEM，§5；D43）；行 chip 对 guest 单显示「已送达·待自动完成」，提示"系统每天 22:00 自动完成（该时刻后送达的下一轮 10 分钟批内自动完成），无需顾客确认"；页面不出现"认领"入口（§4.2）。
+- **代客单（guest）**：`source='PARTNER'` 且 `customerId/customerOpenid/customerNo=''`；行锚用 `guest.dormKey/displayName/phoneTail`（无 `roomTag`），行首加"代客单·未绑定"chip + **默认头像 + "代客单"标签**；**没有顾客确认路径**：`DELIVERED` 后不等待顾客，由 `cleanup` 的日结批在「该单送达日所在自然日的 `config.autoCompleteAt`（默认 22:30，UTC+8）」后转 `COMPLETED`（记 `AUTO_COMPLETED`，actor=SYSTEM，§5；D43/D91；该时刻及之后送达的在送达事务内即完成）；行 chip 对 guest 单显示「已送达·待自动完成」，提示"系统每天 22:30 自动完成（该时刻及之后送达的送达即完成），无需顾客确认"；页面不出现"认领"入口（§4.2）。
 - **绑定边界（v0.9）**：工作台订单只来自"已绑定自己的顾客"或代客单；兼职端不产生任何绑定；代客单不写 `bindings`；顾客归属不可变、不可代绑（§7）。
 - **时间与顺序**：行内时间显示用显式时间戳（`statusUpdatedAt/acceptedAt/pickedAt/deliveredAt/completedAt/cancelledAt`，§4.2）；列表游标与"最近变化"排序用 `statusUpdatedAt`，不靠前端本地时间。
 - **预约（D47）不影响分区/排序**：`appoint.type=LATEST` 的工作台行**不改变四档动线排序与分区**，也不按最晚时间筛选/置顶；最晚时间只在顾客/兼职订单详情展示与到点标红（本批不做工作台行内展示与筛选；如后续要做需先立 D 编号评估排序/性能预算）。
@@ -668,7 +670,7 @@
 | :-- | :-- | :-- | :-- |
 | 接单 | `SUBMITTED` | `order.accept`（逐单调用；**不设接单撤销**） | "将 N 单（共 M 件）标记为已接单，顾客会看到进度到'已接单'。" |
 | 已取件 | `ACCEPTED` | `order.markPicked` | "将 N 单（共 M 件）标记为已取件，顾客会看到'已取件·配送中'。" |
-| 送达 | `PICKED` | `order.markDelivered`（可选统一 deliveryNote） | "将 N 单（共 M 件）标记为已送达，顾客可确认；系统每天 {autoCompleteAt} 自动完成送达单（该时刻后送达的下一轮 10 分钟批内自动完成；guest 单无需确认）。"（D43 日结批，`{autoCompleteAt}` 取公开配置、缺配置回退默认 22:00） |
+| 送达 | `PICKED` | `order.markDelivered`（可选统一 deliveryNote） | "将 N 单（共 M 件）标记为已送达，顾客可确认；系统每天 {autoCompleteAt} 自动完成送达单（该时刻前送达的当天完成；该时刻及之后送达的送达即完成；guest 单无需确认）。"（D43 日结批 + D91，`{autoCompleteAt}` 取公开配置、缺配置回退默认 22:30） |
 | 撤销已取件 | `PICKED` | `order.unmarkPicked`（§5.1） | "将 N 单（共 M 件）退回'已接单'，顾客会看到进度回退提示。" |
 | 改站点/改码（v1.0 逐件） | `SUBMITTED/ACCEPTED/EXCEPTION`（站点/码）；`PICKED` 仅柜号/尾号 | `order.correct`（**逐单逐件循环，每件带 `itemIndex`，同一 `batchActionId`**） | "将把选中 N 单的**全部 M 件**（逐件）改成 'P6 南苑菜鸟驿站'，顾客端同步。" |
 | 异常上报 | 单件 | `order.reportException` | 不批量；原因+备注。 |
@@ -736,7 +738,7 @@
 ### 4.14 取件凭证（MVP 口径）
 - **凭证定义（MVP）**：订单号 + `order_events` 全量状态流水 + 顾客确认（COMPLETED）+ `deliveryNote`。订单详情底部"履约凭证"卡展示：`orderNo`、站点、服务类型、`acceptedAt/pickedAt/deliveredAt/completedAt`、送达备注、顾客确认时间；这就是双方与 admin 的事实依据。
 - **不做**：送达照片、手写签名、二维码核销（P1，涉及云存储与隐私，§5.1 明确 MVP 不做）。取件码截图只是顾客下单材料，完成/取消 7 天后删除（§11.1），**不能当送达凭证**。
-- **代客单（guest）**：无顾客确认路径，凭证 = 事件流水 + `deliveryNote` + 系统 `AUTO_COMPLETED` 时间（由 `cleanup` 日结批在「该单送达日所在自然日 `autoCompleteAt`（默认 22:00，UTC+8）」后写入，§5；D43）；兼职需线下告知顾客进度，并在送达备注里写清交接位置。
+- **代客单（guest）**：无顾客确认路径，凭证 = 事件流水 + `deliveryNote` + 系统 `AUTO_COMPLETED` 时间（由 `cleanup` 日结批在「该单送达日所在自然日 `autoCompleteAt`（默认 22:30，UTC+8）」后写入，§5；D43/D91——该时刻及之后送达的在送达事务内即写入）；兼职需线下告知顾客进度，并在送达备注里写清交接位置。
 - **防冒领**：兼职送达由顾客确认（或每日日结批自动完成；guest 单无顾客确认路径，直接走系统自动完成，§5）；顾客端可看兼职昵称/兼职编号/订单时间线；异常/争议走留言 + admin 审计（审计区块并入 `pkg-admin/pages/overview/index`，§7），不提供"删除订单"。
 - **文案**："凭证以订单事件记录为准；本单不可删除。"；"顾客确认时间：2026-10-21 09:10。"
 ### 4.15 工作台状态与逐句文案
@@ -932,7 +934,7 @@
 | 识别失败待复核 | 订单 `image.failureId` 存在 | 工作台行/详情小字提示 | "识别失败已反馈开发者复核。" | 手填补码或等复核补录；不影响接单/取件/送达 |
 | 复核补录后 | 开发者已回填识别字段 | 刷新后提示 | "取件信息已更新。" | 无需操作；状态不变、不自动接单 |
 | 订单已超时 | SUBMITTED 超 120 分钟 | 详情/列表刷新 | "这单已超时自动取消，顾客可重新下单。" | 只读 |
-| 代客单无顾客确认 | guest 单送达后 | 详情状态提示 | "该顾客未绑定，进度需线下告知；送达后由系统每天 {autoCompleteAt} 自动完成（该时刻后送达的下一轮 10 分钟批内自动完成），无需顾客确认。"（D43 日结批；`{autoCompleteAt}` 取公开配置、缺配置回退默认 22:00） | 系统自动完成（`AUTO_COMPLETED`）；不阻塞；可分享绑定卡片 |
+| 代客单无顾客确认 | guest 单送达后 | 详情状态提示 | "该顾客未绑定，进度需线下告知；送达后由系统每天 {autoCompleteAt} 自动完成（该时刻及之后送达的送达即完成），无需顾客确认。"（D43 日结批 + D91；`{autoCompleteAt}` 取公开配置、缺配置回退默认 22:30） | 系统自动完成（`AUTO_COMPLETED`）；不阻塞；可分享绑定卡片 |
 | 邀请码不存在/作废 | `NOT_FOUND` | 错误条紧贴按钮 | "邀请码不存在或已作废，请向开发者确认后重试。" | 重输；失败 5 次/日限流 |
 | 邀请码过期 | `INVITE_EXPIRED` | 错误条 | "这个邀请码已过期，请让开发者重新发一个。" | 联系开发者补发 |
 | 邀请码已使用 | `INVITE_USED` | 错误条 | "这个邀请码已经被使用过，请让开发者补发一个。" | 联系开发者补发 |
@@ -977,7 +979,7 @@
 - [ ] 可见范围/解绑失联：头像/昵称仅 ACTIVE 绑定双方可见；解绑/停用/注销后不再展示对方头像/昵称；测试账号不展示真实微信头像（默认头像）。
 - [ ] roomTag 大写：所有示例为 `D4-522A`；分配=服务端 `bind.create` 事务内 A/B/C…（大写字母序=绑定先后）；页面/文档无小写 roomTag 残留。
 - [ ] 列表 DTO：兼职工作台/客户列表对本人数据返回完整取件码/尾号/宿舍；`admin.listOrders` 与日志/通知/分享中取件码打码、尾号仅后 2 位、宿舍不完整。
-- [ ] 代客单：未绑定顾客 guest 单可建（source=PARTNER、customerId/customerNo 空、**不产生绑定**）、工作台带"代客单·未绑定"标记 + **默认头像 + "代客单"标签**、无认领入口、送达后由系统**日结批自动完成**（默认每天 22:00，UTC+8；该时刻后送达的下一轮 10 分钟批内自动完成；无需顾客确认，记 `AUTO_COMPLETED`，D43）；可分享绑定卡片邀请顾客自己绑定。
+- [ ] 代客单：未绑定顾客 guest 单可建（source=PARTNER、customerId/customerNo 空、**不产生绑定**）、工作台带"代客单·未绑定"标记 + **默认头像 + "代客单"标签**、无认领入口、送达后由系统**日结批自动完成**（默认每天 22:30，UTC+8；该时刻及之后送达的送达即完成；无需顾客确认，记 `AUTO_COMPLETED`，D43/D91）；可分享绑定卡片邀请顾客自己绑定。
 - [ ] 识别兜底（代客下单）：用模糊/截断截图触发 → "正在识别（最多 8 秒）"可取消；AI 预填只填空字段、不覆盖手填；失败降级"已反馈开发者复核"且手填仍可提交（`NEED_CODE`）；不弹错误码、不提示配额。
 - [ ] 识别失败反馈：`sourceRole=PARTNER`、失败记录含原图、`failureId` 关联订单 `image.failureId`；兼职端只见"没认出/已反馈复核"，不见原图/队列/AI 原始输出/OCR 全文；开发者复核页见原图（每次审计 `FAILURE_IMAGE_VIEW`）。
 - [ ] 改码边界：兼职 `order.correct` 只能改自己订单识别字段（不改状态/归属/不代确认；越权 `FORBIDDEN`；记 `ORDER_CORRECTED`）；开发者 `fixRecognitionFailure` 只回填识别字段（记 `FAILURE_FIX`），订单状态不变。
@@ -1037,7 +1039,7 @@
 | 3 | 邀请码术语（D3，v0.7） | 旧称"激活码"统一改为**邀请码**（`invitationCode`，12 位、XXXX-XXXX-XXXX）；一次性、可设有效期、可作废、可审计；错误映射 `NOT_FOUND/INVITE_EXPIRED/INVITE_USED/VALIDATION_FAILED`；后台页 `pkg-admin/pages/invite-codes/index` |
 | 4 | 开发者只读视角（D14，v0.7；v0.9 并入切换会话） | 真实账号 `READONLY`：黄条常驻 + 写控件置灰/隐藏 + 服务端 `FORBIDDEN` + 全审计；票据 30 分钟、仅内存；退出回「切换账号」页；测试账号 `TEST_WRITE` 见 #21（§6） |
 | 5 | 接单能否撤销 | **不设接单撤销；取件/送达可 undo**：`order.undo` 只覆盖 `markPicked/markDelivered`，不覆盖 `ACCEPTED→SUBMITTED`，不设 `order.unmarkAccepted`；误接单走 `order.cancel` + 原因枚举并通知顾客（§5.1、§5.2） |
-| 6 | guest 单无顾客确认 | `DELIVERED` 后由 `cleanup` 日结批在「该单送达日所在自然日 `autoCompleteAt`（默认 22:00，UTC+8）」后转 `COMPLETED`（`AUTO_COMPLETED`，actor=SYSTEM），不等待顾客（§5；D43） |
+| 6 | guest 单无顾客确认 | `DELIVERED` 后由 `cleanup` 日结批在「该单送达日所在自然日 `autoCompleteAt`（默认 22:30，UTC+8）」后转 `COMPLETED`（`AUTO_COMPLETED`，actor=SYSTEM）；D91 起该时刻及之后送达的在 `order.markDelivered` 事务内即转，不等待顾客（§5；D43/D91） |
 | 7 | 待接单红点/进度总览数据源 | `order.listPartner({view:'workbench'})` 返回列表 + `counts` **6 项**（submitted/accepted/picked/delivered/exception/todayCompleted）；红点、总览、轮询同源（§5.3、§4.2） |
 | 8 | 状态批量要不要专用 batch 云函数 | **不设**：客户端循环逐单调用 + 同一 `batchActionId`，服务端逐单返回，客户端汇总"成功 N / 失败 M"如实上屏（§5.1） |
 | 9 | `order.createBatch` 语义 | **批 10 收口已移除**（TD-062 关闭）：`order.create` 为唯一下单入口，一单多包裹/多图能力并入 `create` 的 `parcels[]`/`images[]` 入参；旧调用未登记动作 → `FORBIDDEN`（§5.2/§5.3） |

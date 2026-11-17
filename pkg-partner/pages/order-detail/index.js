@@ -11,6 +11,7 @@ const actionsPart = require('./parts/actions');
 const eventView = require('./parts/event-view');
 const exceptionPanel = require('./parts/exception-panel');
 const transferPart = require('./parts/transfer');
+const candidatesPart = require('./parts/transfer-candidates');
 const undoPart = require('./parts/undo');
 const viewModel = require('./parts/view-model');
 const messagePoll = require('./parts/message-poll');
@@ -37,7 +38,7 @@ function writeHint(text) {
 
 // TD-076：计时器（parts/page-timers）与浮层接线（parts/panel-actions）按「页面方法」并入 Page 配置
 Page(Object.assign({
-  data: {
+  data: Object.assign({
     orderNo: '',
     order: null,
     events: [],
@@ -54,9 +55,6 @@ Page(Object.assign({
     transferPanel: transferPart.requestPanel(),
     transferInput: '',
     transferError: '',
-    // D82：本队候选（主兼职=成员/子队员=队长；来自 partner.listSubMembers，失败则只留手输）
-    transferCandidates: [],
-    transferPickIndex: -1,
     loading: true,
     error: '',
     readonly: false,
@@ -83,10 +81,14 @@ Page(Object.assign({
     reasonError: '',
     messageText: '',
     sending: false
-  },
+  }, candidatesPart.initialState()),
 
   onLoad(options) {
-    this.setData({ orderNo: (options && options.orderNo) || '', readonly: !modeGuard.canRenderWriteButton() });
+    this.setData({
+      orderNo: (options && options.orderNo) || '',
+      readonly: !modeGuard.canRenderWriteButton(),
+      myPartnerNo: (store.get('partner') || {}).partnerNo || ''
+    });
     this.load();
   },
   onShow() {
@@ -125,7 +127,8 @@ Page(Object.assign({
   applyDetail(data) {
     const order = (data && data.order) || {};
     const events = eventView.buildEvents(data && data.events);
-    const view = viewModel.buildView(order, events, { readonly: this.data.readonly, nowMs: Date.now(), config: store.get('config') });
+    const view = viewModel.buildView(order, events, { readonly: this.data.readonly, nowMs: Date.now(),
+      config: store.get('config'), myPartnerNo: this.data.myPartnerNo });
     this.setData({
       order: view.order,
       events: events,
@@ -263,26 +266,13 @@ Page(Object.assign({
       return;
     }
     this.setData({
-      panel: 'transfer', transferInput: '', transferError: '', transferCandidates: [], transferPickIndex: -1
+      panel: 'transfer', transferInput: '', transferError: '', transferKeyword: '', transferPickIndex: -1,
+      transferCards: [], transferCardSource: '', transferSearching: false, transferSearchFailed: false,
+      transferEmpty: candidatesPart.emptyOf({ count: 0 }),
+      transferCodeInput: '', transferCodeTip: '', transferCodeFilling: false
     });
-    // D82：本队候选（失败不阻断转派，保留手输编号兜底）
-    partnerApi.listSubMembers({}).then((team) => {
-      this.setData({ transferCandidates: transferPart.candidatesOf(team) });
-    }).catch(() => {
-      this.setData({ transferCandidates: [] });
-    });
-  },
-  // D82：选中本队成员即回填编号（仍走「下一步」二次确认；服务端校验不变）
-  onTransferPick(event) {
-    const index = Number(event.detail && event.detail.value);
-    const option = (this.data.transferCandidates || [])[index];
-    if (!option) {
-      return;
-    }
-    this.setData({ transferPickIndex: index, transferInput: option.partnerNo, transferError: '' });
-  },
-  onTransferInput(event) {
-    this.setData({ transferInput: ((event.detail && event.detail.value) || '').slice(0, transferPart.INPUT_MAX) });
+    // D82/D87/D90：候选先上屏（最近使用 + 本队）→ 接线在 parts/transfer-flow（页面只管编排）
+    this.loadTransferCandidates();
   },
   // 输入完整 partnerNo → 二次确认（免责：转派后你将失去该单）→ api.order.requestTransfer
   onTransferSubmit() {
@@ -297,7 +287,7 @@ Page(Object.assign({
     const confirm = transferPart.requestConfirmOf(input.toPartnerNo);
     wx.showModal({
       title: confirm.title,
-      content: this.writeHint(confirm.content),
+      content: writeHint(confirm.content),
       confirmText: confirm.confirmText,
       success: (res) => {
         if (!res.confirm) {
@@ -327,7 +317,7 @@ Page(Object.assign({
     const confirm = transferPart.declineConfirmOf();
     wx.showModal({
       title: confirm.title,
-      content: this.writeHint(confirm.content),
+      content: writeHint(confirm.content),
       confirmText: confirm.confirmText,
       success: (res) => {
         if (!res.confirm) {
@@ -347,7 +337,7 @@ Page(Object.assign({
     const confirm = transferPart.cancelConfirmOf();
     wx.showModal({
       title: confirm.title,
-      content: this.writeHint(confirm.content),
+      content: writeHint(confirm.content),
       confirmText: confirm.confirmText,
       success: (res) => {
         if (!res.confirm) {
@@ -436,11 +426,15 @@ Page(Object.assign({
   },
 
   onPanelClose() {
-    this.setData({ panel: '', correctError: '', exceptionError: '', deliveryError: '', reasonError: '', transferError: '' });
+    this.setData({
+      panel: '', correctError: '', exceptionError: '', deliveryError: '', reasonError: '', transferError: '',
+      transferCodeInput: '', transferCodeTip: '', transferCodeFilling: false
+    });
   },
   noop() {},
 
   onShareAppMessage() {
     return share.appMessage();
   }
-}, require('./parts/page-timers'), require('./parts/panel-actions'), require('./parts/image-actions')));
+}, require('./parts/page-timers'), require('./parts/panel-actions'), require('./parts/image-actions'),
+require('./parts/transfer-flow')));

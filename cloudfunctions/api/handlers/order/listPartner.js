@@ -18,6 +18,7 @@ const summaryPure = require('./_summary');
 const access = require('./_transfer-access');
 const listTransfer = require('./_list-transfer');
 const listHandover = require('./_list-handover');
+const autoComplete = require('./_auto-complete');
 const { readKeyword, readOptionalBindingId, parseTimeBound } = require('./_list-query');
 
 const WORKBENCH_VIEW = 'workbench';
@@ -207,9 +208,19 @@ async function pageOf(ctx, partnerId, filter, options) {
     .filter((order) => common.isAfterCursor(time.toMs(order[filter.sortField]), order.orderNo, opts.paging.cursor))
     .sort(compareRowsBy(filter.sortField));
   const page = candidates.slice(0, opts.paging.limit);
+  const hasMore = candidates.length > opts.paging.limit;
+  // 游标必须在 D91 补完成之前取：补完成会把 statusUpdatedAt 改写为 now，若用改写后的最后一行做游标，
+  // 下一页会按「now」重新扫到本页已返回的行（重复行/翻不完）。游标锚定补完成前的排序值。
+  const nextCursor = hasMore && page.length
+    ? common.makeCursor(page[page.length - 1], filter.sortField)
+    : null;
+  // D91：页内已到日结时刻的送达单就地补完成（cleanup 触发器未跑时的兜底；行对象原地更新 →
+  // 列表行、counts、summary（workbench/day 复用 summaryRows/scanRows 同一份引用）都看到 COMPLETED）
+  await autoComplete.completeDueRows(ctx, page, common.nowMsOf(ctx));
   return {
     page,
-    hasMore: candidates.length > opts.paging.limit,
+    hasMore,
+    nextCursor,
     sortField: filter.sortField,
     summaryRows,
     // 批 20/D54：keyword/时间窗过滤前的去重扫描行（view=day 的「今日已送达」summary 用它聚合，
@@ -229,9 +240,9 @@ function pageQueryOf(input, scanLimit) {
   };
 }
 
+// pageOf 已在补完成前算好游标（D91），这里只取结果，避免读到被改写的 statusUpdatedAt。
 function nextCursorOf(result) {
-  const last = result.page[result.page.length - 1];
-  return result.hasMore && last ? common.makeCursor(last, result.sortField) : null;
+  return result.nextCursor || null;
 }
 
 // UTC+8 今日 0 点（毫秒；与 buildCounts 的 todayCompleted 同公式、同一时区口径）

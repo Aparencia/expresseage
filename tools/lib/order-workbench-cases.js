@@ -12,7 +12,7 @@
  *   M16~M25  服务端契约纯件：_summary.buildDeliveredToday（今日窗口/DELIVERED·COMPLETED/排除取消单/
  *            只到苑·栋/件数/truncated/空值），旧 buildSummary 形状不变，listPartner view=day 接线，
  *            统计页复制汇总同口径；
- *   M26      D51 自动完成时刻默认 22:00（config/defaults 唯一默认源）。
+ *   M26      D51 自动完成时刻默认 22:30（D91 修订；config/defaults 唯一默认源）。
  *
  * 非独立套件：由 tools/selftest-order-workbench require（拆出以控测试文件 ≤1000 行，门禁 #18；
  * tools/lib 不参与 selftest 注册完整性闸，先例 tools/lib/workbench-day-cases.js）。
@@ -183,8 +183,8 @@ function dayFlowChecks(t, deps) {
     && handlerSrc.indexOf('buildDeliveredToday(result.scanRows') !== -1,
     'M25 服务端 view=day 接线：七状态 + 今日 statusUpdatedAt 下界 + 剥待确认/已完结写操作 + 今日已送达聚合');
   const defaultsCfg = optionalRequire('config/defaults.js');
-  t.eq(defaultsCfg && defaultsCfg.DEFAULT_CONFIG.autoCompleteAt, '22:00',
-    'M26 D51 自动完成时刻默认 22:00（唯一默认源 config/defaults）');
+  t.eq(defaultsCfg && defaultsCfg.DEFAULT_CONFIG.autoCompleteAt, '22:30',
+    'M26 D91 自动完成时刻默认 22:30（唯一默认源 config/defaults）');
 }
 
 module.exports = { EXPECTED_ASSERTIONS, dayFlowChecks };

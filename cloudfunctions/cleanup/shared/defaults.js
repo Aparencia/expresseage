@@ -1,6 +1,6 @@
 // config/defaults.js · 全局配置出厂值（唯一默认值来源；admin.bootstrap 种子、admin 范围校验、公开子集）
 // 契约：docs/contract/V4_CONTRACT.md v1.4 §4 config 行（含 autoCompleteAt（D43/D51）/orderMergeWindowMinutes（D23）/stations（D32）/
-//       transferTtlMinutes·transferRate（D58）/teamMaxMembers·subInviteRate（D59））；
+//       transferTtlMinutes·transferRate（D58）/teamMaxMembers·subInviteRate（D59）/transferSearchRate（D87）/transferCodeTtlMinutes·transferCodeRate（D88））；
 //       docs/data/V4_DATA_MODEL.md §2.10。docs/ENGINEERING §3.6（键与默认/范围）。
 // 纪律：值只含布尔/字符串/整数次数与毫秒；无 Key、无第三方服务标识（客户端包内零外呼痕迹）。
 //       `aiFallback.model` 的出厂模型名由云函数 lib/ai 自持（本文件留空串表示"用云侧默认模型"）。
@@ -36,11 +36,12 @@ const DEFAULT_CONFIG = {
   announcement: { enabled: false, title: '', text: '', updatedAt: 0 },
   maintenance: { enabled: false, text: '' },
   orderTimeoutMinutes: 120,
-  // D51（2026-11-01 用户拍板，CONTRACT §13）：送达单日结批时刻（UTC+8，HH:MM 字符串）。
+  // D91（2026-11-17 用户拍板，CONTRACT §13；D51 时刻修订）：送达单日结批时刻（UTC+8，HH:MM 字符串）。
   // 每单 cutoff =「该单 deliveredAt 所在 UTC+8 自然日的该时刻」，now ≥ cutoff 即转 COMPLETED：
-  // 该时刻前送达 → 当天该时刻批完成；该时刻后送达 → 下一轮 10 分钟批即完成（≤10 分钟）。
-  // 10 分钟触发器粒度 ⇒ 实际完成落在该时刻~+10 分钟；不额外保留顾客确认窗口。旧的「小时数」键作废。
-  autoCompleteAt: '22:00',
+  // 该时刻前送达 → 当天该时刻批完成；该时刻（含）之后送达 → **送达即完成**（`order.markDelivered`
+  // 同一事务内写 AUTO_COMPLETED，不再等下一轮 10 分钟批）；日结批仍兜底存量/漏批（含触发器未配时的读路径补完成）。
+  // 不额外保留顾客确认窗口。旧的「小时数」键作废。判据单源 = shared/auto-complete.js。
+  autoCompleteAt: '22:30',
   screenshotRetentionDays: PROMISE_RETENTION_DAYS.screenshot,
   recognitionFailureRetentionDays: PROMISE_RETENTION_DAYS.recognitionFailure,
   // v1.0（D23）：短间隔重复提交自动并入同一订单的时间窗；0=关闭合并；仅服务端行为，不进公开子集
@@ -60,6 +61,11 @@ const DEFAULT_CONFIG = {
   transferRate: { perMinute: 3, perDay: 20 },
   teamMaxMembers: 5,
   subInviteRate: { perMinute: 3, perDay: 20 },
+  // D87-a：转派候选检索限流（反枚举；读动作，超阈值 RATE_LIMITED）
+  transferSearchRate: { perMinute: 10, perDay: 30 },
+  // D88：转派码（6 位、TTL 默认 30 分钟；签发/解析共用限流桶）
+  transferCodeTtlMinutes: 30,
+  transferCodeRate: { perMinute: 3, perDay: 10 },
   avatarMaxBytes: 200 * 1024,
   testAccountMaxPerRole: 3,
   testDataRetentionDays: PROMISE_RETENTION_DAYS.testData,
@@ -105,7 +111,10 @@ const CONFIG_LIMITS = {
   transferTtlMinutes: { min: 1, max: 60 },
   transferRate: { perMinute: { min: 1, max: 30 }, perDay: { min: 1, max: 200 } },
   teamMaxMembers: { min: 1, max: 10 },
-  subInviteRate: { perMinute: { min: 1, max: 30 }, perDay: { min: 1, max: 200 } }
+  subInviteRate: { perMinute: { min: 1, max: 30 }, perDay: { min: 1, max: 200 } },
+  transferSearchRate: { perMinute: { min: 1, max: 60 }, perDay: { min: 1, max: 300 } },
+  transferCodeTtlMinutes: { min: 5, max: 120 },
+  transferCodeRate: { perMinute: { min: 1, max: 30 }, perDay: { min: 1, max: 100 } }
 };
 
 // config.getPublic 下发的公开子集（aiFallback/治理参数一律不下发；D73：订阅启用时单独下发模板 ID，不下发字段映射）

@@ -1,4 +1,4 @@
-// handlers/order/index.js · 订单域 action 注册表（22 个动作，键名逐字对齐 shared/actions.js）
+// handlers/order/index.js · 订单域 action 注册表（25 个动作，键名逐字对齐 shared/actions.js）
 'use strict';
 
 module.exports = {
@@ -20,6 +20,10 @@ module.exports = {
     'order.correct': require('./correct'),
     'order.undo': require('./undo'),
     'order.deleteRecord': require('./deleteRecord'),
+    // D92 审核（订单级两级状态 + 未取件阶段的件数增删）
+    'order.reviewMark': require('./reviewMark'),
+    'order.reviewReopen': require('./reviewReopen'),
+    'order.reviewParcels': require('./reviewParcels'),
     'order.imageUrl': require('./imageUrl'),
     // D58（批 26）：转派四写动作（acceptTransfer 是唯一订单归属改写点）
     'order.requestTransfer': require('./requestTransfer'),

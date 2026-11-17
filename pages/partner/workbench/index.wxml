@@ -256,12 +256,13 @@
     </view>
   </block>
 
-  <!-- 批 38（D81）：已转出——首次展开才请求；行=服务端最小进度投影（无顾客身份/地址/取件码） -->
+  <!-- 批 38（D81）/ D91：已转出——首次展开才请求；行=服务端最小进度投影（无顾客身份/地址/取件码） -->
   <view class="card handover-fold" bindtap="onHandoverToggle">
     <view class="row between">
-      <text class="strong">已转出</text>
+      <text class="strong">已转出的单{{handover.loaded && handover.rows.length ? '（' + handover.rows.length + '）' : ''}}</text>
       <text class="small">{{handover.expanded ? '收起' : (handover.loading ? '读取中…' : '查看进度')}}</text>
     </view>
+    <view class="small">转出后你仍可操作这单（取件/送达/改码/异常/取消/留言），点行进去即可</view>
   </view>
   <view wx:if="{{handover.expanded}}" class="card handover-card">
     <view wx:if="{{handover.error}}" class="small panel-error">{{handover.error}}</view>

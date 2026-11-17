@@ -5,6 +5,7 @@
 'use strict';
 
 const enums = require('../../../../shared/enums');
+const orderState = require('../../../../shared/order-state');
 const roomTag = require('../../../../utils/room-tag');
 
 // 可核对的状态：待接单/已接单/已取件（已送达/终态/异常不在此页处理）
@@ -68,7 +69,9 @@ function listRowsOf(list) {
       anchorText: anchorOf(order),
       imageCount: count,
       imageCountText: '截图 ' + count + ' 张',
-      parcelCountText: parcelCountTextOf(order)
+      parcelCountText: parcelCountTextOf(order),
+      // D92：订单级审核状态（服务端 DTO 下发中文，页面零判据）
+      reviewStatusText: textOf(order.review && order.review.statusText)
     });
   });
   return out;
@@ -156,6 +159,18 @@ function validateEditor(editor) {
   return { ok: true, reason: '' };
 }
 
+// D92：审核状态投影（服务端已给 can* 布尔，页面只渲染不判断）
+function reviewOf(order) {
+  const value = (order && order.review) || {};
+  return {
+    statusText: textOf(value.statusText),
+    reviewed: value.status === orderState.REVIEW_STATUS.REVIEWED,
+    canMark: value.canMark === true,
+    canReopen: value.canReopen === true,
+    canAdjustParcels: value.canAdjustParcels === true
+  };
+}
+
 module.exports = {
   imageCountOf,
   anchorOf,
@@ -163,5 +178,6 @@ module.exports = {
   parcelEditorsOf,
   originOf,
   patchOf,
-  validateEditor
+  validateEditor,
+  reviewOf
 };

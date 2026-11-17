@@ -17,6 +17,20 @@ function writeHint(text) {
   return modeGuard.isTestWrite() ? text + '（将写入测试数据）' : text;
 }
 
+// D88：转派码有效期展示（纯展示，不做业务判断；服务端已按 TTL 下发 expiresAt 毫秒）
+function pad2(value) {
+  return value < 10 ? '0' + value : '' + value;
+}
+
+function expiresTextOf(ms) {
+  const date = new Date(Number(ms) || 0);
+  if (!(date.getTime() > 0)) {
+    return '';
+  }
+  return '有效至 ' + pad2(date.getMonth() + 1) + '-' + pad2(date.getDate())
+    + ' ' + pad2(date.getHours()) + ':' + pad2(date.getMinutes());
+}
+
 Page({
   data: {
     first: false,
@@ -27,7 +41,9 @@ Page({
     services: [],
     hasLegacy: false,
     zones: [],
-    errorText: ''
+    errorText: '',
+    // D88：转派码（本人签发；对方在转派面板输码即可把这单转给我）
+    transferCode: { code: '', expiresText: '', creating: false }
   },
 
   onLoad(options) {
@@ -77,6 +93,39 @@ Page({
     }
     wx.showToast({ title: '开发者只读视角不能操作', icon: 'none' });
     return true;
+  },
+
+  // ---------- D88 转派码：本人签发/轮换 1 个有效码（对方在转派面板输码即可把这单转给我） ----------
+  onTransferCodeCreate() {
+    if (this.guardReadonly() || this.data.transferCode.creating) {
+      return Promise.resolve();
+    }
+    this.setData({ transferCode: Object.assign({}, this.data.transferCode, { creating: true }) });
+    return partnerApi.createTransferCode()
+      .then((data) => {
+        this.setData({
+          transferCode: {
+            code: (data && data.code) || '',
+            expiresText: expiresTextOf(data && data.expiresAt),
+            creating: false
+          }
+        });
+        wx.showToast({ title: writeHint('转派码已生成'), icon: 'none' });
+      })
+      .catch((err) => {
+        this.setData({ transferCode: Object.assign({}, this.data.transferCode, { creating: false }) });
+        wx.showToast({ title: (err && err.message) || '生成失败，请重试', icon: 'none' });
+      });
+  },
+  onTransferCodeCopy() {
+    const code = this.data.transferCode.code;
+    if (!code) {
+      return;
+    }
+    wx.setClipboardData({
+      data: code,
+      success: () => wx.showToast({ title: '转派码已复制', icon: 'none' })
+    });
   },
 
   onAcceptingChange(event) {

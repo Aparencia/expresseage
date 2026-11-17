@@ -18,6 +18,7 @@ const enums = require(path.join(ROOT, 'shared/enums.js'));
 const orderState = require(path.join(ROOT, 'shared/order-state.js'));
 const serverDto = require(path.join(ROOT, 'cloudfunctions/api/handlers/order/_dto.js'));
 const transferPart = require(path.join(ROOT, 'pkg-partner/pages/order-detail/parts/transfer.js'));
+const candidatesPart = require(path.join(ROOT, 'pkg-partner/pages/order-detail/parts/transfer-candidates.js'));
 const actionsPart = require(path.join(ROOT, 'pkg-partner/pages/order-detail/parts/actions.js'));
 const viewModel = require(path.join(ROOT, 'pkg-partner/pages/order-detail/parts/view-model.js'));
 const transferView = require(path.join(ROOT, 'pages/partner/workbench/parts/transfer.js'));
@@ -171,6 +172,16 @@ function layerHits(code) {
   return hits;
 }
 
+// 页面方法解析纪律（D87）：模块级 function 不在 Page 配置对象上，
+// 页面写 this.<模块级函数名>( 必然 TypeError —— 调用点在参数构造阶段抛错，界面零反馈。
+function thisModuleFnHits(code) {
+  const src = String(code || '');
+  const names = (src.match(/^function\s+([A-Za-z_$][\w$]*)\s*\(/gm) || [])
+    .map((line) => line.replace(/^function\s+/, '').replace(/\s*\($/, ''))
+    .filter(Boolean);
+  return names.filter((name) => src.indexOf('this.' + name + '(') >= 0);
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // ① 订单详情（D58）
 // ══════════════════════════════════════════════════════════════════════════════
@@ -296,8 +307,8 @@ async function detailTransferChecks(t) {
   t.check(transferredGet.ok, 'K32 接手后新履约人经真实 order.get 可读（P2-9：不再用 buildOrderDto 直喂掩盖读权限分支）');
   t.eq([transferredCard.result.visible, transferredCard.result.text, transferredCard.keys,
     transferredGet.data.order.counterpart],
-  [true, '已转派：由 PBBBBBB 接手履约', ['requestTransfer'], null],
-  'K32b 真实 order.get：接手后仍可再次转派（入口取服务端 actions）+ 顾客身份仍遮蔽');
+  [true, '已转派：由 PBBBBBB 接手履约', [], null],
+  'K32b 真实 order.get：D89 起接手后不再出现 requestTransfer（禁止二次转派）+ 顾客身份仍遮蔽');
 
   // ── 收口：一件已取 / 其它状态 → 服务端不下发转派入口，页面零入口 ──
   const pickedDoc = orderDoc(STATUS.ACCEPTED, { parcels: [parcelOf({ picked: true, pickedAt: NOW - MINUTE })] });
@@ -325,9 +336,10 @@ async function detailTransferChecks(t) {
   t.eq(transferPart.candidatesOf({ members: [
     { partnerNo: 'PBBB001', displayName: '小王', status: 'ACTIVE' },
     { partnerNo: 'PCCC002', displayName: '小李', status: 'SUSPENDED' }
-  ] }), [{ partnerNo: 'PBBB001', label: '小王 · PBBB001' }], 'K41 D82 主兼职候选只留 ACTIVE 成员（昵称+编号）');
+  ] }), [{ partnerNo: 'PBBB001', displayName: '小王', label: '小王 · PBBB001' }],
+  'K41 D82 主兼职候选只留 ACTIVE 成员（昵称+编号；displayName 供 D87 卡片标题）');
   t.eq(transferPart.candidatesOf({ team: { parentPartnerNo: 'PAAA001', memberCount: 3 } }),
-    [{ partnerNo: 'PAAA001', label: '队长 · PAAA001' }], 'K42 D82 子队员候选=队长（不暴露其他成员）');
+    [{ partnerNo: 'PAAA001', displayName: '', label: '队长 · PAAA001' }], 'K42 D82 子队员候选=队长（不暴露其他成员）');
   t.eq(transferPart.candidatesOf({}), [], 'K43 D82 无队伍信息 → 空候选（手输编号兜底）');
   const mixedSplit = transferPart.splitActions([
     { key: 'pick', label: '标记已取件' },
@@ -403,6 +415,106 @@ async function detailTransferChecks(t) {
   'K61 四个转派动作都按写动作登记（READONLY 自动进拒绝集）');
   t.notEmpty([requestable, initiatorDto, targetDto, acceptedDto], 'K62 K 组样本非空（真实 DTO 4 份）');
 
+  // ── K63/K64：页面方法解析纪律（D87 回归闸）──
+  // 病灶：模块级 function 不在 Page 配置对象上，页面写 this.writeHint(...) 即 TypeError，
+  // wx.showModal 参数构造阶段就抛错 → 按钮点下去界面零反馈（批 26 转派三按钮曾整条哑火）。
+  t.eq(thisModuleFnHits(pageSrc), [],
+    'K63 页面零「this.模块级函数名(」调用（调用即 TypeError、界面零反应，转派发起/拒收/撤回曾全哑）');
+  t.eq(thisModuleFnHits('function writeHint(t) { return t; }\nPage({ go() { return this.writeHint("x"); } });'),
+    ['writeHint'], 'K64 扫描有牙：注入 this.模块级函数名( 必红（不空集全绿）');
+
+  // ── K65~K72：D87-a/b 候选检索与文字卡片（纯件投影 + 页面接线）──
+  t.eq(candidatesPart.cardsOfTeam({ members: [
+    { partnerNo: 'PBBB234', displayName: '小王', status: 'ACTIVE' },
+    { partnerNo: 'PCCC567', displayName: '小李', status: 'SUSPENDED' }
+  ] }), [{ partnerNo: 'PBBB234', title: '小王 · P-BBB-234', meta: '本队' }],
+  'K65 本队候选卡片（仅 ACTIVE；标题=昵称 · 展示编号；meta=本队）');
+  t.eq(candidatesPart.cardsOfSearch({ list: [
+    { partnerNo: 'PCCC567', displayName: '小李', acceptingOrders: false },
+    { partnerNo: 'PDDD89A', displayName: '', acceptingOrders: true }
+  ] }), [
+    { partnerNo: 'PCCC567', title: '小李 · P-CCC-567', meta: '已暂停接单' },
+    { partnerNo: 'PDDD89A', title: 'P-DDD-89A', meta: '接单中' }
+  ], 'K66 检索卡片（接单状态说人话；无昵称时只显编号）');
+  t.eq([candidatesPart.emptyOf({}), candidatesPart.emptyOf({ count: 0, keyword: '阿' }),
+    candidatesPart.emptyOf({ failed: true, keyword: '阿' }), candidatesPart.emptyOf({ loading: true })],
+  [{ visible: true, text: candidatesPart.COPY.empty },
+    { visible: true, text: candidatesPart.COPY.noResult },
+    { visible: true, text: candidatesPart.COPY.failed },
+    { visible: true, text: candidatesPart.COPY.searching }],
+  'K67 空态四态各有下一步（无候选/无结果/失败/搜索中，不静默只剩输入框）');
+  t.eq([candidatesPart.searchableOf('阿'), candidatesPart.searchableOf('阿乙'),
+    candidatesPart.searchableOf('pbb'), candidatesPart.searchableOf('p-bbb')],
+  [false, true, false, true], 'K68 检索闸：昵称≥2 字或编号本体≥3 位（与服务端同口径，只减少空请求）');
+  t.eq(Object.keys(candidatesPart.cardsOfSearch({ list: [{ partnerNo: 'PCCC002', displayName: '小李' }] })[0]).sort(),
+    ['meta', 'partnerNo', 'title'], 'K69 卡片三键（无 openid/_id/头像/fileId）');
+  t.eq(candidatesPart.emptyOf({ count: 1 }).visible, false, 'K70 有候选时不出空态');
+  const candSrc = stripped('pkg-partner/pages/order-detail/parts/transfer-candidates.js');
+  t.check(candSrc.indexOf('avatar') === -1 && candSrc.indexOf('openid') === -1 && candSrc.indexOf('fileId') === -1,
+    'K71 候选纯件零头像/openid/fileId（D19/D42 不松绑）');
+  const flowSrc = stripped('pkg-partner/pages/order-detail/parts/transfer-flow.js');
+  const wxmlSrc2 = stripped('pkg-partner/pages/order-detail/index.wxml');
+  t.check(flowSrc.indexOf('onTransferSearch(') >= 0 && flowSrc.indexOf('onTransferPickCard(') >= 0
+    && wxmlSrc2.indexOf('bindtap="onTransferSearch"') >= 0 && wxmlSrc2.indexOf('bindtap="onTransferPickCard"') >= 0
+    && wxmlSrc2.indexOf('bindconfirm="onTransferSearch"') >= 0,
+  'K72 面板接线：搜索按钮/回车检索/点卡片回填（WXML 绑定与页面方法一一对应）');
+  t.check(wxmlSrc2.indexOf('<picker') === -1 || wxmlSrc2.indexOf('transferCandidates') === -1,
+    'K73 转派候选不再用原生 picker 滚轮（D82 升级为文字卡片）');
+
+  // ── K74~K78：D88 转派码（输码回填 + 目标侧签发入口 + 零头像）──
+  t.eq([candidatesPart.codeOf('abc-def'), candidatesPart.codeOf(' ABC DEF '), candidatesPart.codeOf('abcdefghij')],
+    ['ABCDEF', 'ABCDEF', 'ABCDEF'], 'K74 转派码输入归一：大写、去空格/连字符、截 6 位');
+  const codeInit = candidatesPart.initialState();
+  t.eq([codeInit.transferCodeInput, codeInit.transferCodeFilling, codeInit.transferCodeTip],
+    ['', false, ''], 'K75 页面 data 带转派码三字段（初始空/未填/无提示）');
+  t.check(flowSrc.indexOf('onTransferCodeFill(') >= 0 && flowSrc.indexOf('resolveTransferCode(') >= 0
+    && wxmlSrc2.indexOf('bindtap="onTransferCodeFill"') >= 0 && wxmlSrc2.indexOf('bindinput="onTransferCodeInput"') >= 0,
+  'K76 面板接线：输码 + 「填入」调 partner.resolveTransferCode 并回填编号');
+  const settingsJs = stripped('pkg-partner/pages/service-settings/index.js');
+  const settingsWxml = stripped('pkg-partner/pages/service-settings/index.wxml');
+  t.check(settingsJs.indexOf('onTransferCodeCreate(') >= 0 && settingsJs.indexOf('createTransferCode(') >= 0
+    && settingsWxml.indexOf('bindtap="onTransferCodeCreate"') >= 0 && settingsWxml.indexOf('我的转派码') >= 0,
+  'K77 目标侧签发入口：服务设置页「我的转派码」→ partner.createTransferCode');
+  t.check(settingsWxml.indexOf('avatar') === -1 && candSrc.indexOf('avatar') === -1,
+    'K78 转派码入口与候选卡片零头像（D19/D42 不松绑；页面其它区块的顾客头像不在此断言）');
+
+  // ── K79~K82：D89 发起者「已转出」状态条（只对发起人、只在 ACCEPTED、WXML 已接）──
+  const awayDto = await dtoOf(orderDoc(STATUS.ACCEPTED, {
+    transfer: transferBlock(TRANSFER_STATUS.ACCEPTED, { fromPartnerNo: 'PAAAAAA', toPartnerNo: 'PBBBBBB' })
+  }));
+  const awayFrom = cardOfDto(awayDto, { myPartnerNo: 'PAAAAAA' });
+  const awayTo = cardOfDto(awayDto, { myPartnerNo: 'PBBBBBB' });
+  t.check(awayFrom.away.visible && awayFrom.away.text.indexOf('PBBBBBB') >= 0
+    && awayFrom.away.text.indexOf('仍有操作权') >= 0,
+  'K79 D89 发起者视角出现「已转出」状态条（写明接手人编号 + 仍有操作权）');
+  t.eq([awayTo.away.visible, awayFrom.away.visible], [false, true],
+    'K80 D89 状态条只对发起者出现（接手人视角不出现）');
+  const pendingAway = cardOfDto(await dtoOf(orderDoc(STATUS.ACCEPTED, { transfer: pendingBlock() })),
+    { myPartnerNo: 'PAAAAAA' });
+  t.eq(pendingAway.away.visible, false, 'K81 D89 仅 PENDING（还没转成功）不出「已转出」条');
+  t.check(wxmlSrc2.indexOf('transferCard.away.visible') >= 0 && wxmlSrc2.indexOf('transferCard.away.text') >= 0,
+    'K82 D89 状态条已接入 WXML（绑定 visible/text）');
+
+  // ── K83~K86：D90 三段式候选（最近使用 → 本队，按编号去重）──
+  t.eq(candidatesPart.cardsOfRecent([
+    { partnerNo: 'PBBB234', displayName: '小王', acceptingOrders: false },
+    { partnerNo: 'PCCC567', displayName: '', acceptingOrders: true }
+  ]), [
+    { partnerNo: 'PBBB234', title: '小王 · P-BBB-234', meta: '最近使用 · 已暂停接单' },
+    { partnerNo: 'PCCC567', title: 'P-CCC-567', meta: '最近使用' }
+  ], 'K83 最近使用卡片（meta 标「最近使用」；暂停接单在 meta 里点明）');
+  t.eq(candidatesPart.mergeCards(
+    [{ partnerNo: 'PBBB234', title: '小王 · P-BBB-234', meta: '最近使用' }],
+    [{ partnerNo: 'PBBB234', title: '小王 · P-BBB-234', meta: '本队' },
+      { partnerNo: 'PCCC567', title: '小李 · P-CCC-567', meta: '本队' }]
+  ).map((card) => [card.partnerNo, card.meta]), [['PBBB234', '最近使用'], ['PCCC567', '本队']],
+  'K84 合并规则：最近使用在前、同编号去重（保留先出现的「最近使用」标签）');
+  t.check(flowSrc.indexOf('loadTransferCandidates(') >= 0 && flowSrc.indexOf('recentTransferTargets(') >= 0
+    && flowSrc.indexOf('listSubMembers(') >= 0,
+  'K85 面板打开时并行拉「最近使用 + 本队」（任一失败不阻断，仍有检索与手输）');
+  t.check(pageSrc.indexOf('loadTransferCandidates(') >= 0,
+    'K86 页面只做编排：候选加载委托给 parts/transfer-flow（页面行数受 TD-076 约束）');
+
   // ── P1-1（审查修复）：时间线裸英文 + 转派事件冒认「我」──
   const unmapped = enums.ORDER_EVENTS.filter((type) => {
     const label = eventView.EVENT_LABELS[type];
@@ -467,8 +579,8 @@ async function detailTransferChecks(t) {
   const afterKeys = keysOf(afterGet.data.order.actions);
   t.eq([afterGet.ok, afterKeys.indexOf('pick') >= 0, afterKeys.indexOf('requestTransfer') >= 0,
     afterKeys.indexOf('acceptTransfer') < 0],
-  [true, true, true, true],
-  'K74 accept 后目标 order.get 有履约动作（pick + 可再转派），邀请动作消失（P0-1 动作矩阵与遮蔽解耦）');
+  [true, true, false, true],
+  'K74 accept 后目标 order.get 有履约动作（pick），D89 起不再有 requestTransfer（禁止二次转派），邀请动作消失');
   const afterView = viewModel.buildView(afterGet.data.order, eventView.buildEvents(afterGet.data.events),
     { nowMs: real.NOW });
   t.eq([afterView.actions.length > 0, afterView.canCorrect, afterView.canMessage,
@@ -695,7 +807,7 @@ function layerHitsWorkbench(code) {
 }
 
 module.exports = {
-  DETAIL_EXPECTED_ASSERTIONS: 80,
+  DETAIL_EXPECTED_ASSERTIONS: 104,
   WORKBENCH_EXPECTED_ASSERTIONS: 43,
   detailTransferChecks,
   workbenchTransferChecks

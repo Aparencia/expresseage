@@ -409,7 +409,7 @@ function validatePayload(payload) {
   }
   // D43/D51：自动完成时间 = UTC+8 的 HH:MM（与服务端 shared/defaults.normalizeClockText 同一判据，不再有 1~72/1~168 两套范围）
   if (!defaults.normalizeClockText(data.autoCompleteAt)) {
-    return '自动完成时间请填 HH:MM（00:00~23:59，如 22:00）。';
+    return '自动完成时间请填 HH:MM（00:00~23:59，如 22:30）。';
   }
   if (!(data.screenshotRetentionDays > 0 && data.screenshotRetentionDays <= range.screenshotMax)) {
     return '截图留存天数不能超过 ' + range.screenshotMax + ' 天。';

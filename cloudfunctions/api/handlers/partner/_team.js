@@ -476,6 +476,8 @@ module.exports = {
   noteOf,
   requireClientRequestId,
   consumeSubInviteRate,
+  minuteWindowKeyOf,
+  bumpRateCounters,
   nextBatchSeqInTx,
   listTeamMembers,
   memberCountOf,

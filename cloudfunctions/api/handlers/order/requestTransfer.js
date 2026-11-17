@@ -57,6 +57,10 @@ async function loadCheckedTarget(ctx, info, payload) {
   if (transfer.isPending(order)) {
     throw errors.invalidState('已有转派进行中');
   }
+  // D89：转派成功后订单归属已换人，不再允许二次转派（同时保护发起者「已转出」追踪记录不被覆盖）
+  if (transfer.isAccepted(order)) {
+    throw errors.invalidState('这单已经转派过，不能再转');
+  }
   const toPartnerNo = transfer.readToPartnerNo(payload);
   const target = await loadTarget(ctx, toPartnerNo);
   if (transfer.sameId(target._id, partner._id)) {

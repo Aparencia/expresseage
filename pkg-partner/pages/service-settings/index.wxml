@@ -67,6 +67,22 @@
       </view>
     </view>
 
+    <!-- D88：转派码（本人签发；对方在转派面板输码即可把这单转给我） -->
+    <view class="card">
+      <view class="section-title">我的转派码</view>
+      <view class="small">把 6 位码给对方，对方在转派面板输码就能把这单转给你；30 分钟内有效，可随时重新生成（旧码立即失效）。</view>
+      <view wx:if="{{transferCode.code}}" class="row between transfer-code-line">
+        <view class="strong transfer-code-value">{{transferCode.code}}</view>
+        <view class="small">{{transferCode.expiresText}}</view>
+      </view>
+      <view class="row code-actions">
+        <view wx:if="{{transferCode.code}}" class="btn btn-ghost mini-btn" bindtap="onTransferCodeCopy">复制</view>
+        <button class="btn btn-primary mini-btn" bindtap="onTransferCodeCreate" disabled="{{transferCode.creating || readonly}}">
+          {{transferCode.creating ? '生成中…' : (transferCode.code ? '重新生成' : '生成转派码')}}
+        </button>
+      </view>
+    </view>
+
     <view wx:if="{{errorText}}" class="error">{{errorText}}</view>
     <button class="btn btn-primary btn-block" disabled="{{saving || readonly}}" bindtap="onSave">
       {{saving ? '保存中…' : '保存'}}

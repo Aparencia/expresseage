@@ -1,6 +1,6 @@
-<!-- pkg-partner/pages/review/index.wxml · 兼职「审核」核对页（2026-11-08 MVP）
+<!-- pkg-partner/pages/review/index.wxml · 兼职「审核」核对页（2026-11-08 MVP；D92 增订单级审核状态与件数增删）
      一屏查看顾客上传的取件码截图与其订单信息；不一致可直接改订单字段（order.correct）。
-     不留审核状态、不加集合、不阻塞取件；READONLY 隐藏保存。 -->
+     审核不改变订单状态、不阻塞取件；READONLY 隐藏保存与审核写入口。 -->
 <view class="page-body">
   <switch-bar />
 
@@ -25,7 +25,10 @@
         </view>
         <view class="row between review-meta">
           <text class="small muted">{{item.anchorText}}</text>
-          <text wx:if="{{item.parcelCountText}}" class="small muted">{{item.parcelCountText}}</text>
+          <view class="row">
+            <text wx:if="{{item.reviewStatusText}}" class="tag review-tag">{{item.reviewStatusText}}</text>
+            <text wx:if="{{item.parcelCountText}}" class="small muted">{{item.parcelCountText}}</text>
+          </view>
         </view>
       </view>
       <view wx:if="{{!rows.length && !error}}" class="small muted review-empty">{{emptyText}}</view>
@@ -36,7 +39,14 @@
   <block wx:else>
     <view class="row between review-head">
       <view class="mini-btn btn btn-ghost" bindtap="onBack">返回列表</view>
-      <text class="small muted">{{current.statusText}}</text>
+      <text class="small muted">{{current.statusText}}<text wx:if="{{current.review.statusText}}"> · {{current.review.statusText}}</text></text>
+    </view>
+
+    <!-- D92：审核状态（订单级两级；可撤销重审）；READONLY 只读 -->
+    <view wx:if="{{!readonly}}" class="card">
+      <view wx:if="{{current.review.canMark}}" class="btn btn-primary btn-block" bindtap="onReviewMark">{{saving ? '保存中…' : '标记已审核'}}</view>
+      <view wx:elif="{{current.review.canReopen}}" class="btn btn-ghost btn-block" bindtap="onReviewReopen">{{saving ? '保存中…' : '撤销审核（重新审）'}}</view>
+      <view wx:else class="small muted">当前进度不可审核（仅待接单/已接单/已取件可审）。</view>
     </view>
 
     <view class="card">
@@ -80,12 +90,19 @@
         <input class="form-input" value="{{item.trackingTail}}" maxlength="5" type="number" data-index="{{index}}" data-field="trackingTail" bindinput="onFieldInput" disabled="{{readonly}}" />
       </view>
       <view wx:if="{{!readonly}}" class="row parcel-actions">
+        <view wx:if="{{current.review.canAdjustParcels}}" class="mini-btn btn btn-ghost" data-index="{{index}}" bindtap="onParcelRemove">删除这一件</view>
         <view class="mini-btn btn btn-primary" data-index="{{index}}" bindtap="onSave">{{saving ? '保存中…' : '保存这件'}}</view>
       </view>
     </view>
 
+    <!-- D92：未取件阶段可新增一件（上限 10；已取件的单不可增减） -->
+    <view wx:if="{{!readonly && current.review.canAdjustParcels}}" class="card">
+      <view class="btn btn-primary btn-block" bindtap="onParcelAdd">{{saving ? '保存中…' : '新增一件'}}</view>
+      <view class="small muted">新增的件取件码为空，可在这件卡片里补；已取件后不能再增减。</view>
+    </view>
+
     <view class="card">
-      <view class="small muted">审核只做核对与更正：不改订单状态、不影响取件；改动会同步到顾客端。</view>
+      <view class="small muted">审核只做核对与更正：不改订单状态、不影响取件；改动会同步到顾客端（顾客不另行通知）。</view>
     </view>
   </block>
 </view>

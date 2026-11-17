@@ -28,7 +28,7 @@ const SUCCESS_TEXT = {
 };
 const COPY = {
   requestText: '一件还没取时，可以把这一单转给另一位兼职；对方确认后由 TA 接手，这单会从你的列表消失。',
-  requestPanelHint: '输入对方完整兼职编号（P 开头，可带连字符）。转派后你将失去该单，对方确认前可撤回。',
+  requestPanelHint: '输入对方完整兼职编号（P 开头，可带连字符）。对方确认后由 TA 接手履约，你仍可继续操作这单；确认前可撤回。',
   requestPlaceholder: '如 P-8F3-K2M',
   nextText: '下一步',
   readonly: '开发者只读视角不能操作',
@@ -42,7 +42,10 @@ const COPY = {
   waitingTail: '）',
   targetHead: '转给 ',
   acceptedHead: '已转派：由 ',
-  acceptedTail: ' 接手履约'
+  acceptedTail: ' 接手履约',
+  // D89：发起者视角的状态条（转出后仍可操作，但必须一眼看出这单已不在自己名下）
+  awayHead: '这单已转给 ',
+  awayTail: '，你仍有操作权：取件 / 送达 / 改码 / 异常 / 取消 / 留言'
 };
 
 function namesOf(kind) {
@@ -176,11 +179,11 @@ function candidatesOf(team) {
       return;
     }
     const label = (member.displayName ? member.displayName + ' · ' : '') + member.partnerNo;
-    options.push({ partnerNo: member.partnerNo, label: label });
+    options.push({ partnerNo: member.partnerNo, displayName: member.displayName || '', label: label });
   });
   const parentNo = value.team && typeof value.team.parentPartnerNo === 'string' ? value.team.parentPartnerNo : '';
   if (options.length === 0 && parentNo) {
-    options.push({ partnerNo: parentNo, label: '队长 · ' + parentNo });
+    options.push({ partnerNo: parentNo, displayName: '', label: '队长 · ' + parentNo });
   }
   return options;
 }
@@ -219,11 +222,26 @@ function successTextOf(kind) {
 function closedCard() {
   return {
     visible: false,
+    away: { visible: false, text: '' },
     request: { visible: false, title: '', hint: '', actionText: '', readonlyHint: '' },
     invite: { visible: false, title: '', remainingText: '', hint: '', accept: null, decline: null },
     waiting: { visible: false, title: '', targetText: '', hint: '', cancel: null },
     result: { visible: false, text: '', hint: '' }
   };
+}
+
+// D89：发起者视角「已转出」状态条——只在「转派已成功 + 发起人是我」时出现；
+// 判定放纯件（页面零状态字面量），myPartnerNo 由页面从 store 注入（缺失则不出条，不误伤接手人）。
+function awayBannerOf(transfer, myPartnerNo) {
+  const block = transfer || {};
+  const me = String(myPartnerNo || '');
+  if (!me || block.status !== enums.TRANSFER_STATUS.ACCEPTED) {
+    return { visible: false, text: '' };
+  }
+  if (String(block.fromPartnerNo || '') !== me) {
+    return { visible: false, text: '' };
+  }
+  return { visible: true, text: COPY.awayHead + (block.toPartnerNo || '') + COPY.awayTail };
 }
 
 // 发起入口：只看 DTO actions[]（不判状态）；READONLY 只保留说明不出按钮
@@ -297,6 +315,7 @@ function cardOf(order, actions, options) {
     hint: resultText && request.visible ? COPY.retryHint : ''
   };
   card.visible = request.visible || !!invite || !!waiting || result.visible;
+  card.away = awayBannerOf(transfer, opts.myPartnerNo);
   card.request = request;
   card.invite = invite || card.invite;
   card.waiting = waiting || card.waiting;

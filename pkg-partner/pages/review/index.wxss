@@ -58,6 +58,16 @@
   margin-top: 16rpx;
 }
 
+/* D92：审核状态 chip（未审核/已审核；颜色由文字承担，不靠图形） */
+.review-tag {
+  margin-right: 12rpx;
+  color: #1F6F4A;
+  background: #F1F8F4;
+  border-radius: 8rpx;
+  padding: 2rpx 12rpx;
+  font-size: 24rpx;
+}
+
 .error-text {
   margin-top: 12rpx;
   color: #D93026;

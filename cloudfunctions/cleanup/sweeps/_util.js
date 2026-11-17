@@ -6,12 +6,12 @@ const shared = require('../shared/collections');
 const enums = require('../shared/enums');
 const audit = require('../shared/audit-actions');
 const defaults = require('../shared/defaults');
+const autoComplete = require('../shared/auto-complete');
 
 const BATCH = 100;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 const MINUTE_MS = 60 * 1000;
-const UTC8_OFFSET_MS = 8 * HOUR_MS;
 const SYSTEM = 'SYSTEM';
 // orders.images[] 上限 10 张（D40；CONTRACT §4.1/DATA_MODEL §2.5）→ 下标 0~9。
 // 云 DB 数组子元素没有通配点查语法（不支持 'images.$.fileId'），引用计数/到期扫描按逐下标点路径点查。
@@ -60,25 +60,23 @@ function minutesBefore(nowMs, minutes) {
   return nowMs - minutes * MINUTE_MS;
 }
 
-// ── D51 日结批：每单 cutoff =「deliveredAt 所在 UTC+8 自然日的 config.autoCompleteAt」──────────
-// cutoff 只由 deliveredAt 自己的日决定（不随 now 漂移）：22:00 前送达 → 当天 22:00 批完成；
-// 22:00~24:00 送达 → 当天该时刻已过，下一轮 10 分钟批即完成（≤10 分钟）；
-// 跨 0 点补扫同样按送达日补算（now 所在日不参与）。显式 UTC+8 偏移换算，不读本机时区
-// （云函数时区不可控），也不复用本地 setHours（历史漂移点）。
+// ── D91 日结批：每单 cutoff =「deliveredAt 所在 UTC+8 自然日的 config.autoCompleteAt」──────────
+// cutoff 只由 deliveredAt 自己的日决定（不随 now 漂移）：该时刻前送达 → 当天该时刻批完成；
+// 该时刻（含）后送达 → 送达即完成（api 侧同事务写 AUTO_COMPLETED，见 handlers/order/_auto-complete.js），
+// 批次仍兜底存量/漏批；跨 0 点补扫同样按送达日补算（now 所在日不参与）。
+// 公式单源 = shared/auto-complete.js（api 侧共用同一判据），本文件只做配置文本归一与回落。
 // 配置缺失/非法回落 config/defaults 的出厂时刻（单源，不在云函数另写常量）。
-function localDayStartOf(msValue) {
-  return Math.floor((msValue + UTC8_OFFSET_MS) / DAY_MS) * DAY_MS - UTC8_OFFSET_MS;
+function resolvedClockText(clockText) {
+  return defaults.normalizeClockText(clockText) || defaults.DEFAULT_CONFIG.autoCompleteAt;
 }
 
 function autoCompleteCutoffOf(deliveredAtMs, clockText) {
-  const at = defaults.normalizeClockText(clockText) || defaults.DEFAULT_CONFIG.autoCompleteAt;
-  const minutes = Number(at.slice(0, 2)) * 60 + Number(at.slice(3, 5));
-  return localDayStartOf(deliveredAtMs) + minutes * MINUTE_MS;
+  return autoComplete.cutoffOf(deliveredAtMs, resolvedClockText(clockText));
 }
 
 // 到期判据：注入的 now 已到（含等号）该单送达日的日结时刻即完成（每轮重算，条件更新兜底幂等）。
 function isAutoCompleteDue(nowMs, deliveredAtMs, clockText) {
-  return nowMs >= autoCompleteCutoffOf(deliveredAtMs, clockText);
+  return autoComplete.isDue(nowMs, deliveredAtMs, resolvedClockText(clockText));
 }
 
 // 配置值兜底：非正数/非有限值回落默认；可传 min/max 收窄到契约区间（如识别失败 7~30 天）。

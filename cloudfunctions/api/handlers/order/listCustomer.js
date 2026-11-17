@@ -9,6 +9,7 @@ const time = require('../../lib/time');
 const { errors } = require('../../lib/errors');
 const common = require('./_common');
 const dto = require('./_dto');
+const autoComplete = require('./_auto-complete');
 
 const IN_PROGRESS = 'IN_PROGRESS';
 const SORT_FIELDS = {
@@ -111,11 +112,16 @@ module.exports = async function orderListCustomer(ctx, payload) {
     });
   const page = candidates.slice(0, paging.limit);
   const hasMore = candidates.length > paging.limit;
-  const list = await dto.buildOrderDtos(ctx, page, 'CUSTOMER');
   const last = page[page.length - 1];
+  // 游标必须在 D91 补完成之前取：补完成会把最后一行 statusUpdatedAt 改写为 now，
+  // 否则下一页按「now」重扫，本页已返回的行会再次出现（重复行/翻不完）。
+  const nextCursor = hasMore && last ? common.makeCursor(last, filter.sortField) : null;
+  // D91：页内已到日结时刻的送达单就地补完成（读路径兜底，单次最多 5 单；行对象原地更新，列表与计数同批生效）
+  await autoComplete.completeDueRows(ctx, page, common.nowMsOf(ctx));
+  const list = await dto.buildOrderDtos(ctx, page, 'CUSTOMER');
   return {
     list,
-    nextCursor: hasMore && last ? common.makeCursor(last, filter.sortField) : null,
+    nextCursor: nextCursor,
     counts: await buildCounts(ctx, customerId)
   };
 };

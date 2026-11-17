@@ -7,6 +7,7 @@ const enums = require('../../shared/enums');
 const mask = require('../../db/dto/mask');
 const { counterpart: counterpartDto } = require('../../db/dto/full');
 const avatarUrl = require('../../lib/avatar-url');
+const review = require('./_review');
 const {
   textOf,
   isoOf,
@@ -134,11 +135,13 @@ function buildTimeFields(order) {
 // 裁剪事件：type/at/actorRole/note（去 actorId/payload）。
 // D58（批 26）：顾客侧拉黑 4 个私有转派事件（MESSAGE_HIDDEN_EVENT_TYPES，与 message.list 同口径）；
 // TRANSFER_ACCEPTED 保留可见；PARTNER/ADMIN 侧全量下发（转派双方与后台需要完整留痕）。
+// D92：审核动作复用 ORDER_CORRECTED，顾客侧按 payload 再拉黑（不改订单状态、不通知顾客；改码事件仍可见）。
 function buildEventDtos(events, side) {
   const list = Array.isArray(events) ? events : [];
   const hidden = side === 'CUSTOMER' ? (enums.MESSAGE_HIDDEN_EVENT_TYPES || []) : [];
   return list
     .filter((event) => hidden.indexOf(event.type) < 0)
+    .filter((event) => !(side === 'CUSTOMER' && review.isReviewEventOf(event)))
     .map((event) => ({
       type: textOf(event.type),
       at: isoOf(event.at),

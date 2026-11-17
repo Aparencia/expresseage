@@ -11,6 +11,7 @@ const orderState = require('../../shared/order-state');
 const orderView = require('../../shared/order-view');
 const time = require('../../lib/time');
 const transfer = require('./_transfer');
+const review = require('./_review');
 const party = require('./_dto-party');
 const {
   textOf,
@@ -187,6 +188,10 @@ function buildTransferActions(actions, order, options) {
     pushAction(actions, 'cancelTransfer');
     return;
   }
+  // D89：已经转派成功的单不再广告「转派」（服务端 INVALID_STATE，页面零入口；也保护发起者追踪记录）
+  if (transfer.isAccepted(order)) {
+    return;
+  }
   if (transfer.hasPickedAny(order)) {
     return;
   }
@@ -306,6 +311,8 @@ function buildOrderFields(order, parts) {
     counterpart: parts.counterpart,
     // D58：transfer 恒返回（无字段 ⇒ null，零迁移）；键集合由 _transfer.blockOf 按角色剪裁
     transfer: parts.transferBlock,
+    // D92：审核只在兼职侧下发（订单级两级状态 + 三个 can* 布尔，页面零判据）；顾客/后台不下发
+    review: side === 'PARTNER' ? review.dtoOf(order) : null,
     actions: parts.withActions ? buildActions(order, side, parts.nowMs, {
       transferTarget: parts.transferTarget,
       initiator: parts.initiator === true

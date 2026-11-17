@@ -799,6 +799,73 @@ async function sectionH(h) {
   });
 }
 
+// ---------------------------------------------------------------- J. D91 送达即完成 / 读路径补完成
+async function sectionJ(h) {
+  h.section('J. D91 送达即完成（默认 22:30 及之后）+ 读路径兜底补完成', async (t) => {
+    const CUT = Date.parse('2026-10-22T22:30:00+08:00');
+    const HOUR_MS = 60 * 60 * 1000;
+    const pickedDoc = (no) => orderDoc(no, PICKED, {
+      acceptedAt: new Date(CUT - 3000), pickedAt: new Date(CUT - 2000)
+    });
+    const db = world({
+      orders: [
+        pickedDoc('20261022-0501'),
+        pickedDoc('20261022-0502'),
+        orderDoc('20261022-0504', DELIVERED, { deliveredAt: new Date(CUT - 26 * HOUR_MS) })
+      ]
+    });
+    const before = await apiOfAt(db, P1, CUT - 1000).call('order.markDelivered', { orderNo: '20261022-0501' },
+      { clientRequestId: nextCrid('d91-before') });
+    t.eq([before.ok, before.data.order.status, eventsFor(db, '20261022-0501').map((event) => event.type)],
+      [true, DELIVERED, ['DELIVERED']],
+      'J1 22:29 送达 → 仍为 DELIVERED（未到自动完成时刻，等 22:30 日结批）');
+    const atCut = await apiOfAt(db, P1, CUT).call('order.markDelivered', { orderNo: '20261022-0502' },
+      { clientRequestId: nextCrid('d91-cut') });
+    t.eq([atCut.ok, atCut.data.order.status, atCut.data.order.completedAt], [true, COMPLETED, iso(CUT)],
+      'J2 准点 22:30 送达 → 送达即完成（status=COMPLETED、completedAt=server now）');
+    t.eq(eventsFor(db, '20261022-0502').map((event) => [event.type, event.fromStatus, event.toStatus, event.actorRole]),
+      [['DELIVERED', PICKED, DELIVERED, ROLES.PARTNER], ['AUTO_COMPLETED', DELIVERED, COMPLETED, 'SYSTEM']],
+      'J3 同一事务写 DELIVERED + AUTO_COMPLETED（后者 actorRole=SYSTEM，与日结批同形）');
+    t.eq(eventsFor(db, '20261022-0502').filter((event) => event.type === 'AUTO_COMPLETED')[0].payload.scheduledBy,
+      'SYSTEM', 'J3b AUTO_COMPLETED payload.scheduledBy=SYSTEM（凭证卡按事件类型渲染「系统自动完成」）');
+    t.eq(rowOf(db, '20261022-0502').version, 5, 'J4 送达即完成 version +2（送达 +1、自动完成 +1）');
+    const rows = (await apiOfAt(db, P1, CUT + 1000).call('order.listPartner', { view: 'workbench' })).data.list;
+    t.eq(actionKeysOf(pickRow(rows, '20261022-0502')), [],
+      'J5 已完成单 PARTNER 动作矩阵为空（无 undoDeliver/exception，不冒充可撤销）');
+    const cfgDb = world({ orders: [pickedDoc('20261022-0503')] });
+    const markDeliveredHandler = require(path.join(ORDERS_DIR, 'markDelivered.js'));
+    const cfgCtx = handlerCtxOf(cfgDb, P1, { role: ROLES.PARTNER });
+    cfgCtx.now = Date.parse('2026-10-22T21:30:00+08:00');
+    cfgCtx.config = { autoCompleteAt: '21:00' };
+    const cfgOut = await markDeliveredHandler(cfgCtx, { orderNo: '20261022-0503' });
+    t.eq(cfgOut.order.status, COMPLETED,
+      'J6 时刻由 config.autoCompleteAt 驱动（配 21:00 → 21:30 送达即完成，不写死出厂值）');
+    const readApi = apiOfAt(db, P1, CUT + HOUR_MS);
+    const got = await readApi.call('order.get', { orderNo: '20261022-0504' });
+    t.eq([got.ok, got.data.order.status], [true, COMPLETED],
+      'J7 读路径兜底：已过日结时刻的 DELIVERED 单在 order.get 补完成（触发器未跑也不滞留）');
+    t.eq(eventsFor(db, '20261022-0504').map((event) => event.type), ['AUTO_COMPLETED'],
+      'J8 兜底补完成写 1 条 AUTO_COMPLETED 事件');
+    const again = await readApi.call('order.get', { orderNo: '20261022-0504' });
+    t.eq([again.data.order.status, eventsFor(db, '20261022-0504').length], [COMPLETED, 1],
+      'J9 重复读幂等：不再补完成、不重复写事件');
+    const earlyDb = world({
+      orders: [orderDoc('20261022-0508', DELIVERED, { deliveredAt: new Date(CUT - 12.5 * HOUR_MS) })]
+    });
+    const early = await apiOfAt(earlyDb, P1, Date.parse('2026-10-22T12:00:00+08:00'))
+      .call('order.get', { orderNo: '20261022-0508' });
+    t.eq([early.data.order.status, eventsFor(earlyDb, '20261022-0508').length], [DELIVERED, 0],
+      'J10 当天 10:00 送达（22:30 前）读路径不动，等 22:30 日结批');
+    const listDb = world({
+      orders: [orderDoc('20261022-0507', DELIVERED, { deliveredAt: new Date(CUT - 26 * HOUR_MS) })]
+    });
+    const list = (await apiOfAt(listDb, P1, CUT + HOUR_MS).call('order.listPartner', { view: 'workbench' })).data.list;
+    t.eq([pickRow(list, '20261022-0507').status, eventsFor(listDb, '20261022-0507').map((event) => event.type)],
+      [COMPLETED, ['AUTO_COMPLETED']],
+      'J11 工作台列表读路径兜底：到点送达单不再停留在「已送达」');
+  });
+}
+
 // ---------------------------------------------------------------- 注册
 function register(h) {
   h.setExpected(EXPECTED_ASSERTIONS);
@@ -811,6 +878,7 @@ function register(h) {
   sectionG(h);
   sectionH(h);
   sectionI(h);
+  sectionJ(h);
 }
 
 module.exports = { register, EXPECTED_ASSERTIONS };

@@ -11,6 +11,7 @@ const transfer = require('./_transfer');
 const access = require('./_transfer-access');
 const expire = require('./_transfer-expire');
 const handover = require('./_handover');
+const autoComplete = require('./_auto-complete');
 
 // 读权限：当前履约人/顾客/admin 走原判定；他人仅当"PENDING 邀请目标本人"放行（转派完成后原履约人失联）。
 // 返回 {side, partner, transferTarget, maskCustomer}：transferTarget 只决定"邀请卡"视图与剪裁，遮蔽见 maskCustomer。
@@ -55,7 +56,9 @@ module.exports = async function orderGet(ctx, payload) {
   // P2-10：先鉴权（未授权读者零写库），授权后才做"读到即落库"的惰性过期
   const granted = await resolveReadAccess(ctx, loaded);
   const nowMs = common.nowMsOf(ctx);
-  const order = await expire.expireIfNeeded(ctx, loaded, nowMs);
+  // D91：已到日结时刻的送达单「读到即补完成」（与 D58 转派惰性过期同模式；cleanup 触发器未跑时的兜底）
+  const expiredOrder = await expire.expireIfNeeded(ctx, loaded, nowMs);
+  const order = await autoComplete.completeIfDue(ctx, expiredOrder, nowMs);
   // 邀请在读的过程中过期：非 owner 的目标关系已不成立 → 一律 FORBIDDEN（不回任何订单内容）
   if (!granted.side && granted.transferTarget && !transfer.isPendingTargetOf(order, granted.partner._id)) {
     throw common.errors.forbidden('无权查看该订单');

@@ -13,7 +13,7 @@ const ROOT = path.resolve(__dirname, '..');
 const { createHarness } = require('./selftest');
 const reviewModel = require(path.join(ROOT, 'pkg-partner/pages/review/parts/review-model.js'));
 
-const EXPECTED_ASSERTIONS = 21;
+const EXPECTED_ASSERTIONS = 28;
 const PAGE = 'pkg-partner/pages/review/index';
 
 function readText(rel) {
@@ -96,6 +96,34 @@ function register(h) {
       '审核页不挂分享（含顾客截图与订单信息）');
     const four = ['.js', '.json', '.wxml', '.wxss'].filter((ext) => readText(PAGE + ext) === '');
     t.eq(four, [], '审核页四件套齐全且非空');
+  });
+
+  // D92：审核状态（订单级两级）+ 件数增删接线
+  h.section('D92 审核状态与件数增删（状态投影/接线/只读）', (t) => {
+    t.eq(reviewModel.reviewOf({}), { statusText: '', reviewed: false, canMark: false, canReopen: false, canAdjustParcels: false },
+      '缺 review 字段（旧单）→ 全部 false（零迁移，不误报可审核）');
+    t.eq(reviewModel.reviewOf({ review: { status: 'REVIEWED', statusText: '已审核', canReopen: true } }),
+      { statusText: '已审核', reviewed: true, canMark: false, canReopen: true, canAdjustParcels: false },
+      '已审核单：reviewed=true 且只开 canReopen（页面只渲染服务端给的能力）');
+    const rows = reviewModel.listRowsOf([
+      orderFixture('S1', 'ACCEPTED', { images: [{}], review: { statusText: '已审核' } }),
+      orderFixture('S2', 'SUBMITTED', { images: [{}], review: { statusText: '未审核' } })
+    ]);
+    t.eq(rows.map((row) => row.reviewStatusText), ['已审核', '未审核'],
+      '列表行带审核状态中文（服务端下发，页面零判据）');
+    const js = readText(PAGE + '.js');
+    const wxml = readText(PAGE + '.wxml');
+    t.check(js.indexOf('orderApi.reviewMark(') >= 0 && js.indexOf('orderApi.reviewReopen(') >= 0
+      && js.indexOf('orderApi.reviewParcels(') >= 0,
+    'D92 三个审核动作只经 api/modules（reviewMark/reviewReopen/reviewParcels）');
+    t.check(wxml.indexOf('bindtap="onReviewMark"') >= 0 && wxml.indexOf('bindtap="onReviewReopen"') >= 0
+      && wxml.indexOf('bindtap="onParcelAdd"') >= 0 && wxml.indexOf('bindtap="onParcelRemove"') >= 0,
+    'D92 页面接线齐全（标记/撤销/新增一件/删除这一件）');
+    t.check(wxml.indexOf('current.review.canMark') >= 0 && wxml.indexOf('current.review.canAdjustParcels') >= 0
+      && wxml.indexOf('!readonly') >= 0,
+    'D92 可见性只看服务端 can* + 只读闸（READONLY 不出写入口）');
+    t.check(js.indexOf('client.createRequestId()') >= 0 && js.indexOf('expectedVersion') >= 0,
+      'D92 审核写动作带 clientRequestId + expectedVersion（幂等 + 乐观锁）');
   });
 }
 

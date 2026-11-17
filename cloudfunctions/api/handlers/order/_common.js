@@ -228,7 +228,7 @@ async function runOrderAction(ctx, payload, spec) {
   if (eventDoc.type === 'DELIVERED') {
     await subscribe.notifyDelivered(ctx, latest);
   }
-  const result = { order: await buildCurrentOrderView(ctx, latest) };
+  const result = { order: await buildCurrentOrderView(ctx, latest, spec.viewOptions || null) };
   if (typeof spec.extraResult === 'function') {
     Object.assign(result, spec.extraResult({ built, actorRole }) || {});
   }
@@ -236,9 +236,11 @@ async function runOrderAction(ctx, payload, spec) {
 }
 
 // 由 _dto 提供（延迟 require，避免环形依赖）
-async function buildCurrentOrderView(ctx, order) {
+// D92：spec.viewOptions 可指定响应侧别（审核写动作需要 PARTNER 投影，否则返回体 review=null，
+// 页面拿写响应重绘后审核入口会消失）；缺省保持既有「无侧别」形状不变。
+async function buildCurrentOrderView(ctx, order, options) {
   const dto = require('./_dto');
-  return dto.buildOrderDto(ctx, order);
+  return dto.buildOrderDto(ctx, order, options || {});
 }
 
 function passOrThrow(result) {

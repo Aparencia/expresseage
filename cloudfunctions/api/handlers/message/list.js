@@ -4,6 +4,7 @@
 'use strict';
 
 const common = require('./_common');
+const review = require('../order/_review');
 
 async function listOrderMessages(ctx, payload) {
   const scope = common.scopeOf(ctx);
@@ -105,9 +106,12 @@ function unreadOf(all) {
 
 // D58（批 26）：消息中心/红点拉黑 4 个私有转派事件——**仅顾客侧**拉黑；兼职侧全量留痕（发起/撤回/拒收/过期）。
 // P2-8：按订单侧别过滤（同一双角色账号在两单里可以是不同侧，不能按全局角色一刀切）。
+// D92：审核事件（ORDER_CORRECTED + payload.reviewStatus/reviewParcels）属内部动作，顾客侧不展示、不计未读。
 function visibleEventRowsOf(events, side) {
   const hidden = side === 'CUSTOMER' ? (common.enums.MESSAGE_HIDDEN_EVENT_TYPES || []) : [];
-  return (Array.isArray(events) ? events : []).filter((event) => hidden.indexOf(event.type) < 0);
+  return (Array.isArray(events) ? events : [])
+    .filter((event) => hidden.indexOf(event.type) < 0)
+    .filter((event) => !(side === 'CUSTOMER' && review.isReviewEventOf(event)));
 }
 
 // D58：TRANSFER_ACCEPTED 给可理解人话（CONTRACT §5.4「由 P-XXX-XXX 接手履约」；服务端单源 title，

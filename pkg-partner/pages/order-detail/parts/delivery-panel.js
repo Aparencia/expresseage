@@ -1,6 +1,6 @@
 // pkg-partner/pages/order-detail/parts/delivery-panel.js · 送达备注浮层纯件（deliveryNote / guest 送达自动完成文案）
 // 契约：docs/ux/V4_UX_PARTNER.md §3.3「送达」、§4.14 代客单凭证；docs/data/V4_DATA_MODEL.md §7.5 order.markDelivered / §7.6 config.getPublic。
-// 边界：guest 判定只读服务端 DTO.source（= ORDER_SOURCE.PARTNER）；自动完成时刻（D51：每天该时刻结批）按调用方注入的公开配置
+// 边界：guest 判定只读服务端 DTO.source（= ORDER_SOURCE.PARTNER）；自动完成时刻（D91：该时刻前送达当天结批完成、该时刻及之后送达即完成）按调用方注入的公开配置
 //       config.autoCompleteAt 生成文案（缺配置/非法才回退出厂默认，默认值唯一单源 = config/defaults.DEFAULT_CONFIG）；
 //       本零件不推算状态、不等同服务端 AUTO_COMPLETED 事件（文案只说明口径，配置改动以服务端为准）。
 const defaults = require('../../../../config/defaults');
@@ -38,7 +38,7 @@ function isGuestOrder(order) {
 
 function guestAutoCompleteText(config) {
   const at = autoCompleteAtOf(config);
-  return '系统每天 ' + at + ' 自动完成（该时刻前送达的当天完成；该时刻后送达的下一轮自动完成）';
+  return '系统每天 ' + at + ' 自动完成（该时刻前送达的当天完成；该时刻及之后送达的送达即完成）';
 }
 
 function guestConfirmText(config) {
@@ -47,7 +47,7 @@ function guestConfirmText(config) {
 
 function guestHintText(config) {
   const at = autoCompleteAtOf(config);
-  return COPY.guestHintPrefix + at + ' 自动完成（该时刻前送达的当天完成；该时刻后送达的下一轮自动完成），'
+  return COPY.guestHintPrefix + at + ' 自动完成（该时刻前送达的当天完成；该时刻及之后送达的送达即完成），'
     + '请把交接位置写进送达备注，并线下告知顾客进度。';
 }
 

@@ -138,6 +138,12 @@ function isPending(order) {
   return !!block && block.status === STATUS.PENDING;
 }
 
+// D89：已经转派成功（ACCEPTED）——订单归属已换人，不允许再次转派（防链式转派 + 保护发起者追踪记录）
+function isAccepted(order) {
+  const block = transferOf(order);
+  return !!block && block.status === STATUS.ACCEPTED;
+}
+
 function expiresAtMsOf(order) {
   const block = transferOf(order);
   return block ? dateMsOf(block.expiresAt) : 0;
@@ -440,6 +446,7 @@ module.exports = {
   consumeRate,
   transferOf,
   isPending,
+  isAccepted,
   expiresAtMsOf,
   isExpired,
   hasPickedAny,

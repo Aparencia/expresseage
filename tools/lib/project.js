@@ -109,13 +109,15 @@ add('customer', ['getProfile'], READ);
 add('partner', ['activate', 'saveProfile', 'saveServiceConfig', 'unbindCustomer', 'saveCustomerNote'], WRITE);
 // D59：主兼职团队（发子邀请码/作废/移除成员）+ 团队列表读
 add('partner', ['createSubInvites', 'revokeSubInvite', 'removeSubMember'], WRITE);
-add('partner', ['getPublic', 'listBindings', 'getCustomer', 'stats', 'listSubMembers'], READ);
+add('partner', ['createTransferCode'], WRITE);
+add('partner', ['getPublic', 'listBindings', 'getCustomer', 'stats', 'listSubMembers', 'searchTransferTargets', 'resolveTransferCode', 'recentTransferTargets'], READ);
 add('bind', ['create', 'release'], WRITE);
 add('bind', ['getCurrent'], READ);
 add('bind', ['claimGuestOrder'], WRITE);
 add('order', ['create', 'accept', 'reject', 'markPicked', 'unmarkPicked', 'markDelivered',
   'unmarkDelivered', 'reportException', 'resolveException', 'cancel', 'confirmDelivery', 'correct', 'undo',
-  'deleteRecord', 'requestTransfer', 'acceptTransfer', 'declineTransfer', 'cancelTransfer'], WRITE);
+  'deleteRecord', 'reviewMark', 'reviewReopen', 'reviewParcels',
+  'requestTransfer', 'acceptTransfer', 'declineTransfer', 'cancelTransfer'], WRITE);
 add('order', ['get', 'listCustomer', 'listPartner', 'imageUrl'], READ);
 add('message', ['send', 'markRead'], WRITE);
 add('message', ['list'], READ);

@@ -43,5 +43,22 @@ module.exports = {
   },
   removeSubMember(payload) {
     return client.call('partner.removeSubMember', payload || {});
+  },
+  // D87-a 转派候选检索（只读、无游标、结果上限由服务端定；读动作可重试）
+  searchTransferTargets(payload) {
+    return client.call('partner.searchTransferTargets', payload || {}, { retry: true });
+  },
+  // D88 转派码：本人签发/轮换（写，不自动重试）；凭码解析（读，可重试）
+  createTransferCode() {
+    return client.call('partner.createTransferCode', {});
+  },
+  resolveTransferCode(payload) {
+    return client.call('partner.resolveTransferCode', {
+      code: (payload && payload.code) || ''
+    }, { retry: true });
+  },
+  // D90 最近使用的转派目标（只回本人转派成功过的对象，≤5；读动作可重试）
+  recentTransferTargets() {
+    return client.call('partner.recentTransferTargets', {}, { retry: true });
   }
 };

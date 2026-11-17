@@ -14,6 +14,10 @@ const createSubInvites = require('./createSubInvites');
 const revokeSubInvite = require('./revokeSubInvite');
 const listSubMembers = require('./listSubMembers');
 const removeSubMember = require('./removeSubMember');
+const searchTransferTargets = require('./searchTransferTargets');
+const createTransferCode = require('./createTransferCode');
+const resolveTransferCode = require('./resolveTransferCode');
+const recentTransferTargets = require('./recentTransferTargets');
 
 module.exports = {
   actions: {
@@ -29,6 +33,10 @@ module.exports = {
     'partner.createSubInvites': createSubInvites.handler,
     'partner.revokeSubInvite': revokeSubInvite.handler,
     'partner.listSubMembers': listSubMembers.handler,
-    'partner.removeSubMember': removeSubMember.handler
+    'partner.removeSubMember': removeSubMember.handler,
+    'partner.searchTransferTargets': searchTransferTargets.handler,
+    'partner.createTransferCode': createTransferCode.handler,
+    'partner.resolveTransferCode': resolveTransferCode.handler,
+    'partner.recentTransferTargets': recentTransferTargets.handler
   }
 };

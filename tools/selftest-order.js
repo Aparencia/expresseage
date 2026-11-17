@@ -42,7 +42,7 @@ const {
   lowercaseCollectionKeyHitsInText, listJs, scanLowercaseKeys, serial
 } = caseLib;
 
-const EXPECTED_ASSERTIONS = 156; // 153 + 3：D77 附加服务合法建单落库/DTO 名称、枚举外、重复 // 140 + 13：D47 预约 LATEST 服务端归一/拒绝样例/落库/DTO/合并同值 // 137 + 3：D40 10 张截图合法 / 11 张截图拒绝 / 合并追加将超 10 张不并入
+const EXPECTED_ASSERTIONS = 172; // 156 + 15：D92 审核（两级状态/撤销重审/件数增删/已取件只读/上限/DTO 裁剪/顾客侧过滤/写响应投影/新增件 NEED_CODE） // 153 + 3：D77 附加服务合法建单落库/DTO 名称、枚举外、重复 // 140 + 13：D47 预约 LATEST 服务端归一/拒绝样例/落库/DTO/合并同值 // 137 + 3：D40 10 张截图合法 / 11 张截图拒绝 / 合并追加将超 10 张不并入
 
 function register(h) {
   const asyncSection = (title, fn) => h.section(title, (t) => serial(() => {
@@ -775,8 +775,85 @@ function register(h) {
     t.check(parcelSrc.indexOf('normalizeLatestAt') !== -1 && parcelSrc.indexOf('APPOINT_TYPE.LATEST') !== -1,
       'I13 _parcel.normalizeAppoint 走 shared/appoint.normalizeLatestAt（服务端校验单源，不端侧自拼）');
   });
-}
 
+  // ---------------------------------------------------------------- J D92 审核（订单级两级状态 + 件数增删）
+  asyncSection('J. D92 审核：两级状态/撤销重审/未取件增删件/已取件只读/上限/DTO 裁剪', async (t) => {
+    const world = seedWorld();
+    const db = world.db;
+    const cApi = apiOf(db, world.customerOpenid);
+    const pApi = apiOf(db, world.partnerOpenid);
+    const created = await cApi.call('order.create', createPayload({ manualEntry: true }),
+      { clientRequestId: nextCrid('j1') });
+    const orderNo = created.data.orderNo;
+    const rowOfNo = (no) => db.dump('orders').filter((item) => item.orderNo === no)[0] || {};
+    t.eq([created.ok, rowOfNo(orderNo).review && rowOfNo(orderNo).review.status], [true, 'UNREVIEWED'],
+      'J1 建单即落「未审核」（订单级单一状态，零迁移）');
+    const marked = await pApi.call('order.reviewMark', { orderNo: orderNo }, { clientRequestId: nextCrid('j2') });
+    t.eq([marked.ok, rowOfNo(orderNo).review.status], [true, 'REVIEWED'],
+      'J2 标记已审核：落库 review.status=REVIEWED（不改订单状态）');
+    const markEvent = db.dump('order_events').filter((item) => item.orderNo === orderNo
+      && item.type === 'ORDER_CORRECTED' && item.payload && item.payload.reviewStatus)[0] || {};
+    t.eq([markEvent.orderNo, markEvent.toStatus, markEvent.payload && markEvent.payload.reviewStatus],
+      [orderNo, ORDER_STATUS.SUBMITTED, 'REVIEWED'],
+    'J3 审核写 ORDER_CORRECTED（payload.reviewStatus=REVIEWED）且不改订单状态（toStatus 仍 SUBMITTED）');
+    const cTimeline = await cApi.call('order.get', { orderNo: orderNo });
+    const cCenter = await cApi.call('message.list', {});
+    const noiseOf = (list) => (list || []).filter((item) => item && item.orderNo === orderNo
+      && String(item.note || item.text || '').indexOf('审核') >= 0).length;
+    t.eq([noiseOf(cTimeline.data && cTimeline.data.events), noiseOf(cCenter.data && cCenter.data.list)], [0, 0],
+      'J3b 顾客时间线/消息中心过滤审核事件（内部动作不通知顾客、不计未读）');
+    await expectCode(t, pApi.call('order.reviewMark', { orderNo: orderNo }, { clientRequestId: nextCrid('j4') }),
+      'INVALID_STATE', 'J4 重复标记 → INVALID_STATE（已审核不能再审）');
+    const reopened = await pApi.call('order.reviewReopen', { orderNo: orderNo }, { clientRequestId: nextCrid('j5') });
+    t.eq([reopened.ok, rowOfNo(orderNo).review.status], [true, 'UNREVIEWED'],
+      'J5 撤销重审：回到未审核（可重新审）');
+    const before = (rowOfNo(orderNo).parcels || []).length;
+    const added = await pApi.call('order.reviewParcels', { orderNo: orderNo, action: 'ADD' },
+      { clientRequestId: nextCrid('j6') });
+    t.eq([added.ok, (rowOfNo(orderNo).parcels || []).length, before], [true, before + 1, before],
+      'J6 未取件阶段新增一件：parcels 长度 +1（整值替换，顺序即 itemIndex）');
+    const addedParcel = (added.data.order.parcels || [])[before] || {};
+    t.eq([addedParcel.codeStatus, added.data.order.needCode], ['NEED_CODE', true],
+      'J6b 新增件取件码为空 → codeStatus=NEED_CODE（不能落成 OK）；整单 needCode=true');
+    t.eq([added.data.order.review && added.data.order.review.statusText,
+      added.data.order.review && added.data.order.review.canMark], ['未审核', true],
+    'J6c 审核写响应带兼职侧 review 投影（页面用写响应重绘后入口不消失）');
+    const addEvent = db.dump('order_events').filter((item) => item.orderNo === orderNo
+      && item.type === 'ORDER_CORRECTED' && item.payload && item.payload.reviewParcels)[0] || {};
+    t.eq([addEvent.payload && addEvent.payload.reviewParcels && addEvent.payload.reviewParcels.action,
+      addEvent.payload && addEvent.payload.reviewParcels && addEvent.payload.reviewParcels.afterCount],
+    ['ADD', before + 1], 'J7 件数变更写 ORDER_CORRECTED + payload.reviewParcels（增删可追溯）');
+    const removed = await pApi.call('order.reviewParcels', { orderNo: orderNo, action: 'REMOVE', index: before },
+      { clientRequestId: nextCrid('j8') });
+    t.eq([removed.ok, (rowOfNo(orderNo).parcels || []).length], [true, before],
+      'J8 删除刚加的那件：件数回到原值（未取件件可删）');
+    await pApi.call('order.accept', { orderNo: orderNo }, { clientRequestId: nextCrid('j9') });
+    await pApi.call('order.markPicked', { orderNo: orderNo }, { clientRequestId: nextCrid('j10') });
+    await expectCode(t, pApi.call('order.reviewParcels', { orderNo: orderNo, action: 'ADD' },
+      { clientRequestId: nextCrid('j11') }), 'INVALID_TRANSITION',
+    'J9 已取件后增减件 → INVALID_TRANSITION（引擎按 ACTION_RULES 先挡；件级只读，避免丢履约证据）');
+    const big = await cApi.call('order.create', createPayload({ manualEntry: true }), { clientRequestId: nextCrid('j12') });
+    const bigNo = big.data.orderNo;
+    for (let i = 0; i < 9; i += 1) {
+      await pApi.call('order.reviewParcels', { orderNo: bigNo, action: 'ADD' }, { clientRequestId: nextCrid('j13_' + i) });
+    }
+    await expectField(t, pApi.call('order.reviewParcels', { orderNo: bigNo, action: 'ADD' },
+      { clientRequestId: nextCrid('j14') }), 'VALIDATION_FAILED', 'parcels',
+    'J10 件数上限 10：再加 → VALIDATION_FAILED(parcels)（复用 order-state 单源上限）');
+    const cDto = await cApi.call('order.get', { orderNo: bigNo });
+    t.eq([cDto.ok, cDto.data.order.review], [true, null],
+      'J11 顾客 DTO 不下发 review（审核是内部作业状态；件数变化仍按 parcels 自然可见）');
+    await pApi.call('order.accept', { orderNo: bigNo }, { clientRequestId: nextCrid('j15') });
+    const pBig = await pApi.call('order.get', { orderNo: bigNo });
+    t.eq([pBig.data.order.review.canMark, pBig.data.order.review.canReopen, pBig.data.order.review.canAdjustParcels,
+      pBig.data.order.review.statusText],
+    [true, false, true, '未审核'], 'J12 待审核单的三个 can* 布尔与中文由服务端下发（可标记/不可撤销/可调件/未审核）');
+    await pApi.call('order.reviewMark', { orderNo: bigNo }, { clientRequestId: nextCrid('j16') });
+    const pBig2 = await pApi.call('order.get', { orderNo: bigNo });
+    t.eq([pBig2.data.order.review.statusText, pBig2.data.order.review.canMark, pBig2.data.order.review.canReopen],
+      ['已审核', false, true], 'J13 已审核后 DTO 中文「已审核」且 canMark=false / canReopen=true（可撤销重审）');
+  });
+}
 module.exports = { EXPECTED_ASSERTIONS, register };
 
 if (require.main === module) {

@@ -398,8 +398,8 @@ function register(h) {
       'D2 正常单确认框写清「已送达·待确认」');
     t.check(normalPanel.quickTags.length === 3 && normalPanel.noteMax === 100, 'D3 正常单浮层：快捷标签 + ≤100');
     const guestPanel = deliveryPanel.buildPanel(guest);
-    t.eq(guestPanel.confirmText, '该顾客未绑定，无需确认；系统每天 22:00 自动完成',
-      'D4 guest 单确认框写「系统每天 22:00 自动完成」（出厂默认 22:00，D51；source=PARTNER）');
+    t.eq(guestPanel.confirmText, '该顾客未绑定，无需确认；系统每天 22:30 自动完成',
+      'D4 guest 单确认框写「系统每天 22:30 自动完成」（出厂默认 22:30，D91；source=PARTNER）');
     t.check(guestPanel.guest === true && guestPanel.guestHint.indexOf('线下告知') >= 0,
       'D5 guest 单提示线下告知进度（无顾客确认路径）');
     t.eq([deliveryPanel.isGuestOrder(guest), deliveryPanel.isGuestOrder(normal)], [true, false],
@@ -410,10 +410,10 @@ function register(h) {
     t.eq([deliveryPanel.deliveredChip(normal), deliveryPanel.deliveredChip(guest)], ['', ''],
       'D8 非 guest/未送达不给该 chip（不冒充自动完成）');
     const deliveredHint = deliveryPanel.guestAutoCompleteHint(guestDelivered);
-    t.check(deliveredHint.indexOf('22:00') >= 0
-      && deliveredHint.indexOf('下一轮自动完成') >= 0
-      && deliveredHint.indexOf('顺延') < 0,
-    'D9 guest 送达后提示每天 22:00 自动完成（该时刻后送达的下一轮自动完成，D51 新口径）');
+    t.check(deliveredHint.indexOf('22:30') >= 0
+      && deliveredHint.indexOf('该时刻及之后送达的送达即完成') >= 0
+      && deliveredHint.indexOf('顺延') < 0 && deliveredHint.indexOf('下一轮') < 0,
+    'D9 guest 送达后提示每天 22:30 自动完成（该时刻及之后送达即完成，D91 新口径）');
     t.check(deliveryPanel.guestAutoCompleteHint(guestDelivered).indexOf('24h') < 0
       && deliveryPanel.buildPanel(guest).guestHint.indexOf('24h') < 0,
     'D9b 送达浮层不再出现「24h」旧口径（D43 文案清零）');
@@ -435,17 +435,17 @@ function register(h) {
       'D16 配置 autoCompleteAt=22:30 → guest 确认框文案 22:30（不写死出厂默认）');
     t.check(guestPanel22.guestHint.indexOf('每天 22:30 自动完成') >= 0
       && guestPanel22.guestHint.indexOf('该时刻前送达的当天完成') >= 0
-      && guestPanel22.guestHint.indexOf('下一轮自动完成') >= 0,
-    'D17 配置 22:30 → guest 提示整段按 22:30 且为新口径（该时刻前当天完成/该时刻后下一轮）');
+      && guestPanel22.guestHint.indexOf('该时刻及之后送达的送达即完成') >= 0,
+    'D17 配置 22:30 → guest 提示整段按 22:30 且为新口径（该时刻前当天完成/该时刻及之后送达即完成）');
     const hint2230 = deliveryPanel.guestAutoCompleteHint(guestDelivered, { autoCompleteAt: '22:30' });
-    t.check(hint2230.indexOf('22:30') >= 0 && hint2230.indexOf('下一轮自动完成') >= 0
+    t.check(hint2230.indexOf('22:30') >= 0 && hint2230.indexOf('送达即完成') >= 0
       && hint2230.indexOf('22:00') < 0,
-    'D18 已送达 chip 提示也跟随配置（22:30 + 下一轮自动完成，不回落默认）');
+    'D18 已送达 chip 提示也跟随配置（22:30 + 送达即完成，不回落默认）');
     const fallback = deliveryPanel.buildPanel(guest, { autoCompleteAt: '24:00' });
-    t.check(fallback.confirmText.indexOf('22:00') >= 0
-      && deliveryPanel.buildPanel(guest).confirmText.indexOf('22:00') >= 0
-      && deliveryPanel.buildPanel(guest, {}).confirmText.indexOf('22:00') >= 0,
-    'D19 缺配置/非法配置 → 回退出厂默认 22:00（D51，唯一默认常量在 config/defaults）');
+    t.check(fallback.confirmText.indexOf('22:30') >= 0
+      && deliveryPanel.buildPanel(guest).confirmText.indexOf('22:30') >= 0
+      && deliveryPanel.buildPanel(guest, {}).confirmText.indexOf('22:30') >= 0,
+    'D19 缺配置/非法配置 → 回退出厂默认 22:30（D91，唯一默认常量在 config/defaults）');
     t.check(viewModel.buildView(guest, [], { nowMs: NOW_MS, config: { autoCompleteAt: '22:30' } })
       .deliveryPanel.confirmText.indexOf('22:30') >= 0,
     'D20 视图装配把 config 注入送达浮层（页面快照按配置）');
@@ -455,7 +455,7 @@ function register(h) {
     const panelSource = textOf(partsDir + '/delivery-panel.js');
     t.check(panelSource.indexOf('22:00') === -1 && panelSource.indexOf('顺延') === -1
       && panelSource.indexOf('config/defaults') >= 0,
-    'D22 零件零时刻字面量（新旧默认都不写死）+ 零旧顺延文案，默认值单源 config/defaults（D51）');
+    'D22 零件零时刻字面量（新旧默认都不写死）+ 零旧顺延文案，默认值单源 config/defaults（D91）');
     const pageSource = textOf(PAGE_JS);
     t.check(/config: store\.get\('config'\)/.test(pageSource) && pageSource.indexOf("store.get('config')") >= 0,
       'D23 页面用 store 里的 configPublic 注入（与顾客端 status-view 同源）');

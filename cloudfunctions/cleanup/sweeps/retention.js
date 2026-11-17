@@ -71,6 +71,8 @@ function anonymizedPatch(order, nowDate) {
     exception: null,
     dorm: null,
     guest: null,
+    // D92：审核记录的 byPartnerNo 是操作人编号快照 → 匿名化清空（整块置 null，状态按缺省读 UNREVIEWED）。
+    review: null,
     // v1.0（D25）：本单配送地址可能含第三方收件人称呼/尾号/房间号 → 匿名化一并清空（DATA_MODEL §10.3）
     delivery: null,
     claimTokenHash: '',

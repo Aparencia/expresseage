@@ -43,7 +43,9 @@ function buildView(order, events, options) {
   // 页面不得凭「非只读」自行渲染，否则会出现必然失败的越权入口。
   const canCorrect = actionsPart.hasAction(visibleActions, 'correct');
   const canMessage = actionsPart.hasAction(visibleActions, 'message');
-  const transferCard = transferPart.cardOf(item, visibleActions, { readonly: readonly, nowMs: nowMs });
+  const transferCard = transferPart.cardOf(item, visibleActions, {
+    readonly: readonly, nowMs: nowMs, myPartnerNo: opts.myPartnerNo
+  });
   const voucher = voucherPart.buildVoucher(item, events);
   // 只读视角不出现撤销条（UX §4.7/§6.3：写操作全置灰/隐藏）
   const undoBar = readonly

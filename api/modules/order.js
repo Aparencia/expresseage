@@ -76,6 +76,16 @@ module.exports = {
   cancelTransfer(payload, opts) {
     return call('order.cancelTransfer', payload, opts);
   },
+  // D92 审核：标记已审核 / 撤销重审 / 增减件数（均带 clientRequestId + expectedVersion）
+  reviewMark(payload, opts) {
+    return call('order.reviewMark', payload, opts);
+  },
+  reviewReopen(payload, opts) {
+    return call('order.reviewReopen', payload, opts);
+  },
+  reviewParcels(payload, opts) {
+    return call('order.reviewParcels', payload, opts);
+  },
   imageUrl(payload) {
     return client.call('order.imageUrl', payload || {}, { retry: true });
   }

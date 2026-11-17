@@ -101,19 +101,38 @@ async function serverChecks(t) {
   const counts = day.data.counts || {};
   t.eq(['submitted', 'accepted', 'picked', 'delivered', 'exception', 'todayCompleted'].map(function key(k) {
     return counts[k];
-  }), [2, 0, 0, 2, 0, 1], '§7.3 day 视图 counts 六项与全量一致（今日完成=completedAt 今日）');
+  }), [2, 0, 0, 1, 0, 2],
+  '§7.3 day 视图 counts 六项与全量一致（D91：昨日送达单在本次读路径补完成 → delivered-1/今日完成+1）');
+  // D91：读路径兜底补完成——昨日 11:00 送达（已过昨日的日结时刻）的单不得继续留在「已送达」
+  t.eq(list.filter(function rowOf(row) {
+    return row.orderNo === '20261021-1004' && row.status === 'COMPLETED';
+  }).length, 1, '§7.3 D91 读路径兜底：已过日结时刻的送达单在列表读取时补完成为 COMPLETED');
   const summary = day.data.summary || {};
   t.eq([summary.scope, summary.total, summary.parcels, summary.completed, summary.pending],
     ['deliveredToday', 2, 2, 1, 1],
     '§7.3 day summary：今日已送达 2 单（deliveredAt 今日且 DELIVERED/COMPLETED；昨日送达单与取消单不计）');
   t.eq(summary.byDorm, [{ zone: 'D', buildingNo: 4, count: 2 }],
     '§7.3 day summary byDorm：只到苑+楼栋聚合（无房间号/称呼/编号）');
-  const first = await api.call('order.listPartner', { view: 'day', limit: 2 });
-  const second = await api.call('order.listPartner', { view: 'day', limit: 2, cursor: first.data.nextCursor });
+  // 游标分页用独立世界：避免上一个用例的 D91 补完成改变 statusUpdatedAt（侧写不污染排序断言）
+  const pagingDb = world();
+  const pagingApi = app.createApi({ db: pagingDb, now: function now() { return NOW; }, openid: PARTNER_OPENID, env: {} });
+  const first = await pagingApi.call('order.listPartner', { view: 'day', limit: 2 });
+  const second = await pagingApi.call('order.listPartner', { view: 'day', limit: 2, cursor: first.data.nextCursor });
   t.eq([first.data.list.length, second.data.list.length,
     first.data.list.concat(second.data.list).map(function no(row) { return row.orderNo; })],
   [2, 2, ['20261021-1001', '20261021-1002', '20261021-1003', '20261021-1004']],
   '§7.3 day 视图游标分页：两页不重不漏（第二页仍按 statusUpdatedAt 倒序）');
+  // D91：页尾的送达单被「读到即补完成」会改写 statusUpdatedAt；游标必须在补完成前取，
+  // 否则第二页按改写后的 now 回扫，已返回过的行会重复出现（翻不完/重复行）。
+  const cursorDb = world();
+  const cursorApi = app.createApi({ db: cursorDb, now: function now() { return NOW; }, openid: PARTNER_OPENID, env: {} });
+  const cursorFirst = await cursorApi.call('order.listPartner', { view: 'day', limit: 4 });
+  const cursorSecond = await cursorApi.call('order.listPartner', {
+    view: 'day', limit: 4, cursor: cursorFirst.data.nextCursor
+  });
+  t.eq([cursorFirst.data.list.length, cursorSecond.data.list.map(function no(row) { return row.orderNo; })],
+    [4, ['20261021-1005']],
+    '§7.3 D91 补完成不污染游标：页尾送达单补完成后，下一页不重复已返回行');
   const bad = await api.call('order.listPartner', { view: 'nope' });
   t.check(bad.ok === false && bad.code === 'VALIDATION_FAILED',
     '§7.3 day 视图：非法 view 拒绝而非静默降级（不再接受未知视图）');
@@ -125,7 +144,7 @@ async function serverChecks(t) {
   '§7.3 workbench 视图零变化：顶层 5 键（+transferPending 角标）、summary 仍旧 D48 形状（byStatus，无 scope）');
 }
 
-const SERVER_ASSERTIONS = 9;
+const SERVER_ASSERTIONS = 11;
 const EXPECTED_ASSERTIONS = SERVER_ASSERTIONS;
 
 module.exports = { SERVER_ASSERTIONS, EXPECTED_ASSERTIONS, serverChecks };

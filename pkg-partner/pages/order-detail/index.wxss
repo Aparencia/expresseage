@@ -280,6 +280,17 @@
   border: 1rpx solid #D8E3FA;
 }
 
+/* D91：发起者「已转出」状态条（醒目但不刺眼；说明仍有操作权） */
+.transfer-away {
+  background: #FFF6E5;
+  border-radius: 10rpx;
+  color: #8A5A00;
+  font-size: 26rpx;
+  line-height: 1.6;
+  margin-bottom: 12rpx;
+  padding: 14rpx 18rpx;
+}
+
 .transfer-request,
 .transfer-invite,
 .transfer-waiting,
@@ -311,4 +322,58 @@
 
 .transfer-actions .mini-btn {
   margin-left: 16rpx;
+}
+
+/* D87-a/b 转派候选：搜索行 + 文字卡片（选中态高亮；无头像位，靠标题与状态两行可辨） */
+.transfer-search {
+  align-items: center;
+  display: flex;
+  gap: 12rpx;
+  margin-top: 16rpx;
+}
+
+.transfer-search-input {
+  flex: 1;
+}
+
+.transfer-cards {
+  margin-top: 12rpx;
+}
+
+.transfer-card-item {
+  border: 1rpx solid #E3E8F0;
+  border-radius: 12rpx;
+  margin-top: 12rpx;
+  padding: 16rpx 20rpx;
+}
+
+.transfer-card-item.is-picked {
+  border-color: #1F6F4A;
+  background: #F3FAF6;
+}
+
+.transfer-card-title {
+  font-size: 28rpx;
+  color: #1F2329;
+}
+
+.transfer-card-meta {
+  color: #8A9099;
+  margin-top: 4rpx;
+}
+
+.transfer-empty {
+  color: #8A9099;
+  margin-top: 16rpx;
+}
+
+/* D88 转派码：编号行下方的输码行（6 位码，等宽可读） */.transfer-code-row {
+  align-items: center;
+  gap: 12rpx;
+  margin-top: 12rpx;
+}
+
+.transfer-code-tip {
+  color: #8A9099;
+  margin-top: 8rpx;
 }

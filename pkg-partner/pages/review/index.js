@@ -1,9 +1,11 @@
-// pkg-partner/pages/review/index.js · 兼职「审核」核对页（2026-11-08 用户指令，MVP）
+// pkg-partner/pages/review/index.js · 兼职「审核」核对页（2026-11-08 MVP；D92 增审核状态与件数增删）
 // 目的：一屏查看顾客上传的每一张取件码截图与其订单信息，发现不一致可直接改订单字段（复用 order.correct）。
-// 边界：不留审核状态、不加集合、不阻塞取件；读写动作仍只经 api/；READONLY 隐藏保存。
+// D92：审核是订单级两级状态（未审核/已审核，可撤销重审）；未取件阶段可增减件数；审核不改订单状态、不阻塞取件。
+// 边界：读写动作仍只经 api/；READONLY 不显示写入口且服务端二次拒绝。
 'use strict';
 
 const orderApi = require('../../../api/modules/order');
+const client = require('../../../api/client');
 const store = require('../../../store/index');
 const stations = require('../../../shared/stations');
 const reviewModel = require('./parts/review-model');
@@ -94,7 +96,9 @@ Page({
       current: {
         orderNo: order.orderNo,
         statusText: order.statusText || order.status,
-        anchorText: reviewModel.anchorOf(order)
+        anchorText: reviewModel.anchorOf(order),
+        // D92：审核状态与三个 can* 布尔（服务端下发，页面零判据）
+        review: reviewModel.reviewOf(order)
       },
       parcels: parcels,
       stationOptions: options,
@@ -129,6 +133,70 @@ Page({
     this.currentOrder = null;
     this.setData({ stage: 'list', current: null, images: [], parcels: [], error: '' });
     this.loadList();
+  },
+
+  // ---------- D92 审核状态与件数增删（全部走后端校验；页面只渲染 can* 与 toast） ----------
+  submitReview(kind) {
+    const order = this.currentOrder;
+    if (!order) return Promise.resolve();
+    if (this.data.readonly) {
+      wx.showToast({ title: '开发者只读视角不能操作', icon: 'none' });
+      return Promise.resolve();
+    }
+    // 幂等键进包络（api/client 只认 options.clientRequestId；放 data 里服务端读不到）
+    const payload = { orderNo: order.orderNo };
+    const opts = { expectedVersion: order.version, clientRequestId: client.createRequestId() };
+    this.setData({ saving: true });
+    return (kind === 'mark' ? orderApi.reviewMark(payload, opts) : orderApi.reviewReopen(payload, opts)).then((data) => {
+      if (this._unloaded) return;
+      this.currentOrder = (data && data.order) || order;
+      this.renderOrder(this.currentOrder);
+      this.setData({ saving: false });
+      wx.showToast({ title: kind === 'mark' ? '已标记审核' : '已撤销审核', icon: 'none' });
+    }).catch((err) => {
+      if (this._unloaded) return;
+      this.setData({ saving: false });
+      wx.showToast({ title: (err && err.message) || '操作没成功，请重试', icon: 'none' });
+    });
+  },
+  onReviewMark() {
+    return this.submitReview('mark');
+  },
+  onReviewReopen() {
+    return this.submitReview('reopen');
+  },
+  reviewParcels(payload) {
+    const order = this.currentOrder;
+    if (!order) return Promise.resolve();
+    if (this.data.readonly) {
+      wx.showToast({ title: '开发者只读视角不能操作', icon: 'none' });
+      return Promise.resolve();
+    }
+    this.setData({ saving: true });
+    return orderApi.reviewParcels(Object.assign({
+      orderNo: order.orderNo
+    }, payload), {
+      expectedVersion: order.version,
+      clientRequestId: client.createRequestId()
+    }).then((data) => {
+      if (this._unloaded) return;
+      this.currentOrder = (data && data.order) || order;
+      this.renderOrder(this.currentOrder);
+      this.setData({ saving: false });
+      wx.showToast({ title: payload.action === 'ADD' ? '已新增一件' : '已删除一件', icon: 'none' });
+    }).catch((err) => {
+      if (this._unloaded) return;
+      this.setData({ saving: false });
+      wx.showToast({ title: (err && err.message) || '操作没成功，请重试', icon: 'none' });
+    });
+  },
+  onParcelAdd() {
+    return this.reviewParcels({ action: 'ADD' });
+  },
+  onParcelRemove(event) {
+    const index = Number((event.currentTarget.dataset || {}).index);
+    if (!Number.isInteger(index) || index < 0) return Promise.resolve();
+    return this.reviewParcels({ action: 'REMOVE', index: index });
   },
 
   onPreview(event) {

@@ -9,6 +9,8 @@
 > 临时总体说明（全局汇总，非状态源）：[`docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md`](docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md)（版本与取数快照由 Lead 统一维护；状态仍以本文件为准、口径以 CONTRACT 为准）。
 > 批 44 收口回读（2026-11-16，实现提交 `436cfcb`）：`check.ps1` 4 步退出码 0、`check.js` 39/39 条、`check-docs` 12/12 条、零金额 0 命中（白名单 108 项）、`selftest` 39 套 0 失败。
 
+**2026-11-17 D91 批（送达自动完成 22:30 + 该时刻后送达即完成 + 读路径兜底）工程侧完成，等待用户部署/点检**：口径 CONTRACT §13 D91（修订 D43/D51 的时刻与尾窗口径）。交付：`config/defaults.js` `autoCompleteAt` 22:00→22:30；新增 `shared/auto-complete.js`（判据单源，cleanup 与 api 共用）；`cloudfunctions/cleanup/sweeps/_util.js` 委托共享件；新增 `cloudfunctions/api/handlers/order/_auto-complete.js`——`order.markDelivered` 同事务「送达即完成」（`AUTO_COMPLETED`、`version` +2），`order.get`/`order.listPartner`/`order.listCustomer` 读路径「读到即补完成」（≤5 单/次、幂等）；`pkg-customer/parts/status-view.js`、`pkg-partner/pages/order-detail/parts/delivery-panel.js`、`pkg-partner/pages/create-on-behalf/parts/result-model.js`、`pages/partner/workbench/parts/batch-view.js`、`pkg-admin/pages/config/index.wxml` 文案统一为「该时刻前送达的当天完成；该时刻及之后送达的送达即完成」。判据：`selftest-cloud` 215/215、`selftest-order-partner` 182/182、`selftest-state` 405/405、`selftest-order-workbench` 437/437、`selftest-partner-pages` 361/361、`selftest-admin-pages` 259/259（均在本批改动后复跑）；变异验证：删 `markDelivered` 的 `after` 钩子 → J2/J3 红；删 `pageOf` 的读路径补完成 → day 视图两条断言红（还原后复绿）。**门禁真实输出（2026-11-18 00:10，含并行 `order.review*` 批收敛后）**：`check.ps1` 4 步退出码 0——`check.js` 39/39 条、`check-docs.js` 12/12 条、零金额 0 命中（白名单 108 项）、`selftest` 39 套 0 失败；本批触达套件读数：`selftest-cleanup` 242/242、`selftest-order-partner` 182/182、`selftest-order-detail-partner` 327/327、`selftest-order-workbench` 437/437、`selftest-partner-pages` 361/361、`selftest-admin-pages` 259/259、`selftest-cloud` 215/215、`selftest-state` 405/405、`selftest-order-flow` 287/287；`node tools/sync-cloud-shared.js --check` 27 件次/2 套 hash 对帐 OK。**部署（用户执行）**：`node tools/sync-cloud-shared.js` → 重部署 `api` 与 `cleanup` → 后台「配置 → 自动完成时间」改成 `22:30`（存量库旧值不会被代码默认值覆盖）→ 上传体验版；真机项 QA §E5/§H18/§AC6（agent 不代勾）。
+
 **2026-11-16 批 44（D86 角色入口 M1+）工程侧完成并收口**：交付「工作区偏好直达 + 一处切换 + 绑定卡上下文 + 入口任务化」——`shared/role.js` 双角色默认顾客（原兼职优先废止）；`user.bootstrap` 接可选 `preferredRole`（只作展示/导航偏好，服务端仍按 `users.roles` + 归属鉴权；`viewContext` 忽略）；`app.js`/`pages/launch|role` 带本机 `lastRole`；新增 `utils/workspace.js`（目标工作区水合 → reLaunch → 成功后写 `lastRole`，失败保持）与 `route.workspaceHomeOf`；7 处页面守卫不再回角色页；`pages/role` 改「去下单/去接单」并保留邀请码/工作台入口；`pages/profile` 头部一处切换（去旧确认弹窗）；`?bind=` 在含 CUSTOMER 的账号上按顾客上下文水合并直接可绑。判据：`check.js` 39/39、`check-docs` 12/12、零金额 0 命中（白名单 108 项）、`selftest` 39 套 0 失败、`check.ps1` 4 步退出码 0；D86 用例拆到 `tools/lib/{workspace-cases,role-workspace-cases}.js` 保持套件 ≤1000 行；工具链把 `.agents/` worktree 排除出扫描（非发布源码）。**部署**：改了 `cloudfunctions/api/handlers/user/bootstrap.js` 与 `cloudfunctions/api/shared/role.js`，需用户**重新部署 `api`**；客户端改动需**重新上传体验版**；无新集合/索引/触发器。**真机项**：QA §AM1~AM5（用户点检，agent 不代勾）。
 
 ## 1. 一句话状态
@@ -1865,3 +1867,59 @@ check.ps1：全部通过（4 步，退出码 0）
 - **门禁真实输出（2026-11-14，工作树 dsh-006db18a-b8f6）**：`check.ps1` 4 步 PASS（check 39/39、docs 12/12、零交易扫描 0 命中、selftest 39 套 0 失败，退出码 0）。
 - **用户侧**：DevTools 重新打开项目/清缓存后重新扫描与编译；本修复只改打包配置与启动 require，不改页面口径。
 - **说明**：工作树内同样有 `.agents`（嵌套），忽略规则按目录名生效，主/工作树都适用。
+## 49. 批 45 D87-a/b 转派候选检索 + 文字卡片（2026-11-17，用户裁决「C + 先文字卡片」，另修 P0 转派三按钮哑火）
+
+- **P0 缺陷（已修）**：兼职订单详情「转派给其他兼职」面板的**下一步 / 拒收 / 撤回三个按钮点了没反应**。根因：pkg-partner/pages/order-detail/index.js 三处调用 	his.writeHint(...)，而 writeHint 是**模块级函数**（Page 对象上不存在同键方法）→ 构造 wx.showModal 参数时抛 TypeError，弹窗根本没被调用、界面零反馈。修复=三处改 writeHint(...)；并补**页面方法解析闸**（K63/K64：模块级函数名与 	his. 调用交叉检查，注入反例必红），堵住同类"静态存在性断言测不出"的盲区。
+- **D87-a 检索**：新增只读动作 partner.searchTransferTargets{keyword,limit≤20} → {list:[{partnerNo,displayName,acceptingOrders}],truncated}；编号前缀 ≥3 位 / 昵称中文 ≥2 字（或任意 ≥4 字，挡 2~3 位 ASCII 枚举空间）；仅 ACTIVE、排除自己、同侧账号（TEST- openid 前缀判定，零 join）、子队员限本队（Q9 同口径）；无游标、上限 20、限流 config.transferSearchRate（出厂 10/分、30/日）。**改写 DATA_MODEL §2.3「无搜索/枚举兼职 API」**为"仅转派场景的受限检索"，通用路径禁令不变。
+- **D87-b 卡片**：面板以「昵称 · 编号 + 接单状态」文字卡片替代 D82 原生 picker 滚轮；本队候选（partner.listSubMembers）先上屏，检索结果覆盖；**四态空态**（无候选/无结果/失败/搜索中）各有下一步；**无头像/openid/内部 id**；点卡片回填编号后仍走二次确认，order.requestTransfer 仍唯一权威。拆件：parts/transfer-candidates.js（投影/文案）、parts/transfer-flow.js（接线），页面 index.js 441 行（TD-076 ≤450 留余量）。
+- **隐私**：候选昵称属 D58 例外 5 的转派场景增补——端内全文 pkg-customer/parts/privacy-text.js、定稿 docs/privacy/隐私保护指引.md、派生物 docs/privacy/补充文档.txt **三处同源**已同步；不新增信息类型/第三方/保存期限，privacyVersion 保持 4.0.0 不升版（用户 2026-11-17 确认）。
+- **判据**：selftest-transfer T15 20 条（168/168）、selftest-order-detail-partner K63~K73（314/314）、selftest-privacy-text 311/311；**变异电池 M38**（关键词闸失效）→ T15-6 单点首红，还原后 SHA256 B5E54FA8…F9B34539D 逐字节一致并复绿。
+- **门禁真实输出（2026-11-17）**：check.ps1 4 步 PASS（check 39/39、docs 12/12、零金额 0 命中（白名单 108 项）、selftest 39 套 0 失败），退出码 0。
+- **未完成 / 下一批**：用户同批裁决的**转派码**（目标出示 6 位码、TTL 30 分钟、惰性过期）尚未实现，需另立裁决并回写 DATA_MODEL/ENGINEERING/隐私；**真机项**（QA §AL6 更新版）由用户点检，agent 不代勾。
+- **用户侧动作**：重新部署 pi 云函数（含 shared 副本与 partner 域新 handler）；重新上传体验版后真机复测转派三按钮与检索卡片。
+## 50. 批 46 D88 转派码（2026-11-17，用户裁决「转派码」；D87 三项收口）
+
+- **口径**：CONTRACT §13 D88 —— 目标兼职在服务设置页签发 **6 位转派码**（partners.transferCode + 	ransferCodeExpiresAt，同时只保留 1 个有效码，重复签发=轮换覆盖；TTL config.transferCodeTtlMinutes 出厂 **30 分钟**）；发起方输码 → partner.resolveTransferCode 解析出编号/昵称 → 回填后**仍走既有 order.requestTransfer**（转派四动作/状态机/事件/审计/幂等零改动）。**惰性过期**，不新增 sweep（同 D58/TD-091）。
+- **服务端**：新增 handlers/partner/{createTransferCode.js,resolveTransferCode.js,_transfer-code.js,_transfer-target.js}（_transfer-target 把 isTestOpenid/inTeamScopeOf/canReach 抽成单源，检索与解析共用）；partner 域注册 +2 动作；config +2 键（	ransferCodeTtlMinutes/	ransferCodeRate，出厂 3 分/10 日，**签发与解析共桶**）。
+- **校验与文案**：仅 ACTIVE；排除自己（VALIDATION_FAILED(field=code)）；同侧账号（真实×测试 FORBIDDEN）；子队员限本队（Q9）；码不存在/过期/已轮换/格式非法**一律同文案 NOT_FOUND**（不暴露存在性）；解析响应只有 {partnerNo,displayName,expiresAt} 三键。
+- **客户端**：服务设置页「我的转派码」卡片（生成/重新生成/复制/有效至 HH:mm，只读置灰）；订单详情转派面板新增「转派码」输入行 + 「填入」（解析成功即回填编号并提示「已填入 昵称 · 编号」）。零头像。
+- **隐私**：D88 与 D87 同一披露范围（码→编号/昵称；码不是口令、30 分钟可轮换、解析限流），三处同源已同步，privacyVersion 保持 4.0.0 不升版。
+- **判据**：selftest-transfer T16/T16b **20 条（188/188）**、selftest-order-detail-partner K74~K78（**319/319**）；**变异电池 M39**（过期判定失效）→ T16-10 单点首红（期望 [false,NOT_FOUND]，实得 [true,null]），还原后 SHA256 9C542591…496A37D2D 逐字节一致并复绿。
+- **门禁真实输出（2026-11-17）**：check.ps1 4 步 PASS（check 39/39、docs 12/12、零金额 0 命中（白名单 108 项）、selftest 39 套 0 失败），退出码 0。
+- **D87 三项收口**：①P0 三按钮哑火已修（含页面方法解析闸）②检索+文字卡片已上线（D87-a/b）③转派码已上线（D88）。**剩余真机项**：QA §AL6（更新版）+ §AL14 由用户双机点检，agent 不代勾。
+- **用户侧动作**：重新部署 pi 云函数（新增 2 个 handler + shared 副本 + 2 个 config 键需 dmin.bootstrap 回填/或控制台配置）；重传体验版后真机复测。
+## 51. 批 47 D89 转派后边界与可发现性（2026-11-17，用户裁决「转派全部保留，不允许再次转派」）
+
+- **口径**：CONTRACT §13 D89 —— ①转派被接收后原履约人 A **保留全部动作**（取件/送达/改码/异常/取消/留言，沿用 D85 双人可控）；②**禁止二次转派**：	ransfer.status='ACCEPTED' 后再调 order.requestTransfer → INVALID_STATE「这单已经转派过，不能再转」，_dto 同时不再下发 equestTransfer（页面零入口）；副作用是保护 A 的「已转出」追踪记录不被新的 PENDING 覆盖；③**可发现性**（零口径变更）：详情页顶部黄条「这单已转给 P-XXX，你仍有操作权…」、工作台「已转出的单」展开后标题带条数。
+- **服务端**：handlers/order/_transfer.js +isAccepted；equestTransfer.js 状态守卫链 +1 闸；_dto.js uildTransferActions 在 ACCEPTED 后不再广告转派。
+- **客户端**：parts/transfer.js 新增 wayBannerOf（纯件判定：仅发起人 + 仅 ACCEPTED，页面零状态字面量）+ card.away；parts/view-model.js 透传 myPartnerNo；index.js 在 onLoad 注入本人编号、pplyDetail 传入；index.wxml/.wxss 渲染黄条；工作台 wxml 标题带条数 + 说明。
+- **测试反转**：原先三条"接手后可再转派"的断言按新口径反转——selftest-transfer P0-1（不再含 requestTransfer）、K32b/K74（同）、新增 P2-11/P2-11b（二次转派 INVALID_STATE + 转派块零变化），selftest-transfer 189/189；selftest-order-detail-partner +K79~K82（状态条只对发起人、仅 ACCEPTED、WXML 已接）→ 323/323；页面受 TD-076 ≤450 行限制，onTransferInput 移入 parts/transfer-flow.js 并压缩 setData，index.js 443 行（代码行 446≤450）。
+- **变异电池 M40**：equestTransfer 的禁止二次转派条件改 alse → P2-11 首红（期望 [false,INVALID_STATE] 实得 [true,null]）+ P2-11b 暴露"转派块被覆盖为 PCCCCCC"；还原后 SHA256 9D88BEA9…3F56528A9 逐字节一致 + 189/189 复绿。
+- **门禁真实输出（2026-11-17）**：check.ps1 4 步 PASS（check 39/39、docs 12/12、零金额 0 命中（白名单 108 项）、selftest 39 套 0 失败），退出码 0。
+- **剩余**：转派候选「最近使用」与审核域（订单级状态 + 件数增删）尚未开工（各自另立裁决）；真机项 QA §AL15 由用户双机点检，agent 不代勾。
+## 52. 批 48 D92 审核域（2026-11-17/18，用户裁决：订单级两级状态 + 件数增删）
+
+- **口径**：CONTRACT §13 D92 —— ①订单级**两级状态** orders.review={status:'UNREVIEWED'|'REVIEWED',at,byPartnerNo}，建单即未审核（旧单缺字段按未审核读，零迁移）；**单级**（不按截图/件）；可**撤销重审**；②审核**不改订单状态**，只写 orders.review + ORDER_CORRECTED 事件（payload.reviewStatus，**不新增事件类型，总数仍 24**）；③**件数增删** order.reviewParcels：仅 SUBMITTED/ACCEPTED 可增减（PICKED 及之后引擎 INVALID_TRANSITION 只读），件数 1~10（复用 MAX_PARCELS_PER_ORDER 单源），删除整值替换、顺序即 itemIndex，已取件的件禁删；④**顾客不通知、不确认**：件数变化只在顾客详情按 parcels[] 自然可见，顾客 DTO **不下发 review**；⑤审核 DTO（status/statusText/at/byPartnerNo/canMark/canReopen/canAdjustParcels）**只在兼职侧**下发，页面零判据。
+- **实现取舍**：REVIEW_STATUS/REVIEW_STATUS_TEXT 放 shared/order-state.js——shared/enums.js 已达 **500 行门禁上限**，新枚举不得顶线；审核事件复用 ORDER_CORRECTED，避免改事件枚举/5 套断言与客户端事件文案。
+- **服务端**：handlers/order/{_review.js,reviewMark.js,reviewReopen.js,reviewParcels.js}（新）+ index.js 注册 + _create.js 建单初值 + _dto.js 兼职侧投影；shared/order-state.js +3 条 	o:'SAME' 规则；shared/actions.js +3 写动作；pi/modules/order.js +3。
+- **客户端**：审核页新增列表状态 chip、详情「标记已审核/撤销审核」、未取件阶段「新增一件/删除这一件」；READONLY 不显示写入口；expectedVersion + clientRequestId。
+- **判据**：selftest-order J 组 13 条（**169/169**）、selftest-review +7（**28/28**）；行 DTO 白名单 +eview；selftest-state 405/405（事件总数仍 24）。
+- **变异电池 M42**：eviewMark 的重复标记闸改 alse → J4 首红（期望 INVALID_STATE 实得 undefined）；还原后 SHA256 EC4D755D…5D1FAAD2 逐字节一致 + 169/169 复绿。
+- **门禁真实输出（2026-11-18）**：check.ps1 4 步 PASS（check 39/39、docs 12/12、零金额 0 命中（白名单 108 项）、selftest 39 套 0 失败），退出码 0。
+- **用户侧动作**：重新部署 pi（新增 4 个 handler + shared 副本）；重传体验版后按 QA §AL17 真机点检（agent 不代勾）。
+## 53. 批 47.5 D90 转派候选「最近使用」（2026-11-17，补记；收口时因并发批次未落台账）
+
+- **口径**：CONTRACT §13 D90 —— 转派面板**三段式**：①最近使用（≤5，只回「本人转派成功过」的对象）②本队成员（D82）③关键词检索（D87-a）；**不做全量在岗目录**。
+- **实现**：新增只读动作 partner.recentTransferTargets（{} → {list:[{partnerNo,displayName,acceptingOrders}]}）：按 orders.transfer.fromPartnerId=me AND transfer.status='ACCEPTED' 派生（复用 D81 索引 idx_transfer_from，扫描窗 30 条），内存按 	ransfer.requestedAt 倒序去重取 5；停用/注销/异侧剔除；仅本人可见；不接受 keyword/分页。客户端 parts/transfer-candidates.js（cardsOfRecent/mergeCards）+ parts/transfer-flow.js（loadTransferCandidates 并行拉取）＋index.js 只做编排（428 行）。
+- **判据**：selftest-transfer T18 11 条 → **200/200**；页面 K83~K86（合并顺序/去重/接线）。**变异电池 M41**：去重条件删除 → T18-3 首红（期望 [2,1] 实得 [3,2]），还原后 SHA256 5BAD2EDA…B1261BB 逐字节一致。
+- **门禁真实输出（2026-11-18 复跑）**：check.ps1 4 步 PASS（check 39/39、docs 12/12、零金额 0 命中（白名单 108 项）、selftest 39 套 0 失败），退出码 0。
+- **备注**：本批收口时同工作树有另一批次在改 auto-complete（D91），台账延后到该批收口后补记；代码与文档回写当时已全绿（selftest-transfer 200/200）。
+## 54. 交付前全仓审查修复（2026-11-18，用户指令「检查远端最新提交之后的改动并修复、同步远端」）
+
+- **范围**：origin/main `8259e13`（批 28）→ 工作树（批 29~48，41 个未推送提交 + 工作树改动）；逐域审查 D87~D92 新增代码（服务端转派/审核/自动完成、客户端转派面板/审核页、工具链与文档一致性）。
+- **P1 修复**：①D91 读路径补完成会改写页末行 `statusUpdatedAt`，旧游标跳到 now → 翻页重复行；`listPartner.pageOf`/`listCustomer` 改为补完成前取游标，并加「页尾送达单补完成后下一页不重复」断言（旧实现回退即红）。②D92 审核写响应缺兼职侧 `review` 投影 → 页面用写响应重绘后入口消失；`runOrderAction` 增 `spec.viewOptions`，三个审核动作按 PARTNER 侧返回。③审核事件（ORDER_CORRECTED + payload.reviewStatus/reviewParcels）泄漏到顾客时间线与消息中心未读；`_review.isReviewEventOf` 与 `_dto-party`/`message.list` 同源过滤。④审核新增件 `codeStatus` 落枚举外值 `MISSING`（DTO 误显示「取件码可用」）→ `NEED_CODE`。⑤匿名化/注销补清 `orders.review.byPartnerNo`（retention.js）与 `partners.transferCode/transferCodeExpiresAt`（setPartnerStatus.js）。⑥`deliveredAtOf` 用 `time.toMs` 会把缺时间戳的脏单当「现在送达」→ 改 cleanup 同口径 `msOf`。
+- **P2 修复**：转派面板文案「转派后你将失去该单」与 D89 矛盾 → 改「由 TA 接手履约，你仍可继续操作这单」；转派候选预置/搜索迟到响应串台守卫、转派码提示复位；service-settings 生成按钮改 `button disabled` + creating 防重；搜索提示改「编号去掉 P 后至少 3 位（如 8F3）」；后台配置时间示例 22:00→22:30；D89/D92 注释编号纠偏；共用 `cardOf`、去掉 `canReach` 未用参数与 `_review` 未用导出。
+- **判据补牙**：T18-1 让 `statusUpdatedAt` 与 `transfer.requestedAt` 反序（改按状态排序即红）；T15-4 改「阿丙丁」中缀样本（子串实现即红）；`selftest-order` 新增 D92 三条（顾客侧过滤/写响应 review/新增件 NEED_CODE）→ **172/172**；`selftest-cloud` 216/216（含新增游标断言；旧实现实测首红：期望 `[4,["…1005"]]` 实得 4 行重复）。
+- **文档**：RUNBOOK 新增 §16.3（存量库 `autoCompleteAt` 改 22:30，回应 §3.6.1/QA H18 的引用）；DATA_MODEL/UX_PARTNER/V3_PARITY/QA/提审步骤残留 `22:00` 改 `22:30`；CONTRACT §13 标题与 `check-docs` D_MAX 注释更新到 D92。
+- **门禁真实输出（2026-11-18）**：`check.ps1` 4 步 PASS（check 39/39、check-docs 12/12、零金额 0 命中（白名单 108 项）、selftest 39 套 0 失败），退出码 0。
+- **用户侧动作**：重新部署 `api`（新增 4 个 handler + shared 副本）→ 重传体验版 → 按 QA §AL17 真机点检（agent 不代勾）；存量库执行 RUNBOOK §16.3。
