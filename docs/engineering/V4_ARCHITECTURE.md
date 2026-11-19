@@ -66,7 +66,7 @@ const data = await call('order.confirmDelivery', { orderNo }, { expectedVersion:
 ```
 
 - `call(action, data, opts)` → `Promise<data>`；失败抛 `CallError`（`code/message/data/requestId`）。
-- 自动注入 `clientRequestId`（16~32 位随机串）与（内存有 `viewContext` 时）`viewTicket`；`opts.readRetry` 默认 `true`（读动作 ≤2 次，300/900ms），写动作默认不重试。
+- 自动注入 `clientRequestId`（16~32 位随机串）与（内存有 `viewContext` 时）`viewTicket`；`opts.readRetry` 默认 `true`（读动作 ≤2 次，300/900ms，**总等待 ≤12s 预算** `RETRY_BUDGET_MS`，性能体检 2026-11-19），写动作默认不重试。
 - `opts.clientRequestId`：页面可显式指定幂等键（**重试复用同一 id，内容变更后重新生成**，UX_CUSTOMER §4.8）；形态为 16~32 位 `[A-Za-z0-9_-]`，非法时静默回退自生成（不把格式错误抛给页面；服务端仍按 `shared/validate.validateClientRequestId` 校验）。
 - `opts.expectedVersion`：写动作传当前 DTO 的 `version` 做乐观锁（**正整数才进包络顶层 `expectedVersion`，非法静默丢弃**）；服务端不符回 `CONFLICT`，页面 toast 人话并刷新详情后重试（UX_CUSTOMER §10 #4）。
 - 超时 10s；校验 flat 包络 `{ok, code?, message?, data?, serverTime, requestId?}`；写 `store.serverTimeSkew` **带 1s 抖动阈值**（`|Δ新|≤1000ms` 既不写也不 notify，分钟级倒计时不受影响；见 §3.4 订阅扇出说明）。

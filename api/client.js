@@ -10,6 +10,9 @@ const modeGuard = require('./mode-guard');
 const CLOUD_FUNCTION = 'api';
 const TIMEOUT_MS = 10000;
 const RETRY_DELAYS = [300, 900];
+// 性能体检 2026-11-19：读动作自动重试加总预算。原实现 3 次尝试 × 10s 超时 + 退避最坏等 31.2s，
+// 弱网下用户会以为卡死；预算内才允许下一次尝试（同一条读请求总等待 ≤12s）。
+const RETRY_BUDGET_MS = 12000;
 const REQUEST_ID_LENGTH = 24;
 const REQUEST_ID_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789abcdefghijkmnpqrstuvwxyz';
 // 服务端 shared/validate.validateClientRequestId 同口径：16~32 位 [A-Za-z0-9_-]
@@ -155,6 +158,16 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * 是否还允许再试一次：『已等待 + 下一次最坏超时』仍不超过总预算。
+ * 纯函数，便于断言（不读时钟、不依赖 transport）。
+ * @param {number} startedAt 首次尝试开始时刻（Date.now()）
+ * @param {number} nowMs 当前时刻
+ */
+function retryWithinBudget(startedAt, nowMs) {
+  return (nowMs - startedAt) + TIMEOUT_MS <= RETRY_BUDGET_MS;
+}
+
 // 排障用：失败详情只进开发者工具 console（含 requestId 供与云函数日志对账），不改页面文案。
 function logCallFailure(action, err) {
   if (typeof console === 'undefined' || typeof console.error !== 'function') {
@@ -168,6 +181,7 @@ async function call(action, data, opts) {
   modeGuard.assertWritable(action);
   const payload = buildPayload(action, data, options.clientRequestId, options.expectedVersion);
   const attempts = options.retry === true || (options.retry !== false && isRetryAction(action)) ? 3 : 1;
+  const startedAt = Date.now();
   let lastError = null;
   for (let i = 0; i < attempts; i += 1) {
     try {
@@ -177,6 +191,11 @@ async function call(action, data, opts) {
       lastError = err;
       const retryable = err instanceof CallError && RETRYABLE_CODES.indexOf(err.code) >= 0;
       if (!retryable || i === attempts - 1) {
+        logCallFailure(action, err);
+        throw err;
+      }
+      // 总预算闸：超时类失败（已等 ~10s）不再叠第二次 10s；快速失败仍按退避重试。
+      if (!retryWithinBudget(startedAt, Date.now())) {
         logCallFailure(action, err);
         throw err;
       }
@@ -196,6 +215,9 @@ module.exports = {
   createRequestId,
   isValidClientRequestId,
   resolveExpectedVersion,
+  retryWithinBudget,
+  TIMEOUT_MS,
+  RETRY_BUDGET_MS,
   CLIENT_REQUEST_ID_PATTERN,
   RETRYABLE_CODES,
   SKEW_NOTIFY_MS

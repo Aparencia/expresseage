@@ -355,7 +355,7 @@ check(32, '单函数行数', '生产源码单函数 ≤50 行（全文本口径�
 // ---------------------------------------------------------------- #33
 check(33, '分享卡口中性', '业务页挂好友转发（清单见 tools/lib/share-pages.js）/3 页朋友圈/后台零分享；卡片单源 utils/share；固定中性封面；会话禁分享收口 switch-bar', () => require('./lib/check-share').run());
 // ---------------------------------------------------------------- #34
-check(34, '打包忽略清单', '根目录每个目录 ∈ 源码白名单 或 project.config.json packOptions.ignore folder 项；配置缺失/不可解析/空集判红（TD-071）', () => require('./lib/check-pack-ignore').run());
+check(34, '打包忽略清单与体积预算', '根目录每个目录 ∈ 源码白名单 或 project.config.json packOptions.ignore folder 项；主包/每分包源码字节 ≤1.5MB（ENGINEERING §2.3）；配置缺失/不可解析/空集/分包缺失判红（TD-071 + 性能体检 2026-11-19）', () => require('./lib/check-pack-ignore').run());
 // ---------------------------------------------------------------- #35/#36
 check(35, '未引用导出扫描', '生产 0 引用且文件内不自用的导出必须逐条登记 tools/dead-export-baseline.json（history/test-only/contract-slot + 理由）；新增即红、基线失效即红', () => require('./lib/dead-code').runDeadExports());
 check(36, '页面死函数扫描', '页面/组件目录内定义但 JS/WXML 均无引用的函数必须登记基线（平台生命周期/框架保留键豁免）；新增即红、页面死函数清理后基线项自动作废', () => require('./lib/dead-code').runPageDeadFunctions());

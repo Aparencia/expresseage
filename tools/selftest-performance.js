@@ -37,7 +37,7 @@ const partnerMessagePoll = require(path.join(ROOT, 'pkg-partner/pages/order-deta
 const cloudActions = require(path.join(ROOT, 'cloudfunctions/api/shared/actions.js'));
 const { createApi } = require(path.join(ROOT, 'cloudfunctions/api/app.js'));
 
-const EXPECTED_ASSERTIONS = 149; // 实际断言总数（145 + 2：审查 P1-9 E16 改独立期望源拆 1→3 断）；少算/多算都判红
+const EXPECTED_ASSERTIONS = 152; // 实际断言总数（149 + 3：性能体检 2026-11-19 读动作重试总预算 F15~F17）；少算/多算都判红
 const NOW = Date.parse('2026-10-22T12:00:00+08:00');
 const ROLES = { CUSTOMER: 'CUSTOMER', PARTNER: 'PARTNER' };
 const USER_STATUS = { ACTIVE: 'ACTIVE' };
@@ -346,6 +346,12 @@ function register(h) {
     t.eq(notifies, 1, 'F13 |Δskew|≈5s >1s → 更新并 notify 一次');
     const skew = store.get('serverTimeSkew');
     t.check(skew > 4000 && skew < 6000, 'F14 写入的 skew = 本机-服务端（约 5s）');
+    // 性能体检 2026-11-19：读动作重试总预算（原 3×10s 超时 + 退避最坏 31.2s → 预算内才续试）
+    t.eq(client.RETRY_BUDGET_MS, 12000, 'F15 读动作重试总预算 12s（与 10s 单次超时同源，超时类失败只等一次）');
+    t.check(client.retryWithinBudget(0, 0) === true && client.retryWithinBudget(0, 1999) === true,
+      'F16 预算内仍允许重试（快速失败的重试语义不变）');
+    t.check(client.retryWithinBudget(0, 2001) === false && client.retryWithinBudget(0, 10000) === false,
+      'F17 超预算不再续试（首试超时 10s 时第二次必被拒，长尾不再 31.2s）');
     off();
     client.restoreTransport();
   });

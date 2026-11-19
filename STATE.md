@@ -1923,3 +1923,12 @@ check.ps1：全部通过（4 步，退出码 0）
 - **文档**：RUNBOOK 新增 §16.3（存量库 `autoCompleteAt` 改 22:30，回应 §3.6.1/QA H18 的引用）；DATA_MODEL/UX_PARTNER/V3_PARITY/QA/提审步骤残留 `22:00` 改 `22:30`；CONTRACT §13 标题与 `check-docs` D_MAX 注释更新到 D92。
 - **门禁真实输出（2026-11-18）**：`check.ps1` 4 步 PASS（check 39/39、check-docs 12/12、零金额 0 命中（白名单 108 项）、selftest 39 套 0 失败），退出码 0。
 - **用户侧动作**：重新部署 `api`（新增 4 个 handler + shared 副本）→ 重传体验版 → 按 QA §AL17 真机点检（agent 不代勾）；存量库执行 RUNBOOK §16.3。
+## 55. 性能体检优化批（2026-11-19，八角度体检后的两项 P0）
+
+- **范围**：按「启动/渲染/网络/数据/服务端/包体/内存/可观测」八角度体检结论，只做两条 P0（不改契约、不改云函数、不引第三方）：①读动作重试总预算；②主包/分包体积预算门禁。
+- **① 读动作总预算**：`api/client.js` 新增 `RETRY_BUDGET_MS = 12000` 与纯函数 `retryWithinBudget(startedAt, nowMs)`；读动作最坏等待由 3×10s + 300 + 900ms = **31.2s** 收敛到 **≤12s**（首试超时 10s 时第二次必被拒；快速失败仍保留 ≤3 次语义）。写动作不自动重试不变。
+- **② 体积预算门禁**：`tools/check.js` #34 由「打包忽略清单」扩为「打包忽略清单与体积预算」（实现 `tools/lib/check-pack-ignore.js` 新增 `measure/evaluate`）：主包与每分包源码字节 ≤1.5MB（ENGINEERING §2.3），主包口径 = 源码目录去掉 `pkg-*` 三个分包 + 根 `app.js/app.json/app.wxss/sitemap.json`；分包缺失/为空、空集判红。
+- **实测读数（2026-11-19，本分支 HEAD `f3f551a` + 本批）**：主包 **1,026,105B / 239 文件 = 65.2%**（1.5MB = 1,572,864B）；`pkg-customer` 293,180B / 18.6%、`pkg-partner` 393,231B / 25.0%、`pkg-admin` 234,448B / 14.9%。取数：`node -e "const l=require('./tools/lib/check-pack-ignore');console.log(JSON.stringify(l.measure()))"`。
+- **判据**：`selftest-performance` +3（F15 预算常量 12s / F16 预算内允许重试 / F17 超预算拒试）→ **152/152**；体积门禁先合法基线（`evaluate(measure())` 为空），再注入 600KB 探针 → 首红 `主包源码超预算: 1,631,566B（预算 1,572,864B 的 103.7%）`，删除探针复绿（`run()` 返回 null）。
+- **门禁真实输出（2026-11-19）**：`check.ps1` 4 步 PASS（check 39/39、check-docs 12/12、零金额 0 命中（白名单 108 项）、selftest 39 套 0 失败），退出码 0。
+- **用户侧动作**：纯客户端改动，无需部署云函数；重传体验版后可按 QA 弱网项点检「读请求失败更快给出可重试提示」（真机项 agent 不代勾）。TD-074（真机卡顿基线）仍开放。
