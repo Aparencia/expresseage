@@ -14,7 +14,7 @@
   width: 48rpx;
   height: 48rpx;
   border-radius: 50%;
-  background: #D9DEE5;
+  background: var(--v4-line-strong);
   color: #FFFFFF;
   font-size: 24rpx;
   display: flex;
@@ -158,9 +158,9 @@
 }
 
 .chip-active {
-  border-color: #1F7A5C;
+  border-color: var(--v4-brand);
   background: #E8F5F0;
-  color: #1F7A5C;
+  color: var(--v4-brand);
 }
 
 /* v1.0 D23/D24/D25：多图多件工具条 / 手填入口 / 配送地址 */
@@ -239,7 +239,7 @@
 .addon-chip { margin: 0 12rpx 12rpx 0; }
 .addon-hint { margin-top: 8rpx; }
 /* D84：Step4 附加服务预览（零金额；只列做什么/说明） */
-.addon-preview { margin-top: 12rpx; padding-top: 12rpx; border-top: 1rpx solid #EEF1F6; }
+.addon-preview { margin-top: 12rpx; padding-top: 12rpx; border-top: 1rpx solid var(--v4-fill); }
 /* 2026-11-08：核对页截图入口吸顶（下滑时固定在顶部） */
 .shot-sticky {
   position: sticky;
@@ -330,7 +330,7 @@
   padding: 0 16rpx;
   border-radius: 10rpx;
   background: var(--v4-bg);
-  color: #1F2937;
+  color: var(--v4-text);
   font-size: 26rpx;
   box-sizing: border-box;
 }

@@ -71,7 +71,7 @@
   width: 64rpx;
   height: 64rpx;
   border-radius: 50%;
-  background: #EEF0F3;
+  background: var(--v4-fill);
 }
 
 .skeleton-main {
@@ -81,7 +81,7 @@
 .skeleton-line {
   height: 28rpx;
   border-radius: 8rpx;
-  background: #EEF0F3;
+  background: var(--v4-fill);
   margin-bottom: 12rpx;
 }
 

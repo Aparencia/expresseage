@@ -33,7 +33,7 @@
 .mm-text {
   margin-top: 16rpx;
   font-size: 28rpx;
-  color: #666666;
+  color: var(--v4-text-2);
   line-height: 1.6;
   text-align: center;
   word-break: break-all;
@@ -50,8 +50,8 @@
   min-height: 88rpx;
   line-height: 88rpx;
   border-radius: 12rpx;
-  background: #1F7A5C;
-  color: #FFFFFF;
+  background: var(--v4-brand);
+  color: var(--v4-on-accent);
   font-size: 30rpx;
 }
 

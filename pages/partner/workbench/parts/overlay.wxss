@@ -56,7 +56,7 @@
 .panel-error {
   margin-top: 8rpx;
   font-size: 24rpx;
-  color: #E54D42;
+  color: var(--v4-danger);
 }
 
 .panel-actions {
@@ -67,14 +67,14 @@
 /* 已完结自然日分区 */
 .completed-fold {
   padding: 24rpx;
-  color: #2B6DE5;
+  color: var(--v4-partner);
   font-size: 28rpx;
 }
 
 /* D81 已转出：折叠入口 + 行（只读，无操作）；与已完结分区同卡风格 */
 .handover-fold {
   padding: 24rpx;
-  color: #2B6DE5;
+  color: var(--v4-partner);
   font-size: 28rpx;
 }
 
@@ -88,7 +88,7 @@
 
 .handover-line {
   padding: 16rpx 0;
-  border-top: 1rpx solid #EEF1F6;
+  border-top: 1rpx solid var(--v4-fill);
 }
 
 .handover-line:first-child {
@@ -125,7 +125,7 @@
 .section-label {
   padding: 16rpx 0 8rpx;
   font-size: 24rpx;
-  color: var(--v4-text-3, #6B6B6B);
+  color: var(--v4-text-3, var(--v4-text-3));
 }
 
 .history-line {
@@ -139,14 +139,14 @@
 
 .cancel-text {
   margin-top: 6rpx;
-  color: #E54D42;
+  color: var(--v4-danger);
 }
 
 .more-btn {
   padding: 20rpx 0 8rpx;
   text-align: center;
   font-size: 26rpx;
-  color: #2B6DE5;
+  color: var(--v4-partner);
 }
 
 /* D65：批量操作条的固定底盘与 safe-area 底垫由 components/bottom-bar 提供，
@@ -216,16 +216,16 @@
 .guide-text {
   margin: 16rpx 0 20rpx;
   font-size: 28rpx;
-  color: #666666;
+  color: var(--v4-text-2);
 }
 
 .guide-partner {
   margin-bottom: 20rpx;
   padding: 14rpx 16rpx;
   border-radius: 10rpx;
-  background: #F3F7FF;
+  background: var(--v4-info-weak);
   font-size: 24rpx;
-  color: #2B6DE5;
+  color: var(--v4-partner);
 }
 
 .guide-actions {

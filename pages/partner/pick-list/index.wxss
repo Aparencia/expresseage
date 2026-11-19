@@ -17,13 +17,13 @@
   padding: 0 28rpx;
   border-radius: 32rpx;
   background: var(--v4-card);
-  color: #666666;
+  color: var(--v4-text-2);
   font-size: 26rpx;
   margin-right: 16rpx;
 }
 
 .chip-active {
-  background: #2B6DE5;
+  background: var(--v4-partner);
   color: #FFFFFF;
 }
 
@@ -46,22 +46,22 @@
 }
 
 .intro-summary {
-  color: #1F7A5C;
+  color: var(--v4-brand);
   margin-top: 8rpx;
 }
 
 .intro-loaded {
-  color: #8A6D00;
+  color: var(--v4-readonly-text);
   margin-top: 8rpx;
 }
 
 .readonly-tip {
-  color: #8A6D00;
+  color: var(--v4-readonly-text);
   margin-top: 8rpx;
 }
 
 .test-tip {
-  color: #2B6DE5;
+  color: var(--v4-partner);
   margin-top: 8rpx;
 }
 
@@ -109,8 +109,8 @@
 }
 
 .check-dot-on {
-  background: #1F7A5C;
-  border-color: #1F7A5C;
+  background: var(--v4-brand);
+  border-color: var(--v4-brand);
 }
 
 .line-main {
@@ -174,13 +174,13 @@
   font-size: 40rpx;
   font-weight: 700;
   line-height: 1.35;
-  color: #1F7A5C;
+  color: var(--v4-brand);
   letter-spacing: 1rpx;
   word-break: break-all;
 }
 
 .pickup-code--need {
-  color: #B25E00;
+  color: var(--v4-warning-text);
 }
 
 .line-sub {
@@ -190,7 +190,7 @@
 }
 
 .anchor-text {
-  color: #666666;
+  color: var(--v4-text-2);
 }
 
 .room-text {
@@ -200,19 +200,19 @@
 
 /* 2026-11-08：送别人时行内明示「送至」，否则锚和下单人宿舍无法区分 */
 .send-to-label {
-  color: #2B6DE5;
+  color: var(--v4-partner);
   font-weight: 600;
   margin-right: 4rpx;
 }
 
 .room-tag {
-  background: #E8F0FF;
-  color: #2B6DE5;
+  background: var(--v4-test-bg);
+  color: var(--v4-partner);
   margin-right: 12rpx;
 }
 
 .parcel-count {
-  color: #666666;
+  color: var(--v4-text-2);
 }
 
 .piece-line {
@@ -226,7 +226,7 @@
   padding: 0 10rpx;
   border-radius: 8rpx;
   background: #FFF4E5;
-  color: #B25E00;
+  color: var(--v4-warning-text);
   font-size: 22rpx;
 }
 
@@ -257,7 +257,7 @@
 }
 
 .batch-fail-text {
-  color: #B25E00;
+  color: var(--v4-warning-text);
 }
 
 .batch-actions {
@@ -269,7 +269,7 @@
 }
 
 .batch-tip {
-  color: #2B6DE5;
+  color: var(--v4-partner);
   margin-top: 8rpx;
 }
 
@@ -282,25 +282,25 @@
 
 .piece-meta {
   font-size: 26rpx;
-  color: #666666;
+  color: var(--v4-text-2);
   margin-right: 12rpx;
 }
 
 .piece-index {
   font-size: 24rpx;
-  color: #8A8F99;
+  color: var(--v4-text-4);
   margin-right: 10rpx;
 }
 
 .piece-picked {
-  background: #E8F0FF;
-  color: #2B6DE5;
+  background: var(--v4-test-bg);
+  color: var(--v4-partner);
   margin-right: 12rpx;
 }
 
 .picked-count-tag {
-  background: #E8F0FF;
-  color: #2B6DE5;
+  background: var(--v4-test-bg);
+  color: var(--v4-partner);
   margin-left: 12rpx;
 }
 
@@ -313,6 +313,6 @@
 }
 
 .piece-other {
-  color: #8A6D00;
+  color: var(--v4-readonly-text);
   padding: 4rpx 0;
 }

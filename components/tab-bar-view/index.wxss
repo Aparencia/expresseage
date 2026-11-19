@@ -42,19 +42,19 @@
   line-height: 28rpx;
   padding: 0 6rpx;
   border-radius: 14rpx;
-  background: #E54D42;
-  color: #FFFFFF;
+  background: var(--v4-danger);
+  color: var(--v4-on-accent);
   font-size: 20rpx;
   text-align: center;
 }
 
 .tab-text {
   font-size: 22rpx;
-  color: var(--v4-text-3, #6B6B6B);
+  color: var(--v4-text-3, var(--v4-text-3));
   margin-top: 2rpx;
 }
 
 .tab-text-active {
-  color: #1F7A5C;
+  color: var(--v4-brand);
   font-weight: 600;
 }

@@ -7,7 +7,7 @@
 
 .empty-state-text {
   font-size: 26rpx;
-  color: var(--v4-text-3, #6B6B6B);
+  color: var(--v4-text-3, var(--v4-text-3));
   text-align: center;
   line-height: 1.6;
   margin-bottom: 24rpx;
@@ -18,8 +18,8 @@
   line-height: 72rpx;
   padding: 0 40rpx;
   border-radius: 12rpx;
-  background: #1F7A5C;
-  color: #FFFFFF;
+  background: var(--v4-brand);
+  color: var(--v4-on-accent);
   font-size: 28rpx;
   margin: 0;
 }

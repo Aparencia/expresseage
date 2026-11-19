@@ -24,13 +24,13 @@
 }
 
 .transfer-from {
-  color: #2B6DE5;
+  color: var(--v4-partner);
   font-weight: 600;
 }
 
 .transfer-remain {
   background: #FFF3E6;
-  color: #C56A00;
+  color: var(--v4-warning-text);
 }
 
 .transfer-line-foot {
@@ -43,5 +43,5 @@
 
 .transfer-hint {
   padding: 8rpx 0 16rpx;
-  color: #8A9099;
+  color: var(--v4-text-4);
 }

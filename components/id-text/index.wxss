@@ -16,7 +16,7 @@
 
 .id-copy {
   font-size: 24rpx;
-  color: #1F7A5C;
+  color: var(--v4-brand);
   margin-left: 16rpx;
   flex-shrink: 0;
 }

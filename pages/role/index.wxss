@@ -29,7 +29,7 @@
   right: 16rpx;
   padding: 4rpx 12rpx;
   border-radius: 24rpx;
-  background: #E8F0EA;
+  background: var(--v4-success-weak);
   color: var(--v4-brand);
   font-size: 22rpx;
   line-height: 1.6;

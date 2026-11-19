@@ -16,7 +16,7 @@
   margin-left: 12rpx;
   font-size: 30rpx;
   font-weight: 600;
-  color: #1F2937;
+  color: var(--v4-text);
 }
 
 .review-meta {
@@ -49,8 +49,8 @@
 }
 
 .need-tag {
-  background: #FFF4CE;
-  color: #8A6D00;
+  background: var(--v4-readonly-bg);
+  color: var(--v4-readonly-text);
 }
 
 .parcel-actions {

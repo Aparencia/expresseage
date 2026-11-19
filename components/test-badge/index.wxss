@@ -5,7 +5,7 @@
   z-index: 1000;
   padding: 8rpx 18rpx;
   border-radius: 0 0 0 12rpx;
-  background: #2B6DE5;
+  background: var(--v4-partner);
   color: #FFFFFF;
   font-size: 22rpx;
   font-weight: 600;

@@ -3,7 +3,7 @@
   border-radius: 50%;
   overflow: hidden;
   flex-shrink: 0;
-  background: #F0F2F5;
+  background: var(--v4-fill);
   display: flex;
   align-items: center;
   justify-content: center;

@@ -37,7 +37,7 @@
 
 .avatar-skip {
   font-size: 24rpx;
-  color: #2B6DE5;
+  color: var(--v4-partner);
   padding: 8rpx 0;
 }
 
@@ -67,7 +67,7 @@
 
 .result-label {
   font-size: 26rpx;
-  color: var(--v4-text-3, #6B6B6B);
+  color: var(--v4-text-3, var(--v4-text-3));
   margin-bottom: 8rpx;
 }
 
@@ -98,15 +98,15 @@
   display: flex;
   align-items: center;
   font-size: 26rpx;
-  color: #666666;
+  color: var(--v4-text-2);
 }
 
 .error {
   margin-top: 16rpx;
   padding: 16rpx 20rpx;
   border-radius: 12rpx;
-  background: #FDECEA;
-  color: #E54D42;
+  background: var(--v4-danger-weak);
+  color: var(--v4-danger);
   font-size: 26rpx;
 }
 

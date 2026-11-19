@@ -35,7 +35,7 @@ const SAMPLE_FEN = 'total' + 'Fen';
 const FEE_ACTION_RE = new RegExp(['[Ff]' + 'en', 'pri' + 'ce', 'f' + 'ee'].join('|'));
 const CLEAN_TEXT = '订单状态与取件码信息整理，本程序只做下单/接单/履约与消息通知。';
 
-const EXPECTED_ASSERTIONS = 241; // 233 + 8（2026-11-19 深色模式 M1 5 条 + 字号 B 子集 3 条）
+const EXPECTED_ASSERTIONS = 245; // 241 + 4（2026-11-19 装饰色 token 收口：语义 token/关键组件零字面色/on-accent/深色对比度）
 
 // WCAG 相对亮度对比度（测试用；只吃 #RRGGBB，返回两色比值）
 function contrastRatio(hexA, hexB) {
@@ -646,6 +646,38 @@ function register(h) {
     });
     t.check(routes.length === 34 && missing.length === 0,
       '34 页根节点均注入 --v4-fs-scale（字号缩放生效面；缺页：' + missing.join(',') + '）');
+  });
+
+  // ---------------------------------------------------------------- §7.5 装饰色 token 收口（2026-11-19）
+  h.section('§7.5 装饰色 token 收口（品牌/危险/合作方/状态底色）', (t) => {
+    const appWxss = fs.readFileSync(path.join(ROOT, 'app.wxss'), 'utf8');
+    const lightBlock = /page\s*\{([\s\S]*?)\}/.exec(appWxss);
+    const darkBlock = /@media\s*\(\s*prefers-color-scheme:\s*dark\s*\)\s*\{([\s\S]*?)\n\}/.exec(appWxss);
+    const need = ['--v4-on-accent', '--v4-fill', '--v4-line-strong', '--v4-text-4',
+      '--v4-warning-weak', '--v4-warning-text', '--v4-danger-weak', '--v4-info-weak', '--v4-success-weak'];
+    const hasAll = (block) => !!block && need.every((token) => block.indexOf(token + ':') !== -1);
+    t.check(hasAll(lightBlock && lightBlock[1]) && hasAll(darkBlock && darkBlock[1]),
+      '新增语义 token 明暗两套齐全（on-accent/fill/line-strong/text-4/三态弱色）');
+
+    const samples = [
+      'components/status-pill/index.wxss',
+      'components/order-row/index.wxss',
+      'pages/partner/workbench/parts/order-row.wxss',
+      'pages/customer/orders/index.wxss',
+      'pkg-admin/pages/orders/index.wxss',
+      'pkg-partner/pages/review/index.wxss'
+    ];
+    const offenders = samples.filter((rel) => /#(?:1F7A5C|2B6DE5|E54D42|E54545)\b/i.test(fs.readFileSync(path.join(ROOT, rel), 'utf8')));
+    t.check(offenders.length === 0, '关键列表/状态组件零品牌/危险字面色（回归即红：' + offenders.join(',') + '）');
+
+    t.check(/\.btn-primary\s*\{[^}]*color:\s*var\(--v4-on-accent\)/.test(appWxss)
+      && /\.btn-danger\s*\{[^}]*color:\s*var\(--v4-on-accent\)/.test(appWxss),
+      '实心按钮文字用 on-accent（深色下不以白字压浅绿/浅红）');
+
+    const darkBrand = darkBlock && /--v4-brand:\s*#([0-9A-Fa-f]{6})/.exec(darkBlock[1]);
+    const darkOnAccent = darkBlock && /--v4-on-accent:\s*#([0-9A-Fa-f]{6})/.exec(darkBlock[1]);
+    const ratio = darkBrand && darkOnAccent ? contrastRatio(darkBrand[1], darkOnAccent[1]) : 0;
+    t.check(ratio >= 4.5, '深色实心按钮文字对比度 ≥4.5:1（实测 ' + ratio.toFixed(2) + ':1）');
   });
 
   // ---------------------------------------------------------------- §7.1/D38 待绑定邀请（会话级 pending）

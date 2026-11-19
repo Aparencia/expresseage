@@ -26,8 +26,8 @@
   width: 144rpx;
   height: 144rpx;
   border-radius: 32rpx;
-  background: #1F7A5C;
-  color: #FFFFFF;
+  background: var(--v4-brand);
+  color: var(--v4-on-accent);
   font-size: 64rpx;
   font-weight: 600;
   display: flex;
@@ -47,14 +47,14 @@
 
 .launch-tip {
   font-size: 26rpx;
-  color: var(--v4-text-3, #6B6B6B);
+  color: var(--v4-text-3, var(--v4-text-3));
   text-align: center;
   line-height: 1.6;
 }
 
 .launch-error {
   font-size: 28rpx;
-  color: #E54D42;
+  color: var(--v4-danger);
   text-align: center;
   margin: 8rpx 0 24rpx;
   line-height: 1.6;
@@ -90,7 +90,7 @@
   width: 12rpx;
   height: 12rpx;
   border-radius: 50%;
-  background: #1F7A5C;
+  background: var(--v4-brand);
   margin: 0 8rpx;
   opacity: 0.25;
   animation: launch-pulse 1.2s infinite ease-in-out;
@@ -129,7 +129,7 @@
 
 .privacy-lead {
   font-size: 28rpx;
-  color: #666666;
+  color: var(--v4-text-2);
   text-align: center;
   line-height: 1.6;
   margin-bottom: 24rpx;
@@ -147,7 +147,7 @@
 
 .privacy-item {
   font-size: 26rpx;
-  color: #666666;
+  color: var(--v4-text-2);
   line-height: 1.7;
   padding-left: 24rpx;
   position: relative;
@@ -166,19 +166,19 @@
   width: 10rpx;
   height: 10rpx;
   border-radius: 50%;
-  background: #1F7A5C;
+  background: var(--v4-brand);
 }
 
 .privacy-decline {
   font-size: 28rpx;
-  color: var(--v4-text-3, #6B6B6B);
+  color: var(--v4-text-3, var(--v4-text-3));
   text-align: center;
   padding: 32rpx 0 8rpx;
 }
 
 .privacy-error {
   font-size: 26rpx;
-  color: #E54D42;
+  color: var(--v4-danger);
   text-align: center;
   line-height: 1.6;
   margin-top: 8rpx;

@@ -2,8 +2,8 @@
   display: inline-block;
   padding: 2rpx 12rpx;
   border-radius: 8rpx;
-  background: #E8F0EA;
-  color: #1F7A5C;
+  background: var(--v4-success-weak);
+  color: var(--v4-brand);
   font-size: 24rpx;
   font-family: Menlo, Consolas, "Courier New", monospace;
 }

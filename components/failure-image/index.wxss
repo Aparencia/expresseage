@@ -12,21 +12,21 @@
 
 .failure-image-tip {
   font-size: 26rpx;
-  color: #666666;
+  color: var(--v4-text-2);
   text-align: center;
   padding: 48rpx 0;
 }
 
 .failure-image-retry {
   font-size: 26rpx;
-  color: #1F7A5C;
+  color: var(--v4-brand);
   text-align: center;
   padding: 8rpx 0 24rpx;
 }
 
 .failure-image-note {
   font-size: 22rpx;
-  color: var(--v4-text-3, #6B6B6B);
+  color: var(--v4-text-3, var(--v4-text-3));
   margin-top: 12rpx;
   line-height: 1.5;
 }

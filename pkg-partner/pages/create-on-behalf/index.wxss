@@ -10,7 +10,7 @@
   text-align: center;
   border-radius: 32rpx;
   background: var(--v4-card);
-  color: #666666;
+  color: var(--v4-text-2);
   font-size: 26rpx;
   margin-right: 12rpx;
 }
@@ -20,13 +20,13 @@
 }
 
 .step-active {
-  background: #2B6DE5;
+  background: var(--v4-partner);
   color: #FFFFFF;
 }
 
 .error-card {
-  background: #FDECEA;
-  color: #E54D42;
+  background: var(--v4-danger-weak);
+  color: var(--v4-danger);
   font-size: 26rpx;
 }
 
@@ -44,16 +44,16 @@
   line-height: 56rpx;
   padding: 0 20rpx;
   border-radius: 28rpx;
-  border: 2rpx solid #D9DEE5;
-  color: #666666;
+  border: 2rpx solid var(--v4-line-strong);
+  color: var(--v4-text-2);
   font-size: 24rpx;
   margin: 0 12rpx 12rpx 0;
 }
 
 .mode-tag-active {
-  border-color: #2B6DE5;
-  background: #E8F0FF;
-  color: #2B6DE5;
+  border-color: var(--v4-partner);
+  background: var(--v4-test-bg);
+  color: var(--v4-partner);
 }
 
 .zone-row {
@@ -64,7 +64,7 @@
 .review-text {
   margin-top: 12rpx;
   font-size: 26rpx;
-  color: #8A6D00;
+  color: var(--v4-readonly-text);
 }
 
 .ai-row {
@@ -85,7 +85,7 @@
 }
 
 .item-card {
-  border: 2rpx solid #E8F0FF;
+  border: 2rpx solid var(--v4-test-bg);
 }
 
 .item-head {
@@ -97,13 +97,13 @@
 }
 
 .picker-placeholder {
-  color: var(--v4-text-3, #6B6B6B);
+  color: var(--v4-text-3, var(--v4-text-3));
 }
 
 .service-desc {
   display: block;
   margin: -4rpx 0 16rpx;
-  color: #666666;
+  color: var(--v4-text-2);
 }
 
 .recognize-row {
@@ -143,12 +143,12 @@
 
 .warn-text {
   font-size: 26rpx;
-  color: #E54D42;
+  color: var(--v4-danger);
   margin-bottom: 12rpx;
 }
 
 .result-card {
-  border: 2rpx solid #1F7A5C;
+  border: 2rpx solid var(--v4-brand);
 }
 
 .result-line {
@@ -163,7 +163,7 @@
 
 .duplicate-text {
   margin-top: 8rpx;
-  color: #8A6D00;
+  color: var(--v4-readonly-text);
 }
 
 .hint-block {
@@ -191,8 +191,8 @@
   margin-top: 12rpx;
   padding: 12rpx 16rpx;
   border-radius: 12rpx;
-  background: #FFF4CE;
-  color: #8A6D00;
+  background: var(--v4-readonly-bg);
+  color: var(--v4-readonly-text);
   font-size: 26rpx;
 }
 
@@ -230,5 +230,5 @@
 }
 
 .error-text {
-  color: var(--v4-danger, #E54545);
+  color: var(--v4-danger, var(--v4-danger));
 }

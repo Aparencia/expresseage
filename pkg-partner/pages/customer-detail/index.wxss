@@ -7,7 +7,7 @@
 .status-tag {
   margin-left: 12rpx;
   background: rgba(178, 106, 0, 0.12);
-  color: var(--v4-warn, #B26A00);
+  color: var(--v4-warn, var(--v4-warning-text));
 }
 
 .head-main {
@@ -17,7 +17,7 @@
 
 .number-row {
   margin-top: 6rpx;
-  color: #2B6DE5;
+  color: var(--v4-partner);
 }
 
 .number-label {
@@ -72,7 +72,7 @@
 }
 
 .lock-text {
-  color: #E54D42;
+  color: var(--v4-danger);
   margin-top: 12rpx;
 }
 

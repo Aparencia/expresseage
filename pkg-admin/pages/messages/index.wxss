@@ -4,7 +4,7 @@
   margin-top: 12rpx;
   padding: 12rpx 16rpx;
   border-radius: 8rpx;
-  background: #FFF7E6;
+  background: var(--v4-warning-weak);
   color: var(--v4-readonly-text);
   font-size: 26rpx;
 }

@@ -10,7 +10,7 @@
 }
 
 .mark-read-disabled {
-  color: var(--v4-text-3, #6B6B6B);
+  color: var(--v4-text-3, var(--v4-text-3));
 }
 
 .chip-row {
@@ -26,14 +26,14 @@
   margin: 0 16rpx 16rpx 0;
   border-radius: 32rpx;
   background: var(--v4-card);
-  color: #666666;
+  color: var(--v4-text-2);
   font-size: 26rpx;
   border: 1rpx solid var(--v4-line);
 }
 
 .chip-active {
-  background: #2B6DE5;
-  border-color: #2B6DE5;
+  background: var(--v4-partner);
+  border-color: var(--v4-partner);
   color: #FFFFFF;
 }
 
@@ -45,7 +45,7 @@
   width: 16rpx;
   height: 16rpx;
   border-radius: 8rpx;
-  background: #E54D42;
+  background: var(--v4-danger);
   margin-right: 12rpx;
   flex-shrink: 0;
 }

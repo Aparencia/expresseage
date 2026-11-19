@@ -14,9 +14,18 @@ page {
   --v4-text: #1A1A1A;
   --v4-text-2: #666666;
   --v4-text-3: #6B6B6B;
+  --v4-text-4: #8A8F99;
   --v4-bg: #F6F7F9;
   --v4-card: #FFFFFF;
   --v4-line: #EEEEEE;
+  --v4-line-strong: #D9DEE5;
+  --v4-fill: #F0F2F5;
+  --v4-on-accent: #FFFFFF;
+  --v4-warning-weak: #FFF7E6;
+  --v4-warning-text: #B26A00;
+  --v4-danger-weak: #FDECEA;
+  --v4-info-weak: #F3F7FF;
+  --v4-success-weak: #E8F0EA;
   /* 底部安全区与 tabBar 高度（D65）：所有页面底垫只允许用这三个 token 组合，禁止页面自造数值 */
   --v4-tabbar-h: 100rpx;
   --v4-safe-b: env(safe-area-inset-bottom);
@@ -149,23 +158,23 @@ page {
 
 .btn-primary {
   background: var(--v4-brand);
-  color: #FFFFFF;
+  color: var(--v4-on-accent);
 }
 
 .btn-ghost {
-  background: #FFFFFF;
+  background: var(--v4-card);
   color: var(--v4-brand);
   border: 2rpx solid var(--v4-brand);
 }
 
 .btn-danger {
   background: var(--v4-danger);
-  color: #FFFFFF;
+  color: var(--v4-on-accent);
 }
 
 .btn-disabled {
-  background: #D9DEE5;
-  color: #FFFFFF;
+  background: var(--v4-fill);
+  color: var(--v4-text-3);
 }
 
 /* 微信原生 button 默认规则 button:not([size='mini']) { width: 184px }（特异性 0,1,1）
@@ -251,9 +260,18 @@ page {
     --v4-text: #F2F4F7;
     --v4-text-2: #B9C0CA;
     --v4-text-3: #99A1AC;
+    --v4-text-4: #8B93A0;
     --v4-bg: #0E1219;
     --v4-card: #171C24;
     --v4-line: #2A313B;
+    --v4-line-strong: #3A424E;
+    --v4-fill: #1E242D;
+    --v4-on-accent: #0F1419;
+    --v4-warning-weak: #3A2C10;
+    --v4-warning-text: #FFC069;
+    --v4-danger-weak: #3B1D1A;
+    --v4-info-weak: #17263F;
+    --v4-success-weak: #17352A;
     background: var(--v4-bg);
     color: var(--v4-text);
   }

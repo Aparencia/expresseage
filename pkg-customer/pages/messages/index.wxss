@@ -4,7 +4,7 @@
 }
 
 .mark-read-disabled {
-  color: var(--v4-text-3, #6B6B6B);
+  color: var(--v4-text-3, var(--v4-text-3));
 }
 
 .announcement {
@@ -50,12 +50,12 @@
   padding: 24rpx 0;
   text-align: center;
   font-size: 26rpx;
-  color: #1F7A5C;
+  color: var(--v4-brand);
 }
 
 .read-error {
   padding: 8rpx 0 16rpx;
   text-align: center;
   font-size: 24rpx;
-  color: var(--v4-text-3, #6B6B6B);
+  color: var(--v4-text-3, var(--v4-text-3));
 }

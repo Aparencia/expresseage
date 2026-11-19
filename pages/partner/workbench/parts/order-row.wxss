@@ -15,33 +15,33 @@
   border-left: 6rpx solid transparent;
 }
 
-.order-line--submitted { border-left-color: #2B6DE5; }
-.order-line--accepted { border-left-color: #1F7A5C; }
-.order-line--picked { border-left-color: #C56A00; }
+.order-line--submitted { border-left-color: var(--v4-partner); }
+.order-line--accepted { border-left-color: var(--v4-brand); }
+.order-line--picked { border-left-color: var(--v4-warning-text); }
 .order-line--delivered { border-left-color: #7A5AF8; }
-.order-line--exception { border-left-color: #E54D42; }
+.order-line--exception { border-left-color: var(--v4-danger); }
 .order-line--history { border-left-color: #C9CED6; }
 
 .order-line-active {
-  background: #F3F7FF;
+  background: var(--v4-info-weak);
 }
 
 .check-dot {
   width: 40rpx;
   height: 40rpx;
   border-radius: 20rpx;
-  border: 2rpx solid #D9DEE5;
+  border: 2rpx solid var(--v4-line-strong);
   margin: 6rpx 16rpx 0 0;
   flex-shrink: 0;
 }
 
 .check-dot-on {
-  background: #2B6DE5;
-  border-color: #2B6DE5;
+  background: var(--v4-partner);
+  border-color: var(--v4-partner);
 }
 
 .check-dot-disabled {
-  background: #F0F2F5;
+  background: var(--v4-fill);
   border-color: #E5E8EC;
 }
 
@@ -57,7 +57,7 @@
 
 .line-time {
   margin-left: auto;
-  color: #8A8F99;
+  color: var(--v4-text-4);
 }
 
 .line-sub {
@@ -67,7 +67,7 @@
 
 .line-tier {
   margin-left: 12rpx;
-  color: #8A8F99;
+  color: var(--v4-text-4);
 }
 
 .code-text {
@@ -81,37 +81,37 @@
 }
 
 .guest-tag {
-  background: #E8F0FF;
-  color: #2B6DE5;
+  background: var(--v4-test-bg);
+  color: var(--v4-partner);
 }
 
 /* v1.0 多包裹行聚合（D23/D24）：件数/站点聚合/无截图·手填 */
 .parcel-tag {
   background: #EAF4F0;
-  color: #1F7A5C;
+  color: var(--v4-brand);
 }
 
 .manual-tag {
-  background: #F0F2F5;
+  background: var(--v4-fill);
   color: #4A4A4A;
 }
 
 /* D45/M1：未送达跨日行「顺延 N 天」标签（与取件码同行，不挤掉柜号/档位） */
 .delay-tag {
-  background: #FFF4CE;
-  color: #8A6D00;
+  background: var(--v4-readonly-bg);
+  color: var(--v4-readonly-text);
 }
 
 .station-summary {
   margin: 0 12rpx;
-  color: #666666;
+  color: var(--v4-text-2);
 }
 
 .parcel-need-tag {
   padding: 4rpx 12rpx;
   border-radius: 8rpx;
-  background: #FFF4CE;
-  color: #8A6D00;
+  background: var(--v4-readonly-bg);
+  color: var(--v4-readonly-text);
   font-size: 22rpx;
   margin: 8rpx 12rpx 0 0;
 }
@@ -124,7 +124,7 @@
 
 .panel-piece-hint {
   margin-bottom: 12rpx;
-  color: #666666;
+  color: var(--v4-text-2);
 }
 
 .line-tags {
@@ -134,8 +134,8 @@
 .review-tag {
   padding: 4rpx 12rpx;
   border-radius: 8rpx;
-  background: #F0F2F5;
-  color: #666666;
+  background: var(--v4-fill);
+  color: var(--v4-text-2);
   font-size: 22rpx;
   margin: 8rpx 12rpx 0 0;
 }
@@ -144,8 +144,8 @@
 .delivery-tag {
   padding: 4rpx 12rpx;
   border-radius: 8rpx;
-  background: #E8F0FF;
-  color: #2B6DE5;
+  background: var(--v4-test-bg);
+  color: var(--v4-partner);
   font-size: 22rpx;
   margin: 8rpx 12rpx 0 0;
 }
@@ -153,7 +153,7 @@
 .exception-text {
   margin-top: 6rpx;
   font-size: 24rpx;
-  color: #E54D42;
+  color: var(--v4-danger);
 }
 
 /* 行工具条：动作键全部来自服务端 actions[] */
@@ -168,37 +168,37 @@
   padding: 0 20rpx;
   margin: 8rpx 16rpx 0 0;
   border-radius: 10rpx;
-  border: 2rpx solid #D9DEE5;
+  border: 2rpx solid var(--v4-line-strong);
   font-size: 24rpx;
   color: var(--v4-text);
 }
 
 .tool-primary {
-  border-color: #2B6DE5;
-  color: #2B6DE5;
+  border-color: var(--v4-partner);
+  color: var(--v4-partner);
   font-weight: 600;
 }
 
 .tool-danger {
-  border-color: #E54D42;
-  color: #E54D42;
+  border-color: var(--v4-danger);
+  color: var(--v4-danger);
 }
 
 .tool-detail {
   border-color: transparent;
-  color: var(--v4-text-3, #6B6B6B);
+  color: var(--v4-text-3, var(--v4-text-3));
 }
 
 /* 2026-11-08 按钮方案 B：低频动作收进「更多」（异常/留言/取消/拒单），行内只留主操作+改取件码+详情 */
 .tool-more {
-  border-color: #D9DEE5;
-  color: #666666;
+  border-color: var(--v4-line-strong);
+  color: var(--v4-text-2);
 }
 
 .line-readonly {
   margin-top: 8rpx;
   font-size: 22rpx;
-  color: var(--v4-text-3, #6B6B6B);
+  color: var(--v4-text-3, var(--v4-text-3));
 }
 
 /* D61/D62：件级取件行（缩进 32rpx + 左侧竖线；单件单不缩进、不显示「第 n 件」） */
@@ -206,12 +206,12 @@
   margin: 0 12rpx;
   font-size: 30rpx;
   font-weight: 600;
-  color: #1F2937;
+  color: var(--v4-text);
 }
 
 .picked-summary-tag {
-  background: #E8F0FF;
-  color: #2B6DE5;
+  background: var(--v4-test-bg);
+  color: var(--v4-partner);
 }
 
 .piece-list {
@@ -232,7 +232,7 @@
 }
 
 .piece-row--picked .piece-code {
-  color: #8A8F99;
+  color: var(--v4-text-4);
   text-decoration: line-through;
 }
 
@@ -247,7 +247,7 @@
 
 .piece-index {
   font-size: 22rpx;
-  color: var(--v4-text-3, #6B6B6B);
+  color: var(--v4-text-3, var(--v4-text-3));
   margin-right: 12rpx;
 }
 
@@ -257,32 +257,32 @@
   font-size: 34rpx;
   font-weight: 600;
   letter-spacing: 2rpx;
-  color: #1F2937;
+  color: var(--v4-text);
   margin-right: 12rpx;
 }
 
 .piece-code--need {
-  color: #8A6D00;
+  color: var(--v4-readonly-text);
 }
 
 .piece-station {
-  color: #666666;
+  color: var(--v4-text-2);
   margin-right: 12rpx;
 }
 
 .piece-locker {
-  color: #666666;
+  color: var(--v4-text-2);
   margin-right: 12rpx;
 }
 
 .piece-need {
-  background: #FFF4CE;
-  color: #8A6D00;
+  background: var(--v4-readonly-bg);
+  color: var(--v4-readonly-text);
 }
 
 .piece-picked {
-  background: #E8F0FF;
-  color: #2B6DE5;
+  background: var(--v4-test-bg);
+  color: var(--v4-partner);
 }
 
 .piece-btn {
@@ -295,5 +295,5 @@
 
 .piece-other {
   padding: 4rpx 0 8rpx;
-  color: #8A6D00;
+  color: var(--v4-readonly-text);
 }

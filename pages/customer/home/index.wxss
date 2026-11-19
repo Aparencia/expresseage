@@ -48,7 +48,7 @@
 .skeleton-line {
   height: 32rpx;
   border-radius: 8rpx;
-  background: #EEF0F3;
+  background: var(--v4-fill);
 }
 
 .partner-name-skeleton {
@@ -86,7 +86,7 @@
 }
 
 .tag-disabled {
-  background: #F0F2F5;
+  background: var(--v4-fill);
   color: var(--v4-text-3);
 }
 

@@ -12,8 +12,8 @@
 }
 
 .status-accepted {
-  background: #E8F0FF;
-  color: #2B6DE5;
+  background: var(--v4-test-bg);
+  color: var(--v4-partner);
 }
 
 .status-picked {
@@ -22,21 +22,21 @@
 }
 
 .status-delivered {
-  background: #E8F0EA;
-  color: #1F7A5C;
+  background: var(--v4-success-weak);
+  color: var(--v4-brand);
 }
 
 .status-completed {
-  background: #1F7A5C;
-  color: #FFFFFF;
+  background: var(--v4-brand);
+  color: var(--v4-on-accent);
 }
 
 .status-cancelled {
   background: #F0F0F0;
-  color: var(--v4-text-3, #6B6B6B);
+  color: var(--v4-text-3, var(--v4-text-3));
 }
 
 .status-exception {
-  background: #FDECEA;
-  color: #E54D42;
+  background: var(--v4-danger-weak);
+  color: var(--v4-danger);
 }

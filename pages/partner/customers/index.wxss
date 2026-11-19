@@ -11,12 +11,12 @@
 }
 
 .banner-card {
-  background: #E8F0FF;
+  background: var(--v4-test-bg);
 }
 
 .banner-text {
   font-size: 26rpx;
-  color: #2B6DE5;
+  color: var(--v4-partner);
 }
 
 .search-card {
@@ -39,7 +39,7 @@
   padding: 0 24rpx;
   border-radius: 32rpx;
   background: var(--v4-card);
-  color: #666666;
+  color: var(--v4-text-2);
   font-size: 26rpx;
   margin: 0 16rpx 8rpx 0;
 }
@@ -55,7 +55,7 @@
 }
 
 .filter-desc .small {
-  color: #8A6D00;
+  color: var(--v4-readonly-text);
 }
 
 .filter-clear {
@@ -65,7 +65,7 @@
 }
 
 .stale-card {
-  background: #FFF4CE;
+  background: var(--v4-readonly-bg);
 }
 
 .skeleton-card {
@@ -78,7 +78,7 @@
   width: 64rpx;
   height: 64rpx;
   border-radius: 50%;
-  background: #EEF0F3;
+  background: var(--v4-fill);
 }
 
 .skeleton-main {
@@ -88,7 +88,7 @@
 .skeleton-line {
   height: 28rpx;
   border-radius: 8rpx;
-  background: #EEF0F3;
+  background: var(--v4-fill);
   margin-bottom: 12rpx;
 }
 
@@ -118,8 +118,8 @@
 .incomplete-text {
   margin-left: 12rpx;
   flex-shrink: 0;
-  background: #FFF4CE;
-  color: #8A6D00;
+  background: var(--v4-readonly-bg);
+  color: var(--v4-readonly-text);
 }
 
 .meta-row {
@@ -131,7 +131,7 @@
   margin-left: 12rpx;
   flex-shrink: 0;
   background: rgba(178, 106, 0, 0.12);
-  color: var(--v4-warn, #B26A00);
+  color: var(--v4-warn, var(--v4-warning-text));
 }
 
 .row-btn {
@@ -143,7 +143,7 @@
 .footer-text {
   text-align: center;
   font-size: 24rpx;
-  color: var(--v4-text-3, #6B6B6B);
+  color: var(--v4-text-3, var(--v4-text-3));
   padding: 16rpx 0;
 }
 

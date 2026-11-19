@@ -290,8 +290,13 @@ function register(h) {
 
     // 黄条/蓝条/TEST 角标与账号切换页文案（UI 判据；颜色常量单源在 switch-bar 组件内）
     const switchBarCss = readText('components/switch-bar/index.wxss');
-    t.check(switchBarCss.indexOf('#FFF4CE') !== -1, '黄条颜色常量 #FFF4CE（READONLY）');
-    t.check(switchBarCss.indexOf('#E8F0FF') !== -1, '蓝条颜色常量 #E8F0FF（TEST_WRITE）');
+    const appWxssForSwitch = readText('app.wxss');
+    t.check(switchBarCss.indexOf('var(--v4-readonly-bg)') !== -1
+      && appWxssForSwitch.indexOf('--v4-readonly-bg: #FFF4CE') !== -1,
+      '黄条颜色常量走 --v4-readonly-bg token（浅色值 #FFF4CE 在 app.wxss 单源）');
+    t.check(switchBarCss.indexOf('var(--v4-test-bg)') !== -1
+      && appWxssForSwitch.indexOf('--v4-test-bg: #E8F0FF') !== -1,
+      '蓝条颜色常量走 --v4-test-bg token（浅色值 #E8F0FF 在 app.wxss 单源）');
     const switchBarWxml = readText('components/switch-bar/index.wxml');
     t.check(switchBarWxml.indexOf('开发者只读视角') !== -1 && switchBarWxml.indexOf('测试账号') !== -1,
       '切换条两种模式文案（黄条只读/蓝条测试账号）');

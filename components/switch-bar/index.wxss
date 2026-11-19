@@ -9,13 +9,13 @@
 }
 
 .switch-bar-readonly {
-  background: #FFF4CE;
-  color: #8A6D00;
+  background: var(--v4-readonly-bg);
+  color: var(--v4-readonly-text);
 }
 
 .switch-bar-blue {
-  background: #E8F0FF;
-  color: #2B6DE5;
+  background: var(--v4-test-bg);
+  color: var(--v4-partner);
 }
 
 .switch-bar-main {

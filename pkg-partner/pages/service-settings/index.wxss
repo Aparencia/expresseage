@@ -4,7 +4,7 @@
 }
 
 .first-tip {
-  background: #FFF4CE;
+  background: var(--v4-readonly-bg);
 }
 
 .service-row {
@@ -37,16 +37,16 @@
   line-height: 64rpx;
   padding: 0 28rpx;
   border-radius: 32rpx;
-  border: 2rpx solid #D9DEE5;
-  color: #666666;
+  border: 2rpx solid var(--v4-line-strong);
+  color: var(--v4-text-2);
   font-size: 26rpx;
   margin: 0 16rpx 16rpx 0;
 }
 
 .zone-tag-active {
-  border-color: #2B6DE5;
-  background: #E8F0FF;
-  color: #2B6DE5;
+  border-color: var(--v4-partner);
+  background: var(--v4-test-bg);
+  color: var(--v4-partner);
 }
 
 .zone-note {
@@ -57,8 +57,8 @@
   margin-bottom: 16rpx;
   padding: 16rpx 20rpx;
   border-radius: 12rpx;
-  background: #FDECEA;
-  color: #E54D42;
+  background: var(--v4-danger-weak);
+  color: var(--v4-danger);
   font-size: 26rpx;
 }
 

@@ -20,8 +20,8 @@
 
 .guest-tag {
   margin: 0 12rpx;
-  background: #E8F0FF;
-  color: #2B6DE5;
+  background: var(--v4-test-bg);
+  color: var(--v4-partner);
 }
 
 .counterpart {
@@ -36,8 +36,8 @@
   margin-top: 12rpx;
   padding: 12rpx 16rpx;
   border-radius: 12rpx;
-  background: #FFF4CE;
-  color: #8A6D00;
+  background: var(--v4-readonly-bg);
+  color: var(--v4-readonly-text);
   font-size: 26rpx;
 }
 
@@ -182,8 +182,8 @@
 }
 
 .guest-chip {
-  background: #E8F0FF;
-  color: #2B6DE5;
+  background: var(--v4-test-bg);
+  color: var(--v4-partner);
 }
 
 .customer-no-line {
@@ -192,7 +192,7 @@
 
 .auto-hint {
   margin-top: 8rpx;
-  color: #2B6DE5;
+  color: var(--v4-partner);
 }
 
 .voucher-no {
@@ -202,7 +202,7 @@
 .voucher-footer {
   display: block;
   margin-top: 12rpx;
-  color: #8A8F99;
+  color: var(--v4-text-4);
 }
 
 .error-text {
@@ -228,9 +228,9 @@
 }
 
 .reason-chip-active {
-  border-color: #1F7A5C;
+  border-color: var(--v4-brand);
   background: #E8F5F0;
-  color: #1F7A5C;
+  color: var(--v4-brand);
 }
 
 .quick-title {
@@ -248,23 +248,23 @@
 
 /* D47 预约「最晚可接受时间」：到点未送达行内标红（纯展示，不自动取消） */
 .appoint-overdue {
-  color: var(--v4-danger, #E54545);
+  color: var(--v4-danger, var(--v4-danger));
 }
 
 /* D61：逐件已取状态与独立按钮（已取件 / 撤销已取） */
 .picked-summary-tag {
-  background: #E8F0FF;
-  color: #2B6DE5;
+  background: var(--v4-test-bg);
+  color: var(--v4-partner);
 }
 
 .tag-picked {
-  background: #E8F0FF;
-  color: #2B6DE5;
+  background: var(--v4-test-bg);
+  color: var(--v4-partner);
 }
 
 .tag-pending {
-  background: #F0F2F5;
-  color: #666666;
+  background: var(--v4-fill);
+  color: var(--v4-text-2);
 }
 
 .parcel-ops {
@@ -307,12 +307,12 @@
 }
 
 .transfer-remain {
-  color: #C56A00;
+  color: var(--v4-warning-text);
   margin-top: 6rpx;
 }
 
 .transfer-hint {
-  color: #8A9099;
+  color: var(--v4-text-4);
   margin-top: 6rpx;
 }
 
@@ -359,12 +359,12 @@
 }
 
 .transfer-card-meta {
-  color: #8A9099;
+  color: var(--v4-text-4);
   margin-top: 4rpx;
 }
 
 .transfer-empty {
-  color: #8A9099;
+  color: var(--v4-text-4);
   margin-top: 16rpx;
 }
 
@@ -375,6 +375,6 @@
 }
 
 .transfer-code-tip {
-  color: #8A9099;
+  color: var(--v4-text-4);
   margin-top: 8rpx;
 }

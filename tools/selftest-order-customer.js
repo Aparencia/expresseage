@@ -901,9 +901,9 @@ function register(h) {
     'O5 请求在途不清空旧列表，结果到达才整表替换（onShow 刷新保留旧内容）');
     t.check(homeWxml.indexOf('partner-name-skeleton') >= 0 && homeWxml.indexOf('资料加载中') < 0,
       'O6 首页兼职卡昵称位文字 loading → 灰色骨架条');
-    t.check(/\.skeleton-line\s*\{[^}]*background:\s*#EEF0F3/.test(homeWxss)
+    t.check(/\.skeleton-line\s*\{[^}]*background:\s*var\(--v4-fill\)/.test(homeWxss)
       && /\.partner-name-skeleton\s*\{/.test(homeWxss),
-    'O7 首页骨架条灰底样式（同客户页灰 #EEF0F3）');
+    'O7 首页骨架条灰底走 --v4-fill token（深色自动换暗底，浅色值在 app.wxss 单源）');
     t.check(/wx:elif="\{\{loading\}\}"/.test(homeWxml),
       'O8 骨架只在数据未到时出现（有昵称直接渲染，loading=false 不占位）');
     const refreshBody = home.slice(home.indexOf('async refresh() {'), home.indexOf('// D42：兼职卡头像 URL 过期'));
