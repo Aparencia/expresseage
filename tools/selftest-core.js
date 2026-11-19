@@ -35,7 +35,7 @@ const SAMPLE_FEN = 'total' + 'Fen';
 const FEE_ACTION_RE = new RegExp(['[Ff]' + 'en', 'pri' + 'ce', 'f' + 'ee'].join('|'));
 const CLEAN_TEXT = '订单状态与取件码信息整理，本程序只做下单/接单/履约与消息通知。';
 
-const EXPECTED_ASSERTIONS = 223; // 89 骨架 + 30 D37 入口白名单 + 25 D38 待绑定邀请/接线 + 16 D37-b 直落页隐私兜底 + 42 D57 本机取件码清单 + 21 D70/D71 站点双判据
+const EXPECTED_ASSERTIONS = 233; // 223 + 10（2026-11-19 UX 可达性：launch 错误码出 UI 2 + 对比度/字面量/aria/弱网 8）
 
 // D57 本机取件码清单：注入式假平台（按键隔离；平台 storage API 只允许出现在 utils/storage.js，
 // 本测试不 mock 全局 wx，只经该模块的 platform 注入点）。
@@ -466,6 +466,11 @@ function register(h) {
       'launch 隐私同意闸先于分流（同意后才 route）');
     t.check(launchJs.indexOf('pendingInvite.remember(') > launchJs.indexOf('applyPrivacyGate(config)'),
       'D38 待绑定邀请在隐私闸通过后才记录（未同意不落会话状态）');
+    const loginTitleMatch = /const LOGIN_TITLE = '([^']*)'/.exec(launchJs);
+    t.check(!!loginTitleMatch && loginTitleMatch[1].indexOf('错误码') === -1 && launchJs.indexOf('（错误码') === -1,
+      'launch 用户可见文案不含错误码（ENGINEERING §4.6：码只进 console）');
+    t.check(/console\.error\('\[launch\]/.test(launchJs),
+      'launch 失败码进开发者控制台（可排障、不进 UI、截图反馈无需带码）');
   });
 
   // ---------------------------------------------------------------- §7.1/D37-b 直落页隐私兜底
@@ -510,6 +515,57 @@ function register(h) {
       '首页 onShow 冷启动入口也过兜底闸（朋友圈「前往小程序」落地当前页）');
     t.check(homeJs.indexOf('if (!blocked) this.enter();') !== -1,
       '首页只有闸放行后才刷新/拉数（未同意不撞写动作）');
+  });
+
+  // ---------------------------------------------------------------- §7.2 UX 可达性与弱网基线（2026-11-19）
+  h.section('§7.2 UX 可达性与弱网基线（对比度 / aria / 网络状态）', (t) => {
+    const appWxss = fs.readFileSync(path.join(ROOT, 'app.wxss'), 'utf8');
+    const tokenMatch = /--v4-text-3:\s*#([0-9A-Fa-f]{6})/.exec(appWxss);
+    t.check(!!tokenMatch, 'app.wxss 定义 --v4-text-3 三级文本色（单源）');
+    const hex = tokenMatch ? tokenMatch[1] : '999999';
+    const channel = (offset) => {
+      const c = parseInt(hex.slice(offset, offset + 2), 16) / 255;
+      return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    };
+    const luminance = 0.2126 * channel(0) + 0.7152 * channel(2) + 0.0722 * channel(4);
+    const ratioOnWhite = 1.05 / (luminance + 0.05);
+    t.check(ratioOnWhite >= 4.5,
+      '三级文本对白底对比度 ≥4.5:1（实测 ' + ratioOnWhite.toFixed(2) + ':1；旧值 #999999 为 2.85:1）');
+
+    const wxssFiles = [];
+    const walkWxss = (dir) => {
+      fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true }).forEach((entry) => {
+        const rel = dir + '/' + entry.name;
+        if (entry.isDirectory()) walkWxss(rel);
+        else if (entry.name.endsWith('.wxss')) wxssFiles.push(rel);
+      });
+    };
+    ['pages', 'components', 'pkg-customer', 'pkg-partner', 'pkg-admin'].forEach(walkWxss);
+    const literalOffenders = wxssFiles.filter((rel) => /color:\s*#999999/.test(fs.readFileSync(path.join(ROOT, rel), 'utf8')));
+    t.check(wxssFiles.length > 0 && literalOffenders.length === 0,
+      '页面/组件 wxss 零 #999999 字面量（统一 --v4-text-3 并带 #6B6B6B 兜底）');
+
+    const tabWxml = fs.readFileSync(path.join(ROOT, 'components/tab-bar-view/index.wxml'), 'utf8');
+    t.check(tabWxml.indexOf('aria-role="tab"') !== -1 && tabWxml.indexOf('aria-label=') !== -1,
+      'tabBar 每格有 tab 语义与可读标签（读屏可用）');
+    const rowWxml = fs.readFileSync(path.join(ROOT, 'components/order-row/index.wxml'), 'utf8');
+    t.check(rowWxml.indexOf('aria-role="button"') !== -1 && rowWxml.indexOf('aria-label=') !== -1,
+      '订单行有 button 语义与可读标签（读屏可用）');
+    const rowPages = [
+      'pages/customer/orders/index.wxml',
+      'pkg-customer/pages/messages/index.wxml',
+      'pkg-admin/pages/orders/index.wxml',
+      'pkg-admin/pages/customers/index.wxml'
+    ];
+    const missingAria = rowPages.filter((rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8').indexOf('aria-role="button"') === -1);
+    t.check(missingAria.length === 0,
+      '关键列表行均有 button 语义（顾客订单/消息、后台订单/顾客）');
+
+    const appJs = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
+    t.check(appJs.indexOf('wx.onNetworkStatusChange') !== -1 && appJs.indexOf('networkOnline') !== -1,
+      '启动注册网络状态监听并去重（在线↔离线只提示一次）');
+    t.check(appJs.indexOf('网络已断开') !== -1 && appJs.indexOf('网络已恢复') !== -1,
+      '断网/恢复各有一次轻提示文案（不阻断页面、不上报）');
   });
 
   // ---------------------------------------------------------------- §7.1/D38 待绑定邀请（会话级 pending）

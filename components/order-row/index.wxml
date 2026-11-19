@@ -1,4 +1,4 @@
-<view class="order-row" bindtap="onTap">
+<view class="order-row" bindtap="onTap" aria-role="button" aria-label="{{order.customerLine || order.codeText}}">
   <view class="order-row-head">
     <status-pill status="{{order.status}}" />
     <text class="order-row-code">{{order.codeText}}</text>

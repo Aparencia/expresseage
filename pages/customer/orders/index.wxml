@@ -35,7 +35,7 @@
 
   <view wx:if="{{list.length > 0}}">
     <view wx:for="{{list}}" wx:key="orderNo" class="list-item">
-      <view data-order-no="{{item.orderNo}}" bindtap="onOrderTap">
+      <view data-order-no="{{item.orderNo}}" bindtap="onOrderTap" aria-role="button" aria-label="订单 {{item.orderNo}}{{item.pickupTag ? '，' + item.pickupTag : ''}}">
         <order-row order="{{item}}" />
         <!-- D61 部分取件：行内「已取 n/m 件」标签（只读 DTO 进度字段，标签判据单源 parts/pickup-tag） -->
         <view class="pickup-tag" wx:if="{{item.pickupTag}}">{{item.pickupTag}}</view>

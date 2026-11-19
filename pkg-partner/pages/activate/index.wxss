@@ -67,7 +67,7 @@
 
 .result-label {
   font-size: 26rpx;
-  color: #999999;
+  color: var(--v4-text-3, #6B6B6B);
   margin-bottom: 8rpx;
 }
 

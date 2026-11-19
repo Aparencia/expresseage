@@ -186,7 +186,7 @@
 
 .tool-detail {
   border-color: transparent;
-  color: #999999;
+  color: var(--v4-text-3, #6B6B6B);
 }
 
 /* 2026-11-08 按钮方案 B：低频动作收进「更多」（异常/留言/取消/拒单），行内只留主操作+改取件码+详情 */
@@ -198,7 +198,7 @@
 .line-readonly {
   margin-top: 8rpx;
   font-size: 22rpx;
-  color: #999999;
+  color: var(--v4-text-3, #6B6B6B);
 }
 
 /* D61/D62：件级取件行（缩进 32rpx + 左侧竖线；单件单不缩进、不显示「第 n 件」） */
@@ -247,7 +247,7 @@
 
 .piece-index {
   font-size: 22rpx;
-  color: #999999;
+  color: var(--v4-text-3, #6B6B6B);
   margin-right: 12rpx;
 }
 

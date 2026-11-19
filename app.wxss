@@ -13,7 +13,7 @@ page {
   --v4-warning: #F5A623;
   --v4-text: #1A1A1A;
   --v4-text-2: #666666;
-  --v4-text-3: #999999;
+  --v4-text-3: #6B6B6B;
   --v4-bg: #F6F7F9;
   --v4-card: #FFFFFF;
   --v4-line: #EEEEEE;

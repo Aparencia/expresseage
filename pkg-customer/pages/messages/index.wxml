@@ -27,6 +27,8 @@
     wx:key="id"
     class="card message-card"
     data-order-no="{{item.orderNo}}"
+    aria-role="button"
+    aria-label="{{item.title}}，{{item.time}}"
     bindtap="onItemTap"
   >
     <view class="row between">

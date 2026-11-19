@@ -3,6 +3,8 @@
     wx:for="{{tabs}}"
     wx:key="pagePath"
     class="tab-item"
+    aria-role="tab"
+    aria-label="{{item.text}}{{selected === index ? '，当前选中' : ''}}"
     data-index="{{index}}"
     bindtap="onTap"
   >

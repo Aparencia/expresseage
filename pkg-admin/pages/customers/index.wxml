@@ -25,7 +25,7 @@
 
   <view class="empty-text" wx:if="{{!loading && !searching && !error && list.length === 0}}">{{keyword.length >= 2 ? '没有找到匹配的顾客，换个编号、苑+楼栋或昵称试试。' : '还没有顾客资料。'}}</view>
 
-  <view class="card" wx:for="{{list}}" wx:key="customerNo" data-no="{{item.customerNo}}" bindtap="onOpenDetail">
+  <view class="card" wx:for="{{list}}" wx:key="customerNo" data-no="{{item.customerNo}}" bindtap="onOpenDetail" aria-role="button" aria-label="顾客 {{item.customerNo}}，{{item.displayName}}">
     <view class="row between">
       <text class="strong">{{item.customerNo}}</text>
       <view class="row">

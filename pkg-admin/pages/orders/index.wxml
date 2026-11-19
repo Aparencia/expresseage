@@ -31,7 +31,7 @@
 
   <view class="empty-text" wx:if="{{!loading && !searching && !error && list.length === 0}}">{{emptyText}}</view>
 
-  <view class="card" wx:for="{{list}}" wx:key="orderNo" data-no="{{item.orderNo}}" bindtap="onOpenDetail">
+  <view class="card" wx:for="{{list}}" wx:key="orderNo" data-no="{{item.orderNo}}" bindtap="onOpenDetail" aria-role="button" aria-label="订单 {{item.orderNo}}，{{item.statusText}}">
     <view class="row between">
       <text class="strong">{{item.orderNo}}</text>
       <view class="row">

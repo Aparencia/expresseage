@@ -15,6 +15,10 @@ require('./config/main-deps');
 // 首页首次 onShow 复用启动期绑定结果的窗口（超过窗口视为过期，自行重拉）
 const BIND_REUSE_WINDOW_MS = 30 * 1000;
 
+// 弱网兜底：网络状态切换各给一次轻提示（不阻断页面；页面内失败仍按各自重试口径）
+const NETWORK_OFF_TEXT = '网络已断开，恢复后可继续';
+const NETWORK_ON_TEXT = '网络已恢复';
+
 App({
   globalData: {
     envVersion: '',
@@ -24,7 +28,9 @@ App({
     bindingFetchedAt: 0,
     bindingConsumed: false,
     // 朋友圈单页模式（scene=1154）：无登录态、云资源不可用，不做云初始化与 bootstrap
-    singlePage: false
+    singlePage: false,
+    // 本机是否在线（弱网提示去重用；不落盘、不上报）
+    networkOnline: true
   },
 
   BIND_REUSE_WINDOW_MS: BIND_REUSE_WINDOW_MS,
@@ -34,11 +40,32 @@ App({
     this.globalData.envVersion = this.readEnvVersion();
     this.globalData.singlePage = sharePlatform.singlePageNow();
     this.bindingPromise = null;
+    this.bindNetworkStatus();
     // 朋友圈单页模式：wx.login 不可用、云开发资源需未登录访问（本仓没有），
     // 因此不做云初始化与 bootstrap；落地页按静态预览渲染（D36），点「前往小程序」后正常启动。
     this.startupPromise = this.globalData.singlePage
       ? Promise.resolve({ ok: false, code: 'SINGLE_PAGE' })
       : this.startup();
+  },
+
+  // 弱网兜底（2026-11-19）：只在「在线↔离线」翻转时提示一次，不猜具体请求成败
+  bindNetworkStatus() {
+    if (typeof wx === 'undefined' || typeof wx.onNetworkStatusChange !== 'function') {
+      return;
+    }
+    const self = this;
+    wx.onNetworkStatusChange(function onNetworkStatusChange(res) {
+      const online = !!(res && res.isConnected);
+      if (online === self.globalData.networkOnline) {
+        return;
+      }
+      self.globalData.networkOnline = online;
+      wx.showToast({
+        title: online ? NETWORK_ON_TEXT : NETWORK_OFF_TEXT,
+        icon: 'none',
+        duration: 1500
+      });
+    });
   },
 
   readEnvVersion() {

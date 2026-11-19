@@ -63,7 +63,7 @@
 .version-line {
   text-align: center;
   font-size: 24rpx;
-  color: #999999;
+  color: var(--v4-text-3, #6B6B6B);
   padding: 16rpx 0;
 }
 
@@ -114,7 +114,7 @@
 
 .avatar-default-link {
   font-size: 26rpx;
-  color: #999999;
+  color: var(--v4-text-3, #6B6B6B);
   margin-top: 16rpx;
 }
 
@@ -193,7 +193,7 @@
 /* ── 绑定卡 ─────────────────────────────────────────────── */
 .section-label {
   font-size: 26rpx;
-  color: #999999;
+  color: var(--v4-text-3, #6B6B6B);
   margin-bottom: 12rpx;
 }
 
@@ -241,7 +241,7 @@
 
 .list-title {
   font-size: 26rpx;
-  color: #999999;
+  color: var(--v4-text-3, #6B6B6B);
   margin-bottom: 8rpx;
 }
 
@@ -261,12 +261,12 @@
 }
 
 .row-item-disabled {
-  color: #999999;
+  color: var(--v4-text-3, #6B6B6B);
 }
 
 .row-arrow {
   font-size: 34rpx;
-  color: #999999;
+  color: var(--v4-text-3, #6B6B6B);
 }
 
 /* ── 解绑确认层 ─────────────────────────────────────────── */

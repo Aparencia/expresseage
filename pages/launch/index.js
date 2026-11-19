@@ -19,7 +19,7 @@ const MAX_ATTEMPTS = 3;
 const NETWORK_TITLE = '网络开小差了';
 const NETWORK_TEXT = '请检查网络后重试；若一直失败，可在微信里重新打开小程序。';
 const CHECK_NETWORK_HINT = '已连续失败，请检查网络后再试一次。';
-const LOGIN_TITLE = '微信登录失败（错误码 {code}）';
+const LOGIN_TITLE = '微信登录失败';
 const LOGIN_TEXT = '退出小程序后重新打开再试。';
 const RETRY_TEXT = '重新加载';
 // D68：账号状态专用页（停用可恢复 / 注销不可逆）——服务端除 user.bootstrap 外一律拒绝，故启动页先拦。
@@ -267,10 +267,14 @@ Page({
     const code = (result && result.code) || '';
     const detail = (result && result.message) || app.globalData.startupError || '';
     const loginFailed = attempts >= MAX_ATTEMPTS && code !== '' && code !== 'CONFIG_MISSING';
+    if (loginFailed) {
+      // ENGINEERING §4.6：错误码只进开发者控制台，不进用户文案（用户截图反馈无需带码）
+      console.error('[launch] 启动失败', code, detail);
+    }
     this.setData({
       loading: false,
       attempts: attempts,
-      errorTitle: loginFailed ? LOGIN_TITLE.replace('{code}', code) : NETWORK_TITLE,
+      errorTitle: loginFailed ? LOGIN_TITLE : NETWORK_TITLE,
       errorText: loginFailed ? LOGIN_TEXT : (detail || NETWORK_TEXT),
       errorHint: attempts >= 2 && !loginFailed ? CHECK_NETWORK_HINT : ''
     });

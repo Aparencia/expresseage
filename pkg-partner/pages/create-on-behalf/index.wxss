@@ -97,7 +97,7 @@
 }
 
 .picker-placeholder {
-  color: #999999;
+  color: var(--v4-text-3, #6B6B6B);
 }
 
 .service-desc {
