@@ -37,6 +37,9 @@ function cloneMetrics(source) {
     active: source.active,
     exceptions: source.exceptions,
     cancelled: source.cancelled,
+    transferOut: source.transferOut,
+    transferOutCompleted: source.transferOutCompleted,
+    transferIn: source.transferIn,
     todayCompleted: source.todayCompleted
   };
 }
@@ -48,6 +51,9 @@ const EMPTY_METRICS = cloneMetrics({
   active: 0,
   exceptions: 0,
   cancelled: 0,
+  transferOut: 0,
+  transferOutCompleted: 0,
+  transferIn: 0,
   todayCompleted: 0
 });
 
@@ -128,6 +134,9 @@ function metricOf(dto) {
     active: countOf(counts.active),
     exceptions: countOf(counts.exceptions),
     cancelled: countOf(counts.cancelled),
+    transferOut: countOf(counts.transferOut),
+    transferOutCompleted: countOf(counts.transferOutCompleted),
+    transferIn: countOf(counts.transferIn),
     todayCompleted: countOf(source.todayCompleted)
   };
 }

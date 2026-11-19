@@ -6,6 +6,7 @@
 const { COLLECTIONS } = require('../../shared/collections');
 const { AUDIT_ACTIONS } = require('../../shared/audit-actions');
 const enums = require('../../shared/enums');
+const orderNoSpec = require('../../shared/order-no');
 const sharedValidate = require('../../shared/validate');
 const time = require('../../lib/time');
 const errors = require('../../lib/errors');
@@ -272,7 +273,8 @@ async function getActiveBindingOfCustomer(scope, customerId) {
 
 function normalizeOrderNoInput(value) {
   const orderNo = readTrimmedText(value, 32).toUpperCase();
-  if (!orderNo || !enums.ORDER_NO_PATTERN.test(orderNo)) {
+  // D93：后台搜索/详情双格式（新结构号 + 旧 `YYYYMMDD-XXXX`）
+  if (!orderNo || !orderNoSpec.isOrderNo(orderNo)) {
     throw errors.validation('orderNo', '订单号格式不正确，请核对后重试');
   }
   return orderNo;

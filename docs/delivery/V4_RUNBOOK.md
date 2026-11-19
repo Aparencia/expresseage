@@ -72,6 +72,7 @@
   - **退化方案（控制台不支持四段复合索引时）**：`idx_transfer_target` 退为 `(transfer.toPartnerId, transfer.status)`，服务端查询再下推 `where(status:'ACCEPTED')`；**仍必须服务端过滤，禁止客户端过滤**；退化在 §13 记录并在后续批次评估（不阻塞上线，查询量级可控）。
   - 建后验证：`order.listPartner({view:'transfer'})` 在测试账号下能返回 `transferPending` 且不报「索引不存在」；控制台慢查询中该路径无全表扫描告警。
 - **D81 新增 1 个索引（用户控制台创建；`admin.bootstrap` 不自动建）**：`orders.idx_transfer_from`：字段 `transfer.fromPartnerId`（升序）、`transfer.status`（升序）、`statusUpdatedAt`（**降序**）——转派发起者「已转出」跟踪列表（`order.listPartner({view:'handover'})`）主路径；退化方案：控制台不支持三段复合时退为 `(transfer.fromPartnerId, transfer.status)` + 服务端状态过滤（仍服务端过滤、禁客户端过滤）。建后验证：发起者账号列表返回 `handover:true` 且不报「索引不存在」。
+- **D95 新增 1 个索引（2026-11-19；用户控制台创建）**：`orders.idx_transfer_from_completed`：字段 `transfer.fromPartnerId`（升序）、`transfer.status`（升序）、`completedAt`（**降序**）——`partner.stats` 的 `transferOutCompleted` 区间计数主路径；退化方案：控制台不支持三段复合时退为 `(transfer.fromPartnerId, transfer.status)` + 服务端 `completedAt` 范围过滤。建后验证：转出方账号打开统计页「转出 N 单（其中完成 M）」数值正确、控制台无「索引不存在」报错。
   - **本批无新增集合/触发器/云函数**：14 集合不变、`cleanup` 触发器配置不变、无新云函数部署单元；`shared/**` 变更后需 `node tools/sync-cloud-shared.js` 并重部署 `api`（`cleanup` 因副本同步亦建议重部署，行为无 sweep 变更）。
 - 核对集合名：云函数 `api` → 测试 → 入参 `{"action":"admin.bootstrap","data":{}}`，返回的 `missingCollections` 必须为 `[]` 才算集合就位；**若控制台里出现拼错的集合（例如 `inbitation_codes`）**，先确认里面没有数据，删除后按正确名字新建，并补权限与索引。
 - 证据：集合列表截图 + 索引导出/截图 + 每个集合安全规则截图。

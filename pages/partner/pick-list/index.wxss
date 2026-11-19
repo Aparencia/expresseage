@@ -121,8 +121,55 @@
   align-items: center;
 }
 
-/* 2026-11-09 用户指令：取件码做行首大字（宿舍锚降到第二行），拣件时一眼对码 */
+/* D96（2026-11-19 用户指令）：取件码仍为最大字号，宿舍锚与码同域（锚做左侧标签、码在右侧），
+   每单一个闭合容器；件行缩进 + 从属竖线，避免同站多单看串行 */
+.pick-order {
+  padding: 20rpx;
+  margin-bottom: 16rpx;
+  border: 1rpx solid #E6EAEF;
+  border-radius: 12rpx;
+  background: #FBFCFD;
+}
+
+.pick-order:last-child {
+  margin-bottom: 0;
+}
+
+.pick-head {
+  align-items: center;
+}
+
+.pick-anchor {
+  flex: 1;
+  min-width: 0;
+  margin-right: 16rpx;
+  padding: 6rpx 12rpx;
+  border-radius: 8rpx;
+  background: #EEF3F8;
+  color: #34495E;
+  font-size: 28rpx;
+  font-weight: 600;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pick-meta {
+  margin-top: 8rpx;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.pick-order .piece-line--pick {
+  margin-left: 8rpx;
+  padding-left: 16rpx;
+  border-left: 4rpx solid #D8E1EA;
+}
+
 .pickup-code {
+  flex-shrink: 0;
+  max-width: 62%;
+  text-align: right;
   font-family: Menlo, Consolas, monospace;
   font-size: 40rpx;
   font-weight: 700;

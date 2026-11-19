@@ -6,6 +6,7 @@
 const { COLLECTIONS } = require('../../shared/collections');
 const enums = require('../../shared/enums');
 const orderState = require('../../shared/order-state');
+const orderNoSpec = require('../../shared/order-no');
 const idGenerator = require('../../lib/id-generator');
 const { errors } = require('../../lib/errors');
 const common = require('./_common');
@@ -134,6 +135,13 @@ async function prepareContext(ctx, payload) {
     return preparePartnerContext(ctx, effectiveScope, config, now, selector, bindingId);
   }
   throw errors.forbidden('仅顾客或兼职可以下单');
+}
+
+// D93：订单号空间锚 = 下单人宿舍快照（代客单取 guest 快照；送别人不取 delivery）
+function orderDormOf(context) {
+  return context.mode === 'PARTNER' && context.customerMode === 'GUEST'
+    ? (context.guest || null)
+    : (context.dorm || null);
 }
 
 // 本单配送地址默认值（D25）：顾客/绑定顾客=其当前宿舍 + 本人手机尾号；代客=guest 地址 + 收件人称呼 + 代客尾号
@@ -374,10 +382,14 @@ function replayResult(ctx, order, side, merged) {
 async function createNewOrder(ctx, context, input, clientRequestId, associations) {
   const nowDate = common.toDate(context.now);
   const nextOrderNos = nextOrderNosOf();
+  const orderDorm = orderDormOf(context);
+  if (!orderNoSpec.partsOf(orderDorm)) {
+    throw errors.validation('dorm', '下单地址不完整，请补全苑/楼栋/宿舍后重试');
+  }
   let created = null;
   try {
     created = await ctx.dao.transaction(async (trx) => {
-      const orderNos = await nextOrderNos(trx, context.now, 1);
+      const orderNos = await nextOrderNos(trx, context.now, 1, orderDorm);
       const doc = buildOrderDocument({
         orderNo: orderNos[0],
         requestKey: buildRequestKey(context, clientRequestId),

@@ -82,6 +82,10 @@
   padding: 8rpx 24rpx 16rpx;
 }
 
+.handover-hint {
+  margin: 8rpx 0 4rpx;
+}
+
 .handover-line {
   padding: 16rpx 0;
   border-top: 1rpx solid #EEF1F6;
@@ -121,7 +125,7 @@
 .section-label {
   padding: 16rpx 0 8rpx;
   font-size: 24rpx;
-  color: #999999;
+  color: var(--v4-text-3, #6B6B6B);
 }
 
 .history-line {

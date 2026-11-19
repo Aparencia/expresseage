@@ -28,7 +28,15 @@ function resolveRange(value) {
 }
 
 function emptyCounts() {
-  return { completed: 0, active: 0, cancelled: 0, exceptions: 0 };
+  return {
+    completed: 0,
+    active: 0,
+    cancelled: 0,
+    exceptions: 0,
+    transferOut: 0,
+    transferOutCompleted: 0,
+    transferIn: 0
+  };
 }
 
 // 测试账号会话：统计一律排除测试数据（DATA_MODEL §6.6/§7.4），直接返回空模板而不查库。
@@ -70,6 +78,28 @@ async function countAfter(ctx, partnerId, field, ms, status) {
 async function countInWindow(ctx, partnerId, field, startMs, endMs, status) {
   const from = await countOrAfter(ctx, partnerId, field, startMs, status);
   const after = await countAfter(ctx, partnerId, field, endMs, status);
+  return from - after;
+}
+
+// ── D95 转派双口径（2026-11-19）：transfer.* 条件 + 时间字段窗口计数 ─────────────────────
+// 口径与契约 §13 D95 一致：transferOut/transferOutCompleted 按 transfer.fromPartnerId+ACCEPTED；
+// transferIn 按 transfer.toPartnerId+ACCEPTED 且本人仍是当前履约人（partnerId=me）；测试数据恒排除。
+function transferBase(field, partnerId, extra) {
+  const where = { isTest: false };
+  where[field] = partnerId;
+  where['transfer.status'] = enums.TRANSFER_STATUS.ACCEPTED;
+  return Object.assign(where, extra || {});
+}
+
+async function countCustomOrAfter(ctx, base, field, ms) {
+  const where = Object.assign({}, base);
+  where[field] = ctx.dao.command('gte', new Date(ms));
+  return ctx.dao.count(COLLECTIONS.ORDERS, { where });
+}
+
+async function countCustomWindow(ctx, base, field, startMs, endMs) {
+  const from = await countCustomOrAfter(ctx, base, field, startMs);
+  const after = await countCustomOrAfter(ctx, base, field, endMs);
   return from - after;
 }
 
@@ -141,13 +171,23 @@ async function handler(ctx, payload) {
   );
   const exceptions = await countInWindow(ctx, partner._id, 'exception.at', startMs, nowMs);
   const active = await customer.countActiveOrders(ctx, partner._id);
+  // D95：转派双口径（不并入 completed，避免同一单全局单量重复计）
+  const transferOutBase = transferBase('transfer.fromPartnerId', partner._id);
+  const transferOut = await countCustomWindow(ctx, transferOutBase, 'transfer.resolvedAt', startMs, nowMs);
+  const transferOutCompleted = await countCustomWindow(ctx,
+    Object.assign({}, transferOutBase, { status: enums.ORDER_STATUS.COMPLETED }), 'completedAt', startMs, nowMs);
+  const transferInBase = transferBase('transfer.toPartnerId', partner._id, { partnerId: partner._id });
+  const transferIn = await countCustomWindow(ctx, transferInBase, 'transfer.resolvedAt', startMs, nowMs);
   const seriesData = await loadSeriesData(ctx, partner._id, nowMs);
   const recent = await loadRecent(ctx, partner._id, startMs, nowMs);
   const counts = {
     completed,
     active,
     cancelled,
-    exceptions
+    exceptions,
+    transferOut,
+    transferOutCompleted,
+    transferIn
   };
   const denominator = counts.completed + counts.cancelled + counts.exceptions;
   const series = customer.buildSeries(nowMs, (dayStart) => (

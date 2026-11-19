@@ -9,6 +9,7 @@
 
 const { COLLECTIONS } = require('../../shared/collections');
 const enums = require('../../shared/enums');
+const orderNoSpec = require('../../shared/order-no');
 const orderView = require('../../shared/order-view');
 const time = require('../../lib/time');
 const { errors } = require('../../lib/errors');
@@ -60,7 +61,7 @@ function assertPartnerReadable(partner) {
 // 完整订单号走唯一索引精确查询：命中不受 300 条扫描窗限制（搜索漏单修复；keyword 部分匹配仍按窗口扫描）。
 function exactOrderNoOf(keyword) {
   const text = keyword.trim().toUpperCase();
-  return enums.ORDER_NO_PATTERN.test(text) ? text : '';
+  return orderNoSpec.isOrderNo(text) ? text : '';
 }
 
 async function findExactOrder(ctx, partnerId, orderNo, extraWhere) {

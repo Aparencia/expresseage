@@ -35,14 +35,14 @@ const caseLib = require('./lib/order-server-cases');
 const {
   ROOT, API, fs, path, fsutil, app, createDao, COLLECTIONS, enums, stations, orderState,
   ROLES, USER_STATUS, PARTNER_STATUS, BINDING_STATUS, ORDER_STATUS, SERVICE_CODES, UPLOAD_PURPOSE,
-  NOW, DAY_KEY, ORDER_NO_RE, CLIENT_ID_RE, ALL_COLLECTION_NAMES,
+  NOW, DAY_KEY, ORDER_NO_RE, STRUCTURED_ORDER_NO_RE, CLIENT_ID_RE, ALL_COLLECTION_NAMES,
   uniqueIndexesForApi, createTestDb, cloudStub, apiOf, userDoc, customerDoc, serviceConfigOf, partnerDoc,
   bindingDoc, seedWorld, nextCrid, parcelOf, createPayload, seedTicket, parcelsOf, parcel0, imagesOf,
   imageOf, failureNoOf, seedFailure, resField, expectCode, expectField, collectKeys, dtoLeaksOf, handlerCtx,
   lowercaseCollectionKeyHitsInText, listJs, scanLowercaseKeys, serial
 } = caseLib;
 
-const EXPECTED_ASSERTIONS = 172; // 156 + 15：D92 审核（两级状态/撤销重审/件数增删/已取件只读/上限/DTO 裁剪/顾客侧过滤/写响应投影/新增件 NEED_CODE） // 153 + 3：D77 附加服务合法建单落库/DTO 名称、枚举外、重复 // 140 + 13：D47 预约 LATEST 服务端归一/拒绝样例/落库/DTO/合并同值 // 137 + 3：D40 10 张截图合法 / 11 张截图拒绝 / 合并追加将超 10 张不并入
+const EXPECTED_ASSERTIONS = 179; // 176 + 3：D94 配送地址 roomTag（本人宿舍/送别人/详情格式） // 172 + 4：D93 订单号规格（拼装/楼栋 10→X/双格式/宿舍快照闸） // 156 + 15：D92 审核（两级状态/撤销重审/件数增删/已取件只读/上限/DTO 裁剪/顾客侧过滤/写响应投影/新增件 NEED_CODE） // 153 + 3：D77 附加服务合法建单落库/DTO 名称、枚举外、重复 // 140 + 13：D47 预约 LATEST 服务端归一/拒绝样例/落库/DTO/合并同值 // 137 + 3：D40 10 张截图合法 / 11 张截图拒绝 / 合并追加将超 10 张不并入
 
 function register(h) {
   const asyncSection = (title, fn) => h.section(title, (t) => serial(() => {
@@ -63,9 +63,11 @@ function register(h) {
       image: imageOf(ticket)
     });
     const created = await apiOf(db, world.customerOpenid).call('order.create', payload, { clientRequestId: cridA });
-    t.check(created.ok === true && !created.data.duplicated && ORDER_NO_RE.test(created.data.orderNo)
+    t.check(created.ok === true && !created.data.duplicated && STRUCTURED_ORDER_NO_RE.test(created.data.orderNo)
+      && created.data.orderNo.indexOf('D-4522-') > 0
       && created.data.order && created.data.order.status === ORDER_STATUS.SUBMITTED,
-    'A1 顾客建单成功：orderNo 形如 YYYYMMDD-XXXX、状态 SUBMITTED、非重放（实际 ' + created.code + '/' + created.data.orderNo + '）');
+    'A1 顾客建单成功：orderNo 形如 YYYYMMDD-苑-楼栋寝室-序号（D93）、状态 SUBMITTED、非重放（实际 '
+      + created.code + '/' + created.data.orderNo + '）');
     const orders = db.dump('orders');
     const events = db.dump('order_events');
     const counter = db.dump('counters').filter((row) => row.key === 'orderNo:' + DAY_KEY)[0];
@@ -852,6 +854,43 @@ function register(h) {
     const pBig2 = await pApi.call('order.get', { orderNo: bigNo });
     t.eq([pBig2.data.order.review.statusText, pBig2.data.order.review.canMark, pBig2.data.order.review.canReopen],
       ['已审核', false, true], 'J13 已审核后 DTO 中文「已审核」且 canMark=false / canReopen=true（可撤销重审）');
+  });
+
+  // ---------------------------------------------------------------- K D93 订单号规格（纯件）
+  h.section('K. D93 订单号规格：空间锚 / 楼栋 10→X / 4 位寝室 / 旧格式可读', (t) => {
+    const orderNoSpec = require(path.join(API, 'shared/order-no.js'));
+    t.eq(orderNoSpec.compose('20261022', { zone: 'D', buildingNo: 4, room: '522' }, 1),
+      '20261022-D-4522-0001', 'K1 东苑 4 栋 522：YYYYMMDD-D-楼栋寝室-序号（4=楼栋、522=寝室）');
+    t.eq(orderNoSpec.compose('20261022', { zone: 'X', buildingNo: 10, room: '301' }, 7),
+      '20261022-X-X301-0007', 'K2 楼栋 10 编为 X（西苑 10 栋 301）；序号 4 位零填充');
+    t.eq([orderNoSpec.isOrderNo('20261022-0001'), orderNoSpec.isOrderNo('20261022-D-4522-0001'),
+      orderNoSpec.isOrderNo('20261022-D-4522')], [true, true, false],
+    'K3 读路径双格式：旧单/新单可读，残缺格式拒绝（旧单不迁移）');
+    t.eq([orderNoSpec.partsOf({ zone: 'D', buildingNo: 4, room: '522' }),
+      orderNoSpec.partsOf({ zone: 'Q', buildingNo: 4, room: '522' }),
+      orderNoSpec.partsOf({ zone: 'D', buildingNo: 11, room: '522' })],
+    [{ zone: 'D', buildingChar: '4', room: '522' }, null, null],
+    'K4 宿舍快照闸：只认苑 D/X/N/B/C 与楼栋 1~10（非法不生成、不降级）');
+  });
+
+  // ---------------------------------------------------------------- L D94 配送地址字母编号
+  asyncSection('L. D94 配送地址补顾客字母编号（本人宿舍 D4-522A；送别人不套标签）', async (t) => {
+    const world = seedWorld();
+    const db = world.db;
+    const cApi = apiOf(db, world.customerOpenid);
+    const selfOrder = await cApi.call('order.create', createPayload({ manualEntry: true }),
+      { clientRequestId: nextCrid('l1') });
+    t.eq([selfOrder.ok, selfOrder.data.order.delivery.roomTag], [true, 'A'],
+      'L1 本人宿舍：DTO delivery.roomTag=A（`D4-522A`，与工作台/取件清单同源）');
+    const otherOrder = await cApi.call('order.create', createPayload({
+      manualEntry: true,
+      delivery: { zone: 'B', buildingNo: 2, room: '410', recipientName: '同学' }
+    }), { clientRequestId: nextCrid('l2') });
+    t.eq([otherOrder.ok, otherOrder.data.order.delivery.dormKey, otherOrder.data.order.delivery.roomTag],
+      [true, 'B2-410', undefined], 'L2 送别人：roomTag 不下发（不把他人/本人标签套到第三方地址）');
+    const orderView = require(path.join(ROOT, 'pkg-partner/pages/order-detail/parts/order-view.js'));
+    t.eq(orderView.deliveryOf({ delivery: { buildingText: 'D4', room: '522', dormKey: 'D4-522', roomTag: 'A' } }).deliveryText,
+      'D4-522A', 'L3 兼职详情地址格式=楼栋-房门+字母（与清单锚一致）');
   });
 }
 module.exports = { EXPECTED_ASSERTIONS, register };

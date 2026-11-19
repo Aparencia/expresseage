@@ -117,7 +117,17 @@ function buildDeliveryDto(delivery) {
 }
 
 function deliveryOf(order) {
-  return buildDeliveryDto(order && order.delivery) || buildDeliveryDto(order && order.dorm);
+  const delivery = buildDeliveryDto(order && order.delivery) || buildDeliveryDto(order && order.dorm);
+  if (!delivery) {
+    return null;
+  }
+  // D94：配送地址补顾客字母编号——仅当本单配送地=下单人当前宿舍时拼 roomTag（送别人不套用他人标签）
+  const dorm = order && order.dorm;
+  const tag = dorm && textOf(dorm.dormKey) === delivery.dormKey ? textOf(dorm.roomTag) : '';
+  if (tag) {
+    delivery.roomTag = tag;
+  }
+  return delivery;
 }
 
 function needCodeOf(order) {

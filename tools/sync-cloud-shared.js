@@ -43,7 +43,7 @@ const SHARED_MANIFEST = [
     needed: [
       'actions.js', 'appoint.js', 'audit-actions.js', 'auto-complete.js', 'collections.js', 'defaults.js',
       'enums.js', 'error-codes.js', 'error-copy.js', 'gender.js', 'ids.js',
-      'order-state.js', 'order-view.js', 'role.js', 'room-tag.js', 'station-rules.js',
+      'order-no.js', 'order-state.js', 'order-view.js', 'role.js', 'room-tag.js', 'station-rules.js',
       'stations.js', 'validate.js', 'zones.js',
     ],
   },

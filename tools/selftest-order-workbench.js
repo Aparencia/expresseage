@@ -549,7 +549,7 @@ function register(h) {
     t.check(wxml.indexOf('skeleton') >= 0 && wxml.indexOf('加载中') === -1, 'F23 骨架屏替「加载中…」（§4.15）');
     t.check(wxml.indexOf('onBannerTap') >= 0 && wxml.indexOf('banner.visible') >= 0,
       'F24 页内新订单横幅存在（不自动跳页）');
-    t.check(wxml.indexOf('class="panel-mask"') >= 0 && wxml.indexOf('class="panel"') >= 0 && wxml.indexOf('catchtap="onPanelClose"') >= 0 && wxml.indexOf('onHandoverToggle') >= 0 && textOf('pages/partner/workbench/parts/handover.js').indexOf('navigateTo') >= 0 && textOf('pages/partner/customers/index.js').indexOf('selected: 2') >= 0, 'F35 动作面板=页面级模态浮层；D81 已转出折叠/只读进度浮层已接线');
+    t.check(wxml.indexOf('class="panel-mask"') >= 0 && wxml.indexOf('class="panel"') >= 0 && wxml.indexOf('catchtap="onPanelClose"') >= 0 && wxml.indexOf('onHandoverTap') >= 0 && wxml.indexOf('已转出') >= 0 && textOf('pages/partner/workbench/parts/handover.js').indexOf('ensureHandover') >= 0 && textOf('pages/partner/workbench/parts/handover.js').indexOf('navigateTo') >= 0 && textOf('pages/partner/customers/index.js').indexOf('selected: 2') >= 0, 'F35 动作面板=页面级模态浮层；D95 已转出常驻入口/行内徽标/点行进详情已接线');
     t.check(wxml.indexOf('panel.orderNo') === -1 && wxml.indexOf('panel-page-card') === -1,
       'F36 行内/页底面板已移除（浮层不再撑开列表）');
     t.check(actionSrc.indexOf('setPanel(') >= 0 && textOf('custom-tab-bar/index.wxml').indexOf('!hidden') >= 0, 'F37 浮层打开时隐藏自定义 tabBar（按钮不被遮挡）');

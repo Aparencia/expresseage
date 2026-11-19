@@ -51,6 +51,13 @@
       </view>
     </view>
 
+    <!-- D95：转派双口径分列（不并入上方完成单量，避免同一单重复计） -->
+    <view class="card">
+      <view class="section-title">转派</view>
+      <view class="small">转出 {{metrics.transferOut}} 单（其中完成 {{metrics.transferOutCompleted}} 单） · 接手 {{metrics.transferIn}} 单</view>
+      <view class="small muted">转出单只计入本行，不重复计入上方完成单量；接手单仍按当前履约统计。</view>
+    </view>
+
     <view wx:if="{{rangeEmptyText}}" class="card">
       <empty-state text="{{rangeEmptyText}}" />
     </view>

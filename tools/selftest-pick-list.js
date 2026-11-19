@@ -34,7 +34,7 @@ const fsutil = require('./lib/fsutil');
 const zeroMoney = require('./zero-money-scan');
 const project = require('./lib/project');
 
-const EXPECTED_ASSERTIONS = 225; // 实跑读数：node tools/selftest-pick-list.js（批 25-B D61/D62：L/M 改判 + O 组 16 条 + N9b；+2：送别人「送至」判定 L10b/L11b；+1：H18 TAB_DATA 合并回归；+5：2026-11-09 取件码自然序/行首大字 L5a/L5b/L5c/L9b/L9c）
+const EXPECTED_ASSERTIONS = 227; // 225 + 2：D96 锚码同域（结构 + 样式落点） // 实跑读数：node tools/selftest-pick-list.js（批 25-B D61/D62：L/M 改判 + O 组 16 条 + N9b；+2：送别人「送至」判定 L10b/L11b；+1：H18 TAB_DATA 合并回归；+5：2026-11-09 取件码自然序/行首大字 L5a/L5b/L5c/L9b/L9c）
 
 const PAGE_DIR = 'pages/partner/pick-list';
 const FILES = {
@@ -412,6 +412,14 @@ function register(h) {
       'F8 页面展示房间号/roomTag（本人订单 L3，D46 允许）');
     t.eq(page.indexOf('console.log') === -1, true, 'F9 页面无 console.log（不落 L3 日志）');
     t.eq(page.indexOf("status: enums.ORDER_STATUS") !== -1, false, 'F10 数据源 status 由纯件 queryOf 单源给出');
+    // D96：锚码同域 + 每单闭合容器（防同站多单看串行）
+    t.eq(wxml.indexOf('class="pick-order"') !== -1 && wxml.indexOf('pick-anchor') !== -1
+      && wxml.indexOf('pick-anchor') < wxml.indexOf('pickup-code', wxml.indexOf('pick-head')), true,
+    'F11 D96 每单闭合容器 + 宿舍锚排在取件码之前（同一视觉行）');
+    t.eq(readText(FILES.wxss).indexOf('.pick-order .piece-line--pick') !== -1
+      && readText(FILES.wxss).indexOf('.pick-anchor') !== -1
+      && readText(FILES.wxss).indexOf('.pickup-code') !== -1, true,
+    'F12 D96 件行缩进/从属竖线与锚标签/码字号样式落点存在');
   });
 
   // ------------------------------------------------------------ G. 批量送达复用 + 只读/测试会话

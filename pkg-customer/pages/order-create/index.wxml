@@ -1,4 +1,4 @@
-<view class="page-body">
+<view class="page-body page-body--bar">
   <switch-bar />
 
   <view class="steps row">
@@ -86,33 +86,49 @@
       </view>
     </view>
 
-    <view class="card row between list-tools">
-      <view class="row" bindtap="onToggleAll">
-        <view class="check-box {{items.length && items[0].checked ? 'checked' : ''}}"></view>
-        <view class="small">全选</view>
+    <!-- 2026-11-19 用户反馈：加一件不再用 flex:1 撑满整行；进度与操作成组靠右 -->
+    <view class="card list-tools">
+      <view class="row between">
+        <view class="row tools-left" bindtap="onToggleAll">
+          <view class="check-box {{items.length && items[0].checked ? 'checked' : ''}}">
+            <text wx:if="{{items.length && items[0].checked}}" class="check-mark">✓</text>
+          </view>
+          <view class="small tools-left-text">全选</view>
+        </view>
+        <view class="row tools-right">
+          <view class="small muted">已填 {{items.length}}/{{maxParcels}} 件</view>
+          <view class="btn btn-ghost mini-btn tools-add" bindtap="onAddItem">手动加一件</view>
+        </view>
       </view>
-      <view class="small muted">已填 {{items.length}}/{{maxParcels}} 件</view>
-      <button class="btn btn-ghost btn-inline" bindtap="onAddItem">加一件</button>
     </view>
 
-    <view class="card" wx:for="{{items}}" wx:key="key">
+    <view class="card item-card" wx:for="{{items}}" wx:key="key">
       <view class="row between item-head">
-        <view class="row" data-index="{{index}}" bindtap="onItemToggle">
-          <view class="check-box {{item.checked ? 'checked' : ''}}"></view>
+        <view class="row item-head-main" data-index="{{index}}" bindtap="onItemToggle">
+          <view class="check-box {{item.checked ? 'checked' : ''}}">
+            <text wx:if="{{item.checked}}" class="check-mark">✓</text>
+          </view>
           <view class="strong item-title">第 {{index + 1}} 件</view>
-          <view class="small muted" wx:if="{{item.imageIndex >= 0}}">来自第 {{item.imageIndex + 1}} 张图</view>
+          <view class="small muted item-source" wx:if="{{item.imageIndex >= 0}}">来自第 {{item.imageIndex + 1}} 张图</view>
         </view>
-        <view class="small" data-index="{{index}}" bindtap="onRemoveItem">移除</view>
+        <view class="item-remove" data-index="{{index}}" bindtap="onRemoveItem">移除</view>
       </view>
 
-      <!-- 2026-11-08：站点+取件码同一行、柜号+尾号同一行（原来 4 行占一屏，核对时要反复滚） -->
+      <!-- 2026-11-19：站点+取件码仍同排，但各自带字段标签、控件同高（原「取件码」标签独占一行导致标签漂移） -->
       <view class="row item-main">
-        <picker class="item-station" range="{{stations}}" range-key="name" data-index="{{index}}" bindchange="onStationChange">
-          <view class="station-chip {{item.stationName ? '' : 'placeholder'}}">{{item.stationName || '选站点'}}</view>
-        </picker>
-        <view class="item-code">
+        <view class="item-field item-field--station">
+          <view class="form-label">取件站点</view>
+          <picker class="item-station" range="{{stations}}" range-key="name" data-index="{{index}}" bindchange="onStationChange">
+            <view class="station-chip {{item.stationName ? '' : 'placeholder'}}">
+              <text class="station-text">{{item.stationName || '请选择'}}</text>
+              <view class="chevron"></view>
+            </view>
+          </picker>
+        </view>
+        <view class="item-field item-field--code">
           <view class="form-label">取件码</view>
           <code-editor
+            class="code-field"
             value="{{item.pickupCode}}"
             placeholder="可留空，填运单后 5 位"
             maxlength="40"
@@ -122,22 +138,29 @@
         </view>
       </view>
 
+      <!-- 字段级红字紧跟站点/码行，不再落到柜号/尾号之后 -->
+      <view class="item-errors" wx:if="{{item.formErrors.station || item.stationConflictText || item.formErrors.pickupCode}}">
+        <view class="small error-text" wx:if="{{item.formErrors.station}}">{{item.formErrors.station}}</view>
+        <view class="small error-text" wx:if="{{item.stationConflictText}}">{{item.stationConflictText}}</view>
+        <view class="small error-text" wx:if="{{item.formErrors.pickupCode}}">{{item.formErrors.pickupCode}}</view>
+      </view>
+
       <view class="row item-sub">
-        <view class="item-sub-field">
-          <text class="sub-label">柜号</text>
-          <input class="form-input sub-input" value="{{item.lockerNo}}" placeholder="选填" maxlength="10" data-index="{{index}}" bindinput="onLockerChange" />
+        <view class="item-field item-field--half">
+          <view class="form-label">柜号（选填）</view>
+          <input class="sub-input" value="{{item.lockerNo}}" placeholder="如 5 号柜" maxlength="10" data-index="{{index}}" bindinput="onLockerChange" />
         </view>
-        <view class="item-sub-field">
-          <text class="sub-label">尾号</text>
-          <input class="form-input sub-input" value="{{item.trackingTail}}" placeholder="后 5 位数字" maxlength="5" data-index="{{index}}" bindinput="onTailChange" />
+        <view class="item-field item-field--half item-field--last">
+          <view class="form-label">运单尾号（选填）</view>
+          <input class="sub-input" value="{{item.trackingTail}}" placeholder="后 5 位数字" maxlength="5" data-index="{{index}}" bindinput="onTailChange" />
         </view>
       </view>
 
-      <view class="small error-text" wx:if="{{item.formErrors.station}}">{{item.formErrors.station}}</view>
-      <view class="small error-text" wx:if="{{item.stationConflictText}}">{{item.stationConflictText}}</view>
-      <view class="small error-text" wx:if="{{item.formErrors.pickupCode}}">{{item.formErrors.pickupCode}}</view>
-      <view class="small error-text" wx:if="{{item.formErrors.lockerNo}}">{{item.formErrors.lockerNo}}</view>
-      <view class="small error-text" wx:if="{{item.formErrors.trackingTail}}">{{item.formErrors.trackingTail}}</view>
+      <view class="item-errors" wx:if="{{item.formErrors.lockerNo || item.formErrors.trackingTail}}">
+        <view class="small error-text" wx:if="{{item.formErrors.lockerNo}}">{{item.formErrors.lockerNo}}</view>
+        <view class="small error-text" wx:if="{{item.formErrors.trackingTail}}">{{item.formErrors.trackingTail}}</view>
+      </view>
+
       <view class="small needs-code" wx:if="{{item.codeStatus === 'NEED_CODE'}}">需查明（兼职接单后帮你查码）</view>
       <view class="small muted" wx:if="{{item.aiHint}}">{{item.aiHint}}</view>
 

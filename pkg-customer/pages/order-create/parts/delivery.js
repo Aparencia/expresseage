@@ -42,14 +42,17 @@ function selfOf(profile, labels) {
   const room = zones.canonicalRoom(value.room);
   const buildingText = zones.buildingText(zone, buildingNo);
   const dormKey = zones.dormKey(zone, buildingNo, room);
+  // D94：本人宿舍展示补顾客字母编号（D4-522A），与兼职端配送地址同源
+  const tag = typeof value.roomTag === 'string' && /^[A-Z]+$/.test(value.roomTag) ? value.roomTag : '';
   return {
     zone: zone,
     buildingNo: buildingNo,
     room: room,
     buildingText: buildingText,
     dormKey: dormKey,
+    roomTag: tag,
     zoneLabel: zones.zoneLabel(zone, labels),
-    text: buildingText || room ? (zones.zoneLabel(zone, labels) || '') + buildingText + (room ? ' ' + room : '') : ''
+    text: buildingText || room ? (zones.zoneLabel(zone, labels) || '') + buildingText + (room ? ' ' + room + tag : '') : ''
   };
 }
 

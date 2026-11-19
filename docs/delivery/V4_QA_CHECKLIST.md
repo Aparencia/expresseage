@@ -794,3 +794,7 @@ node tools/zero-money-scan.js --scope all
 | F15 | 转派选人 | 主兼职/子队员打开转派面板；搜昵称/编号前缀；搜 1 字 | 本队卡片/仅队长；检索只回 `partnerNo/displayName/acceptingOrders`；1 字 → `VALIDATION_FAILED`；停用/注销不进候选；结果 ≤20 | `selftest-transfer` T15 + `partner-transfer-ui-cases` K41~K43/K65~K73 | AL6 |
 | F16 | 附加服务预览 | 选「上楼+丢垃圾」进 Step4；取消后返回 | 显示预览（共 2 项）；未选不占位 | `selftest-pickup-low` C6~C8 | AL8 |
 | F17 | 只读/测试隔离回归 | READONLY/TEST_WRITE 调写动作 | 全部 `FORBIDDEN`/隔离不变 | `selftest-switch`/`selftest-security` 保持全绿 | — |
+| F18 | 订单号结构化（真机） | 新下一单，查看订单号/详情/复制；打开一张历史旧单 | 新单形如 `20261119-D-4522-0001`（楼栋 10 → `X`）；旧单 `YYYYMMDD-XXXX` 仍可打开/搜索 | `selftest-order` A1/K1~K4、`selftest-cloud-dual` B15 | AL5 |
+| F19 | 配送地址字母编号（真机） | 兼职工作台/取件清单/订单详情看本人宿舍单；再造一单「送给别人」 | 本人宿舍均显示 `D4-522A`；送别人单不显示任何字母标签 | `selftest-order` L1~L3、`selftest-pick-list` L10 | AL5 |
+| F20 | 已转出常驻入口（真机） | A 转给 B 并被接收；A 回工作台 | 顶部常驻「已转出的单（N）」+ 行内「已转出」徽标；已完成/已取消单仍在；点行进详情 | `selftest-order-workbench` F35 | AL5 |
+| F21 | 转派双口径统计（真机） | A 的统计页/日报；B 的统计页 | A：「转出 N（其中完成 M）· 接手 N」，不并入完成单量；B：接手单计入完成 | `selftest-partner-customers` C24b/C24c、`selftest-partner-stats` D01b | AL5 |

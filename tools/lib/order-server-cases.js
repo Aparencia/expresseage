@@ -25,7 +25,9 @@ const orderState = require(path.join(API, 'shared/order-state.js'));
 const { ROLES, USER_STATUS, PARTNER_STATUS, BINDING_STATUS, ORDER_STATUS, SERVICE_CODES, UPLOAD_PURPOSE } = enums;
 const NOW = Date.parse('2026-10-22T10:00:00+08:00');
 const DAY_KEY = '20261022';
-const ORDER_NO_RE = /^\d{8}-\d{4}$/;
+// D93：新建单=结构化 `YYYYMMDD-{苑}-{楼栋}{寝室}-{序号4}`；旧单 `YYYYMMDD-XXXX` 永久可读
+const STRUCTURED_ORDER_NO_RE = /^\d{8}-[DXNBC]-[1-9X]\d{3,4}-\d{4}$/;
+const ORDER_NO_RE = /^(?:\d{8}-\d{4}|\d{8}-[DXNBC]-[1-9X]\d{3,4}-\d{4})$/;
 const CLIENT_ID_RE = /^[A-Za-z0-9_-]{16,32}$/;
 
 
@@ -298,7 +300,8 @@ module.exports = {
   COLLECTIONS: COLLECTIONS, enums: enums, stations: stations, orderState: orderState,
   ROLES: ROLES, USER_STATUS: USER_STATUS, PARTNER_STATUS: PARTNER_STATUS, BINDING_STATUS: BINDING_STATUS,
   ORDER_STATUS: ORDER_STATUS, SERVICE_CODES: SERVICE_CODES, UPLOAD_PURPOSE: UPLOAD_PURPOSE,
-  NOW: NOW, DAY_KEY: DAY_KEY, ORDER_NO_RE: ORDER_NO_RE, CLIENT_ID_RE: CLIENT_ID_RE,
+  NOW: NOW, DAY_KEY: DAY_KEY, ORDER_NO_RE: ORDER_NO_RE, STRUCTURED_ORDER_NO_RE: STRUCTURED_ORDER_NO_RE,
+  CLIENT_ID_RE: CLIENT_ID_RE,
   ALL_COLLECTION_NAMES: ALL_COLLECTION_NAMES,
   uniqueIndexesForApi: uniqueIndexesForApi, createTestDb: createTestDb, cloudStub: cloudStub, apiOf: apiOf,
   userDoc: userDoc, customerDoc: customerDoc, serviceConfigOf: serviceConfigOf, partnerDoc: partnerDoc,

@@ -104,6 +104,8 @@ const base = {
     this.load({ poll: this.data.stage === 'ready' }).then(() => {
       this.loadHistorySummary(); this.applyCompletedFocus();
     });
+    // D95：已转出常驻入口首次自动拉取（之后 onShow 由 loaded 闸短路，不重复请求）
+    this.ensureHandover();
     this.startPolling();
   },
 

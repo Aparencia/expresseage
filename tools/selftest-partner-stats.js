@@ -43,7 +43,7 @@ function loadSummaryCopy() {
 const summaryCopy = loadSummaryCopy();
 
 // 203（A~G 既有）+ 45（H D48 复制汇总，含 P1-6 truncated/单源）= 248；少算/多算都判红。
-const EXPECTED_ASSERTIONS = 248;
+const EXPECTED_ASSERTIONS = 250; // 248 + 2：D95 转派三项计数归一 + 日报转出行
 
 const P = {
   page: 'pkg-partner/pages/stats/index.js',
@@ -231,8 +231,12 @@ function register(h) {
     t.eq(viewModel.metricOf(null), viewModel.EMPTY_METRICS, 'B16 §3.8 空 DTO 全 0 且完成率暂无（合法基线）');
     t.eq(viewModel.metricOf({}), viewModel.EMPTY_METRICS, 'B17 §3.8 缺 counts 不报错、不猜');
     t.eq(viewModel.metricOf({ counts: { completed: -3, active: '7', cancelled: 2.9, exceptions: undefined } }),
-      { completed: 0, rateText: '暂无', active: 7, exceptions: 0, cancelled: 2, todayCompleted: 0 },
+      { completed: 0, rateText: '暂无', active: 7, exceptions: 0, cancelled: 2, transferOut: 0, transferOutCompleted: 0, transferIn: 0, todayCompleted: 0 },
       'B18 §3.8 计数归一：负数/浮点/字符串不产生脏值');
+    t.eq([viewModel.metricOf({ counts: { transferOut: 2, transferOutCompleted: 1, transferIn: 3 } }).transferOut,
+      viewModel.metricOf({ counts: { transferOut: 2, transferOutCompleted: 1, transferIn: 3 } }).transferOutCompleted,
+      viewModel.metricOf({ counts: { transferOut: 2, transferOutCompleted: 1, transferIn: 3 } }).transferIn],
+    [2, 1, 3], 'B18b D95 转派三项计数归一（页面直接渲染，不参与完成率）');
     t.eq(viewModel.countOf('5'), 5, 'B19 §3.8 数字字符串安全转换');
     t.eq(viewModel.countOf(Number.POSITIVE_INFINITY), 0, 'B20 §3.8 非有限数按 0');
     t.eq(viewModel.metricOf(sampleDto({ counts: { completed: 0, active: 9, cancelled: 0, exceptions: 0 } })).active,
@@ -317,8 +321,13 @@ function register(h) {
   // ---------------------------------------------------------------- D 日报摘要
   h.section('§9 D 日报摘要（可复制；仅 orderNo+状态+日期；去敏）', (t) => {
     t.eq(dailyReport.emptyReport(), {
-      visible: false, date: '', completed: 0, exceptions: 0, orderCount: 0, text: '', copyText: ''
+      visible: false, date: '', completed: 0, exceptions: 0, transferOut: 0, transferOutCompleted: 0, orderCount: 0, text: '', copyText: ''
     }, 'D01 §9 空日报结构（不可复制假日报）');
+    const transferReport = dailyReport.reportOf({
+      counts: { completed: 0, exceptions: 0, transferOut: 2, transferOutCompleted: 1 }, recent: []
+    }, { nowMs: NOW_MS });
+    t.eq([transferReport.visible, transferReport.text.indexOf('转出 2 单（完成 1）') >= 0], [true, true],
+      'D01b D95 只有转出单时也生成日报，并单列「转出 N 单（完成 M）」');
     t.eq(dailyReport.reportOf(null), dailyReport.emptyReport(), 'D02 §9 无 DTO 返回空日报');
     const report = dailyReport.reportOf(sampleDto(), { nowMs: NOW_MS });
     t.eq(report.text,
@@ -512,7 +521,7 @@ function register(h) {
       dto: sampleDto(), range: 'week', nowMs: NOW_MS, lastSuccessAt: NOW_MS
     });
     t.eq(view.metrics, {
-      completed: 5, rateText: '63%', active: 3, exceptions: 1, cancelled: 2, todayCompleted: 5
+      completed: 5, rateText: '63%', active: 3, exceptions: 1, cancelled: 2, transferOut: 0, transferOutCompleted: 0, transferIn: 0, todayCompleted: 5
     }, 'G01 §7.4 契约 DTO → 四格指标（端到端）');
     t.eq(view.rangeEmptyText, '', 'G02 §3.8 契约 DTO 有完成单不显示空态');
     t.eq(view.summaryText, '本周异常 1 · 取消 2', 'G03 §3.8 契约 DTO → 异常/取消行');
@@ -520,7 +529,7 @@ function register(h) {
       dto: emptyStatsDto({ range: 'week' }), range: 'week', nowMs: NOW_MS, lastSuccessAt: NOW_MS
     });
     t.eq(emptyView.metrics, {
-      completed: 0, rateText: '暂无', active: 0, exceptions: 0, cancelled: 0, todayCompleted: 0
+      completed: 0, rateText: '暂无', active: 0, exceptions: 0, cancelled: 0, transferOut: 0, transferOutCompleted: 0, transferIn: 0, todayCompleted: 0
     }, 'G04 §1.3 空统计（TEST_WRITE 会话）四格全 0、完成率暂无');
     t.eq(emptyView.rangeEmptyText, '本周还没有完成订单', 'G05 §3.8 空统计周文案');
     t.eq(emptyView.chartEmpty, true, 'G06 §3.8 空统计不画假柱');

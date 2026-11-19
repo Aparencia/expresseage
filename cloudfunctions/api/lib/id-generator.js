@@ -3,6 +3,7 @@
 // 生成只用 crypto.randomBytes（不取 openid、不自增）；唯一索引是第二道闸，重试 ≤5 次后 DEPENDENCY_FAILED。
 const crypto = require('crypto');
 const enums = require('../shared/enums');
+const orderNoSpec = require('../shared/order-no');
 const { COLLECTIONS } = require('../db/collections');
 const errors = require('./errors');
 const time = require('./time');
@@ -70,10 +71,16 @@ function generateTestOpenid() {
   return TEST_OPENID_PREFIX + randomFromAlphabet(TEST_OPENID_RANDOM_LENGTH);
 }
 
-// 订单号：counters 事务内取当日全局序号（UTC+8，4 位零填充），同事务内可连取 N 个（一单多包裹/预留专用）。
-async function nextOrderNos(trx, nowMs, count) {
+// 订单号：counters 事务内取当日全局序号（UTC+8，4 位零填充），同事务内可连取 N 个（合并/预留专用）。
+// D93：传入下单人宿舍快照时拼成 `YYYYMMDD-{苑}-{楼栋}{寝室}-{序号}`；缺省（旧调用/测试）仍出旧格式。
+async function nextOrderNos(trx, nowMs, count, dorm) {
   const total = typeof count === 'number' && count > 0 ? count : 1;
   const day = time.dayKey(nowMs);
+  const withDorm = dorm !== undefined && dorm !== null;
+  const parts = withDorm ? orderNoSpec.partsOf(dorm) : null;
+  if (withDorm && !parts) {
+    throw errors.validation('dorm', '下单地址不完整，请补全苑/楼栋/宿舍后重试');
+  }
   const key = 'orderNo:' + day;
   const row = await trx.findOne(COLLECTIONS.COUNTERS, { where: { key } });
   let seq;
@@ -94,7 +101,9 @@ async function nextOrderNos(trx, nowMs, count) {
   }
   const list = [];
   for (let i = 0; i < total; i += 1) {
-    list.push(day + '-' + String(seq + i).padStart(4, '0'));
+    list.push(parts
+      ? orderNoSpec.compose(day, dorm, seq + i)
+      : day + '-' + String(seq + i).padStart(4, '0'));
   }
   return list;
 }

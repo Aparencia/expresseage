@@ -4,6 +4,7 @@
 
 const { COLLECTIONS } = require('../../shared/collections');
 const enums = require('../../shared/enums');
+const orderNoSpec = require('../../shared/order-no');
 const orderState = require('../../shared/order-state');
 const validate = require('../../shared/validate');
 const time = require('../../lib/time');
@@ -95,7 +96,8 @@ async function getOrderByNo(ctx, orderNo) {
 
 function normalizeOrderNoInput(value) {
   const orderNo = typeof value === 'string' ? value.trim().toUpperCase() : '';
-  if (!orderNo || !enums.ORDER_NO_PATTERN.test(orderNo)) {
+  // D93：读路径双格式（新结构号 + 旧 `YYYYMMDD-XXXX`）
+  if (!orderNo || !orderNoSpec.isOrderNo(orderNo)) {
     throw errors.validation('orderNo', '订单号格式不正确，请核对后重试');
   }
   return orderNo;

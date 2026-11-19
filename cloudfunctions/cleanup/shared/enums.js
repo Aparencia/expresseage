@@ -356,7 +356,7 @@ const PARTNER_NO_PATTERN = /^P[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{6}$/;
 const DEVELOPER_NO_PATTERN = /^DEV-\d{2}$/;
 const DEVELOPER_NO_PREFIX = 'DEV-';
 
-// 订单号：YYYYMMDD + '-' + 当日全局序号 4 位零填充（DATA_MODEL §4.4；如 20261021-0001），非随机
+// 订单号旧格式（D93 新格式单源见 shared/order-no.js；读路径用 order-no.isOrderNo 双格式）
 const ORDER_NO_PATTERN = /^\d{8}-\d{4}$/;
 const ORDER_NO_LENGTH = 13;
 const FAILURE_NO_PATTERN = /^F-\d{8}-[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{6}$/;

@@ -100,10 +100,12 @@ function deliveryOf(order) {
   const dormKey = textOf(delivery.dormKey);
   const buildingText = textOf(delivery.buildingText) || textOf(delivery.zone);
   const room = textOf(delivery.room);
-  // 批 42：地址只用「苑/栋-房号」重建，不直接信 dormKey——历史/脏数据可能把顾客字母编号（roomTag）
-  // 拼进 dormKey（D8-309A），详情页不应把内部字母编号当门牌展示。
+  // D94（2026-11-19 用户指令）：配送地址=下单人宿舍时补顾客字母编号（`D4-522A`），与工作台/取件清单同源；
+  // 送别人时 DTO 不下发 delivery.roomTag，避免把他人标签当门牌（批 42 的「不展示内部字母」仅适用于他人地址）。
+  const tag = textOf(delivery.roomTag);
+  const suffix = /^[A-Z]+$/.test(tag) ? tag : '';
   const address = buildingText && room
-    ? buildingText + '-' + room
+    ? buildingText + '-' + room + suffix
     : (dormKey || [buildingText, room].filter(Boolean).join('-'));
   const recipientName = textOf(delivery.recipientName);
   const phoneTail = textOf(delivery.phoneTail);

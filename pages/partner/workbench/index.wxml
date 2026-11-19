@@ -85,6 +85,30 @@
     <view wx:if="{{transfer.moreText}}" class="small transfer-hint">{{transfer.moreText}}</view>
   </view>
 
+  <!-- D81/D95：已转出的单——常驻入口（带计数），行内「已转出」徽标；转出后仍可进入操作 -->
+  <view wx:if="{{handover.loaded || handover.loading}}" class="card handover-card">
+    <view class="row between">
+      <text class="strong">已转出的单{{handover.loaded ? '（' + handover.rows.length + '）' : ''}}</text>
+      <text wx:if="{{handover.loading}}" class="small">读取中…</text>
+    </view>
+    <view class="small handover-hint">转出后你仍可操作这单（取件/送达/改码/异常/取消/留言），点行进去即可</view>
+    <view wx:if="{{handover.error}}" class="small panel-error">{{handover.error}}</view>
+    <view wx:if="{{handover.loaded && !handover.rows.length}}" class="small">还没有转出的订单</view>
+    <view
+      wx:for="{{handover.rows}}"
+      wx:key="orderNo"
+      class="handover-line"
+      data-order-no="{{item.orderNo}}"
+      bindtap="onHandoverTap"
+    >
+      <view class="row between">
+        <text class="strong">{{item.orderNo}}</text>
+        <text class="tag">{{item.badgeText}}</text>
+      </view>
+      <view class="small">{{item.statusText}} · 接手 {{item.fulfillmentPartnerNo}} · {{item.timeText}}</view>
+    </view>
+  </view>
+
   <view wx:if="{{syncError}}" class="card warn-card"><text class="warn-text">{{syncError}}</text></view>
 
   <scroll-view class="filter-scroll" scroll-x>
@@ -256,28 +280,6 @@
     </view>
   </block>
 
-  <!-- 批 38（D81）/ D91：已转出——首次展开才请求；行=服务端最小进度投影（无顾客身份/地址/取件码） -->
-  <view class="card handover-fold" bindtap="onHandoverToggle">
-    <view class="row between">
-      <text class="strong">已转出的单{{handover.loaded && handover.rows.length ? '（' + handover.rows.length + '）' : ''}}</text>
-      <text class="small">{{handover.expanded ? '收起' : (handover.loading ? '读取中…' : '查看进度')}}</text>
-    </view>
-    <view class="small">转出后你仍可操作这单（取件/送达/改码/异常/取消/留言），点行进去即可</view>
-  </view>
-  <view wx:if="{{handover.expanded}}" class="card handover-card">
-    <view wx:if="{{handover.error}}" class="small panel-error">{{handover.error}}</view>
-    <view wx:if="{{handover.loaded && !handover.rows.length}}" class="small">还没有转出的订单</view>
-    <view
-      wx:for="{{handover.rows}}"
-      wx:key="orderNo"
-      class="handover-line"
-      data-order-no="{{item.orderNo}}"
-      bindtap="onHandoverTap"
-    >
-      <view class="strong">{{item.orderNo}}</view>
-      <view class="small">{{item.statusText}} · 接手 {{item.fulfillmentPartnerNo}} · {{item.timeText}}</view>
-    </view>
-  </view>
 
   <!-- 批 37：动作面板统一为页面级模态浮层（遮罩 + 底部面板；行内不再撑开列表、批量不再落页底） -->
   <view wx:if="{{panel}}" class="panel-mask" catchtap="onPanelClose">

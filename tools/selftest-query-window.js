@@ -389,8 +389,11 @@ async function sectionQ4(t) {
   const pApi = apiOf(db, P1);
   const month = await pApi.call('partner.stats', { range: 'month' });
   t.eq([month.data.range, month.data.counts],
-    ['month', { completed: 331, active: 17, cancelled: 13, exceptions: 11 }],
-    'Q4.1 月区间四格精确（完成 331=7日330+月起点1；旧 300 窗口会报 300）');
+    ['month', {
+      completed: 331, active: 17, cancelled: 13, exceptions: 11,
+      transferOut: 0, transferOutCompleted: 0, transferIn: 0
+    }],
+    'Q4.1 月区间七项精确（完成 331=7日330+月起点1；旧 300 窗口会报 300；D95 转派三项 0）');
   t.eq(month.data.completionRate, 331 / (331 + 13 + 11),
     'Q4.2 完成率=completed/(completed+cancelled+exceptions) 精确');
   t.eq(month.data.series.map((item) => item.completed), SERIES_COUNTS,

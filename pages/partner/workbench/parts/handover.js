@@ -1,27 +1,24 @@
-// pages/partner/workbench/parts/handover.js · D81「已转出」接线（折叠加载 + 点行开只读进度浮层）
-// 页面零业务判据：状态/时间/接手人全部来自服务端行 DTO；本件只做请求/展开/浮层转发。
+// pages/partner/workbench/parts/handover.js · D81/D95「已转出」接线（常驻入口 + 点行进详情）
+// 页面零业务判据：状态/时间/接手人全部来自服务端行 DTO；本件只做请求/转发。
+// D95（2026-11-19 用户指令）：从页底折叠升级为常驻区块，首次 onShow 自动拉取一次（带计数），不再需要展开。
 'use strict';
 
 const orderApi = require('../../../../api/modules/order');
 const handoverView = require('./handover-view');
 
-// D85：已转出=发起者仍可控，点行直接进订单详情（不再弹只读跟踪浮层）
+// D85：已转出=发起者仍可控，点行直接进订单详情（不做只读跟踪浮层）
 
 const PAGE_SIZE = 20;
 const ERROR_TEXT = '已转出订单加载失败，请稍后重试';
 
 module.exports = {
-  onHandoverToggle() {
+  // 常驻入口：未加载且不在加载中才请求（多次 onShow 不重复拉）
+  ensureHandover() {
     const state = this.data.handover || handoverView.closedState();
-    if (state.expanded) {
-      this.setData({ 'handover.expanded': false });
-      return;
+    if (state.loaded || state.loading) {
+      return Promise.resolve();
     }
-    if (state.loaded) {
-      this.setData({ 'handover.expanded': true });
-      return;
-    }
-    this.loadHandover();
+    return this.loadHandover();
   },
 
   loadHandover() {
@@ -29,7 +26,7 @@ module.exports = {
     return orderApi.listPartner({ view: 'handover', limit: PAGE_SIZE }).then((result) => {
       const rows = handoverView.rowsOf(result && result.list);
       this.setData({
-        handover: { loaded: true, expanded: true, loading: false, rows: rows, error: '' }
+        handover: { loaded: true, loading: false, rows: rows, error: '' }
       });
     }).catch(() => {
       this.setData({ 'handover.loading': false, 'handover.error': ERROR_TEXT });

@@ -17,6 +17,8 @@ function emptyReport() {
     date: '',
     completed: 0,
     exceptions: 0,
+    transferOut: 0,
+    transferOutCompleted: 0,
     orderCount: 0,
     text: '',
     copyText: ''
@@ -77,19 +79,25 @@ function reportOf(todayDto, options) {
   const counts = dto.counts && typeof dto.counts === 'object' ? dto.counts : {};
   const completed = countOf(counts.completed);
   const exceptions = countOf(counts.exceptions);
+  // D95：转派双口径单列（不并入完成单量）
+  const transferOut = countOf(counts.transferOut);
+  const transferOutCompleted = countOf(counts.transferOutCompleted);
   const orders = orderLinesOf(dto);
   const date = viewModel.todayDateKeyOf(dto, opts.nowMs);
-  const visible = completed > 0 || exceptions > 0 || orders.length > 0;
+  const visible = completed > 0 || exceptions > 0 || transferOut > 0 || orders.length > 0;
   if (!visible) {
     return Object.assign({}, empty, { date: date });
   }
-  const head = REPORT_TITLE + date + ' 完成 ' + completed + ' 单、异常 ' + exceptions + ' 单';
+  const head = REPORT_TITLE + date + ' 完成 ' + completed + ' 单、异常 ' + exceptions + ' 单'
+    + (transferOut > 0 ? '；转出 ' + transferOut + ' 单（完成 ' + transferOutCompleted + '）' : '');
   const text = orders.length ? head + '；订单 ' + orders.join(' / ') + '。' : head + '。';
   return {
     visible: true,
     date: date,
     completed: completed,
     exceptions: exceptions,
+    transferOut: transferOut,
+    transferOutCompleted: transferOutCompleted,
     orderCount: orders.length,
     text: text,
     copyText: text

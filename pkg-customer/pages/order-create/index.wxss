@@ -63,12 +63,17 @@
   font-size: 28rpx;
 }
 
+/* 2026-11-19：主按钮常驻底部（UX §3.7「主按钮常驻底部」）；底垫由根节点 page-body--bar 预留（D65） */
 .page-actions {
-  margin-bottom: 32rpx;
-}
-
-.item-head {
-  margin-bottom: 8rpx;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 30;
+  margin: 0;
+  padding: 16rpx 24rpx calc(16rpx + env(safe-area-inset-bottom));
+  background: var(--v4-card);
+  border-top: 1rpx solid var(--v4-line);
 }
 
 .item-title {
@@ -81,11 +86,21 @@
   border-radius: 8rpx;
   border: 2rpx solid var(--v4-text-3);
   box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .check-box.checked {
   background: var(--v4-brand);
   border-color: var(--v4-brand);
+}
+
+.check-mark {
+  color: #FFFFFF;
+  font-size: 20rpx;
+  line-height: 1;
 }
 
 .placeholder {
@@ -149,10 +164,29 @@
 }
 
 /* v1.0 D23/D24/D25：多图多件工具条 / 手填入口 / 配送地址 */
+/* 2026-11-19：工具条改为「左：全选 / 右：进度 + 加件」；加件不再 flex:1 撑满整行 */
 .list-tools {
-  align-items: center;
   padding-top: 16rpx;
   padding-bottom: 16rpx;
+}
+
+.tools-left {
+  flex-shrink: 0;
+}
+
+.tools-left-text {
+  margin-left: 12rpx;
+}
+
+.tools-right {
+  gap: 16rpx;
+}
+
+.tools-add {
+  min-height: 64rpx;
+  padding: 0 24rpx;
+  font-size: 26rpx;
+  border-radius: 999rpx;
 }
 
 .manual-entry-row {
@@ -216,55 +250,129 @@
   border-bottom: 1rpx solid #EEEEEE;
 }
 
-/* 2026-11-08：站点+取件码一行、柜号+尾号一行（密度优化） */
-.item-main {
-  align-items: flex-end;
-  margin-top: 8rpx;
+/* 2026-11-19：字段标签统一在控件上方、控件同高（80rpx），站点列 40% / 取件码列 60%；
+   柜号+尾号同排；红字紧跟所在行，解决「标签漂移 / 输入框看不见 / 报错离字段太远」 */
+.item-card {
+  padding-bottom: 20rpx;
 }
 
-.item-station {
+.item-head {
+  margin-bottom: 16rpx;
+}
+
+.item-head-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.item-source {
+  margin-left: 12rpx;
+}
+
+.item-remove {
   flex-shrink: 0;
-  max-width: 40%;
-}
-
-.station-chip {
-  padding: 14rpx 20rpx;
-  border-radius: 10rpx;
-  background: #F3F6FA;
-  color: #1F2937;
+  min-height: 64rpx;
+  padding-left: 24rpx;
+  display: flex;
+  align-items: center;
+  color: var(--v4-text-3);
   font-size: 26rpx;
 }
 
-.item-code {
+.item-main {
+  align-items: flex-start;
+  margin-top: 0;
+}
+
+.item-field {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.item-field--station {
+  width: 40%;
+  flex-shrink: 0;
+  margin-right: 16rpx;
+}
+
+.item-field--code {
   flex: 1;
   min-width: 0;
-  margin-left: 16rpx;
 }
 
-.item-sub {
-  margin-top: 10rpx;
-}
-
-.item-sub-field {
+.item-field--half {
   flex: 1;
-  display: flex;
-  align-items: center;
   min-width: 0;
   margin-right: 16rpx;
 }
 
-.item-sub-field:last-child {
+.item-field--last {
   margin-right: 0;
 }
 
-.sub-label {
-  flex-shrink: 0;
-  margin-right: 10rpx;
-  color: #666666;
+/* 字段标签沿用全局 form-label 同构，但收窄宽度/字号以适配两列布局 */
+.item-field .form-label {
+  width: auto;
+  font-size: 24rpx;
+  color: var(--v4-text-3);
+  margin-bottom: 8rpx;
+}
+
+.item-station {
+  width: 100%;
+}
+
+.station-chip {
+  height: 80rpx;
+  display: flex;
+  align-items: center;
+  padding: 0 16rpx;
+  border-radius: 10rpx;
+  background: #F6F7F9;
+  color: #1F2937;
   font-size: 26rpx;
+  box-sizing: border-box;
+}
+
+.station-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.chevron {
+  width: 0;
+  height: 0;
+  border-left: 8rpx solid transparent;
+  border-right: 8rpx solid transparent;
+  border-top: 10rpx solid #8A93A0;
+  margin-left: 8rpx;
+  flex-shrink: 0;
+}
+
+.code-field {
+  display: block;
+  width: 100%;
+}
+
+.item-sub {
+  align-items: flex-start;
+  margin-top: 16rpx;
+}
+
+.item-errors {
+  margin-top: 8rpx;
 }
 
 .sub-input {
-  flex: 1;
-  min-width: 0;
+  width: 100%;
+  height: 80rpx;
+  padding: 0 16rpx;
+  border-radius: 10rpx;
+  background: #F6F7F9;
+  font-size: 28rpx;
+  box-sizing: border-box;
 }

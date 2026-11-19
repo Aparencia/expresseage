@@ -447,10 +447,14 @@ async function sectionC(h) {
       ['completionRate', 'counts', 'range', 'recent', 'series', 'todayCompleted'],
       'C1 stats 响应顶层键按契约固定六项');
     t.eq(today.data.range, 'today', 'C2 range 缺省=today（页面首屏不传）');
-    t.eq(Object.keys(today.data.counts).sort(), ['active', 'cancelled', 'completed', 'exceptions'],
-      'C3 counts 恰为四项 completed/active/cancelled/exceptions');
-    t.eq(today.data.counts, { completed: 4, active: 7, cancelled: 1, exceptions: 1 },
-      'C4 今日四项计数精确（完成 4=含 00:00 边界与代客单、排除测试单与他人单；进行中 7；取消 1；异常 1）');
+    t.eq(Object.keys(today.data.counts).sort(),
+      ['active', 'cancelled', 'completed', 'exceptions', 'transferIn', 'transferOut', 'transferOutCompleted'],
+      'C3 counts 七项：completed/active/cancelled/exceptions + D95 转派三项');
+    t.eq(today.data.counts, {
+      completed: 4, active: 7, cancelled: 1, exceptions: 1,
+      transferOut: 0, transferOutCompleted: 0, transferIn: 0
+    },
+    'C4 今日七项计数精确（完成 4=含 00:00 边界与代客单、排除测试单与他人单；进行中 7；取消 1；异常 1；转派三项 0）');
     t.eq(today.data.completionRate, 4 / (4 + 1 + 1),
       'C5 completionRate = completed/(completed+cancelled+exceptions)，比率 0..1');
     t.eq(today.data.todayCompleted, 4, 'C6 todayCompleted=今日自然日完成数');
@@ -479,13 +483,19 @@ async function sectionC(h) {
 
     const week = await pApi.call('partner.stats', { range: 'week' });
     t.eq(week.data.range, 'week', 'C17 range 原样回传');
-    t.eq(week.data.counts, { completed: 6, active: 7, cancelled: 1, exceptions: 2 },
-      'C18 本周（周一起）计数：完成 6、取消 1、异常 2（含仍在 EXCEPTION 的旧上报、不含 10-13）');
+    t.eq(week.data.counts, {
+      completed: 6, active: 7, cancelled: 1, exceptions: 2,
+      transferOut: 0, transferOutCompleted: 0, transferIn: 0
+    },
+    'C18 本周（周一起）计数：完成 6、取消 1、异常 2（含仍在 EXCEPTION 的旧上报、不含 10-13）；转派三项 0');
     t.eq(week.data.completionRate, 6 / (6 + 1 + 2), 'C19 本周完成率按公式精确（比率 0..1）');
     t.eq(week.data.todayCompleted, 4, 'C20 todayCompleted 不随 range 变化（恒为今天）');
 
     const month = await pApi.call('partner.stats', { range: 'month' });
-    t.eq(month.data.counts, { completed: 7, active: 7, cancelled: 2, exceptions: 3 },
+    t.eq(month.data.counts, {
+      completed: 7, active: 7, cancelled: 2, exceptions: 3,
+      transferOut: 0, transferOutCompleted: 0, transferIn: 0
+    },
       'C21 本月（自然月）计数：完成 7、取消 2、异常 3（9 月单不进本月）');
     t.eq(month.data.completionRate, 7 / (7 + 2 + 3), 'C22 本月完成率精确');
     t.eq([today.data.counts.active, week.data.counts.active, month.data.counts.active], [7, 7, 7],
@@ -493,12 +503,34 @@ async function sectionC(h) {
     t.eq(month.data.series.map((item) => item.completed), [0, 0, 0, 0, 1, 1, 4],
       'C24 series 恒看近 7 自然日，不随 range 缩窗');
 
+    // D95：转派双口径分列（转出方按 fromPartnerId；接手方按 toPartnerId+当前 partnerId）
+    db.seed('orders', db.dump('orders').concat([orderDoc('20261022-7100', COMPLETED, {
+      partnerId: PID2, partnerOpenid: P2, partnerNo: 'PBBBBBB',
+      completedAt: new Date(NOW - 2 * HOUR), statusUpdatedAt: new Date(NOW - 2 * HOUR),
+      transfer: {
+        status: 'ACCEPTED', fromPartnerId: PID1, fromPartnerNo: 'PAAAAAA',
+        toPartnerId: PID2, toPartnerNo: 'PBBBBBB',
+        requestedAt: new Date(NOW - 3 * HOUR), expiresAt: new Date(NOW - 2 * HOUR),
+        resolvedAt: new Date(NOW - 2 * HOUR), resolveReason: 'TARGET_ACCEPTED'
+      }
+    })]));
+    const outStats = await pApi.call('partner.stats');
+    t.eq([outStats.data.counts.transferOut, outStats.data.counts.transferOutCompleted,
+      outStats.data.counts.transferIn], [1, 1, 0],
+    'C24b D95 转出方：transferOut/transferOutCompleted 按 resolvedAt/completedAt 落区间，transferIn=0');
+    const inStats = await apiOf(db, P2).call('partner.stats');
+    t.eq([inStats.data.counts.transferIn, inStats.data.counts.transferOut], [1, 0],
+      'C24c D95 接手方：transferIn=1（toPartnerId=me 且 partnerId=me），不计转出');
+
     await expectField(t, pApi.call('partner.stats', { range: 'year' }), 'VALIDATION_FAILED', 'range',
       'C25 非法 range → VALIDATION_FAILED 且 data.field=range');
     const emptyDb = world();
     const empty = await apiOf(emptyDb, P1).call('partner.stats');
-    t.eq(empty.data.counts, { completed: 0, active: 0, cancelled: 0, exceptions: 0 },
-      'C26 空数据：四项计数为 0（不是空对象/缺键）');
+    t.eq(empty.data.counts, {
+      completed: 0, active: 0, cancelled: 0, exceptions: 0,
+      transferOut: 0, transferOutCompleted: 0, transferIn: 0
+    },
+      'C26 空数据：七项计数为 0（不是空对象/缺键）');
     t.eq(empty.data.completionRate, null, 'C27 分母为 0 → completionRate=null（页面显示「暂无」而不是 0%）');
     t.eq([empty.data.series.length, empty.data.series.every((item) => item.completed === 0), empty.data.recent],
       [7, true, []], 'C28 空数据：series 仍 7 项全 0、recent 空数组');
@@ -510,8 +542,9 @@ async function sectionC(h) {
     const testStats = await stats.handler(testCtx, { range: 'month' });
     t.eq([testStats.counts, testStats.completionRate, testStats.recent,
       testStats.series.every((item) => item.completed === 0)],
-    [{ completed: 0, active: 0, cancelled: 0, exceptions: 0 }, null, [], true],
-    'C30 TEST_WRITE 会话统计一律排除测试数据（全 0 空模板，不是报错）');
+    [{ completed: 0, active: 0, cancelled: 0, exceptions: 0, transferOut: 0, transferOutCompleted: 0, transferIn: 0 },
+      null, [], true],
+    'C30 TEST_WRITE 会话统计一律排除测试数据（七项全 0 空模板，不是报错）');
 
     const readonlyCtx = handlerCtxOf(db, P1, {
       role: ROLES.PARTNER, viewMode: VIEW_MODE.READONLY

@@ -3,7 +3,7 @@
 'use strict';
 
 function closedState() {
-  return { loaded: false, expanded: false, loading: false, rows: [], error: '' };
+  return { loaded: false, loading: false, rows: [], error: '' };
 }
 
 function pad2(value) {
@@ -32,6 +32,8 @@ function rowOf(dto, now) {
   const transfer = value.transfer && typeof value.transfer === 'object' ? value.transfer : {};
   return {
     orderNo: typeof value.orderNo === 'string' ? value.orderNo : '',
+    // D95：行内「已转出」徽标（常驻入口与详情状态条同源文案）
+    badgeText: '已转出',
     statusText: typeof value.statusText === 'string' ? value.statusText : '',
     fulfillmentPartnerNo: typeof value.fulfillmentPartnerNo === 'string' ? value.fulfillmentPartnerNo : '',
     progressIndex: typeof value.progressIndex === 'number' ? value.progressIndex : 0,

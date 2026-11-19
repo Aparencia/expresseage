@@ -120,7 +120,10 @@ function anchorTextOf(order) {
     return '';
   }
   const ownDormKey = textOf(dorm.dormKey);
-  const tag = ownDormKey && ownDormKey === dormKey ? textOf(dorm.roomTag) : '';
+  // D94：优先用服务端派生的 delivery.roomTag（仅本人宿舍有值）；旧单回退 dorm.roomTag
+  const tag = ownDormKey && ownDormKey === dormKey
+    ? (textOf(delivery.roomTag) || textOf(dorm.roomTag))
+    : '';
   return roomTag.formatDormTag(dormKey, tag) || dormKey;
 }
 
