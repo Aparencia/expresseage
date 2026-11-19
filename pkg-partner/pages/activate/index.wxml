@@ -1,5 +1,5 @@
 <!-- pkg-partner/pages/activate/index.wxml · 邀请码激活（成功后结果块给兼职编号，可复制） -->
-<view class="page-body">
+<view class="page-body" style="--v4-fs-scale: {{fsScale}}">
   <switch-bar />
   <view class="activate-head">
     <view class="title">成为兼职</view>

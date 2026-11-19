@@ -1,5 +1,5 @@
 <!-- pkg-partner/pages/stats/index.wxml · 单量统计（今日/本周/本月；近 7 天自绘柱 + 今日日报；零费用口径） -->
-<view class="page-body">
+<view class="page-body" style="--v4-fs-scale: {{fsScale}}">
   <switch-bar />
 
   <view class="row range-tabs">

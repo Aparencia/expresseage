@@ -1,6 +1,6 @@
 .order-row {
   padding: 20rpx 0;
-  border-bottom: 1rpx solid #EEEEEE;
+  border-bottom: 1rpx solid var(--v4-line);
 }
 
 .order-row:last-child {
@@ -18,7 +18,7 @@
 .order-row-code {
   font-size: 30rpx;
   font-weight: 500;
-  color: #1A1A1A;
+  color: var(--v4-text);
   margin-left: 16rpx;
   flex: 1;
   min-width: 0;

@@ -61,7 +61,7 @@
 .result-title {
   font-size: 34rpx;
   font-weight: 600;
-  color: #1A1A1A;
+  color: var(--v4-text);
   margin-bottom: 8rpx;
 }
 
@@ -76,7 +76,7 @@
   font-size: 40rpx;
   font-weight: 600;
   letter-spacing: 2rpx;
-  color: #1A1A1A;
+  color: var(--v4-text);
   padding: 16rpx 0;
 }
 

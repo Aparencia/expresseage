@@ -35,7 +35,21 @@ const SAMPLE_FEN = 'total' + 'Fen';
 const FEE_ACTION_RE = new RegExp(['[Ff]' + 'en', 'pri' + 'ce', 'f' + 'ee'].join('|'));
 const CLEAN_TEXT = '订单状态与取件码信息整理，本程序只做下单/接单/履约与消息通知。';
 
-const EXPECTED_ASSERTIONS = 233; // 223 + 10（2026-11-19 UX 可达性：launch 错误码出 UI 2 + 对比度/字面量/aria/弱网 8）
+const EXPECTED_ASSERTIONS = 241; // 233 + 8（2026-11-19 深色模式 M1 5 条 + 字号 B 子集 3 条）
+
+// WCAG 相对亮度对比度（测试用；只吃 #RRGGBB，返回两色比值）
+function contrastRatio(hexA, hexB) {
+  const luminance = (hex) => {
+    const channels = [0, 2, 4].map((offset) => {
+      const c = parseInt(hex.slice(offset, offset + 2), 16) / 255;
+      return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+  };
+  const a = luminance(hexA);
+  const b = luminance(hexB);
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+}
 
 // D57 本机取件码清单：注入式假平台（按键隔离；平台 storage API 只允许出现在 utils/storage.js，
 // 本测试不 mock 全局 wx，只经该模块的 platform 注入点）。
@@ -570,6 +584,68 @@ function register(h) {
       '启动注册网络状态监听并去重（在线↔离线只提示一次）');
     t.check(appJs.indexOf('网络已断开') !== -1 && appJs.indexOf('网络已恢复') !== -1,
       '断网/恢复各有一次轻提示文案（不阻断页面、不上报）');
+  });
+
+  // ---------------------------------------------------------------- §7.3 深色模式（M1，2026-11-19）
+  h.section('§7.3 深色模式（theme.json / darkmode / 暗色 token / 图标）', (t) => {
+    const appJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'app.json'), 'utf8'));
+    const theme = JSON.parse(fs.readFileSync(path.join(ROOT, 'theme.json'), 'utf8'));
+    const themeKeys = ['navBgColor', 'navTxtStyle', 'bgColor', 'bgTxtStyle', 'tabBarColor',
+      'tabBarSelectedColor', 'tabBarBgColor', 'tabBarBorderStyle'];
+    t.check(!!theme.light && !!theme.dark
+      && themeKeys.every((k) => typeof theme.light[k] === 'string' && typeof theme.dark[k] === 'string'),
+      'theme.json 明暗两套变量齐全（导航/背景/tabBar）');
+    t.check(appJson.darkmode === true
+      && appJson.window.navigationBarBackgroundColor === '@navBgColor'
+      && appJson.tabBar.color === '@tabBarColor'
+      && appJson.tabBar.backgroundColor === '@tabBarBgColor',
+      'app.json 开启 darkmode 并引用 @ 变量（页面 json 不再写死白底）');
+
+    const appWxss = fs.readFileSync(path.join(ROOT, 'app.wxss'), 'utf8');
+    const darkBlock = /@media\s*\(\s*prefers-color-scheme:\s*dark\s*\)\s*\{([\s\S]*?)\n\}/.exec(appWxss);
+    const darkText = darkBlock && /--v4-text-3:\s*#([0-9A-Fa-f]{6})/.exec(darkBlock[1]);
+    const darkCard = darkBlock && /--v4-card:\s*#([0-9A-Fa-f]{6})/.exec(darkBlock[1]);
+    const ratio = darkText && darkCard ? contrastRatio(darkText[1], darkCard[1]) : 0;
+    t.check(!!darkBlock && ratio >= 4.5,
+      '暗色 token 生效且三级文本对卡片底 ≥4.5:1（实测 ' + ratio.toFixed(2) + ':1）');
+
+    const tabsJs = fs.readFileSync(path.join(ROOT, 'components/tab-bar-view/tabs.js'), 'utf8');
+    const icons = tabsJs.match(/\/assets\/tabbar\/[a-z-]+\.png/g) || [];
+    const missingIcons = icons.filter((icon) => !fs.existsSync(
+      path.join(ROOT, icon.slice(1).replace(/\.png$/, '-dark.png'))
+    ));
+    t.check(icons.length >= 14 && missingIcons.length === 0,
+      'tabBar 全部图标都有 -dark.png 变体（共 ' + icons.length + ' 张引用）');
+
+    const barJs = fs.readFileSync(path.join(ROOT, 'components/tab-bar-view/index.js'), 'utf8');
+    const barWxml = fs.readFileSync(path.join(ROOT, 'components/tab-bar-view/index.wxml'), 'utf8');
+    const tabBarJs = fs.readFileSync(path.join(ROOT, 'custom-tab-bar/index.js'), 'utf8');
+    t.check(barJs.indexOf('dark: { type: Boolean') !== -1 && barJs.indexOf("'-dark.png'") !== -1
+      && barJs.indexOf('wx.') === -1 && barWxml.indexOf('viewTabs') !== -1
+      && tabBarJs.indexOf('onThemeChange') !== -1,
+      'tabBar 深浅色切换：视觉组件零 wx 只吃 dark 属性，custom-tab-bar 监听 onThemeChange（J10 纪律不破）');
+  });
+
+  // ---------------------------------------------------------------- §7.4 字号适配（B 子集，2026-11-19）
+  h.section('§7.4 字号适配 B 子集（系统字号 / 页面缩放变量 / 34 页覆盖）', (t) => {
+    const appJs = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
+    t.check(appJs.indexOf('fontSizeSetting') !== -1 && appJs.indexOf('FS_MAX_SCALE = 1.3') !== -1
+      && appJs.indexOf('onAppRoute') !== -1 && appJs.indexOf('fsScale') !== -1,
+      '启动读取系统字号并夹在 1~1.3，经 onAppRoute 注入当前页（不改布局尺寸）');
+
+    const appWxss = fs.readFileSync(path.join(ROOT, 'app.wxss'), 'utf8');
+    t.check((appWxss.match(/var\(--v4-fs-scale, 1\)/g) || []).length >= 6,
+      '正文/说明/小字/表单/错误提示走 calc + var（旧基础库回退原字号）');
+
+    const appJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'app.json'), 'utf8'));
+    const routes = (appJson.pages || []).slice();
+    (appJson.subPackages || []).forEach((pkg) => (pkg.pages || []).forEach((rel) => routes.push(pkg.root + '/' + rel)));
+    const missing = routes.filter((route) => {
+      const file = path.join(ROOT, route + '.wxml');
+      return !fs.existsSync(file) || fs.readFileSync(file, 'utf8').indexOf('--v4-fs-scale') === -1;
+    });
+    t.check(routes.length === 34 && missing.length === 0,
+      '34 页根节点均注入 --v4-fs-scale（字号缩放生效面；缺页：' + missing.join(',') + '）');
   });
 
   // ---------------------------------------------------------------- §7.1/D38 待绑定邀请（会话级 pending）

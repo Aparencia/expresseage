@@ -1,5 +1,5 @@
 <!-- pkg-partner/pages/customer-detail/index.wxml · 顾客详情（档案/仅自己可见备注/自然日历史单/解绑） -->
-<view class="page-body">
+<view class="page-body" style="--v4-fs-scale: {{fsScale}}">
   <switch-bar />
   <view wx:if="{{loading}}" class="empty-text">加载中…</view>
   <view wx:elif="{{error}}" class="card">

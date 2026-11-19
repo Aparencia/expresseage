@@ -23,7 +23,7 @@
   padding: 12rpx;
   box-sizing: border-box;
   border-radius: 8rpx;
-  background: #F6F7F9;
+  background: var(--v4-bg);
   font-size: 30rpx;
 }
 
@@ -130,7 +130,7 @@
   max-height: 85vh;
   padding: 28rpx 28rpx calc(24rpx + env(safe-area-inset-bottom));
   overflow-y: auto;
-  background: #FFFFFF;
+  background: var(--v4-card);
   border-radius: 24rpx 24rpx 0 0;
 }
 
@@ -180,7 +180,7 @@
   margin-top: 8rpx;
   padding: 0 16rpx;
   border-radius: 8rpx;
-  background: #F6F7F9;
+  background: var(--v4-bg);
   font-size: 30rpx;
 }
 

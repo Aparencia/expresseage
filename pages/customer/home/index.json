@@ -1,7 +1,6 @@
 {
   "navigationBarTitleText": "首页",
   "enablePullDownRefresh": true,
-  "backgroundTextStyle": "dark",
   "usingComponents": {
     "maintenance-mask": "/components/maintenance-mask/index"
   }

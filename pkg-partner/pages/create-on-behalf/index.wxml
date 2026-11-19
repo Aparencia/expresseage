@@ -1,5 +1,5 @@
 <!-- pkg-partner/pages/create-on-behalf/index.wxml · 代客下单（两条顾客路径：已绑定 / 新顾客；均不产生绑定） -->
-<view class="page-body">
+<view class="page-body" style="--v4-fs-scale: {{fsScale}}">
   <switch-bar />
   <view class="row step-row">
     <view class="step {{step === 1 ? 'step-active' : ''}}" data-step="1" bindtap="onStepTap">① 顾客</view>

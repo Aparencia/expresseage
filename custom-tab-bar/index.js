@@ -54,15 +54,26 @@ Component({
     role: 'CUSTOMER',
     badges: {},
     // 页面级浮层打开时隐藏（工作台送达/补码等）；关闭即恢复，避免 tabBar 盖住浮层按钮
-    hidden: false
+    hidden: false,
+    // 系统深色：只影响图标资源（视觉组件按 dark 属性换 *-dark.png）
+    dark: false
   },
 
   lifetimes: {
     attached() {
       this.sync();
+      this.syncTheme();
+      if (typeof wx.onThemeChange === 'function') {
+        this.onThemeChange = () => this.syncTheme();
+        wx.onThemeChange(this.onThemeChange);
+      }
       this.unsubscribe = store.subscribe(() => this.sync());
     },
     detached() {
+      if (this.onThemeChange && typeof wx.offThemeChange === 'function') {
+        wx.offThemeChange(this.onThemeChange);
+      }
+      this.onThemeChange = null;
       if (this.unsubscribe) {
         this.unsubscribe();
         this.unsubscribe = null;
@@ -77,6 +88,16 @@ Component({
   },
 
   methods: {
+    // 深浅色探测只在本组件做（视觉组件零平台调用）；主题切换时只换图标
+    syncTheme() {
+      try {
+        const info = wx.getSystemInfoSync();
+        this.setData({ dark: !!(info && info.theme === 'dark') });
+      } catch (err) {
+        this.setData({ dark: false });
+      }
+    },
+
     // 用 store.get 逐键读（不做整份 snapshot clone），并按引用/值判等后跳过 setData
     sync() {
       const viewContext = store.get('viewContext');

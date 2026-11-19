@@ -48,7 +48,12 @@ Page({
     if (!this.guard()) return;
     const snapshot = store.snapshot();
     const readonly = !!(snapshot.viewContext && snapshot.viewContext.viewMode === 'READONLY');
-    this.setData({ readonly: readonly, badges: snapshot.badges || {} });
+    const app = typeof getApp === 'function' ? getApp() : null;
+    this.setData({
+      readonly: readonly,
+      badges: snapshot.badges || {},
+      dark: !!(app && app.globalData && app.globalData.themeDark)
+    });
     this.loadLocal(readonly);
   },
 

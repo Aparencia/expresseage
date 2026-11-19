@@ -18,9 +18,14 @@ module.exports = {
     badges: {}
   },
 
-  // 伪 tab 没有 custom-tab-bar 实例：onShow 自行同步选中格与角标
+  // 伪 tab 没有 custom-tab-bar 实例：onShow 自行同步选中格、角标与深浅色
   syncTabState() {
-    this.setData({ tabSelected: TAB_INDEX, badges: store.get('badges') || {} });
+    const app = typeof getApp === 'function' ? getApp() : null;
+    this.setData({
+      tabSelected: TAB_INDEX,
+      badges: store.get('badges') || {},
+      dark: !!(app && app.globalData && app.globalData.themeDark)
+    });
   },
 
   onTabTap(event) {

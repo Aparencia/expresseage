@@ -1,6 +1,5 @@
 {
   "navigationBarTitleText": "工作台",
-  "navigationBarBackgroundColor": "#FFFFFF",
   "enablePullDownRefresh": true,
   "usingComponents": {
     "maintenance-mask": "/components/maintenance-mask/index"

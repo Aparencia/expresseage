@@ -11,7 +11,7 @@
 
 .transfer-line {
   padding: 16rpx 0;
-  border-bottom: 1rpx solid #EEEEEE;
+  border-bottom: 1rpx solid var(--v4-line);
 }
 
 .transfer-line:last-child {

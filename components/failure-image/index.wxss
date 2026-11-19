@@ -1,5 +1,5 @@
 .failure-image {
-  background: #F6F7F9;
+  background: var(--v4-bg);
   border-radius: 12rpx;
   padding: 16rpx;
 }

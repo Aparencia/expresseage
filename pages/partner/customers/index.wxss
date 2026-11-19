@@ -38,7 +38,7 @@
   line-height: 64rpx;
   padding: 0 24rpx;
   border-radius: 32rpx;
-  background: #FFFFFF;
+  background: var(--v4-card);
   color: #666666;
   font-size: 26rpx;
   margin: 0 16rpx 8rpx 0;
@@ -155,5 +155,5 @@
 }
 
 .share-btn {
-  background: #FFFFFF;
+  background: var(--v4-card);
 }

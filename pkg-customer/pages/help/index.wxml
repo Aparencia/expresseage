@@ -1,4 +1,4 @@
-<view class="page-body">
+<view class="page-body" style="--v4-fs-scale: {{fsScale}}">
   <switch-bar />
 
   <!-- 分享入口：好友转发用按钮触发；朋友圈只能走右上角菜单（平台限制，见 D36）；切换会话不提供 -->

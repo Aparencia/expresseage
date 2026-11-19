@@ -1,6 +1,6 @@
 <view class="tab-bar">
   <view
-    wx:for="{{tabs}}"
+    wx:for="{{viewTabs}}"
     wx:key="pagePath"
     class="tab-item"
     aria-role="tab"

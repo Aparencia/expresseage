@@ -19,6 +19,34 @@ const BIND_REUSE_WINDOW_MS = 30 * 1000;
 const NETWORK_OFF_TEXT = '网络已断开，恢复后可继续';
 const NETWORK_ON_TEXT = '网络已恢复';
 
+// 字号适配（B 子集，2026-11-19）：只注入缩放系数，正文/说明/错误提示由 wxss calc 跟随；不改布局尺寸
+const FS_BASE = 16;
+const FS_MAX_SCALE = 1.3;
+
+// 深浅色：只存一个布尔（页面/组件自行取用；不落盘、不上报）
+function readThemeDark() {
+  try {
+    const info = wx.getSystemInfoSync();
+    return !!(info && info.theme === 'dark');
+  } catch (err) {
+    return false;
+  }
+}
+
+function readFontScale() {
+  try {
+    const info = wx.getSystemInfoSync();
+    const setting = Number(info && info.fontSizeSetting);
+    if (!isFinite(setting) || setting <= 0) {
+      return 1;
+    }
+    const scale = Math.round((setting / FS_BASE) * 100) / 100;
+    return Math.min(FS_MAX_SCALE, Math.max(1, scale));
+  } catch (err) {
+    return 1;
+  }
+}
+
 App({
   globalData: {
     envVersion: '',
@@ -30,7 +58,11 @@ App({
     // 朋友圈单页模式（scene=1154）：无登录态、云资源不可用，不做云初始化与 bootstrap
     singlePage: false,
     // 本机是否在线（弱网提示去重用；不落盘、不上报）
-    networkOnline: true
+    networkOnline: true,
+    // 字号缩放系数（1~1.3；页面根节点透传到 --v4-fs-scale）
+    fsScale: 1,
+    // 系统是否深色（custom-tab-bar / 伪 tab 页取用；主题切换监听只更新此值）
+    themeDark: false
   },
 
   BIND_REUSE_WINDOW_MS: BIND_REUSE_WINDOW_MS,
@@ -41,6 +73,10 @@ App({
     this.globalData.singlePage = sharePlatform.singlePageNow();
     this.bindingPromise = null;
     this.bindNetworkStatus();
+    this.globalData.fsScale = readFontScale();
+    this.globalData.themeDark = readThemeDark();
+    this.bindThemeMode();
+    this.watchPageFontScale();
     // 朋友圈单页模式：wx.login 不可用、云开发资源需未登录访问（本仓没有），
     // 因此不做云初始化与 bootstrap；落地页按静态预览渲染（D36），点「前往小程序」后正常启动。
     this.startupPromise = this.globalData.singlePage
@@ -65,6 +101,36 @@ App({
         icon: 'none',
         duration: 1500
       });
+    });
+  },
+
+  // 深浅色切换：只更新 globalData.themeDark（custom-tab-bar 自己监听并换图标，页面在 onShow 取用）
+  bindThemeMode() {
+    if (typeof wx.onThemeChange !== 'function') {
+      return;
+    }
+    const self = this;
+    wx.onThemeChange(function onThemeChange(res) {
+      self.globalData.themeDark = !!(res && res.theme === 'dark');
+    });
+  },
+
+  // 字号适配（B 子集）：把缩放系数注入当前页 data；页面根节点 style 透传到 --v4-fs-scale（wxss calc 使用）
+  watchPageFontScale() {
+    if (typeof wx.onAppRoute !== 'function' || typeof getCurrentPages !== 'function') {
+      return;
+    }
+    const self = this;
+    wx.onAppRoute(function applyFontScale() {
+      const pages = getCurrentPages();
+      const page = pages && pages.length ? pages[pages.length - 1] : null;
+      if (!page || typeof page.setData !== 'function' || !page.data) {
+        return;
+      }
+      if (page.data.fsScale === self.globalData.fsScale) {
+        return;
+      }
+      page.setData({ fsScale: self.globalData.fsScale });
     });
   },
 

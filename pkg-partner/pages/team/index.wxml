@@ -1,5 +1,5 @@
 <!-- pkg-partner/pages/team/index.wxml · 我的团队（D59：成员/发子邀请码/待用子码按批次/作废/移除/名额） -->
-<view class="page-body">
+<view class="page-body" style="--v4-fs-scale: {{fsScale}}">
   <switch-bar />
 
   <view wx:if="{{loading && !hasData}}" class="empty-text">加载中…</view>

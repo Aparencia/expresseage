@@ -35,7 +35,7 @@
   min-height: 140rpx;
   box-sizing: border-box;
   padding: 16rpx;
-  background: #F6F7F9;
+  background: var(--v4-bg);
   border-radius: 12rpx;
   font-size: 28rpx;
 }
@@ -55,12 +55,12 @@
 
 .day-head {
   padding: 16rpx 0 8rpx;
-  border-bottom: 1rpx solid #EEEEEE;
+  border-bottom: 1rpx solid var(--v4-line);
 }
 
 .order-line {
   padding: 20rpx 0;
-  border-bottom: 1rpx solid #EEEEEE;
+  border-bottom: 1rpx solid var(--v4-line);
 }
 
 .more-row {
@@ -68,7 +68,7 @@
 }
 
 .unbind-card {
-  background: #FFFFFF;
+  background: var(--v4-card);
 }
 
 .lock-text {

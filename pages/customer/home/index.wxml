@@ -1,4 +1,4 @@
-<view class="page-body page-body--tab">
+<view class="page-body page-body--tab" style="--v4-fs-scale: {{fsScale}}">
   <switch-bar />
 
   <view class="card" wx:if="{{singlePage}}">

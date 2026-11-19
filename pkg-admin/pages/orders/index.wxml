@@ -1,4 +1,4 @@
-<view class="page-body">
+<view class="page-body" style="--v4-fs-scale: {{fsScale}}">
   <view class="card" wx:if="{{forbidden}}">
     <text class="section-title">{{forbidden.title}}</text>
     <text class="muted">{{forbidden.text}}</text>

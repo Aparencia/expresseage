@@ -1,7 +1,7 @@
 <!-- pages/partner/workbench/index.wxml · 取件清单（工作台）
      视图数据全部来自 parts（分组/行/工具条/动作/面板/已完结分区）；行内动作只渲染服务端 actions[]。
      口径：UX_PARTNER §4.1~§4.15、§6（READONLY 隐藏写控件 / TEST_WRITE 可写但只写测试数据）。 -->
-<view class="page-body page-body--tab">
+<view class="page-body page-body--tab" style="--v4-fs-scale: {{fsScale}}">
   <switch-bar />
 
   <view class="head-row">

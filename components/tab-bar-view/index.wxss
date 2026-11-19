@@ -7,8 +7,8 @@
   z-index: 500;
   display: flex;
   flex-direction: row;
-  background: #FFFFFF;
-  border-top: 1rpx solid #EEEEEE;
+  background: var(--v4-card);
+  border-top: 1rpx solid var(--v4-line);
   padding-bottom: env(safe-area-inset-bottom);
 }
 

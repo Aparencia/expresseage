@@ -1,5 +1,5 @@
 <!-- pkg-partner/pages/service-settings/index.wxml · 服务类型与范围（不含费用字段） -->
-<view class="page-body">
+<view class="page-body" style="--v4-fs-scale: {{fsScale}}">
   <switch-bar />
   <view class="title head-title">服务类型与范围</view>
 

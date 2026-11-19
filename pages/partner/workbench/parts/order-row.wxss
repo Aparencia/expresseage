@@ -10,7 +10,7 @@
   display: flex;
   align-items: flex-start;
   padding: 20rpx 0 20rpx 16rpx;
-  border-bottom: 1rpx solid #EEEEEE;
+  border-bottom: 1rpx solid var(--v4-line);
   /* 2026-11-08 行改版：左侧状态色条提高相邻订单区分度（忙碌时不易看差） */
   border-left: 6rpx solid transparent;
 }
@@ -170,7 +170,7 @@
   border-radius: 10rpx;
   border: 2rpx solid #D9DEE5;
   font-size: 24rpx;
-  color: #333333;
+  color: var(--v4-text);
 }
 
 .tool-primary {

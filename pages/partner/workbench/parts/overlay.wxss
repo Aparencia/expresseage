@@ -19,7 +19,7 @@
   overflow-y: auto;
   box-sizing: border-box;
   padding: 24rpx;
-  background: #FFFFFF;
+  background: var(--v4-card);
   border-radius: 24rpx 24rpx 0 0;
 }
 
@@ -49,7 +49,7 @@
   padding: 16rpx;
   box-sizing: border-box;
   border-radius: 10rpx;
-  background: #FFFFFF;
+  background: var(--v4-card);
   font-size: 26rpx;
 }
 
@@ -130,7 +130,7 @@
 
 .history-line {
   padding: 16rpx 0;
-  border-bottom: 1rpx solid #EEEEEE;
+  border-bottom: 1rpx solid var(--v4-line);
 }
 
 .history-muted {
@@ -187,8 +187,8 @@
 }
 
 .undo-btn {
-  background: #FFFFFF;
-  color: #1A1A1A;
+  background: var(--v4-card);
+  color: var(--v4-text);
   border-color: #FFFFFF;
 }
 
@@ -210,7 +210,7 @@
   width: 600rpx;
   padding: 32rpx;
   border-radius: 20rpx;
-  background: #FFFFFF;
+  background: var(--v4-card);
 }
 
 .guide-text {

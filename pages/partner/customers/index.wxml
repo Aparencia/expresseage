@@ -1,7 +1,7 @@
 <!-- pages/partner/customers/index.wxml · 客户列表（只列已被顾客绑定的顾客；无任何添加/绑定/导入入口）
      D67：一行横滚筛选 chips + 苑/楼栋二级选择 + 筛选说明；筛选空态与真空态文案由 parts/filter-model 分流。
      D65：本页是兼职端 tab 页，根节点叠加 page-body--tab 补足自定义 tabBar 高度。 -->
-<view class="page-body page-body--tab">
+<view class="page-body page-body--tab" style="--v4-fs-scale: {{fsScale}}">
   <switch-bar />
   <view class="row between head">
     <view class="title">{{headingText}}</view>

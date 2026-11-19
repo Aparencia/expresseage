@@ -1,4 +1,4 @@
-<view class="page-body">
+<view class="page-body" style="--v4-fs-scale: {{fsScale}}">
   <switch-bar />
 
   <view class="role-hero">

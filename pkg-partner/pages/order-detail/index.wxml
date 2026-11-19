@@ -1,5 +1,5 @@
 <!-- pkg-partner/pages/order-detail/index.wxml · 兼职订单详情（动作可见性来自服务端 order.actions；面板数据全部来自 parts 视图件） -->
-<view class="page-body">
+<view class="page-body" style="--v4-fs-scale: {{fsScale}}">
   <switch-bar />
   <view wx:if="{{loading}}" class="empty-text">加载中…</view>
   <view wx:elif="{{error}}" class="card">

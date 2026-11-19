@@ -7,7 +7,7 @@
   min-height: 64rpx;
   padding: 8rpx 16rpx;
   border-radius: 8rpx;
-  background: #F6F7F9;
+  background: var(--v4-bg);
   font-size: 28rpx;
   font-family: Menlo, Consolas, "Courier New", monospace;
 }

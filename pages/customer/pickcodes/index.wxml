@@ -1,4 +1,4 @@
-<view class="page-body page-body--tab">
+<view class="page-body page-body--tab" style="--v4-fs-scale: {{fsScale}}">
   <switch-bar />
 
   <!-- D64：本页是顾客「取件码」一级入口（伪 tab），只显示顾客自建的本机取件码（D57），不显示订单 -->
@@ -47,5 +47,5 @@
   </view>
 
   <!-- D64 伪 tab：页面内自绘共用底部栏（视觉单源 components/tab-bar-view；真 tab 走 wx.switchTab） -->
-  <tab-bar-view tabs="{{tabs}}" selected="{{tabSelected}}" badges="{{badges}}" bind:tabtap="onTabTap" />
+  <tab-bar-view tabs="{{tabs}}" selected="{{tabSelected}}" badges="{{badges}}" dark="{{dark}}" bind:tabtap="onTabTap" />
 </view>

@@ -9,7 +9,7 @@
   line-height: 64rpx;
   text-align: center;
   border-radius: 32rpx;
-  background: #FFFFFF;
+  background: var(--v4-card);
   color: #666666;
   font-size: 26rpx;
   margin-right: 16rpx;
@@ -102,7 +102,7 @@
 .report-text {
   font-size: 26rpx;
   line-height: 1.7;
-  color: #333333;
+  color: var(--v4-text);
   word-break: break-all;
 }
 

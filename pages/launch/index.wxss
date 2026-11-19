@@ -39,7 +39,7 @@
 .launch-title {
   font-size: 40rpx;
   font-weight: 600;
-  color: #1A1A1A;
+  color: var(--v4-text);
   margin-bottom: 16rpx;
   text-align: center;
   line-height: 1.4;
@@ -138,7 +138,7 @@
 .privacy-list {
   width: 100%;
   max-height: 52vh;
-  background: #FFFFFF;
+  background: var(--v4-card);
   border-radius: 16rpx;
   padding: 24rpx;
   box-sizing: border-box;

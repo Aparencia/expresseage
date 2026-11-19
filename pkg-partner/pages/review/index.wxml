@@ -1,7 +1,7 @@
 <!-- pkg-partner/pages/review/index.wxml · 兼职「审核」核对页（2026-11-08 MVP；D92 增订单级审核状态与件数增删）
      一屏查看顾客上传的取件码截图与其订单信息；不一致可直接改订单字段（order.correct）。
      审核不改变订单状态、不阻塞取件；READONLY 隐藏保存与审核写入口。 -->
-<view class="page-body">
+<view class="page-body" style="--v4-fs-scale: {{fsScale}}">
   <switch-bar />
 
   <block wx:if="{{stage === 'list'}}">

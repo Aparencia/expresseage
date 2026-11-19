@@ -129,7 +129,7 @@
   width: 600rpx;
   padding: 32rpx;
   border-radius: 20rpx;
-  background: #FFFFFF;
+  background: var(--v4-card);
 }
 
 .guide-title {

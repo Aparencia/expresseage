@@ -14,6 +14,6 @@
   z-index: 600;
   box-sizing: border-box;
   padding: 12rpx 24rpx calc(12rpx + env(safe-area-inset-bottom));
-  background: #FFFFFF;
+  background: var(--v4-card);
   box-shadow: 0 -2rpx 12rpx rgba(0, 0, 0, 0.06);
 }

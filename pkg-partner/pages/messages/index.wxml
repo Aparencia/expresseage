@@ -1,5 +1,5 @@
 <!-- pkg-partner/pages/messages/index.wxml · 消息中心（全部/订单/留言/公告分类 + 未读圆点 + 全部已读） -->
-<view class="page-body">
+<view class="page-body" style="--v4-fs-scale: {{fsScale}}">
   <switch-bar />
   <view class="row between msg-head">
     <view class="title">消息</view>

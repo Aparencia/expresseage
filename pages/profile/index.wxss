@@ -18,7 +18,7 @@
 .head-name {
   font-size: 36rpx;
   font-weight: 600;
-  color: #1A1A1A;
+  color: var(--v4-text);
   margin-bottom: 8rpx;
 }
 
@@ -45,7 +45,7 @@
 .state-title {
   font-size: 36rpx;
   font-weight: 600;
-  color: #1A1A1A;
+  color: var(--v4-text);
   margin-bottom: 16rpx;
 }
 
@@ -103,7 +103,7 @@
   font-size: 26rpx;
   line-height: 88rpx;
   border-radius: 12rpx;
-  background: #F6F7F9;
+  background: var(--v4-bg);
   color: #1F7A5C;
   margin: 0;
 }
@@ -143,7 +143,7 @@
 
 .profile-line {
   min-height: 72rpx;
-  border-bottom: 1rpx solid #EEEEEE;
+  border-bottom: 1rpx solid var(--v4-line);
 }
 
 .profile-line:last-of-type {
@@ -152,7 +152,7 @@
 
 .profile-value {
   font-size: 30rpx;
-  color: #1A1A1A;
+  color: var(--v4-text);
 }
 
 .profile-hint {
@@ -220,7 +220,7 @@
 /* ── 订单概览 ───────────────────────────────────────────── */
 .order-summary {
   font-size: 30rpx;
-  color: #1A1A1A;
+  color: var(--v4-text);
 }
 
 .order-hint {
@@ -251,9 +251,9 @@
   align-items: center;
   justify-content: space-between;
   min-height: 96rpx;
-  border-bottom: 1rpx solid #EEEEEE;
+  border-bottom: 1rpx solid var(--v4-line);
   font-size: 30rpx;
-  color: #1A1A1A;
+  color: var(--v4-text);
 }
 
 .row-item:last-child {
@@ -286,7 +286,7 @@
 
 .dialog {
   width: 100%;
-  background: #FFFFFF;
+  background: var(--v4-card);
   border-radius: 16rpx;
   padding: 40rpx 32rpx 32rpx;
   box-sizing: border-box;
@@ -295,7 +295,7 @@
 .dialog-title {
   font-size: 34rpx;
   font-weight: 600;
-  color: #1A1A1A;
+  color: var(--v4-text);
   text-align: center;
   margin-bottom: 16rpx;
 }
@@ -309,7 +309,7 @@
 
 .dialog-value {
   font-size: 28rpx;
-  color: #1A1A1A;
+  color: var(--v4-text);
 }
 
 .dialog-input {
@@ -318,7 +318,7 @@
   margin-top: 16rpx;
   padding: 16rpx;
   box-sizing: border-box;
-  background: #F6F7F9;
+  background: var(--v4-bg);
   border-radius: 12rpx;
   font-size: 28rpx;
 }

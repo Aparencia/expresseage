@@ -16,7 +16,7 @@
   line-height: 64rpx;
   padding: 0 28rpx;
   border-radius: 32rpx;
-  background: #FFFFFF;
+  background: var(--v4-card);
   color: #666666;
   font-size: 26rpx;
   margin-right: 16rpx;
@@ -77,7 +77,7 @@
 
 .floor-head {
   padding: 24rpx 0 16rpx;
-  border-bottom: 1rpx solid #EEEEEE;
+  border-bottom: 1rpx solid var(--v4-line);
 }
 
 .floor-title {
@@ -217,7 +217,7 @@
 
 .piece-line {
   margin-top: 4rpx;
-  color: #333333;
+  color: var(--v4-text);
 }
 
 .piece-station {

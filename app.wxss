@@ -25,6 +25,7 @@ page {
   background: var(--v4-bg);
   color: var(--v4-text);
   font-size: 30rpx;
+  font-size: calc(30rpx * var(--v4-fs-scale, 1));
   line-height: 1.4;
   -webkit-font-smoothing: antialiased;
   font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
@@ -95,16 +96,19 @@ page {
 
 .subtitle {
   font-size: 30rpx;
+  font-size: calc(30rpx * var(--v4-fs-scale, 1));
   color: var(--v4-text-2);
 }
 
 .muted {
   font-size: 26rpx;
+  font-size: calc(26rpx * var(--v4-fs-scale, 1));
   color: var(--v4-text-3);
 }
 
 .small {
   font-size: 24rpx;
+  font-size: calc(24rpx * var(--v4-fs-scale, 1));
   color: var(--v4-text-3);
 }
 
@@ -219,6 +223,7 @@ page {
 .form-label {
   width: 180rpx;
   font-size: 30rpx;
+  font-size: calc(30rpx * var(--v4-fs-scale, 1));
   color: var(--v4-text-2);
   flex-shrink: 0;
 }
@@ -227,4 +232,29 @@ page {
   flex: 1;
   min-width: 0;
   font-size: 30rpx;
+  font-size: calc(30rpx * var(--v4-fs-scale, 1));
+}
+
+/* 深色模式（M1，2026-11-19）：只覆盖 token 层，页面不改结构；不支持 prefers-color-scheme 的旧基础库自动忽略 */
+@media (prefers-color-scheme: dark) {
+  page {
+    --v4-brand: #4ECB9B;
+    --v4-customer: #F2994A;
+    --v4-partner: #6FA8FF;
+    --v4-admin: #9FB0C4;
+    --v4-readonly-bg: #3A2F12;
+    --v4-readonly-text: #FFD77A;
+    --v4-test-bg: #1B2A44;
+    --v4-test-text: #8FB6FF;
+    --v4-danger: #FF6B60;
+    --v4-warning: #FFB84D;
+    --v4-text: #F2F4F7;
+    --v4-text-2: #B9C0CA;
+    --v4-text-3: #99A1AC;
+    --v4-bg: #0E1219;
+    --v4-card: #171C24;
+    --v4-line: #2A313B;
+    background: var(--v4-bg);
+    color: var(--v4-text);
+  }
 }

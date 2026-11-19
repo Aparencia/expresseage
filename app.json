@@ -53,18 +53,20 @@
     }
   ],
   "window": {
-    "navigationBarTextStyle": "black",
+    "navigationBarTextStyle": "@navTxtStyle",
     "navigationBarTitleText": "校园快递代取",
-    "navigationBarBackgroundColor": "#FFFFFF",
-    "backgroundColor": "#F6F7F9",
-    "backgroundTextStyle": "dark"
+    "navigationBarBackgroundColor": "@navBgColor",
+    "backgroundColor": "@bgColor",
+    "backgroundTextStyle": "@bgTxtStyle"
   },
+  "darkmode": true,
+  "themeLocation": "theme.json",
   "tabBar": {
     "custom": true,
-    "color": "#999999",
-    "selectedColor": "#1F7A5C",
-    "backgroundColor": "#FFFFFF",
-    "borderStyle": "white",
+    "color": "@tabBarColor",
+    "selectedColor": "@tabBarSelectedColor",
+    "backgroundColor": "@tabBarBgColor",
+    "borderStyle": "@tabBarBorderStyle",
     "list": [
       {
         "pagePath": "pages/customer/home/index",

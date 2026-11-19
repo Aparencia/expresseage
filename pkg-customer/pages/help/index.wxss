@@ -33,7 +33,7 @@
 }
 
 .tab-active {
-  background: #FFFFFF;
+  background: var(--v4-card);
   color: var(--v4-brand);
   font-weight: 600;
 }

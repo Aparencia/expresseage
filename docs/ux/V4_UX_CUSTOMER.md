@@ -848,12 +848,11 @@ Step1 截图（0~10 张，可跳过；D40）─→ Step2 逐件核对（≥1 件
 - **读屏语义（2026-11-19）**：tabBar 每格 `aria-role="tab"` + `aria-label`（含「当前选中」态），订单行 `aria-role="button"` + 可读标签；顾客订单/消息列表行、后台订单/顾客列表行均已补 `aria-role="button"` + 可读标签；其余卡片按需补齐（P1）。
 - **弱网提示（2026-11-19）**：`app.js` 注册 `wx.onNetworkStatusChange`，在线↔离线翻转各给一次轻提示（「网络已断开，恢复后可继续」/「网络已恢复」），不阻断页面、不上报、不新增数据。
 
-### 11.6 深色模式与字号适配（2026-11-19 方案，待裁决）
-- **现状缺口**：`app.json` 无 `darkmode`、无 `theme.json`；全仓 0 处 `fontSizeSetting` 适配。
-- **实测代价**（2026-11-19 静态统计）：53 个 wxss 共 **444 处字面色值**、**189 处 token 引用**、**47 处白底字面量**；页面 34 个。
-- **深色模式（推荐 M1，中代价）**：①先把字面色值收口到 token（机械替换 + 视觉走查，行为零变化）；②`app.json` 置 `darkmode: true` + `theme.json` 定义导航栏/背景明暗两套；③`app.wxss` 用 `@media (prefers-color-scheme: dark)` 覆盖 `--v4-*`（token 单层，页面零改动）；④tabBar 图标为 PNG（10 张），需暗色版或样式反色，自定义 tabBar 走 `components/tab-bar-view`；⑤真机点验只能用户做（QA 增补条目）。**不做**：逐页重写深色样式（成本高、易漂移）。
-- **字号适配（建议默认不做，除非用户明确要求）**：现状全部尺寸用 rpx（随屏宽缩放，不跟随微信「字体大小」设置）。方案 A=不做（正文 30rpx、辅助 24/26rpx 维持）；方案 B=`wx.getSystemInfoSync().fontSizeSetting` 折算 `--v4-fs-scale`，正文/错误提示的 `font-size` 改 `calc(Nrpx * var(--v4-fs-scale))`（需扫 248 处 `font-size` 并逐页回归换行/截断）；建议只做 B 的**正文与错误提示**子集，按钮/徽标不缩放。
-- **待裁决**：Q1 深色模式做不做（推荐 M1）；Q2 字号适配选 A 还是 B 的正文子集。
+### 11.6 深色模式与字号适配（2026-11-19 已实施 M1 + B 子集；真机待点检）
+- **深色模式 M1**：新增 `theme.json`（导航/背景/tabBar 明暗两套变量）+ `app.json` `darkmode: true` 与 `@` 变量引用；`app.wxss` 用 `@media (prefers-color-scheme: dark)` 覆盖全部 `--v4-*` token（三级文本对暗色卡片底 ≥4.5:1，由 `selftest-core` 计算锁定）；页面/组件 81 处结构色（白底/浅底/主文本/分隔线）改为 token，19 个页面 json 去掉 22 处写死的导航/背景色；`assets/tabbar/*-dark.png` 14 张暗色图标，`components/tab-bar-view` 监听 `wx.onThemeChange` 切换（浅色模式零变化）。**未做**：状态标签/渐变等装饰色仍是浅色值，真机走查后再按需收口。
+- **字号适配 B 子集**：启动读 `wx.getSystemInfoSync().fontSizeSetting`，折算 1~1.3 的 `--v4-fs-scale`，经 `wx.onAppRoute` 注入当前页；34 页根节点统一 `style="--v4-fs-scale: {{fsScale}}"`；`page` 基础字号、`.subtitle/.muted/.small`、表单标签/输入与 3 处错误提示走 `calc(Nrpx * var(--v4-fs-scale, 1))`（旧基础库自动回退原字号）。**未做**：按钮/徽标/标题不缩放，页面内自定义字号仍固定 rpx（逐页收口留给真机走查后）。
+- **真机点检（只能用户）**：浅色/深色切换下 34 页可读性（尤其状态标签、图表、截图区）、大字号下换行与截断、tabBar 图标对比度、深色下拉背景与导航栏。
+- **回退**：删除 `theme.json` 与 `app.json` 的 `darkmode`/`@` 引用即回到浅色单套；字号缩放令 `fsScale` 恒为 1 即回退。
 
 ## 12. 可逐条点检的验收清单
 ### 12.1 首次旅程与导航

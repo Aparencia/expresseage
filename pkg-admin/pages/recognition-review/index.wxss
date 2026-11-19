@@ -74,7 +74,7 @@
   display: block;
   padding: 12rpx;
   border-radius: 8rpx;
-  background: #F6F7F9;
+  background: var(--v4-bg);
   font-size: 26rpx;
   word-break: break-all;
 }

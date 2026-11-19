@@ -13,7 +13,7 @@
 
 .announcement-title {
   font-size: 28rpx;
-  color: #1A1A1A;
+  color: var(--v4-text);
   font-weight: 600;
   flex: 1;
 }

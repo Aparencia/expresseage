@@ -1,4 +1,4 @@
-<view class="page-body launch-page">
+<view class="page-body launch-page" style="--v4-fs-scale: {{fsScale}}">
   <!-- D68/D69：账号状态专用页（停用可恢复 / 注销不可逆 / 本机已退出登录）——优先于隐私闸与加载态 -->
   <block wx:if="{{accountState}}">
     <view class="launch-box">

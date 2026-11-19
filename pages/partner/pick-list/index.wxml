@@ -2,7 +2,7 @@
      阶段一「待取件」：按取件站点 P1~P8 分组、只读清单（行点击进详情），单行/整组/全部复制（parts/pick-view 纯件）。
      阶段二「待送达」：按苑→栋→楼层分组，行内「已送达」/批量送达只渲染服务端 actions[] 结果（行为不变）。
      口径：UX_PARTNER §3.11、§6（READONLY 隐藏写控件 / TEST_WRITE 可写但只写测试数据）；不自动轮询，切页/下拉才刷新。 -->
-<view class="page-body page-body--tab">
+<view class="page-body page-body--tab" style="--v4-fs-scale: {{fsScale}}">
   <switch-bar />
 
   <view class="head-row">
@@ -162,5 +162,5 @@
 
   <!-- 2026-11-08：取件清单升一级入口（伪 tab，与顾客端「取件码」同款）：页面内自绘 4 格底栏；
        真 tab 用 switchTab；多选时底部批量条占位，隐藏底栏避免两层叠在一起。 -->
-  <tab-bar-view wx:if="{{!selecting}}" tabs="{{tabs}}" selected="{{tabSelected}}" badges="{{badges}}" bind:tabtap="onTabTap" />
+  <tab-bar-view wx:if="{{!selecting}}" tabs="{{tabs}}" selected="{{tabSelected}}" badges="{{badges}}" dark="{{dark}}" bind:tabtap="onTabTap" />
 </view>
