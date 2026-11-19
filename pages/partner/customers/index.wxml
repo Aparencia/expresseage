@@ -99,6 +99,8 @@
       class="card customer-item row"
       data-index="{{index}}"
       bindtap="onRowTap"
+      aria-role="button"
+      aria-label="客户 {{item.displayNameText}}"
     >
       <avatar-view src="{{item.avatarUrl}}" fileId="{{item.avatarFileId}}" name="{{item.displayName}}" size="{{64}}" bindretry="onAvatarRetry" />
       <view class="flex-1 customer-main">

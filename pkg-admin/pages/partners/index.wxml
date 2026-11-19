@@ -31,7 +31,7 @@
 
   <view class="empty-text" wx:if="{{!loading && !searching && !error && list.length === 0}}">{{keyword ? '没有找到这个兼职编号，请核对后重试。' : '还没有兼职人员。'}}</view>
 
-  <view class="card" wx:for="{{list}}" wx:key="partnerNo" data-index="{{index}}" bindtap="onRowTap">
+  <view class="card" wx:for="{{list}}" wx:key="partnerNo" data-index="{{index}}" bindtap="onRowTap" aria-role="button" aria-label="兼职 {{item.partnerNo}}，{{item.displayName}}，{{item.statusText}}">
     <view class="row between">
       <text class="strong">{{item.partnerNo}} {{item.displayName}}</text>
       <view class="row">

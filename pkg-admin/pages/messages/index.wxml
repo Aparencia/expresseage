@@ -20,7 +20,7 @@
     <view class="card">
       <text class="section-title">异常工单（{{exceptionTotal}}）</text>
       <view class="empty-text" wx:if="{{exceptions.length === 0}}">没有待处理的异常工单。</view>
-      <view class="message-row" wx:for="{{exceptions}}" wx:key="orderNo" data-no="{{item.orderNo}}" bindtap="onHandleOrder">
+      <view class="message-row" wx:for="{{exceptions}}" wx:key="orderNo" data-no="{{item.orderNo}}" bindtap="onHandleOrder" aria-role="button" aria-label="异常工单 {{item.orderNo}}，{{item.exceptionText}}">
         <view class="row between">
           <text class="strong">{{item.orderNo}}</text>
           <text class="tag">待处理</text>
@@ -35,7 +35,7 @@
     <view class="card">
       <text class="section-title">识别失败待复核（{{failureTotal}}）</text>
       <view class="empty-text" wx:if="{{failures.length === 0}}">没有待复核的识别失败记录。</view>
-      <view class="message-row" wx:for="{{failures}}" wx:key="failureNo" data-no="{{item.failureNo}}" bindtap="onReviewFailure">
+      <view class="message-row" wx:for="{{failures}}" wx:key="failureNo" data-no="{{item.failureNo}}" bindtap="onReviewFailure" aria-role="button" aria-label="识别失败 {{item.failureNo}}，{{item.failureCodeText}}">
         <view class="row between">
           <text class="strong">{{item.failureNo}}</text>
           <text class="tag">{{item.failureCodeText}}</text>

@@ -15,6 +15,8 @@
         class="review-row"
         data-order-no="{{item.orderNo}}"
         bindtap="onOpen"
+        aria-role="button"
+        aria-label="订单 {{item.orderNo}}"
       >
         <view class="row between">
           <view class="row">

@@ -555,7 +555,11 @@ function register(h) {
       'pages/customer/orders/index.wxml',
       'pkg-customer/pages/messages/index.wxml',
       'pkg-admin/pages/orders/index.wxml',
-      'pkg-admin/pages/customers/index.wxml'
+      'pkg-admin/pages/customers/index.wxml',
+      'pkg-admin/pages/partners/index.wxml',
+      'pkg-admin/pages/messages/index.wxml',
+      'pages/partner/customers/index.wxml',
+      'pkg-partner/pages/review/index.wxml'
     ];
     const missingAria = rowPages.filter((rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8').indexOf('aria-role="button"') === -1);
     t.check(missingAria.length === 0,
