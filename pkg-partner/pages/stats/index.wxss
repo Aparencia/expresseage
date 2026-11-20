@@ -108,6 +108,6 @@
 
 .compliance-note {
   margin-top: 24rpx;
-  color: var(--v4-text-3, var(--v4-text-3));
+  color: var(--v4-text-3, #6B6B6B);
   text-align: center;
 }

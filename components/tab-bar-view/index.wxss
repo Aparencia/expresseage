@@ -7,9 +7,16 @@
   z-index: 500;
   display: flex;
   flex-direction: row;
-  background: var(--v4-card);
-  border-top: 1rpx solid var(--v4-line);
+  background: var(--v4-card, #FFFFFF);
+  border-top: 1rpx solid var(--v4-line, #EEEEEE);
   padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* custom-tab-bar 挂在页面根之外，页面级 CSS 变量在部分机型/基础库上取不到：
+   深浅色在组件内自带兜底与显式暗色值，不依赖外部 token（2026-11-20 真机反馈修复） */
+.tab-bar--dark {
+  background: #141A22;
+  border-top-color: #2A313B;
 }
 
 .tab-item {
@@ -42,19 +49,33 @@
   line-height: 28rpx;
   padding: 0 6rpx;
   border-radius: 14rpx;
-  background: var(--v4-danger);
-  color: var(--v4-on-accent);
+  background: var(--v4-danger, #E54D42);
+  color: var(--v4-on-accent, #FFFFFF);
   font-size: 20rpx;
   text-align: center;
 }
 
 .tab-text {
   font-size: 22rpx;
-  color: var(--v4-text-3, var(--v4-text-3));
+  color: var(--v4-text-3, #6B6B6B);
   margin-top: 2rpx;
 }
 
 .tab-text-active {
-  color: var(--v4-brand);
+  color: var(--v4-brand, #1F7A5C);
   font-weight: 600;
+}
+
+/* 暗色显式值：未选中 #C3C9D2（对 #141A22 ≈ 11:1），选中 #4ECB9B（≈ 8.5:1） */
+.tab-bar--dark .tab-text {
+  color: #C3C9D2;
+}
+
+.tab-bar--dark .tab-text-active {
+  color: #4ECB9B;
+}
+
+.tab-bar--dark .tab-badge {
+  background: #FF6B60;
+  color: #10151C;
 }

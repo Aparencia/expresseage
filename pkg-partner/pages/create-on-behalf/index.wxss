@@ -97,7 +97,7 @@
 }
 
 .picker-placeholder {
-  color: var(--v4-text-3, var(--v4-text-3));
+  color: var(--v4-text-3, #6B6B6B);
 }
 
 .service-desc {
@@ -230,5 +230,5 @@
 }
 
 .error-text {
-  color: var(--v4-danger, var(--v4-danger));
+  color: var(--v4-danger, #E54D42);
 }

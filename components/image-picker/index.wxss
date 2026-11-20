@@ -75,7 +75,7 @@
 }
 
 .image-picker-btn-disabled {
-  color: var(--v4-text-3, var(--v4-text-3));
+  color: var(--v4-text-3, #6B6B6B);
   background: var(--v4-fill);
 }
 

@@ -7,7 +7,7 @@
 .status-tag {
   margin-left: 12rpx;
   background: rgba(178, 106, 0, 0.12);
-  color: var(--v4-warn, var(--v4-warning-text));
+  color: var(--v4-warning-text, #B26A00);
 }
 
 .head-main {

@@ -35,7 +35,7 @@ const SAMPLE_FEN = 'total' + 'Fen';
 const FEE_ACTION_RE = new RegExp(['[Ff]' + 'en', 'pri' + 'ce', 'f' + 'ee'].join('|'));
 const CLEAN_TEXT = '订单状态与取件码信息整理，本程序只做下单/接单/履约与消息通知。';
 
-const EXPECTED_ASSERTIONS = 245; // 241 + 4（2026-11-19 装饰色 token 收口：语义 token/关键组件零字面色/on-accent/深色对比度）
+const EXPECTED_ASSERTIONS = 247; // 245 + 2（2026-11-20 深色 tabBar 对比度 + 禁止嵌套 var 兜底）
 
 // WCAG 相对亮度对比度（测试用；只吃 #RRGGBB，返回两色比值）
 function contrastRatio(hexA, hexB) {
@@ -678,6 +678,32 @@ function register(h) {
     const darkOnAccent = darkBlock && /--v4-on-accent:\s*#([0-9A-Fa-f]{6})/.exec(darkBlock[1]);
     const ratio = darkBrand && darkOnAccent ? contrastRatio(darkBrand[1], darkOnAccent[1]) : 0;
     t.check(ratio >= 4.5, '深色实心按钮文字对比度 ≥4.5:1（实测 ' + ratio.toFixed(2) + ':1）');
+
+    // 2026-11-20 真机反馈：custom-tab-bar 取不到页面级 CSS 变量 → 组件自带暗色显式值
+    const barCss = fs.readFileSync(path.join(ROOT, 'components/tab-bar-view/index.wxss'), 'utf8');
+    const barBg = /\.tab-bar--dark\s*\{[^}]*background:\s*#([0-9A-Fa-f]{6})/.exec(barCss);
+    const barText = /\.tab-bar--dark\s+\.tab-text\s*\{[^}]*color:\s*#([0-9A-Fa-f]{6})/.exec(barCss);
+    const barActive = /\.tab-bar--dark\s+\.tab-text-active\s*\{[^}]*color:\s*#([0-9A-Fa-f]{6})/.exec(barCss);
+    const tabRatio = barBg && barText ? contrastRatio(barBg[1], barText[1]) : 0;
+    const tabActiveRatio = barBg && barActive ? contrastRatio(barBg[1], barActive[1]) : 0;
+    t.check(tabRatio >= 4.5 && tabActiveRatio >= 4.5,
+      '深色 tabBar 文字/选中文字对比度 ≥4.5:1（实测 ' + tabRatio.toFixed(2) + ':1 / ' + tabActiveRatio.toFixed(2) + ':1）');
+  });
+
+  // ---------------------------------------------------------------- §7.6 CSS 变量兜底（2026-11-20）
+  h.section('§7.6 CSS 变量兜底（禁止嵌套 var 导致深色退化为无效色）', (t) => {
+    const list = [];
+    const collect = (dir) => {
+      fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true }).forEach((e) => {
+        const rel = dir + '/' + e.name;
+        if (e.isDirectory()) collect(rel);
+        else if (e.name.endsWith('.wxss')) list.push(rel);
+      });
+    };
+    ['pages', 'components', 'pkg-customer', 'pkg-partner', 'pkg-admin'].forEach(collect);
+    const nested = list.filter((rel) => /var\(--v4-[a-z0-9-]+,\s*var\(--v4-/.test(fs.readFileSync(path.join(ROOT, rel), 'utf8')));
+    t.check(list.length > 0 && nested.length === 0,
+      '无嵌套 var 兜底（取不到页面 token 时必须落到具体色值；命中：' + nested.join(',') + '）');
   });
 
   // ---------------------------------------------------------------- §7.1/D38 待绑定邀请（会话级 pending）

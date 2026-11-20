@@ -7,6 +7,8 @@
 
 ## [未发布]
 
+- **2026-11-20 深色 tabBar 文字对比修复（真机反馈）**：custom-tab-bar 挂在页面根之外，页面级 `--v4-*` 在部分机型取不到，tab 文字/选中文字退化为默认黑、在深色底上难以辨别。修法：视觉组件自带 `tab-bar--dark` 显式暗色（底 `#141A22`、未选中 `#C3C9D2` 约 11:1、选中 `#4ECB9B` 约 8.6:1），基础样式补具体色兜底；同时清理全仓 33 处嵌套 `var(--x, var(--x))` 无效兜底。判据：`selftest-core` +2（247/247：深色 tabBar 双对比度、禁止嵌套 var）。**需重传体验版后真机点检深色 tabBar**。
+
 - **2026-11-19 深色模式装饰色收口（第二批）**：品牌/合作方/危险/只读/测试/中性底色/警示弱色等 **263 处字面色**改为语义 token（明暗两套；新增 `--v4-on-accent/fill/line-strong/text-4/warning-weak/warning-text/danger-weak/info-weak/success-weak`）；实心按钮（`.btn-primary/.btn-danger`）文字改用 `--v4-on-accent`，修正深色下白字压浅绿仅约 2:1 的问题（改后 ≥4.5:1）；仅渐变与阴影保持原样。判据：`selftest-core` +4（245/245，含语义 token 明暗齐全、关键组件零品牌/危险字面色、on-accent 接线与深色对比度）；`selftest-order-customer` O7 与 `selftest-switch` §10 的颜色断言同步改为 token 断言（浅色值仍由 `app.wxss` 单源核对，断言数不变）。**真机点检**：状态标签/只读条/测试徽标在深色下的可读性。
 
 - **2026-11-19 深色模式 M1 + 字号适配 B 子集（Q1/Q2 已裁决）**：①新增 `theme.json`（导航/背景/tabBar 明暗两套变量），`app.json` 开启 `darkmode` 并用 `@` 变量引用；`app.wxss` 的 `@media (prefers-color-scheme: dark)` 覆盖全部 `--v4-*` token，暗色下三级文本对卡片底 ≥4.5:1；页面/组件 81 处结构色（白底/浅底/主文本/分隔线）收口到 token，19 个页面 json 去掉 22 处写死导航/背景色；`assets/tabbar` 新增 14 张 `*-dark.png`，tabBar 组件监听 `wx.onThemeChange` 切换（浅色模式零变化）。②字号适配：启动读系统 `fontSizeSetting` 折算 1~1.3 的 `--v4-fs-scale`，经 `wx.onAppRoute` 注入当前页；34 页根节点统一注入变量，`page` 基础字号、`.subtitle/.muted/.small`、表单标签/输入与 3 处错误提示走 `calc(Nrpx * var(--v4-fs-scale, 1))`（旧基础库回退原字号）。**未做**：状态标签/渐变等装饰色、按钮/徽标/标题与页面内自定义字号的收口（真机走查后按页处理）。判据：`selftest-core` +8（241/241，含 theme 变量齐全、`@` 引用、暗色对比度、14 张暗色图标、onThemeChange 切换、34 页变量覆盖）。**真机点检只能用户**（浅/深色可读性、大字号换行、tabBar 图标对比度）。

@@ -47,7 +47,7 @@
 
 .launch-tip {
   font-size: 26rpx;
-  color: var(--v4-text-3, var(--v4-text-3));
+  color: var(--v4-text-3, #6B6B6B);
   text-align: center;
   line-height: 1.6;
 }
@@ -171,7 +171,7 @@
 
 .privacy-decline {
   font-size: 28rpx;
-  color: var(--v4-text-3, var(--v4-text-3));
+  color: var(--v4-text-3, #6B6B6B);
   text-align: center;
   padding: 32rpx 0 8rpx;
 }

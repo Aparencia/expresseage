@@ -131,7 +131,7 @@
   margin-left: 12rpx;
   flex-shrink: 0;
   background: rgba(178, 106, 0, 0.12);
-  color: var(--v4-warn, var(--v4-warning-text));
+  color: var(--v4-warning-text, #B26A00);
 }
 
 .row-btn {
@@ -143,7 +143,7 @@
 .footer-text {
   text-align: center;
   font-size: 24rpx;
-  color: var(--v4-text-3, var(--v4-text-3));
+  color: var(--v4-text-3, #6B6B6B);
   padding: 16rpx 0;
 }
 

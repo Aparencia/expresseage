@@ -33,7 +33,7 @@
 
 .status-cancelled {
   background: #F0F0F0;
-  color: var(--v4-text-3, var(--v4-text-3));
+  color: var(--v4-text-3, #6B6B6B);
 }
 
 .status-exception {

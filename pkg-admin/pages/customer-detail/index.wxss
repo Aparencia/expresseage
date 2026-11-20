@@ -14,7 +14,7 @@
 }
 
 .tag-suspended {
-  color: var(--v4-warn, var(--v4-warning-text));
+  color: var(--v4-warning-text, #B26A00);
   background: rgba(178, 106, 0, 0.12);
 }
 
@@ -25,7 +25,7 @@
 
 .warn-text {
   margin-top: 8rpx;
-  color: var(--v4-warn, var(--v4-warning-text));
+  color: var(--v4-warning-text, #B26A00);
 }
 
 .action-row {
