@@ -85,29 +85,7 @@
     <view wx:if="{{transfer.moreText}}" class="small transfer-hint">{{transfer.moreText}}</view>
   </view>
 
-  <!-- D81/D95：已转出的单——常驻入口（带计数），行内「已转出」徽标；转出后仍可进入操作 -->
-  <view wx:if="{{handover.loaded || handover.loading}}" class="card handover-card">
-    <view class="row between">
-      <text class="strong">已转出的单{{handover.loaded ? '（' + handover.rows.length + '）' : ''}}</text>
-      <text wx:if="{{handover.loading}}" class="small">读取中…</text>
-    </view>
-    <view class="small handover-hint">转出后你仍可操作这单（取件/送达/改码/异常/取消/留言），点行进去即可</view>
-    <view wx:if="{{handover.error}}" class="small panel-error">{{handover.error}}</view>
-    <view wx:if="{{handover.loaded && !handover.rows.length}}" class="small">还没有转出的订单</view>
-    <view
-      wx:for="{{handover.rows}}"
-      wx:key="orderNo"
-      class="handover-line"
-      data-order-no="{{item.orderNo}}"
-      bindtap="onHandoverTap"
-    >
-      <view class="row between">
-        <text class="strong">{{item.orderNo}}</text>
-        <text class="tag">{{item.badgeText}}</text>
-      </view>
-      <view class="small">{{item.statusText}} · 接手 {{item.fulfillmentPartnerNo}} · {{item.timeText}}</view>
-    </view>
-  </view>
+  <!-- D99：已转出单不再单列卡片——已并入下方订单卡片流，卡片标签行给「已转出」标记 -->
 
   <view wx:if="{{syncError}}" class="card warn-card"><text class="warn-text">{{syncError}}</text></view>
 
@@ -194,6 +172,8 @@
           </view>
           <view class="row between line-sub">
             <view class="muted ellipsis flex-1">{{row.anchorKeyText || row.senderText || '顾客信息待同步'}}</view>
+            <!-- D100：取件码 40rpx 在第二行右侧（与取件清单同款锚码布局） -->
+            <text wx:if="{{row.codeText}}" class="row-code">{{row.codeText}}</text>
             <text wx:if="{{row.tierText && !row.needCode}}" class="small line-tier">{{row.tierText}}</text>
           </view>
           <view wx:if="{{row.exceptionText}}" class="exception-text">异常：{{row.exceptionText}}</view>
@@ -201,6 +181,7 @@
             <!-- D45/M1：跨日未送达行标签（文案单源 parts/day-view.js；当日单/待确认/已完结不显示） -->
             <view wx:if="{{row.delayDaysText}}" class="tag delay-tag">{{row.delayDaysText}}</view>
             <view wx:if="{{row.isGuest}}" class="tag guest-tag">代客单</view>
+            <view wx:if="{{row.handover}}" class="tag">已转出</view>
             <view wx:if="{{row.parcelCountText}}" class="tag parcel-tag">{{row.parcelCountText}}</view>
             <!-- D61：整单取件进度摘要「已取 n/m 件」（多件单才显示） -->
             <view wx:if="{{row.pickedSummaryText}}" class="tag picked-summary-tag">{{row.pickedSummaryText}}</view>

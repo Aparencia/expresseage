@@ -42,7 +42,7 @@ const {
   lowercaseCollectionKeyHitsInText, listJs, scanLowercaseKeys, serial
 } = caseLib;
 
-const EXPECTED_ASSERTIONS = 179; // 176 + 3：D94 配送地址 roomTag（本人宿舍/送别人/详情格式） // 172 + 4：D93 订单号规格（拼装/楼栋 10→X/双格式/宿舍快照闸） // 156 + 15：D92 审核（两级状态/撤销重审/件数增删/已取件只读/上限/DTO 裁剪/顾客侧过滤/写响应投影/新增件 NEED_CODE） // 153 + 3：D77 附加服务合法建单落库/DTO 名称、枚举外、重复 // 140 + 13：D47 预约 LATEST 服务端归一/拒绝样例/落库/DTO/合并同值 // 137 + 3：D40 10 张截图合法 / 11 张截图拒绝 / 合并追加将超 10 张不并入
+const EXPECTED_ASSERTIONS = 182; // 179 + 3（D97/D98：PROOF 票据路径/顾客拒绝/大小闸） // 176 + 3：D94 配送地址 roomTag（本人宿舍/送别人/详情格式） // 172 + 4：D93 订单号规格（拼装/楼栋 10→X/双格式/宿舍快照闸） // 156 + 15：D92 审核（两级状态/撤销重审/件数增删/已取件只读/上限/DTO 裁剪/顾客侧过滤/写响应投影/新增件 NEED_CODE） // 153 + 3：D77 附加服务合法建单落库/DTO 名称、枚举外、重复 // 140 + 13：D47 预约 LATEST 服务端归一/拒绝样例/落库/DTO/合并同值 // 137 + 3：D40 10 张截图合法 / 11 张截图拒绝 / 合并追加将超 10 张不并入
 
 function register(h) {
   const asyncSection = (title, fn) => h.section(title, (t) => serial(() => {
@@ -163,7 +163,7 @@ function register(h) {
       'C2 upload.prepare 回 purpose=TICKET + expiresAt 数值（TTL 由 C3 精确断言）');
     const ticketRow = db.dump('upload_tickets').filter((row) => row.ticket === prepared.data.ticket)[0];
     t.eq([new Date(prepared.data.expiresAt).getTime() - new Date(ticketRow.createdAt).getTime(), ticketRow.usedAt],
-      [5 * 60 * 1000, null], 'C3 票据 TTL=5 分钟、初始 usedAt=null');
+      [30 * 60 * 1000, null], 'C3 票据 TTL=30 分钟（2026-11-24 由 5 分钟上调，避免多步下单超时）、初始 usedAt=null');
     const noBind = seedWorld({ db: createTestDb(), binding: false, customer: { profileCompleted: true } });
     await expectCode(t, apiOf(noBind.db, noBind.customerOpenid).call('upload.prepare',
       { purpose: UPLOAD_PURPOSE.TICKET, size: 1024 }, { clientRequestId: nextCrid('c2') }), 'INVALID_STATE',
@@ -194,6 +194,16 @@ function register(h) {
       'NOT_FOUND', 'C12 撤销非本人票据 → NOT_FOUND');
     const emptyCancel = await cApi.call('upload.cancel', {}, { clientRequestId: nextCrid('c12') });
     t.eq(emptyCancel.data.cancelled, false, 'C13 缺票据参数 → {cancelled:false}（不报错）');
+    // D97/D98：现场照片票据（PROOF）——兼职可传、路径独立、顾客拒绝、大小闸同 500KB
+    const proof = await pApi.call('upload.prepare', { purpose: UPLOAD_PURPOSE.PROOF, size: 2048 }, { clientRequestId: nextCrid('c13p') });
+    t.check(proof.ok === true && proof.data.purpose === UPLOAD_PURPOSE.PROOF
+      && proof.data.cloudPath === 'proofs/' + proof.data.ticket + '/image.jpg'
+      && proof.data.cloudPath.indexOf('openid') === -1,
+    'C14 upload.prepare(PROOF)：兼职可上传、cloudPath=proofs/{ticket}/image.jpg（不含 openid）');
+    await expectCode(t, cApi.call('upload.prepare', { purpose: UPLOAD_PURPOSE.PROOF, size: 2048 }, { clientRequestId: nextCrid('c14') }),
+      'FORBIDDEN', 'C15 顾客上传现场照片 → FORBIDDEN（只有兼职）');
+    await expectField(t, pApi.call('upload.prepare', { purpose: UPLOAD_PURPOSE.PROOF, size: 600 * 1024 }, { clientRequestId: nextCrid('c15') }),
+      'VALIDATION_FAILED', 'size', 'C16 现场照片 >500KB → VALIDATION(data.field=size)');
     // 下单侧拒绝：无 ticket / 非本人 / 过期 / 用途不符 / 已消费 / fileId 不匹配 / size / contentType
     const noTicket = createPayload({ image: { fileId: 'cloud://env.bucket/x.jpg' } });
     await expectField(t, cApi.call('order.create', noTicket, { clientRequestId: nextCrid('c13') }),

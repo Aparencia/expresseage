@@ -6,12 +6,13 @@
  *   但**转派邀请本身**（发起/撤回/确认/拒收）仍只归当前履约人。
  * 覆盖：发起者读完整视图 + 动作矩阵、发起者可写、现履约人仍可写、旁人 403、PENDING 不放行、终态可读。
  */
-const EXPECTED_ASSERTIONS = 8;
+const EXPECTED_ASSERTIONS = 9;
+const { proofPayload } = require('./proof-fixtures');
 
 function register(h, deps) {
   const {
     world, orderDoc, acceptedTransferBlock, transferBlock, apiOf, nextCrid, expectCode,
-    ORDER_STATUS, PID1, PID2, P1, P2, P3
+    ORDER_STATUS, PID1, PID2, P1, P2, P3, NOW
   } = deps;
   const TRANSFER = { status: 'ACCEPTED', fromPartnerId: PID1, fromPartnerNo: 'PAAAAAA' };
   const OWNER = { partnerId: PID2, partnerOpenid: P2, partnerNo: 'PBBBBBB' };
@@ -32,8 +33,8 @@ function register(h, deps) {
       { clientRequestId: nextCrid('d85pick') });
     t.eq([picked.ok, picked.data && picked.data.order && picked.data.order.status],
       [true, ORDER_STATUS.PICKED], 'D85-3 发起者可写：取件成功（与现履约人双人可控）');
-    const delivered = await p2.call('order.markDelivered', { orderNo: '20261114-3101', deliveryNote: '放门口' },
-      { clientRequestId: nextCrid('d85deliver') });
+    const delivered = await p2.call('order.markDelivered', Object.assign({ orderNo: '20261114-3101', deliveryNote: '放门口' },
+      proofPayload(db, P2, { now: NOW })), { clientRequestId: nextCrid('d85deliver') });
     t.eq([delivered.ok, delivered.data.order.status], [true, ORDER_STATUS.DELIVERED],
       'D85-4 现履约人仍可写：送达成功（原控制能力不丢）');
     await expectCode(t, apiOf(db, P3).call('order.get', { orderNo: '20261114-3101' }),
@@ -41,6 +42,10 @@ function register(h, deps) {
     const list = await p1.call('order.listPartner', { view: 'handover' });
     t.eq([list.ok, list.data.list.length, list.data.list[0].canControl],
       [true, 1, true], 'D85-6 已转出列表标记 canControl（客户端可进详情继续操作）');
+    // D99 回归（2026-11-23 真机）：并入行必须遵守当前状态筛选，否则历史已完成转出单会混进任意 chip
+    const submittedOnly = await p1.call('order.listPartner', { view: 'workbench', status: ORDER_STATUS.SUBMITTED });
+    t.eq(submittedOnly.data.list.length, 0,
+      'D85-7 D99 已转出并入遵守状态筛选（待接单 chip 不混入 ACCEPTED 转出单）');
     const pendingDb = world({ orders: [orderDoc('20261114-3102', ORDER_STATUS.ACCEPTED,
       Object.assign({}, OWNER, { transfer: transferBlock(Object.assign({}, TRANSFER, { status: 'PENDING' })) }))] });
     await expectCode(t, apiOf(pendingDb, P1).call('order.get', { orderNo: '20261114-3102' }),

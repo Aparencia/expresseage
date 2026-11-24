@@ -360,8 +360,12 @@ async function loadUploadTicket(ctx, ticketId, nowMs) {
   if (!ticket || ticket.openid !== scopeOf(ctx).openid) {
     throw errors.notFound('上传凭证不存在或已失效');
   }
-  if (ticket.usedAt || time.toMs(ticket.expiresAt) <= nowMs) {
-    throw errors.invalidState('上传凭证已失效，请重新上传');
+  // 2026-11-24：把「已使用 / 已过期」拆开说，便于定位（过期=可重传；已使用=可能刚才已提交成功）
+  if (ticket.usedAt) {
+    throw errors.invalidState('上传凭证已使用：如果你刚才已经提交成功，请到「订单」查看，避免重复下单');
+  }
+  if (time.toMs(ticket.expiresAt) <= nowMs) {
+    throw errors.invalidState('上传凭证已过期，请重新上传截图');
   }
   if (ticket.purpose !== enums.UPLOAD_PURPOSE.TICKET) {
     throw errors.validation('ticket', '上传凭证用途不符，请重新上传截图');

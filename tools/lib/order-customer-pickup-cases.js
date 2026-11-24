@@ -135,8 +135,10 @@ function registerQ(t) {
   t.check(/pickupSummary/.test(detailWxml) && /pickupPartialHint/.test(detailWxml)
     && /item\.pickedText/.test(detailWxml) && /item\.pickedAtText/.test(detailWxml),
   'Q17 详情 WXML 渲染件级已取/待取+时间、部分取件摘要与提示');
-  t.check(parcelBlock.length > 0 && parcelBlock.indexOf('bindtap') < 0 && parcelBlock.indexOf('<button') < 0,
-    'Q18 详情包裹列表只读：件级区块无 bindtap/button（顾客不能按件操作，D61 动作只在兼职端）');
+  const pieceTaps = parcelBlock.match(/bindtap="[^"]*"/g) || [];
+  t.check(parcelBlock.length > 0 && parcelBlock.indexOf('<button') < 0
+    && pieceTaps.every((item) => item === 'bindtap="onViewPickProof"'),
+  'Q18 详情包裹列表只读：件级区块唯一可点是「查看取件照片」（D98 只读；D61 动作只在兼职端）');
   t.check(/pageExtras\(payload\.order, this\.data\.config, Date\.now\(\)\)/.test(detailJs),
     'Q19 详情页刷新用页面扩展视图重算件级取件/摘要（数据来源 = DTO，页面零业务判据）');
 

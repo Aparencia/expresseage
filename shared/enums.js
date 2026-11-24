@@ -254,11 +254,11 @@ const VIEW_MODE_TEXT = {
   READONLY: '开发者只读视角',
   TEST_WRITE: '测试账号'
 };
-
 // ── 上传票据与文件 ───────────────────────────────────────────────────────────
 const UPLOAD_PURPOSE = {
   TICKET: 'TICKET',
-  AVATAR: 'AVATAR'
+  AVATAR: 'AVATAR',
+  PROOF: 'PROOF'
 };
 // 云存储目录前缀只允许出现在云函数 handlers/upload 域（门禁 #29 头像路径口径），
 // 客户端从不拼路径；本文件不登记路径前缀，避免小程序包内出现存储目录字面量。

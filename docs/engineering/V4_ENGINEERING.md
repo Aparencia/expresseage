@@ -800,6 +800,7 @@ expressage_college_v4/
 | M42 | `handlers/order/reviewMark.js` 重复标记闸失效（`review.isReviewed(order)` 条件 → `false`，已审核单可反复标记） | `selftest-order` J4 首红（期望 `INVALID_STATE` 实得 `undefined`）；还原后 SHA256 `EC4D755D…5D1FAAD2` 逐字节一致 + 169/169 复绿（D92，2026-11-18） |
 
 **批 26/27 变异电池（M25~M37）已跑**：13/13 全部被对应套件捕获（首红断言 + 还原后 SHA256 逐字节一致；证据见 STATE 收口行/本批证据提交）。**D87-a 补 M38 / D88 补 M39（2026-11-17）**：关键词闸与转派码过期判定各自单点变异，均被单条断言捕获，还原后逐字节一致。**D89 补 M40（2026-11-17）**：禁止二次转派的条件失效被 P2-11/P2-11b 双断言捕获（含"转派块被覆盖"后果）。**D90 补 M41**：最近使用去重失效被 T18-3 单点捕获。**D92 补 M42**：重复标记闸失效被 J4 单点捕获。
+**D97~D100 计划补 M43~M48（代码批次落地后执行，首红证据与 SHA256 同批回写本表）**：**M43** 送达票据闸失效（`markDelivered` 缺票据仍通过）→ 期望 `VALIDATION_FAILED(field=deliveryPhotoTicket)`；**M44** 取件票据归属闸失效（他人/过期票据被采信）→ 期望 `NOT_FOUND`/`INVALID_STATE`；**M45** 已转出并入失效（counts/行集不含 handover）→ 期望并集计数与行出现；**M46** 自然序退化字典序（`8-10-1` 排到 `8-2-3021` 前）→ 两页 selftest 同时红；**M47** 卡片 `variant='deliver'` 分支删除（已取件阶段显示取件码）→ 页面静态断言红；**M48** `PROOF` 路径前缀闸失效（任意路径票据可消费）→ 期望 `VALIDATION_FAILED(field=deliveryPhotoTicket)`。
 
 - 流程：`Copy-Item` 复制被测文件 → 注入变异（锚点尽量 ASCII）→ 跑目标测试记录首红断言 → 还原 → SHA256 逐字节比对 → 复跑全绿；证据（首红 + hash 相等）写进 CHANGELOG。判绿的变异 = 判据没牙，当场补断言。
 **v1.1 安全基线测试（D34）**：新增 `tools/selftest-security.js` 并注册进聚合 SUITES（EXPECTED_ASSERTIONS 闸）：入参总闸（体积/层级/键数/字符串/嵌套危险键/链首装配）、写动作 clientRequestId 强校验、限流覆盖与打满行为（fake DAO 计数）、管理员闸 fail-closed、切换会话读白名单/禁止项、云函数层零 `userInfo` 伪造入口、日志语句不含敏感变量、错误包络不回堆栈、错误码恰 13、admin handler 均经 `createAdminScope`。

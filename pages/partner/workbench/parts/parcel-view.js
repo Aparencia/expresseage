@@ -132,9 +132,9 @@ function tierOfPieces(pieces) {
   return tierOfPiece(worstOfPieces(pieces));
 }
 
-function routeNumberOfPieces(pieces) {
-  const code = textOf(worstOfPieces(pieces).pickupCode).replace(/[^0-9]/g, '');
-  return code === '' ? Number.MAX_SAFE_INTEGER : Number(code);
+// D100：排序键 = 最差档代表件的取件码原文（自然序比较由 utils/order-sort 单源完成）
+function sortCodeOfPieces(pieces) {
+  return textOf(worstOfPieces(pieces).pickupCode);
 }
 
 function tierTextOf(tier) {
@@ -276,7 +276,7 @@ module.exports = {
   actionKeysOf,
   tierOfPiece,
   tierOfPieces,
-  routeNumberOfPieces,
+  sortCodeOfPieces,
   tierTextOf,
   stationGroupsOf,
   piecesForStationOf,

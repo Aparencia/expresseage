@@ -304,10 +304,24 @@ function payloadOf(key, orderNo, values, batchActionId) {
     return { orderNo: orderNo, reason: values.reason, note: values.note || '' };
   }
   if (key === 'pick') {
-    return batchPayloadOf({ orderNo: orderNo }, batchActionId);
+    const payload = batchPayloadOf({ orderNo: orderNo }, batchActionId);
+    // D98：整单取件可选照片（页面先问「拍照/跳过」）
+    const photo = values && values.photo;
+    if (photo && photo.ticket && photo.fileId) {
+      payload.pickPhotoTicket = photo.ticket;
+      payload.pickPhotoFileId = photo.fileId;
+    }
+    return payload;
   }
   if (key === 'deliver') {
-    return batchPayloadOf({ orderNo: orderNo, deliveryNote: values.deliveryNote || '' }, batchActionId);
+    const payload = { orderNo: orderNo, deliveryNote: values.deliveryNote || '' };
+    // D97：送达必须带现场照片票据（页面在提交前经 utils/proof-photo 采集）
+    const photo = values && values.photo;
+    if (photo && photo.ticket && photo.fileId) {
+      payload.deliveryPhotoTicket = photo.ticket;
+      payload.deliveryPhotoFileId = photo.fileId;
+    }
+    return batchPayloadOf(payload, batchActionId);
   }
   if (key === 'undoPick' || key === 'undoDeliver') {
     return batchPayloadOf({ orderNo: orderNo }, batchActionId);

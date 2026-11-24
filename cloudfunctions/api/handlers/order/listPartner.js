@@ -19,6 +19,7 @@ const summaryPure = require('./_summary');
 const access = require('./_transfer-access');
 const listTransfer = require('./_list-transfer');
 const listHandover = require('./_list-handover');
+const listMerged = require('./_list-merged');
 const autoComplete = require('./_auto-complete');
 const { readKeyword, readOptionalBindingId, parseTimeBound } = require('./_list-query');
 
@@ -387,5 +388,5 @@ module.exports = async function orderListPartner(ctx, payload) {
   if (view === WORKBENCH_VIEW || view === DAY_VIEW) {
     body.transferPending = await listTransfer.countTransferPending(ctx, partner, nowMs);
   }
-  return attachSummaries(body, view, result, nowMs);
+  return listMerged.finalize({ ctx, partner, view, paging, result, body, nowMs, statuses: filter.statuses, dayStartMs: view === DAY_VIEW ? todayStartOf(nowMs) : 0, attach: attachSummaries });
 };

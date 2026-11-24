@@ -39,8 +39,9 @@ function viewOf(piece, readonly) {
   return { key: key, label: ACTIONS[key].label, method: ACTIONS[key].method };
 }
 
-// 请求构造：逐件写必须带 itemIndex（首件 0 也传，与整单动作区分）；统一带幂等键与乐观锁版本
-function writeOf(key, piece, orderNo, version, clientRequestId) {
+// 请求构造：逐件写必须带 itemIndex（首件 0 也传，与整单动作区分）；统一带幂等键与乐观锁版本。
+// D98：可选照片（photo={ticket,fileId}）只在 markPicked 上生效；不带=跳过。
+function writeOf(key, piece, orderNo, version, clientRequestId, photo) {
   const meta = ACTIONS[key];
   if (!meta) {
     return null;
@@ -53,10 +54,15 @@ function writeOf(key, piece, orderNo, version, clientRequestId) {
   if (textOf(clientRequestId)) {
     opts.clientRequestId = textOf(clientRequestId);
   }
+  const payload = { orderNo: textOf(orderNo), itemIndex: index };
+  if (key === 'markPicked' && photo && photo.ticket && photo.fileId) {
+    payload.pickPhotoTicket = photo.ticket;
+    payload.pickPhotoFileId = photo.fileId;
+  }
   return {
     key: key,
     method: meta.method,
-    payload: { orderNo: textOf(orderNo), itemIndex: index },
+    payload: payload,
     opts: opts
   };
 }

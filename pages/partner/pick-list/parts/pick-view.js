@@ -11,6 +11,7 @@ const stations = require('../../../../shared/stations');
 const roomTag = require('../../../../utils/room-tag');
 const parcelView = require('../../../../pages/partner/workbench/parts/parcel-view');
 const pieceActions = require('../../../../pages/partner/workbench/parts/piece-actions');
+const orderSort = require('../../../../utils/order-sort');
 
 const TAB_PICK = 'pickup';
 const TAB_DELIVER = 'deliver';
@@ -32,44 +33,8 @@ function listOf(value) {
   return Array.isArray(value) ? value : [];
 }
 
-// 2026-11-09：取件码自然序（用户指令「按取件码大小」）——逐段数字比较：
-//   8-2-3021 → [8,'-',2,'-',3021]；8-10-1 的 10 排在 8-2 之后；纯数字按数值；字母段按字典序。
-//   空码（需查明/待补码）不参与大小比较，统一排到有码件之后。
-function codeTokensOf(code) {
-  const source = textOf(code);
-  const tokens = [];
-  const re = /(\d+|\D+)/g;
-  let match = re.exec(source);
-  while (match) {
-    const raw = match[1];
-    tokens.push(/^\d+$/.test(raw) ? { num: Number(raw), text: raw } : { num: null, text: raw });
-    match = re.exec(source);
-  }
-  return tokens;
-}
-
-function compareCodes(left, right) {
-  const a = textOf(left);
-  const b = textOf(right);
-  if (!a && !b) return 0;
-  if (!a) return 1;
-  if (!b) return -1;
-  const leftTokens = codeTokensOf(a);
-  const rightTokens = codeTokensOf(b);
-  const length = Math.max(leftTokens.length, rightTokens.length);
-  for (let index = 0; index < length; index += 1) {
-    const x = leftTokens[index];
-    const y = rightTokens[index];
-    if (!x) return -1;
-    if (!y) return 1;
-    if (x.num !== null && y.num !== null) {
-      if (x.num !== y.num) return x.num < y.num ? -1 : 1;
-    } else if (x.text !== y.text) {
-      return x.text < y.text ? -1 : 1;
-    }
-  }
-  return a < b ? -1 : (a > b ? 1 : 0);
-}
+// 2026-11-09：取件码自然序（D79）；D100 起与工作台共用 utils/order-sort 单源，禁止再各写一份实现。
+const compareCodes = orderSort.compareCodes;
 
 function tabOf(value) {
   return value === TAB_PICK || value === TAB_DELIVER ? value : '';

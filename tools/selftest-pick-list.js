@@ -34,7 +34,7 @@ const fsutil = require('./lib/fsutil');
 const zeroMoney = require('./zero-money-scan');
 const project = require('./lib/project');
 
-const EXPECTED_ASSERTIONS = 227; // 225 + 2：D96 锚码同域（结构 + 样式落点） // 实跑读数：node tools/selftest-pick-list.js（批 25-B D61/D62：L/M 改判 + O 组 16 条 + N9b；+2：送别人「送至」判定 L10b/L11b；+1：H18 TAB_DATA 合并回归；+5：2026-11-09 取件码自然序/行首大字 L5a/L5b/L5c/L9b/L9c）
+const EXPECTED_ASSERTIONS = 229; // 227 + 2：D97 送达拍照闸（采集入口 + 写请求带票据） // 225 + 2：D96 锚码同域（结构 + 样式落点） // 实跑读数：node tools/selftest-pick-list.js（批 25-B D61/D62：L/M 改判 + O 组 16 条 + N9b；+2：送别人「送至」判定 L10b/L11b；+1：H18 TAB_DATA 合并回归；+5：2026-11-09 取件码自然序/行首大字 L5a/L5b/L5c/L9b/L9c）
 
 const PAGE_DIR = 'pages/partner/pick-list';
 const FILES = {
@@ -354,7 +354,7 @@ function register(h) {
     const flatChunk = [];
     chunks.forEach((chunk) => chunk.rows.forEach((row) => flatChunk.push(row.orderNo)));
     t.eq(flatChunk, flattenRows(groups).map((row) => row.orderNo), 'D7 分片展开顺序 = 分组行顺序（渲染顺序一致）');
-    const page = readText(FILES.page);
+    const page = readText(FILES.page) + readText('pages/partner/pick-list/parts/deliver-actions.js');
     t.eq(/onReachBottom\(\)\s*\{[\s\S]{0,200}nextCursor/.test(page), true, 'D8 上拉翻页走 nextCursor（服务端游标，不一次拉全量）');
     t.eq(/setInterval|setTimeout/.test(page + readText(FILES.wxml) + readText(FILES.viewModel)), false,
       'D9 页面/纯件零 setInterval/setTimeout（不参与 30s 轮询）');
@@ -391,7 +391,7 @@ function register(h) {
 
   // ------------------------------------------------------------ F. 页面静态纪律
   h.section('F 页面静态纪律（零 wx.cloud/random/状态与 action 字面量；switch-bar；复制接线）', (t) => {
-    const page = readText(FILES.page);
+    const page = readText(FILES.page) + readText('pages/partner/pick-list/parts/deliver-actions.js');
     const wxml = readText(FILES.wxml);
     const viewModel = readText(FILES.viewModel);
     const statuses = ['SUBMITTED', 'ACCEPTED', 'PICKED', 'DELIVERED', 'COMPLETED', 'CANCELLED', 'EXCEPTION'];
@@ -424,7 +424,7 @@ function register(h) {
 
   // ------------------------------------------------------------ G. 批量送达复用 + 只读/测试会话
   h.section('G 批量送达复用工作台纯件 + READONLY 禁用/TEST_WRITE 提示', (t) => {
-    const page = readText(FILES.page);
+    const page = readText(FILES.page) + readText('pages/partner/pick-list/parts/deliver-actions.js');
     const wxml = readText(FILES.wxml);
     t.eq(page.indexOf('workbench/parts/batch-view') !== -1, true, 'G1 批量送达复用工作台 batch-view 纯件（不另写一套）');
     t.eq(page.indexOf('workbench/parts/row-actions') !== -1, true, 'G2 行请求构造复用工作台 row-actions 纯件');
@@ -443,6 +443,10 @@ function register(h) {
     t.eq(page.indexOf('markDelivered') === -1, true, 'G12 页面零直写 action 键（markDelivered 只经 row-actions 映射）');
     t.eq(wxml.indexOf('onRowDeliver') !== -1 && wxml.indexOf('onBatchDeliver') !== -1, true,
       'G13 行内「已送达」与批量送达入口均接线');
+    t.eq(page.indexOf('proofPhoto.capture()') !== -1, true,
+      'G14 D97 送达先拍 1 张现场照片（PROOF 票据）再写库，单件/批量同口径');
+    t.eq(page.indexOf("buildWrite('deliver'") !== -1 && page.indexOf('{ photo: photo }') !== -1, true,
+      'G15 送达写请求带照片票据（rowActions.buildWrite 汇总为 deliveryPhotoTicket/FileId）');
   });
 
   // ------------------------------------------------------------ H. 注册与文档联动（页数随 app.json 动态对账）
@@ -530,7 +534,7 @@ function register(h) {
 
   // ------------------------------------------------------------ J. 修复批 T4（P1-7/P1-8/P2）
   h.section('J 复制自动拉全（P1-7）+ 失败重试条（P1-8）+ 卸载/请求序号守卫（P2）', (t) => {
-    const page = readText(FILES.page);
+    const page = readText(FILES.page) + readText('pages/partner/pick-list/parts/deliver-actions.js');
     const wxml = readText(FILES.wxml);
     if (!view) {
       t.check(false, 'J1 楼层清单纯件缺失');
@@ -594,7 +598,7 @@ function register(h) {
       t.check(false, 'K1 待取件纯件缺失（pages/partner/pick-list/parts/pick-view.js）');
       return;
     }
-    const page = readText(FILES.page);
+    const page = readText(FILES.page) + readText('pages/partner/pick-list/parts/deliver-actions.js');
     const wxml = readText(FILES.wxml);
     const payload = pickView.queryOf({});
     t.eq([payload.view, payload.status, payload.limit], ['workbench', enums.ORDER_STATUS.ACCEPTED, 20],
@@ -752,7 +756,7 @@ function register(h) {
 
   // ------------------------------------------------------------ N. 双阶段页面接线与只读
   h.section('N 双阶段页面接线与只读（chip/load 分派/上拉游标/空态切换/待取件块零写控件）', (t) => {
-    const page = readText(FILES.page);
+    const page = readText(FILES.page) + readText('pages/partner/pick-list/parts/deliver-actions.js');
     const wxml = readText(FILES.wxml);
     const stageFlowsSrc = readText(FILES.stageFlows);
     t.check(page.indexOf("require('./parts/pick-view')") !== -1, 'N1 页面引待取件纯件 pick-view');

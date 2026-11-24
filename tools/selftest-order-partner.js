@@ -29,6 +29,7 @@ const fs = require('fs');
 const { createHarness, installCrashGuard } = require('./selftest');const zeroMoney = require('./zero-money-scan');
 const cases = require('./selftest-order-partner-cases');
 const partnerCases = require('./lib/order-partner-cases');
+const { proofPayload } = require('./lib/proof-fixtures');
 
 const ORDERS_DIR = path.join(cases.API, 'handlers/order');
 const orderState = require(path.join(cases.API, 'shared/order-state.js'));
@@ -151,6 +152,8 @@ async function sectionC(h) {
       orderDoc('20261022-0208', ACCEPTED, { acceptedAt: new Date(NOW - 2000) }),
       orderDoc('20261022-0209', ACCEPTED, { acceptedAt: new Date(NOW - 2000) }),
       orderDoc('20261022-0210', ACCEPTED, { acceptedAt: new Date(NOW - 2000) }),
+      orderDoc('20261022-0212', ACCEPTED, { acceptedAt: new Date(NOW - 2000) }),
+      orderDoc('20261022-0213', ACCEPTED, { acceptedAt: new Date(NOW - 2000) }),
       orderDoc('20261022-0211', ACCEPTED, {
         acceptedAt: new Date(NOW - 2000), partnerId: PID2, partnerOpenid: P2, partnerNo: 'PBBBBBB'
       })
@@ -213,6 +216,20 @@ async function sectionC(h) {
     const fresh = await pApi.call('order.markPicked', { orderNo: '20261022-0210' },
       { clientRequestId: nextCrid('pick-fresh'), expectedVersion: 3 });
     t.eq([fresh.ok, fresh.data.order.version], [true, 4], 'C14 expectedVersion 命中 → 成功且 version+1');
+    // D98：取件照片可选——带票据则校验并写 pickProof；不带=跳过（C1~C14 即跳过路径）
+    t.eq(picked.data.order.pickProof.hasImage, false, 'C15 跳过取件照片：DTO pickProof.hasImage=false（不阻断取件）');
+    const pickProof = proofPayload(db, P1, { now: NOW });
+    const pickedPhoto = await pApi.call('order.markPicked', Object.assign({ orderNo: '20261022-0212' }, pickProof),
+      { clientRequestId: nextCrid('pick-photo') });
+    const proofRow = db.dump('upload_tickets').filter((row) => row.ticket === pickProof.ticket)[0];
+    t.eq([pickedPhoto.ok, pickedPhoto.data.order.pickProof.hasImage,
+      rowOf(db, '20261022-0212').pickProof.fileId === pickProof.fileId, !!proofRow.usedAt],
+    [true, true, true, true], 'C16 取件照片落库：DTO 有图、订单 pickProof.fileId、票据已消费');
+    await expectCode(t, pApi.call('order.markPicked', Object.assign({ orderNo: '20261022-0213' }, pickProof),
+      { clientRequestId: nextCrid('pick-photo-reuse') }), 'INVALID_STATE', 'C17 复用已消费取件照片票据 → INVALID_STATE');
+    await expectCode(t, pApi.call('order.markPicked', {
+      orderNo: '20261022-0213', pickPhotoTicket: 'NOPE', pickPhotoFileId: 'cloud://env.bucket/x.jpg'
+    }, { clientRequestId: nextCrid('pick-photo-bad') }), 'NOT_FOUND', 'C18 伪造取件照片票据 → NOT_FOUND（不采信）');
   });
 }
 
@@ -234,9 +251,10 @@ async function sectionD(h) {
     const pApi = apiOf(db, P1);
     const cridDeliver = nextCrid('deliver');
 
-    const delivered = await pApi.call('order.markDelivered', {
+    const proof1 = proofPayload(db, P1, { now: NOW });
+    const delivered = await pApi.call('order.markDelivered', Object.assign({
       orderNo: '20261022-0301', deliveryNote: '放门口'
-    }, { clientRequestId: cridDeliver });
+    }, proof1), { clientRequestId: cridDeliver });
     const deliverRow = rowOf(db, '20261022-0301');
     const deliverEvents = eventsFor(db, '20261022-0301');
     t.eq([delivered.data.order.status, delivered.data.order.deliveredAt, new Date(deliverRow.deliveredAt).getTime(),
@@ -254,9 +272,9 @@ async function sectionD(h) {
     }, { clientRequestId: cridDeliver });
     t.eq([replay.data.duplicated, eventsFor(db, '20261022-0301').length, rowOf(db, '20261022-0301').version],
       [true, 1, 4], 'D4 同 clientRequestId 重放 → duplicated=true 且零重复事件');
-    const batched = await pApi.call('order.markDelivered', {
+    const batched = await pApi.call('order.markDelivered', Object.assign({
       orderNo: '20261022-0304', batchActionId: 'BATCH-DELIVER-01'
-    }, { clientRequestId: nextCrid('deliver-batch') });
+    }, proofPayload(db, P1, { now: NOW })), { clientRequestId: nextCrid('deliver-batch') });
     t.eq([batched.ok, rowOf(db, '20261022-0304').batchActionId], [true, 'BATCH-DELIVER-01'],
       'D5 送达批量：batchActionId 落 orders 文档');
     const rowDelivered = pickRow((await pApi.call('order.listPartner', { view: 'workbench' })).data.list, '20261022-0301');
@@ -269,12 +287,25 @@ async function sectionD(h) {
       acceptedAt: new Date(NOW - 3000), pickedAt: new Date(NOW - 2000)
     })]);
     const pApi2 = apiOf(db2, P1);
-    const first = await pApi2.call('order.markDelivered', { orderNo: '20261022-0306' },
-      { clientRequestId: nextCrid('deliver-dup-a') });
+    const first = await pApi2.call('order.markDelivered', Object.assign({ orderNo: '20261022-0306' },
+      proofPayload(db2, P1, { now: NOW })), { clientRequestId: nextCrid('deliver-dup-a') });
     const second = await pApi2.call('order.markDelivered', { orderNo: '20261022-0306' },
       { clientRequestId: nextCrid('deliver-dup-b') });
     t.eq([first.ok, second.ok, second.code, eventsFor(db2, '20261022-0306').length],
       [true, false, 'INVALID_TRANSITION', 1], 'D8 已送达后不同请求键再送达 → INVALID_TRANSITION（幂等只认同键）');
+    const proofRow = db.dump('upload_tickets').filter((row) => row.ticket === proof1.ticket)[0];
+    t.eq([delivered.data.order.deliveryProof.hasImage,
+      rowOf(db, '20261022-0301').deliveryProof.fileId === proof1.fileId, !!proofRow.usedAt],
+    [true, true, true], 'D9 送达照片：DTO hasImage、订单字段 fileId 落库、票据 usedAt 已消费');
+    await expectField(t, pApi.call('order.markDelivered', { orderNo: '20261022-0302' },
+      { clientRequestId: nextCrid('deliver-nophoto') }), 'VALIDATION_FAILED', 'deliveryPhotoTicket',
+    'D10 缺送达照片票据 → VALIDATION_FAILED(field=deliveryPhotoTicket)');
+    await expectCode(t, pApi.call('order.markDelivered', Object.assign({ orderNo: '20261022-0302' }, proof1),
+      { clientRequestId: nextCrid('deliver-reuse') }), 'INVALID_STATE', 'D11 复用已消费票据 → INVALID_STATE');
+    const photoAgain = await pApi.call('order.markDelivered', Object.assign({ orderNo: '20261022-0302' },
+      proofPayload(db, P1, { now: NOW })), { clientRequestId: nextCrid('deliver-photo2') });
+    t.eq([photoAgain.ok, photoAgain.data.order.deliveryProof.hasImage], [true, true],
+      'D12 换新票据再送达成功且 DTO 有照片');
   });
 }
 
@@ -399,8 +430,8 @@ async function sectionE(h) {
     'E4 order.undo（markPicked 后）PICKED→ACCEPTED，回包 undoneAction + 事件 payload 一致');
 
     const deliverCrid = nextCrid('undo-deliver-mark');
-    await undoPickApi.call('order.markDelivered', { orderNo: '20261022-0405', deliveryNote: '放门口' },
-      { clientRequestId: deliverCrid });
+    await undoPickApi.call('order.markDelivered', Object.assign({ orderNo: '20261022-0405', deliveryNote: '放门口' },
+      proofPayload(db, P1, { now: NOW })), { clientRequestId: deliverCrid });
     const undoDeliver = await undoPickApi.call('order.undo', { orderNo: '20261022-0405' },
       { clientRequestId: nextCrid('undo-deliver') });
     t.eq([undoDeliver.data.order.status, undoDeliver.data.order.deliveredAt, undoDeliver.data.order.deliveryNote,
@@ -814,12 +845,14 @@ async function sectionJ(h) {
         orderDoc('20261022-0504', DELIVERED, { deliveredAt: new Date(CUT - 26 * HOUR_MS) })
       ]
     });
-    const before = await apiOfAt(db, P1, CUT - 1000).call('order.markDelivered', { orderNo: '20261022-0501' },
+    const before = await apiOfAt(db, P1, CUT - 1000).call('order.markDelivered',
+      Object.assign({ orderNo: '20261022-0501' }, proofPayload(db, P1, { now: CUT - 1000 })),
       { clientRequestId: nextCrid('d91-before') });
     t.eq([before.ok, before.data.order.status, eventsFor(db, '20261022-0501').map((event) => event.type)],
       [true, DELIVERED, ['DELIVERED']],
       'J1 22:29 送达 → 仍为 DELIVERED（未到自动完成时刻，等 22:30 日结批）');
-    const atCut = await apiOfAt(db, P1, CUT).call('order.markDelivered', { orderNo: '20261022-0502' },
+    const atCut = await apiOfAt(db, P1, CUT).call('order.markDelivered',
+      Object.assign({ orderNo: '20261022-0502' }, proofPayload(db, P1, { now: CUT })),
       { clientRequestId: nextCrid('d91-cut') });
     t.eq([atCut.ok, atCut.data.order.status, atCut.data.order.completedAt], [true, COMPLETED, iso(CUT)],
       'J2 准点 22:30 送达 → 送达即完成（status=COMPLETED、completedAt=server now）');
@@ -837,7 +870,8 @@ async function sectionJ(h) {
     const cfgCtx = handlerCtxOf(cfgDb, P1, { role: ROLES.PARTNER });
     cfgCtx.now = Date.parse('2026-10-22T21:30:00+08:00');
     cfgCtx.config = { autoCompleteAt: '21:00' };
-    const cfgOut = await markDeliveredHandler(cfgCtx, { orderNo: '20261022-0503' });
+    const cfgProof = proofPayload(cfgDb, P1, { now: cfgCtx.now });
+    const cfgOut = await markDeliveredHandler(cfgCtx, Object.assign({ orderNo: '20261022-0503' }, cfgProof));
     t.eq(cfgOut.order.status, COMPLETED,
       'J6 时刻由 config.autoCompleteAt 驱动（配 21:00 → 21:30 送达即完成，不写死出厂值）');
     const readApi = apiOfAt(db, P1, CUT + HOUR_MS);

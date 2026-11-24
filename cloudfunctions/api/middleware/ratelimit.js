@@ -42,6 +42,8 @@ const RATE_RULES = Object.freeze([
   { action: 'order.resolveException', scope: 'orderResolve', limit: 10, subject: SUBJECT_ORDER },
   { action: 'upload.prepare', scope: 'upload', limit: 60, subject: SUBJECT_IDENTITY, purpose: 'TICKET' },
   { action: 'upload.prepare', scope: 'avatarUpload', limit: 5, subject: SUBJECT_IDENTITY, purpose: 'AVATAR' },
+  // D97/D98：现场照片票据独立桶（不与截图共用额度）
+  { action: 'upload.prepare', scope: 'proofUpload', limit: 60, subject: SUBJECT_IDENTITY, purpose: 'PROOF' },
   { action: 'admin.viewAsStart', scope: 'accountSwitch', limit: 20, subject: SUBJECT_ACTOR },
   { action: 'admin.updateConfig', scope: 'adminConfig', limit: 20, subject: SUBJECT_ACTOR },
   { action: 'admin.getRecognitionFailure', scope: 'failureView', limit: 100, subject: SUBJECT_ACTOR },

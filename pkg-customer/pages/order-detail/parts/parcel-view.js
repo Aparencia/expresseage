@@ -72,6 +72,7 @@ function parcelsView(order) {
     const pick = pickStateOf(parcel);
     return {
       no: index + 1,
+      index: index,
       stationName: textOf(parcel.stationName) || '未识别',
       pickupCode: textOf(parcel.pickupCode),
       codeText: codeTextOf(parcel),
@@ -83,6 +84,8 @@ function parcelsView(order) {
       picked: pick.picked,
       pickedText: pick.pickedText,
       pickedAtText: pick.pickedAtText,
+      // D98：逐件取件照片（有图才出「查看」，跳过的件不出行）
+      pickProof: proofViewOf(parcel.pickProof, PICK_LABELS),
       count: parcelsOf(order).length
     };
   });
@@ -200,13 +203,7 @@ function imagesView(order) {
   };
 }
 
-/**
- * 多图预览计划（2026-11-05 真机缺陷回归）：一次把「全部签名成功的截图」交给 wx.previewImage，
- * 可左右滑动；current = 用户点的那一张（该张失败则退第一张成功图）。
- * @param {number} tappedIndex 用户点击的下标（image.list[].index）
- * @param {Array<{index:number,url:string}>} results 逐张签发结果（失败项 url 为空）
- * @returns {null|{urls:string[],current:string}} 全失败返回 null（页面据此走错误态，不弹空预览）
- */
+// 多图预览计划（D23/D40）：一次把全部签名成功的截图交给 wx.previewImage，可左右滑动；current=点击那张。
 function previewOf(tappedIndex, results) {
   const ok = (Array.isArray(results) ? results : []).filter(function usable(row) {
     return row && typeof row.url === 'string' && row.url !== '';
@@ -249,6 +246,26 @@ function appointView(order, nowMs) {
   };
 }
 
+// D97/D98 现场照片三态（服务端只下发可见性摘要，存储句柄不出云）
+const DELIVERY_LABELS = { available: '查看送达照片', cleaned: '照片已按隐私策略删除', none: '未留存送达照片' };
+const PICK_LABELS = { available: '查看取件照片', cleaned: '取件照片已按隐私策略删除', none: '' };
+
+function proofViewOf(proof, labels) {
+  const source = proof && typeof proof === 'object' ? proof : {};
+  const text = labels || DELIVERY_LABELS;
+  if (source.cleaned === true) {
+    return { state: 'CLEANED', canView: false, text: text.cleaned };
+  }
+  if (source.hasImage === true) {
+    return { state: 'AVAILABLE', canView: true, text: text.available };
+  }
+  return { state: 'NONE', canView: false, text: text.none };
+}
+
+function deliveryProofViewOf(order) {
+  return proofViewOf(order && order.deliveryProof, DELIVERY_LABELS);
+}
+
 /** 页面可直接 Object.assign 的扩展字段（含 image，覆盖旧单图 imageView；D61 部分取件进度） */
 function pageExtras(order, config, nowMs) {
   const parcels = parcelsView(order);
@@ -266,6 +283,10 @@ function pageExtras(order, config, nowMs) {
     deliveryIsOther: delivery.isOther,
     manualEntryText: order && order.manualEntry === true ? '无截图·手填' : '',
     image: imagesView(order),
+    // D97：送达照片（服务端只下发 {hasImage,cleaned,at}；点击时经 imageUrl kind=DELIVERY 签发）
+    deliveryProof: deliveryProofViewOf(order),
+    // D98：整单取件照片（逐件照片在 parcels[].pickProof）
+    pickProof: proofViewOf(order && order.pickProof, PICK_LABELS),
     serviceText: service.serviceText,
     serviceDesc: service.serviceDesc,
     // 附加服务（D77）：服务端 DTO addons[{code,name,desc}]，历史单无该字段 → []
@@ -285,6 +306,7 @@ module.exports = {
   addressTextOf,
   deliveryView,
   imagesView,
+  deliveryProofViewOf,
   previewOf,
   serviceView,
   appointView,

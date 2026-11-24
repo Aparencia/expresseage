@@ -13,6 +13,7 @@ const route = require('../../../config/route');
 const batchView = require('../../../pages/partner/workbench/parts/batch-view');
 const rowActions = require('../../../pages/partner/workbench/parts/row-actions');
 const share = require('../../../utils/share/handlers');
+const proofPhoto = require('../../../utils/proof-photo');
 const view = require('./parts/view-model');
 const pickView = require('./parts/pick-view');
 const tabWiring = require('./parts/tab-wiring');
@@ -347,102 +348,6 @@ Page(Object.assign({
     });
   },
 
-  deliverOne(order) {
-    if (this._unloaded) {
-      return Promise.resolve();
-    }
-    const write = rowActions.buildWrite('deliver', order, {}, '');
-    return orderApi[write.method](write.payload, write.opts).then(() => {
-      if (this._unloaded) {
-        return;
-      }
-      this.toastMsg('已标记送达');
-      this.refresh();
-    }).catch((err) => {
-      if (this._unloaded) {
-        return;
-      }
-      this.toastMsg((err && err.message) || '标记失败，请刷新后重试');
-      this.refresh();
-    });
-  },
-
-  // 批量送达：范围=当前已加载清单的勾选行；复用 batch-view 的计划/逐单执行/失败汇总（同一 batchActionId）
-  onBatchDeliver() {
-    if (this.data.batchRunning || this.data.readonly) {
-      if (this.data.readonly) {
-        this.toastMsg(READONLY_COPY);
-      }
-      return;
-    }
-    const orders = view.selectedRows(this.data.groups)
-      .map((row) => this.orderOf(row.orderNo))
-      .filter((order) => !!order);
-    const plan = batchView.plan('deliver', orders);
-    if (!plan.ok) {
-      this.toastMsg(plan.message);
-      return;
-    }
-    wx.showModal({
-      title: '批量送达',
-      content: this.writeHint(plan.confirmText),
-      confirmText: '确认',
-      success: (res) => {
-        if (res.confirm && !this._unloaded) {
-          this.runBatch(plan);
-        }
-      }
-    });
-  },
-
-  runBatch(plan) {
-    if (this._unloaded) {
-      return Promise.resolve();
-    }
-    // 重试沿用同批 batchActionId（batch-view 口径），首轮才新领幂等键
-    const running = Object.assign({}, plan, { batchActionId: plan.batchActionId || client.createRequestId() });
-    this._lastBatch = running;
-    this.setData({ batchRunning: true });
-    return batchView.run(running, (row, batchActionId) => {
-      const write = rowActions.buildWrite('deliver', view.writeRowOf(row), {}, batchActionId);
-      return orderApi[write.method](write.payload, write.opts);
-    }).then((result) => {
-      if (this._unloaded) {
-        return;
-      }
-      const summary = batchView.summary(running, result.results);
-      this.applyBatchResult(summary);
-      const content = this.writeHint(summary.text);
-      wx.showModal({
-        title: summary.allOk ? '批量送达完成' : '批量送达有失败',
-        content: content,
-        showCancel: !summary.allOk,
-        confirmText: summary.allOk ? '知道了' : '重试失败单',
-        cancelText: '稍后处理',
-        success: (res) => {
-          if (this._unloaded) {
-            return;
-          }
-          if (res.confirm && !summary.allOk) {
-            this.onBatchRetry();
-            return;
-          }
-          // 「稍后处理」不刷新：保留行/勾选/失败态，底部「N 单失败 · 重试失败单」继续可点（P1-8）
-          if (summary.allOk || res.confirm) {
-            this.refresh();
-          }
-        }
-      });
-    }).catch((err) => {
-      if (this._unloaded) {
-        return;
-      }
-      this.setData({ batchRunning: false });
-      this.toastMsg((err && err.message) || '批量送达没完成，请刷新后重试');
-      this.refresh();
-    });
-  },
-
   // 批量结果落状态：失败项保留勾选（成功项取消勾选，避免重复送达）；不刷新列表，失败态可重试
   applyBatchResult(summary) {
     const failedMap = {};
@@ -496,4 +401,4 @@ Page(Object.assign({
   writeHint(text) {
     return modeGuard.isTestWrite() ? text + '（将写入测试数据）' : text;
   }
-}, require('./parts/stage-flows'), tabWiring));
+}, require('./parts/stage-flows'), require('./parts/deliver-actions'), tabWiring));

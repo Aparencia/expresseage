@@ -8,6 +8,7 @@ const client = require('../../../../api/client');
 const pickView = require('./pick-view');
 const view = require('./view-model');
 const pieceActions = require('../../../../pages/partner/workbench/parts/piece-actions');
+const proofPhoto = require('../../../../utils/proof-photo');
 
 const READONLY_COPY = '开发者只读视角不能操作';
 
@@ -76,9 +77,34 @@ module.exports = {
       this.toastMsg('订单已不在当前清单，刷新后再看');
       return;
     }
-    const write = pieceActions.writeOf(String(dataset.key || ''), hit.piece, orderNo, order.version,
-      client.createRequestId());
+    const key = String(dataset.key || '');
+    if (key === 'markPicked') {
+      this.capturePickPhoto(key, hit, orderNo, order.version);
+      return;
+    }
+    this.writePiece(key, hit, orderNo, order.version, null);
+  },
+
+  // D98：待取件「已取件」先问「拍照 / 跳过照片」，跳过不阻断；取消则中止
+  capturePickPhoto(key, hit, orderNo, version) {
+    this._pieceBusy = true;
+    proofPhoto.captureOptional().then((choice) => {
+      if (!choice) {
+        this._pieceBusy = false;
+        this.toastMsg('已取消取件');
+        return;
+      }
+      this.writePiece(key, hit, orderNo, version, choice.skipped ? null : choice.photo);
+    }).catch((err) => {
+      this._pieceBusy = false;
+      this.toastMsg((err && err.message) || '照片上传失败，请重试');
+    });
+  },
+
+  writePiece(key, hit, orderNo, version, photo) {
+    const write = pieceActions.writeOf(key, hit.piece, orderNo, version, client.createRequestId(), photo);
     if (!write) {
+      this._pieceBusy = false;
       return;
     }
     this._pieceBusy = true;

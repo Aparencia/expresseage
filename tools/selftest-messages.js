@@ -23,6 +23,7 @@ const fs = require('fs');
 const ROOT = path.resolve(__dirname, '..');
 const { createHarness, installCrashGuard } = require('./selftest');
 const { createFakeDb } = require('./fake-db');
+const { proofPayload } = require('./lib/proof-fixtures');
 const { createApi } = require(path.join(ROOT, 'cloudfunctions/api/app.js'));
 const messageCommon = require(path.join(ROOT, 'cloudfunctions/api/handlers/message/_common.js'));
 const markReadHandler = require(path.join(ROOT, 'cloudfunctions/api/handlers/message/markRead.js'));
@@ -847,8 +848,8 @@ async function sectionH(h) {
     const hookDb = subscribeDb();
     const hookCloud = cloudStub();
     const hookApi = createApi({ db: hookDb, now: NOW, env: {}, openid: P1, cloud: hookCloud });
-    const hookRes = await hookApi.call('order.markDelivered', { orderNo: '20260101-0201' },
-      { clientRequestId: 'H21DELIVER0000001' });
+    const hookRes = await hookApi.call('order.markDelivered', Object.assign({ orderNo: '20260101-0201' },
+      proofPayload(hookDb, P1, { now: NOW })), { clientRequestId: 'H21DELIVER0000001' });
     t.eq([hookRes.ok, hookCloud.subscribeCalls.length], [true, 1],
       'H21 order.markDelivered 事务后触发送达通知（钩子接线）');
     const hookReplay = await hookApi.call('order.markDelivered', { orderNo: '20260101-0201' },

@@ -69,6 +69,8 @@ function buildParcelDto(parcel, index, context) {
   if (typeof source.failureId === 'string' && source.failureId) {
     dto.failureHint = true;
   }
+  // D98：逐件取件照片摘要（无字段 ⇒ hasImage=false；fileId 不出云）
+  dto.pickProof = buildProofDto(source.pickProof);
   return dto;
 }
 
@@ -93,6 +95,14 @@ function buildImageDto(image, index) {
 
 function buildImageDtos(order) {
   return store.orderImagesOf(order).map((image, index) => buildImageDto(image, index));
+}
+
+// D97/D98 现场照片摘要：只下发 {hasImage,cleaned,at}，fileId 不出云（看图走 order.imageUrl 的 kind）。
+function buildProofDto(proof) {
+  const source = proof && typeof proof === 'object' ? proof : {};
+  const cleaned = !!source.cleanedAt;
+  const hasFileId = typeof source.fileId === 'string' && source.fileId !== '';
+  return { hasImage: hasFileId && !cleaned, cleaned, at: isoOf(source.at) };
 }
 
 // 本单配送地址（D25）：新订单 delivery 快照；历史单按 dorm（下单人宿舍）归一，保持前端统一读取。
@@ -182,6 +192,7 @@ module.exports = {
   buildParcelDtos,
   buildImageDto,
   buildImageDtos,
+  buildProofDto,
   buildDeliveryDto,
   deliveryOf,
   buildAddonDtos,

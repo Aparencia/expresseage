@@ -191,6 +191,8 @@ function baseFieldsOf(item, identity, nowMs) {
     senderText: identity.senderText,
     deliveryChipText: deliveryChipOf(item),
     isGuest: textOf(item.source) === enums.ORDER_SOURCE.PARTNER,
+    // D99：已转出并入主列表的行（发起者仍可操作，卡片带「已转出」标记）
+    handover: item.handover === true,
     exceptionText: textOf(exception.text) || textOf(exception.codeText) || textOf(item.exceptionText),
     cancelReasonText: textOf(item.cancelReasonText) || textOf(item.cancelReason),
     deliveryNote: textOf(item.deliveryNote),
@@ -209,7 +211,8 @@ function parcelFieldsToRow(parcels, scope) {
   return {
     tierText: parcelView.tierTextOf(parcelView.tierOfPieces(parcels.pieces)),
     routeTier: parcelView.tierOfPieces(parcels.pieces),
-    routeNumber: parcelView.routeNumberOfPieces(parcels.pieces),
+    // D100：组内排序键（本站件最差档代表件的码原文；自然序由 utils/order-sort 单源比较）
+    sortCode: parcelView.sortCodeOfPieces(parcels.pieces),
     codeText: parcels.pickupCode || (parcels.trackingTail ? '尾号' + parcels.trackingTail : '待补码'),
     lockerText: parcels.primary.lockerNo,
     pickupCode: parcels.pickupCode,

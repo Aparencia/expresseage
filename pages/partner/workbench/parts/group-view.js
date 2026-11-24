@@ -10,6 +10,7 @@ const stations = require('../../../../shared/stations');
 const filterView = require('./filter-view');
 const orderRow = require('./order-row');
 const parcelView = require('./parcel-view');
+const orderSort = require('../../../../utils/order-sort');
 
 const FALLBACK_GROUP_NAME = '全部待处理';
 const UNKNOWN_STATION_RANK = 999;
@@ -22,22 +23,9 @@ function toRow(order, nowMs, scope) {
   return orderRow.toRow(order, nowMs, scope);
 }
 
-// 组内排序：本站件档位 → 本站件码数字 → 订单号（防渲染抖动）
-function compareRowsForRoute(left, right) {
-  if (left.routeTier !== right.routeTier) {
-    return left.routeTier - right.routeTier;
-  }
-  if (left.routeNumber !== right.routeNumber) {
-    return left.routeNumber - right.routeNumber;
-  }
-  if (left.orderNo === right.orderNo) {
-    return 0;
-  }
-  return left.orderNo < right.orderNo ? -1 : 1;
-}
-
+// 组内排序：D100 单源 utils/order-sort（四档 → 取件码自然序 → 订单号；与取件清单共用）
 function sortRowsForRoute(rows) {
-  return rows.slice().sort(compareRowsForRoute);
+  return orderSort.sortRows(rows);
 }
 
 function stationRankOf(stationId) {

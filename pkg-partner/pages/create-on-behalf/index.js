@@ -107,23 +107,37 @@ Page({
     const cachedConfig = store.get('config');
     const configPromise = cachedConfig ? Promise.resolve(cachedConfig) : configApi.getPublic();
     Promise.all([configPromise, partnerApi.listBindings({ limit: BINDING_OPTIONS_LIMIT })])
-      .then((results) => {
-        const config = results[0] || {};
-        const bindings = results[1] || {};
-        const partner = store.get('partner') || {};
-        // TD-083：公开配置留本页一份（D43 autoCompleteAt 结果块文案 + 识别站点值域共用，不再各自取）
-        this.config = config;
-        this.state = presetModel.applyPresetBinding(formModel.createInitialState({
-          config: config,
-          partner: partner,
-          bindingList: bindings.list,
-          nowMs: serverNowMs()
-        }), textOf(presetBindingId));
-        this.render();
-      })
+      .then((results) => this.applyBase(results, presetBindingId))
       .catch((err) => {
         this.setData({ errorText: (err && err.message) || '页面没加载出来，检查网络后重试' });
       });
+  },
+
+  // 预置 bindingId 不在「最近 50 条绑定」里时按 id 再查一次该顾客（否则只能提示“没找到”）
+  applyBase(results, presetBindingId) {
+    const config = results[0] || {};
+    const bindings = results[1] || {};
+    const list = Array.isArray(bindings.list) ? bindings.list : [];
+    const preset = textOf(presetBindingId);
+    const finish = (bindingList) => {
+      this.config = config;
+      this.state = presetModel.applyPresetBinding(formModel.createInitialState({
+        config: config,
+        partner: store.get('partner') || {},
+        bindingList: bindingList,
+        nowMs: serverNowMs()
+      }), preset);
+      this.render();
+    };
+    const matched = preset && list.some((row) => textOf(row && row.bindingId) === preset);
+    if (!preset || matched) {
+      finish(list);
+      return;
+    }
+    partnerApi.getCustomer({ bindingId: preset }).then((data) => {
+      const row = data && data.customer ? data.customer : null;
+      finish(row ? list.concat([row]) : list);
+    }).catch(() => finish(list));
   },
 
   // 视图快照单源在 parts/view-model（页面不堆字段拼装；行数/函数行数闸）

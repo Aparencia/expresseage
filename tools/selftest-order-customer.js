@@ -3,10 +3,8 @@
  * tools/selftest-order-customer.js — 批 5「顾客订单闭环」端侧断言套件（ENGINEERING §7.2 接入范式）。
  *
  * 覆盖（任务 task-64 A~G；UX §3.4/§3.8/§5/§8.1/§12.3 AC-C-21~30、QA E13/E17）：
- *   A. 七状态顾客视图矩阵：progress 节点态/异常分支/取消分支/actions 键集合/留言输入/截图状态/
- *      补码 marker 文案（task-67：云端 note=CODE_FILLED_NOTE → 时间线/提示条直上屏，不靠前后翻变）
- *   B. poll-policy 纯件：10s 基线、失败 20s→40s 退避封顶、成功复位、stop 后不再排程
- *   C. 倒计时/等待文案：serverTimeSkew 校时、statusUpdatedAt 解析、超时边界、行文案
+ *   A. 七状态顾客视图矩阵：progress 节点态/异常分支/取消分支/actions 键集合/留言输入/截图状态/补码 marker 文案（task-67：云端 note=CODE_FILLED_NOTE → 时间线/提示条直上屏，不靠前后翻变）
+ *   B. poll-policy 纯件：10s 基线、失败 20s→40s 退避封顶、成功复位、stop 后不再排程；C. 倒计时/等待文案：serverTimeSkew 校时、statusUpdatedAt 解析、超时边界、行文案
  *   D. 列表分组映射：counts→tab、空态、软删防御过滤、再次下单入口、行视图
  *   E. reorder 纯件：只预填 service/station、禁用类型回退、失败静默、绝不带 code/image
  *   F. 页面静态：零 wx.cloud / 零七状态字面量 / 零 random / 轮询停接线 / expectedVersion / 只经 api/modules
@@ -62,7 +60,7 @@ const orderScope = orderScopeReq.value || {};
 const caseLib = require('./lib/order-customer-cases');
 const pickupCases = require('./lib/order-customer-pickup-cases'); // 批25-C/D61：Q 组件级取件顾客可见性
 // 实跑读数；批24-D64/D66：P 组扩 37（H 组 4 条并入并删除，+14 一级入口/文案断言）；批25-C/D61：+Q 组；批26-D58：+R 组 7
-const EXPECTED_ASSERTIONS = 335 + pickupCases.ASSERTIONS + 9 + 1 + caseLib.PREVIEW_ASSERTIONS; // +9：D58 转派 R 组（R1~R6 共 7 + 批27 审查 P2-5 补 R3b/R3c 2）；+1：D77 附加服务详情文案
+const EXPECTED_ASSERTIONS = 337 + pickupCases.ASSERTIONS + 9 + 1 + caseLib.PREVIEW_ASSERTIONS; // +2：D97 送达照片三态/详情接线 // +9：D58 转派 R 组（R1~R6 共 7 + 批27 审查 P2-5 补 R3b/R3c 2）；+1：D77 附加服务详情文案
 const {
   STATUS, PAGES, ISO, NOW, DOC_MS, textOf, actionsFor, dto, event, orderDoc,
   FAKE_DTO_CTX
@@ -552,6 +550,9 @@ function register(h) {
       && /orderApi\.imageUrl\(\{[\s\S]*index:\s*index/.test(detailJs),
     'I7 详情多图切换接线：WXML 按 image.list[].index → onViewImage 取 dataset.index → order.imageUrl({orderNo,index})');
     caseLib.previewChecks(t, parcelView);
+    const proofView = parcelView.deliveryProofViewOf;
+    t.eq([proofView({ deliveryProof: { hasImage: true } }).state, proofView({ deliveryProof: { cleaned: true } }).state, proofView({}).state], ['AVAILABLE', 'CLEANED', 'NONE'], 'I8 送达照片三态：有图可看 / 已按策略清理 / 未留存（历史单零迁移）');
+    t.check(detailWxml.indexOf('送达照片') !== -1 && detailWxml.indexOf('onViewDeliveryProof') !== -1 && /kind:\s*'DELIVERY'/.test(detailJs), 'I9 顾客详情「送达照片」行 + 点击经 order.imageUrl({kind:DELIVERY}) 签发临时 URL');
     t.notEmpty(multi.list, 'I 组样本非空');
   });
 

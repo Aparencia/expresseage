@@ -84,6 +84,11 @@
             <text class="parcel-picked-at" wx:if="{{item.pickedAtText}}">{{item.pickedAtText}}</text>
           </view>
         </view>
+        <!-- D98：逐件取件照片（有图才出「查看」；跳过的件不出行） -->
+        <view class="row between line" wx:if="{{item.pickProof && item.pickProof.canView}}">
+          <view class="muted">取件照片</view>
+          <view class="flex-1 right link-text" data-index="{{item.index}}" bindtap="onViewPickProof">查看</view>
+        </view>
       </view>
       <view class="row between line">
         <view class="muted">服务类型</view>
@@ -116,6 +121,17 @@
       <view class="row between line" wx:if="{{order.deliveryNote}}">
         <view class="muted">送达备注</view>
         <view class="flex-1 right">{{order.deliveryNote}}</view>
+      </view>
+      <!-- D97：送达现场照片（一单一图；未留存/已清理说真话，点击签发 5 分钟临时 URL） -->
+      <view class="row between line" wx:if="{{deliveryProof && deliveryProof.text}}">
+        <view class="muted">送达照片</view>
+        <view wx:if="{{deliveryProof.canView}}" class="flex-1 right link-text" bindtap="onViewDeliveryProof">{{deliveryProof.text}}</view>
+        <view wx:else class="flex-1 right small muted">{{deliveryProof.text}}</view>
+      </view>
+      <!-- D98：整单取件照片（逐件照片在件卡内） -->
+      <view class="row between line" wx:if="{{pickProof && pickProof.canView}}">
+        <view class="muted">取件照片</view>
+        <view class="flex-1 right link-text" bindtap="onViewPickProof">查看</view>
       </view>
       <view class="row image-actions" wx:if="{{image.canView && image.list.length > 1}}">
         <view class="small link-text image-link" wx:for="{{image.list}}" wx:key="index" data-index="{{item.index}}" bindtap="onViewImage">{{item.label}}</view>
