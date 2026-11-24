@@ -40,6 +40,14 @@
   margin-top: 16rpx;
 }
 
+/* D97：有截图即可下单提示（说明可留空，不是错误态） */
+.shot-tip {
+  margin-top: 12rpx;
+  padding: 12rpx 16rpx;
+  border-radius: 10rpx;
+  background: var(--v4-success-weak);
+}
+
 .fail-card {
   border-left: 8rpx solid var(--v4-warning);
 }

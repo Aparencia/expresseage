@@ -92,17 +92,25 @@ function revalidateItem(item) {
   return item;
 }
 
-/** 提交前形态闸：勾选件 1~MAX_PARCELS，每件站点 + 取件码或运单尾号（NEED_CODE 口径不变） */
-function canSubmit(items) {
+/** 提交前形态闸：勾选件 1~MAX_PARCELS；无截图手填单每件站点 + 取件码或运单尾号（NEED_CODE 口径不变）。
+ *  D97：options.allowIncomplete=true（本单有上传成功的截图）时，站点/取件码/运单尾号允许留空，
+ *  仍拦非法取件码/柜号/尾号形态（兼职审核页按截图补全）。 */
+function canSubmit(items, options) {
+  const allowIncomplete = !!(options && options.allowIncomplete);
   const checked = (items || []).filter(function on(item) { return item.checked; });
   if (checked.length === 0) return { ok: false, reason: '至少选择一件再提交' };
   if (checked.length > MAX_PARCELS) return { ok: false, reason: '一单最多 ' + MAX_PARCELS + ' 件' };
   for (let i = 0; i < checked.length; i += 1) {
     const item = revalidateItem(checked[i]);
-    if (!item.stationId) return { ok: false, reason: '请补全站点后再提交', index: items.indexOf(item) };
-    if (item.codeStatus === 'NONE') return { ok: false, reason: '请补全取件码或运单后 5 位', index: items.indexOf(item) };
-    if (Object.keys(item.formErrors).length > 0) {
-      return { ok: false, reason: item.formErrors[Object.keys(item.formErrors)[0]], index: items.indexOf(item) };
+    if (!item.stationId && !allowIncomplete) return { ok: false, reason: '请补全站点后再提交', index: items.indexOf(item) };
+    if (item.codeStatus === 'NONE' && !allowIncomplete) {
+      return { ok: false, reason: '请补全取件码或运单后 5 位', index: items.indexOf(item) };
+    }
+    const errorKeys = Object.keys(item.formErrors).filter(function keep(key) {
+      return !allowIncomplete || (key !== 'station' && key !== 'codeStatus');
+    });
+    if (errorKeys.length > 0) {
+      return { ok: false, reason: item.formErrors[errorKeys[0]], index: items.indexOf(item) };
     }
   }
   return { ok: true, items: checked };

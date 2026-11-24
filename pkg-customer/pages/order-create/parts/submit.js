@@ -6,6 +6,7 @@ const orderApi = require('../../../../api/modules/order');
 const store = require('../../../../store/index');
 const deliveryModel = require('./delivery');
 const model = require('./model');
+const filesFlow = require('./files-flow');
 const precheck = require('./precheck');
 const appointUtil = require('../../../../shared/appoint');
 const subscribe = require('../../../../utils/subscribe');
@@ -25,27 +26,29 @@ function rangeBlockOf(page) {
   return precheck.rangeCheckOf({ zone: customer ? customer.zone : '', partnerPublic: partnerPublic });
 }
 
-/** 提交内容指纹（含图片/票据/配送地址）→ clientRequestId 生命周期 */
-function fingerprintOf(page) {
+/** 提交内容指纹（含图片/票据/配送地址）→ clientRequestId 生命周期；shot 缺省时读页面识别快照 */
+function fingerprintOf(page, shot) {
+  const images = shot ? shot.images : page.data.images;
+  const tickets = shot ? shot.tickets : page.data.tickets;
   return model.submissionFingerprint(page.data.items, {
-    images: page.data.images,
-    tickets: page.data.tickets,
+    images: images,
+    tickets: tickets,
     serviceCode: page.data.serviceCode,
     addons: (page.data.addons || []).join(','),
     appointType: page.data.appoint.type,
     latestAt: appointUtil.payloadOf(page.data.appoint).latestAt || '',
     note: page.data.note,
     deliveryFingerprint: deliveryModel.fingerprintOf(page.data.delivery),
-    manualEntry: page.data.images.length === 0
+    manualEntry: images.length === 0
   });
 }
 
 /** order.create v1.0 载荷：parcels[]/images[]/tickets[]/serviceCode/appoint/note/delivery?/manualEntry */
-function buildPayloadOf(page) {
+function buildPayloadOf(page, shot) {
   return model.buildPayload({
     items: page.data.items,
-    images: page.data.images,
-    tickets: page.data.tickets,
+    images: shot ? shot.images : page.data.images,
+    tickets: shot ? shot.tickets : page.data.tickets,
     serviceCode: page.data.serviceCode,
     addons: page.data.addons,
     appoint: appointUtil.payloadOf(page.data.appoint, Date.now()),
@@ -82,7 +85,9 @@ async function onSubmit(page) {
     return;
   }
   if (page.data.submitting) return;
-  const check = model.canSubmit(page.data.items);
+  // D97：有截图（识别快照或已上传文件）时站点/取件码/运单尾号可留空；无截图手填仍必须填全
+  const shot = filesFlow.imageSnapshotOf(page);
+  const check = model.canSubmit(page.data.items, { allowIncomplete: shot.images.length > 0 });
   if (!check.ok) {
     wx.showToast({ title: check.reason, icon: 'none' });
     return;
@@ -100,9 +105,9 @@ async function onSubmit(page) {
   }
   page.setData({ submitting: true, submitError: '' });
   const configSnapshot = store.get('config');
-  const submission = model.ensureSubmission(page.data.submission, fingerprintOf(page));
+  const submission = model.ensureSubmission(page.data.submission, fingerprintOf(page, shot));
   page.setData({ submission: submission });
-  const payload = buildPayloadOf(page);
+  const payload = buildPayloadOf(page, shot);
   try {
     // TEST_WRITE 测试会话不请求微信授权（不污染测试账号的订阅状态）。
     // requestSubscribe 在 try 内同步发起（无前置 await，保留点击手势），15s 兜底保证 submitting 不永久卡死。

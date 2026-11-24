@@ -302,7 +302,9 @@ Page({
   },
 
   goStep2Next() {
-    const check = model.canSubmit(this.data.items);
+    // D97：有截图（识别结果或已上传文件）时允许站点/取件码/运单尾号留空，兼职审核按截图补全
+    const shot = filesFlow.imageSnapshotOf(this);
+    const check = model.canSubmit(this.data.items, { allowIncomplete: shot.images.length > 0 });
     if (!check.ok) {
       wx.showToast({ title: check.reason, icon: 'none' });
       return;
@@ -374,7 +376,7 @@ Page({
   },
 
   submitFingerprint() {
-    return submitFlow.fingerprintOf(this);
+    return submitFlow.fingerprintOf(this, filesFlow.imageSnapshotOf(this));
   },
 
   onSubmit() {

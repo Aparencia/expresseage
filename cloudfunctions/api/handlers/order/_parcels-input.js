@@ -48,20 +48,22 @@ function normalizeFailureId(value) {
   return text && enums.FAILURE_NO_PATTERN.test(text) ? text : '';
 }
 
-// parcels[1~MAX_PARCELS]：每件站点必填 + 取件码或运单尾号至少一个（NEED_CODE 只放宽取件码，不放宽站点）。
+// parcels[1~MAX_PARCELS]：无截图手填单每件站点必填 + 取件码或运单尾号至少一个；
+// 有截图单（imageCount>0，D97）允许站点/取件码/运单尾号全空——兼职审核页按截图补全（order.correct）。
 // imageCount = 本批 images 数量（先归一 images 再归一 parcels）；fallbackSource = 整单 recognition.source。
 function normalizeParcels(input, fallbackSource, imageCount) {
   const raw = input && Array.isArray(input.parcels) ? input.parcels : null;
   if (!raw || raw.length < 1 || raw.length > MAX_PARCELS) {
     throw errors.validation('parcels', '一单需 1~' + MAX_PARCELS + ' 件包裹');
   }
+  const hasScreenshot = imageCount > 0;
   return raw.map((item, index) => {
     const body = parcelBodyOf(item, index);
     const parcel = parcelUtil.normalizeParcel(body, fallbackSource);
-    if (!parcel.stationId) {
+    if (!parcel.stationId && !hasScreenshot) {
       throw errors.validation('stationId', '第 ' + (index + 1) + ' 件请选择驿站站点');
     }
-    if (!parcel.pickupCode && !parcel.trackingTail) {
+    if (!parcel.pickupCode && !parcel.trackingTail && !hasScreenshot) {
       throw errors.validation('pickupCode', '第 ' + (index + 1) + ' 件需填写取件码或运单尾号');
     }
     const imageIndex = normalizeImageIndex(item && item.imageIndex, index, imageCount);

@@ -29,6 +29,7 @@ const aiApi = require(path.join(ROOT, 'api/modules/ai.js'));
 const zeroMoney = require(path.join(ROOT, 'tools/zero-money-scan.js'));
 const avatar = require(path.join(ROOT, 'utils/avatar.js'));
 const filesFlow = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/files-flow.js'));
+const aggregate = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/recognize-aggregate.js'));
 const precheck = require(path.join(ROOT, 'pkg-customer/pages/order-create/parts/precheck.js'));
 const pickerState = require(path.join(ROOT, 'components/image-picker/state.js'));
 const uploadApi = require(path.join(ROOT, 'api/upload.js'));
@@ -47,7 +48,7 @@ const {
   createOrderDb, orderApiOf, pageLayerHits
 } = caseLib;
 
-const EXPECTED_ASSERTIONS = 287; // 286 + 1：G18b 核对页截图吸顶 + 两行紧凑布局（2026-11-08） // 256 + 21：R 组 P0-1 多图 imageIndex 重映射 9 + S 组 P1-10 取消识别 8 + Q13~Q16 日历日回算 4；+4：D70 手填码补站点/开关；+5：D70 手选站点优先（采纳/兜底两条路径不覆盖 4 + stationBy=code 可被码更新 1）
+const EXPECTED_ASSERTIONS = 301; // 287 + 14：T 组 D97 有截图即可提交（canSubmit 放宽/形态闸仍拦/失败保留截图/载荷/服务端判据/文案接线） // 286 + 1：G18b 核对页截图吸顶 + 两行紧凑布局（2026-11-08） // 256 + 21：R 组 P0-1 多图 imageIndex 重映射 9 + S 组 P1-10 取消识别 8 + Q13~Q16 日历日回算 4；+4：D70 手填码补站点/开关；+5：D70 手选站点优先（采纳/兜底两条路径不覆盖 4 + stationBy=code 可被码更新 1）
 
 function register(h) {
   // ---------------------------------------------------------------- A 站点选择器（P1~P8）
@@ -875,6 +876,61 @@ function register(h) {
     t.check(/cancelRun\(page\)/.test(flowSrc) && flowSrc.indexOf('discardSession(page)') >= 0,
       'S7 取消走 discardSession 单源（丢弃在飞会话，不另写一份）');
     t.notEmpty(basePage.data.items, 'S 组样本非空');
+  });
+  // ---------------------------------------------------------------- T D97 有截图即可提交
+  h.section('T. D97 有截图即可提交：站点/取件码/运单尾号可留空（无截图仍严格）', (t) => {
+    const blank = stationItem({ stationId: '', stationName: '', pickupCode: '', trackingTail: '' });
+    const strict = model.canSubmit([blank]);
+    t.check(strict.ok === false && strict.reason.indexOf('站点') >= 0,
+      'T1 无截图：缺站点仍拒绝（D24 不放宽）');
+    const shotPass = model.canSubmit([blank], { allowIncomplete: true });
+    t.check(shotPass.ok === true && shotPass.items[0].codeStatus === 'NONE',
+      'T2 有截图：站点/取件码/运单尾号全空也放行（D97）');
+    const badCode = model.canSubmit([stationItem({ stationId: '', pickupCode: '!!' })], { allowIncomplete: true });
+    t.check(badCode.ok === false && badCode.reason.indexOf('取件码') >= 0,
+      'T3 有截图仍拦非法取件码形态（形态闸不放宽）');
+    const badTail = model.canSubmit([stationItem({ stationId: '', trackingTail: '1234' })], { allowIncomplete: true });
+    t.check(badTail.ok === false && badTail.reason.indexOf('5 位') >= 0,
+      'T4 有截图仍拦非法运单尾号形态（形态闸不放宽）');
+    const files = [imageFileOf(1)];
+    const fallbackPage = identifyPageOf();
+    fallbackPage.setData({ files: files, images: [], tickets: [] });
+    const fallbackShot = filesFlow.imageSnapshotOf(fallbackPage);
+    t.eq([fallbackShot.images.length, fallbackShot.tickets[0]], [1, files[0].uploadTicketId],
+      'T5 识别快照缺失时回退已上传文件（fileId+票据成对，不空送）');
+    const noTicket = filesFlow.imagesFromFiles([{ localPath: 'wxfile://tmp/x.jpg', fileId: 'cloud://test.env/x.jpg' }]);
+    t.eq([noTicket.images.length, noTicket.tickets.length], [0, 0],
+      'T6 未拿到上传票据的文件不冒充截图（不空送票据）');
+    const failedResult = aggregate.summarize([files[0]], [{ ok: false, failureCode: 'NO_TEXT',
+      failureCopy: { text: '没识别出来。', next: '可以手动填写。' },
+      image: { fileId: files[0].fileId, width: 100, height: 200 }, ocrText: '' }]);
+    t.check(failedResult.perImage.length === 1 && failedResult.perImage[0].ticket === files[0].uploadTicketId,
+      'T7 识别失败也保留来源图/票据（审核页可看截图，D97）');
+    const failPage = identifyPageOf();
+    filesFlow.applyIdentify(failPage, [], failedResult.perImage, { ocrState: 'failed' });
+    t.eq([failPage.data.images.length, failPage.data.tickets.length], [1, 1],
+      'T8 失败收口后 images/tickets 仍上屏（不退化成无截图手填）');
+    const shotPayload = payloadOf([blank], fallbackShot);
+    t.eq([shotPayload.images.length, shotPayload.tickets.length, shotPayload.manualEntry], [1, 1, false],
+      'T9 兜底快照进 order.create 载荷：有截图单 manualEntry=false');
+    let normalized = null;
+    let judgeError = null;
+    try {
+      normalized = parcelsInput.normalizeParcels({ parcels: shotPayload.parcels, images: shotPayload.images,
+        tickets: shotPayload.tickets }, 'MANUAL', shotPayload.images.length);
+    } catch (err) { judgeError = err; }
+    t.check(judgeError === null && normalized.length === 1 && normalized[0].stationId === ''
+      && normalized[0].codeStatus === 'NEED_CODE', 'T10 服务端判据同样放行（有截图，站点/码可空）');
+    const wxml = textOf(ORDER_CREATE_WXML);
+    t.check(wxml.indexOf('只要确保截图上传成功即可下单') >= 0 && wxml.indexOf('兼职审核时会按截图补全') >= 0,
+      'T11 上传页常驻提示「只要确保上传截图即可」（D97 信息提示）');
+    const pageSrc = textOf(ORDER_CREATE_PAGE);
+    t.check(pageSrc.indexOf('filesFlow.imageSnapshotOf(this)') >= 0 && pageSrc.indexOf('allowIncomplete') >= 0,
+      'T12 核对页下一步接线 allowIncomplete + 截图快照（页面零判据）');
+    const submitSrc = textOf('pkg-customer/pages/order-create/parts/submit.js');
+    t.check(submitSrc.indexOf('filesFlow.imageSnapshotOf(page)') >= 0 && submitSrc.indexOf('allowIncomplete') >= 0,
+      'T13 提交闸同源使用截图快照（不写第二份「有截图」判据）');
+    t.notEmpty(fallbackShot.images, 'T 组样本非空');
   });
 }
 
