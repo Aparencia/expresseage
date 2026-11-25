@@ -38,7 +38,7 @@ const privacyText = require(path.join(__dirname, '..', 'pkg-customer/parts/priva
 const defaults = require(path.join(__dirname, '..', 'config/defaults.js'));
 
 const ROOT = path.resolve(__dirname, '..');
-const EXPECTED_ASSERTIONS = 311; // 305 + 3（2026-11-08 D73 定稿 v1.11：N 组订阅消息送达/新单披露三处同源）+ 3（QA §AJ 分区声明/AJ1~AJ6 区间/6 行且人列未代勾；附录 E 计数 362→380）
+const EXPECTED_ASSERTIONS = 315; // 311 + 4（2026-11-23 D97/D98 定稿 v1.12：现场照片披露三处同源 + 可见面/后台无入口 + 送达必拍/取件可跳过）
 
 const PART_FILE = 'pkg-customer/parts/privacy-text.js';
 const HELP_JS = 'pkg-customer/pages/help/index.js';
@@ -223,10 +223,10 @@ function register(h) {
 
   // ------------------------------------------------------------ D. 文本版本 ↔ config.privacyVersion
   h.section('D 文本版本 ↔ config.privacyVersion 对应（版本单源）', (t) => {
-    t.eq(privacyText.TEXT_VERSION, 'v1.11', '文本版本 v1.11（定稿 v1.11；历史 v1.10 / v1.0 / 定稿候选 v1.3 留痕）');
-    t.check(TEXT.indexOf(privacyText.TEXT_VERSION_LABEL) !== -1, '全文写明「定稿 v1.11」文本版本');
+    t.eq(privacyText.TEXT_VERSION, 'v1.12', '文本版本 v1.12（定稿 v1.12；历史 v1.11 / v1.10 / v1.0 / 定稿候选 v1.3 留痕）');
+    t.check(TEXT.indexOf(privacyText.TEXT_VERSION_LABEL) !== -1, '全文写明「定稿 v1.12」文本版本');
     t.check(privacyTextDocCache.indexOf(privacyText.TEXT_VERSION_LABEL) !== -1,
-      '定稿文档头部同为「定稿 v1.11」（改版本必须两端同步）');
+      '定稿文档头部同为「定稿 v1.12」（改版本必须两端同步）');
     t.check(privacyTextDocCache.indexOf(privacyText.TEXT_VERSION) !== -1,
       '定稿文档写明文本版本号 v1.10（与端内全文同一标签）');
     t.check(privacyTextDocCache.indexOf('历史版本') !== -1
@@ -590,10 +590,31 @@ function register(h) {
     '端内全文新增 D73 订阅消息披露（送达提醒/新订单提醒/不含 L3）');
     t.check(privacyTextDocCache.indexOf('2026-11-08 用户确认') !== -1
       && privacyTextDocCache.indexOf('定稿 v1.11') !== -1,
-    '定稿文档写明文本版本 v1.11 与 2026-11-08 用户确认');
+    '定稿文档写明历史版本 v1.11 与 2026-11-08 用户确认');
     t.check(supplement.indexOf('送达提醒') !== -1 && supplement.indexOf('新订单提醒') !== -1
-      && supplement.indexOf('文本版本：定稿 v1.11') !== -1,
-    '补充文档派生物含 v1.11 订阅消息披露（三处同源）');
+      && supplement.indexOf('文本版本：定稿 v1.12') !== -1,
+    '补充文档派生物含 v1.11 订阅消息披露（三处同源，头部已升至 v1.12）');
+  });
+
+  // ------------------------------------------------------------ O. 2026-11-23 D97/D98 定稿 v1.12（现场照片披露）
+  h.section('O 定稿 v1.12（D97/D98：取件与送达现场照片披露；privacyVersion 保持 v4.0.0）', (t) => {
+    const supplementFile = 'docs/privacy/补充文档.txt';
+    const supplement = exists(supplementFile) ? readSource(supplementFile) : '';
+    t.check(TEXT.indexOf('取件与送达现场照片') !== -1
+      && TEXT.indexOf('取件时可选择拍摄 1 张现场照片，可以跳过') !== -1
+      && TEXT.indexOf('送达时必须拍摄或从相册选择 1 张送达现场照片') !== -1,
+    '端内全文新增 D97/D98：送达必拍 1 张、取件可选可跳过');
+    t.check(TEXT.indexOf('仅本单顾客、当前履约兼职与转派发起人') !== -1
+      && TEXT.indexOf('后台不提供照片入口') !== -1,
+    '端内全文写明可见面（顾客/履约兼职/转派发起人）与后台无入口');
+    t.check(privacyTextDocCache.indexOf('取件与送达现场照片') !== -1
+      && privacyTextDocCache.indexOf('可以跳过') !== -1
+      && privacyTextDocCache.indexOf('定稿 v1.12') !== -1,
+    '定稿文档含现场照片条目与「可跳过」、文本版本 v1.12');
+    t.check(supplement.indexOf('取件与送达现场照片') !== -1
+      && supplement.indexOf('可以跳过') !== -1
+      && supplement.indexOf('文本版本：定稿 v1.12') !== -1,
+    '补充文档派生物含现场照片披露（三处同源）');
   });
 }
 

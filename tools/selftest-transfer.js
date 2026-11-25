@@ -524,8 +524,9 @@ async function sectionT10(h) {
     [true, undefined, undefined, true, ACCEPTED],
     'T10-10 完成后原兼职按 D85 保留控制视图（完整订单 + 动作矩阵，不再是只读跟踪）');
     const oldWorkbench = await p1.call('order.listPartner', { view: 'workbench' });
-    t.eq(oldWorkbench.data.list.map((row) => row.orderNo), [],
-      'T10-11 完成后原兼职工作台不再返回该单（服务端按当前归属过滤）');
+    const handoverRow = oldWorkbench.data.list.filter((row) => row.orderNo === '20261103-1001')[0];
+    t.eq([oldWorkbench.data.list.length, handoverRow && handoverRow.handover],
+      [1, true], 'T10-11 D99：已转出单并入工作台首屏并带 handover 标记（不再整单消失）');
     const targetAfter = await p2.call('order.listPartner', { view: 'transfer' });
     t.eq([targetAfter.data.list.length, targetAfter.data.transferPending], [0, 0],
       'T10-12 确认后目标待接收列表清空（transfer 已 ACCEPTED）');
@@ -556,8 +557,8 @@ async function sectionT11(h) {
     await p2.call('order.acceptTransfer', { orderNo: '20261103-1101' }, { clientRequestId: nextCrid('t11acc') });
     const oldCounts = await p1.call('order.listPartner', { view: 'workbench' });
     const newCounts = await p2.call('order.listPartner', { view: 'workbench' });
-    t.eq([oldCounts.data.counts.accepted, newCounts.data.counts.accepted], [0, 1],
-      'T11-2 确认后 listPartner counts：原兼职 accepted -1、目标 +1（按当前 partnerId）');
+    t.eq([oldCounts.data.counts.accepted, newCounts.data.counts.accepted], [1, 1],
+      'T11-2 D99 counts 并集：原兼职 accepted 含已转出单（按当前状态归桶）、目标 +1');
     const oldStats = await p1.call('partner.stats', { range: 'today' });
     const newStats = await p2.call('partner.stats', { range: 'today' });
     t.eq([oldStats.ok, oldStats.data.counts.active, newStats.ok, newStats.data.counts.active],
@@ -935,7 +936,7 @@ function register(h) {
   recentCases.register(h);
   handoverCases.register(h, {
     world, orderDoc, acceptedTransferBlock, transferBlock, apiOf, nextCrid, expectCode,
-    topKeysOf, jsonOf, ORDER_STATUS, PID1, PID2, P1, P2, P3
+    topKeysOf, jsonOf, ORDER_STATUS, PID1, PID2, P1, P2, P3, NOW
   });
 }
 

@@ -37,6 +37,17 @@ async function assertTicketUploader(ctx, scope) {
   throw errors.invalidState('请先完善资料并绑定兼职（或激活兼职身份）后再上传截图');
 }
 
+// D97/D98：现场照片只由兼职上传（送达必拍、取件可选）；停用/注销一律 PARTNER_CLOSED。
+async function assertProofUploader(ctx, scope) {
+  const partner = await identity.loadPartnerByOpenid(ctx, scope.openid);
+  if (!partner) {
+    throw errors.forbidden('只有兼职可以上传现场照片');
+  }
+  if (partner.status !== enums.PARTNER_STATUS.ACTIVE) {
+    throw errors.partnerClosed();
+  }
+}
+
 function assertImageInput(input, maxBytes) {
   if (input.contentType !== undefined) {
     if (enums.IMAGE_MIME_TYPES.indexOf(input.contentType) < 0) {
@@ -56,7 +67,8 @@ async function handler(ctx, payload) {
   const scope = identity.scopeOf(ctx);
   const input = payload && typeof payload === 'object' ? payload : {};
   const purpose = input.purpose;
-  if (purpose !== enums.UPLOAD_PURPOSE.TICKET && purpose !== enums.UPLOAD_PURPOSE.AVATAR) {
+  if (purpose !== enums.UPLOAD_PURPOSE.TICKET && purpose !== enums.UPLOAD_PURPOSE.AVATAR
+    && purpose !== enums.UPLOAD_PURPOSE.PROOF) {
     throw errors.validation('purpose', '上传用途不正确');
   }
   const config = await configCommon.loadRuntimeConfig(ctx);
@@ -66,6 +78,10 @@ async function handler(ctx, payload) {
     const role = scope.role || (await identity.loadPartnerByOpenid(ctx, scope.openid) ? enums.ROLES.PARTNER : enums.ROLES.CUSTOMER);
     cloudPath = uploadCommon.buildCloudPath(purpose, { role, random: generateRandomId(AVATAR_RANDOM_LENGTH) });
     assertImageInput(input, uploadCommon.avatarMaxBytes(config));
+  } else if (purpose === enums.UPLOAD_PURPOSE.PROOF) {
+    await assertProofUploader(ctx, scope);
+    cloudPath = uploadCommon.buildCloudPath(purpose, { ticket });
+    assertImageInput(input, uploadCommon.TICKET_MAX_BYTES);
   } else {
     await assertTicketUploader(ctx, scope);
     cloudPath = uploadCommon.buildCloudPath(purpose, { ticket });
@@ -74,7 +90,7 @@ async function handler(ctx, payload) {
   const nowMs = identity.nowMs(ctx);
   const nowDate = identity.nowDate(ctx);
   const draftId = resolveDraftId(input.draftId);
-  const expiresAt = time.addMinutes(nowMs, uploadCommon.TICKET_TTL_MINUTES);
+  const expiresAt = time.addMinutes(nowMs, uploadCommon.ttlMinutesOf(purpose));
   await ctx.dao.add(COLLECTIONS.UPLOAD_TICKETS, {
     ticket,
     openid: scope.openid,

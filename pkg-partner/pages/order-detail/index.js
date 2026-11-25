@@ -14,6 +14,7 @@ const transferPart = require('./parts/transfer');
 const candidatesPart = require('./parts/transfer-candidates');
 const undoPart = require('./parts/undo');
 const viewModel = require('./parts/view-model');
+const proofPhoto = require('../../../utils/proof-photo');
 const messagePoll = require('./parts/message-poll');
 const share = require('../../../utils/share/handlers');
 const store = require('../../../store/index');
@@ -239,7 +240,7 @@ Page(Object.assign({
       return this.submitWrite(() => orderApi.accept({ orderNo: orderNo }, opts), '已接单');
     }
     if (key === 'pick') {
-      return this.submitWrite(() => orderApi.markPicked({ orderNo: orderNo }, opts), '已标记取件');
+      return this.pickWithPhoto(orderNo, opts);
     }
     if (key === 'undoPick') {
       return this.submitWrite(() => orderApi.unmarkPicked({ orderNo: orderNo }, opts), undoPart.successText('undoPick'));

@@ -264,6 +264,44 @@ Page({
       .catch((err) => this.showImageError(err && err.code, err && err.message));
   },
 
+  // D97：送达照片（一单一图）——鉴权签发 5 分钟临时 URL 后预览；无图/已清理说真话
+  onViewDeliveryProof() {
+    const proof = this.data.deliveryProof || {};
+    if (!proof.canView) {
+      wx.showToast({ title: proof.text || '这单没有送达照片', icon: 'none' });
+      return;
+    }
+    orderApi.imageUrl({ orderNo: this.data.orderNo, kind: 'DELIVERY' })
+      .then((data) => {
+        const url = data && data.url ? data.url : '';
+        if (!url) {
+          wx.showToast({ title: '送达照片暂时打不开，请稍后重试', icon: 'none' });
+          return;
+        }
+        wx.previewImage({ urls: [url], current: url });
+      })
+      .catch((err) => wx.showToast({ title: (err && err.message) || '送达照片暂时打不开，请稍后重试', icon: 'none' }));
+  },
+
+  // D98：取件照片（整单或逐件）——鉴权签发 5 分钟临时 URL 后预览
+  onViewPickProof(e) {
+    const index = Number(e && e.currentTarget && e.currentTarget.dataset ? e.currentTarget.dataset.index : NaN);
+    const payload = { orderNo: this.data.orderNo, kind: 'PICK' };
+    if (Number.isInteger(index) && index >= 0) {
+      payload.index = index;
+    }
+    orderApi.imageUrl(payload)
+      .then((data) => {
+        const url = data && data.url ? data.url : '';
+        if (!url) {
+          wx.showToast({ title: '取件照片暂时打不开，请稍后重试', icon: 'none' });
+          return;
+        }
+        wx.previewImage({ urls: [url], current: url });
+      })
+      .catch((err) => wx.showToast({ title: (err && err.message) || '取件照片暂时打不开，请稍后重试', icon: 'none' }));
+  },
+
   // 截图三态人话：已清理/已过期/加载失败（文案单源在 parts/status-view.imageErrorText）
   showImageError(code, message) {
     const text = view.imageErrorText(code, message);

@@ -88,7 +88,7 @@ module.exports = {
         confirmText: '确认',
         success: (res) => {
           if (res.confirm) {
-            this.executeSingle(current.key, current.row, {});
+            this.runConfirmed(current.key, current.row);
           }
         }
       });
@@ -156,6 +156,10 @@ module.exports = {
   },
 
   executeSingle(key, row, values) {
+    if (key === 'deliver') {
+      this.captureAndDeliver(row, values);
+      return;
+    }
     const write = rowActions.buildWrite(key, row, values, '');
     if (!write.method) {
       return;
@@ -225,6 +229,7 @@ module.exports = {
   runBatch(plan, values) {
     const running = Object.assign({}, plan, { batchActionId: plan.batch ? client.createRequestId() : '' });
     this._lastBatch = { plan: running, values: values || {} };
+    this._photoCancelled = false;
     this.setData({ batchRunning: true });
     // v1.0：改站点/改码逐单逐件循环（同一 batchActionId，结果按件汇总）；其余动作仍逐单循环
     const runner = running.key === 'correct' ? batchView.runCorrect : batchView.run;
@@ -232,6 +237,7 @@ module.exports = {
       const rowValues = running.key === 'correct'
         ? { patch: (this._lastBatch.values || {}).patch || {}, itemIndex: itemIndex }
         : this._lastBatch.values;
+      if (running.key === 'deliver') { return this.deliverWithPhoto(row, batchActionId, this._lastBatch.values || {}); }
       const write = rowActions.buildWrite(running.key, row, rowValues, batchActionId);
       return orderApi[write.method](write.payload, write.opts);
     }).then((result) => {

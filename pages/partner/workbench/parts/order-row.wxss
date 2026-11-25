@@ -70,6 +70,15 @@
   color: var(--v4-text-4);
 }
 
+/* D100：取件码与取件清单同款（第二行右侧、行内最大字号） */
+.line-sub .row-code {
+  margin-left: 12rpx;
+  font-size: 40rpx;
+  font-weight: 600;
+  color: var(--v4-text-1);
+  letter-spacing: 1rpx;
+}
+
 .code-text {
   font-size: 32rpx;
   font-weight: 600;

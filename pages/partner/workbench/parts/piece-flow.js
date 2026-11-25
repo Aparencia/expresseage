@@ -1,11 +1,12 @@
-// pages/partner/workbench/parts/piece-flow.js · 工作台件级取件接线（D61，页面方法）
-// 口径：CONTRACT §5/§5.1（D61：逐件取件/撤销带 `itemIndex`；**免二次确认**、**无 5 秒撤销条**，用该件「撤销已取」回退）、
-//       UX_PARTNER §4.3/§4.16（每件行尾独立按钮，只消费服务端 `parcel.actions`）。
+// pages/partner/workbench/parts/piece-flow.js · 工作台件级取件接线（D61；D98 可选现场照片）
+// 口径：CONTRACT §5/§5.1（D61 逐件取件/撤销带 `itemIndex`；**免二次确认**、**无 5 秒撤销条**）、
+//       D98（点「已取件」先问「拍照 / 跳过照片」，跳过不阻断）。
 // 边界：页面只做事件→请求→toast/重拉；动作可见性/请求形状/文案在 parts/piece-actions（纯件）。
 'use strict';
 
 const orderApi = require('../../../../api/modules/order');
 const client = require('../../../../api/client');
+const proofPhoto = require('../../../../utils/proof-photo');
 const groupView = require('./group-view');
 const pieceActions = require('./piece-actions');
 const actionFlow = require('./action-flow');
@@ -28,9 +29,35 @@ module.exports = {
       this.toastMsg('订单已不在当前列表，刷新后再看');
       return;
     }
-    const write = pieceActions.writeOf(String(dataset.key || ''), hit.piece, orderNo, hit.row.version,
-      client.createRequestId());
+    const key = String(dataset.key || '');
+    if (key === 'markPicked') {
+      this.capturePiecePick(key, hit, orderNo);
+      return;
+    }
+    this.writePiece(key, hit, orderNo, null);
+  },
+
+  // D98：逐件取件先给「拍照 / 跳过照片」二选一；取消则中止本次动作
+  capturePiecePick(key, hit, orderNo) {
+    this._pieceBusy = true;
+    proofPhoto.captureOptional().then((choice) => {
+      if (!choice) {
+        this._pieceBusy = false;
+        this.toastMsg('已取消取件');
+        return;
+      }
+      this.writePiece(key, hit, orderNo, choice.skipped ? null : choice.photo);
+    }).catch((err) => {
+      this._pieceBusy = false;
+      this.toastMsg((err && err.message) || '照片上传失败，请重试');
+    });
+  },
+
+  writePiece(key, hit, orderNo, photo) {
+    const write = pieceActions.writeOf(key, hit.piece, orderNo, hit.row.version,
+      client.createRequestId(), photo);
     if (!write) {
+      this._pieceBusy = false;
       return;
     }
     this._pieceBusy = true;

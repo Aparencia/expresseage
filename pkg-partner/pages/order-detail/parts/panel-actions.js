@@ -10,6 +10,7 @@ const correctPanel = require('./correct-panel');
 const deliveryPanel = require('./delivery-panel');
 const exceptionPanel = require('./exception-panel');
 const reasonPanel = require('./reason-panel');
+const proofPhoto = require('../../../../utils/proof-photo');
 
 module.exports = {
   // ---------- 件级取件（D61）：每件独立「已取件/撤销已取」，免二次确认；只消费服务端 parcel.actions ----------
@@ -22,13 +23,48 @@ module.exports = {
     if (!piece) {
       return;
     }
-    const write = pieceActions.writeOf(String(dataset.key || ''), piece, order.orderNo, order.version,
-      client.createRequestId());
+    const key = String(dataset.key || '');
+    if (key === 'markPicked') {
+      this.capturePiecePick(key, piece, order);
+      return;
+    }
+    this.writePiece(key, piece, order, null);
+  },
+
+  // D98：逐件取件先问「拍照 / 跳过照片」；取消中止
+  capturePiecePick(key, piece, order) {
+    proofPhoto.captureOptional().then((choice) => {
+      if (!choice) {
+        wx.showToast({ title: '已取消取件', icon: 'none' });
+        return;
+      }
+      this.writePiece(key, piece, order, choice.skipped ? null : choice.photo);
+    }).catch((err) => wx.showToast({ title: (err && err.message) || '照片上传失败，请重试', icon: 'none' }));
+  },
+
+  writePiece(key, piece, order, photo) {
+    const write = pieceActions.writeOf(key, piece, order.orderNo, order.version, client.createRequestId(), photo);
     if (!write) {
       return;
     }
     this.submitWrite(() => orderApi[write.method](write.payload, write.opts),
       pieceActions.toastOf(write.key, piece));
+  },
+
+  // D98：整单取件先问「拍照 / 跳过照片」，跳过不阻断；取消中止
+  pickWithPhoto(orderNo, opts) {
+    proofPhoto.captureOptional().then((choice) => {
+      if (!choice) {
+        wx.showToast({ title: '已取消取件', icon: 'none' });
+        return;
+      }
+      const payload = { orderNo: orderNo };
+      if (!choice.skipped && choice.photo) {
+        payload.pickPhotoTicket = choice.photo.ticket;
+        payload.pickPhotoFileId = choice.photo.fileId;
+      }
+      this.submitWrite(() => orderApi.markPicked(payload, opts), '已标记取件');
+    }).catch((err) => wx.showToast({ title: (err && err.message) || '照片上传失败，请重试', icon: 'none' }));
   },
   // ---------- 补码/改站点面板（v1.0 一单多包裹：逐件 itemIndex 纠正，订单级动作不变） ----------
   openCorrectPanel(itemIndex) {
@@ -120,9 +156,20 @@ module.exports = {
         if (!res.confirm) {
           return;
         }
-        const submit = deliveryPanel.buildSubmit(this.data.order, this.data.deliveryNote);
-        this.submitWrite(() => orderApi.markDelivered(submit.data, submit.opts),
-          deliveryPanel.COPY.success, 'delivery');
+        // D97：送达必须附 1 张现场照片（一单一图）；取消拍照则中止并给下一步
+        proofPhoto.capture().then((photo) => {
+          if (!photo) {
+            this.setData({ deliveryError: '送达需要拍一张现场照片，已取消' });
+            return;
+          }
+          const submit = deliveryPanel.buildSubmit(this.data.order, this.data.deliveryNote);
+          const data = Object.assign({}, submit.data, {
+            deliveryPhotoTicket: photo.ticket,
+            deliveryPhotoFileId: photo.fileId
+          });
+          this.submitWrite(() => orderApi.markDelivered(data, submit.opts),
+            deliveryPanel.COPY.success, 'delivery');
+        }).catch((err) => this.setData({ deliveryError: (err && err.message) || '照片上传失败，请重试' }));
       }
     });
   },

@@ -3,13 +3,10 @@
  * tools/selftest-order-workbench.js — 批 6-B「兼职工作台」端侧断言套件（ENGINEERING §7.2 register 聚合形态）。
  *
  * 覆盖（task-69 A~F + Lead 追加）：
- *   A. 多选资格（DELIVERED/COMPLETED/CANCELLED 不可勾选）与批量计划：客户端循环 + 同一 batchActionId、
- *      逐单结果、部分失败保留失败选中 + 一键重试、禁止把部分成功显示为全部成功；
+ *   A. 多选资格（DELIVERED/COMPLETED/CANCELLED 不可勾选）与批量计划：客户端循环 + 同一 batchActionId、逐单结果、部分失败保留失败选中 + 一键重试、禁止把部分成功显示为全部成功；
  *   B. 撤销条策略：仅 pick/deliver、5s 倒计时、批量同一 batchActionId、部分失败文案「N 单撤销成功，M 单顾客已确认，不能撤销」；
- *   C. 筛选/搜索/分页/轮询增量：状态 chip 走服务端 status、需查明 client 过滤、筛空 vs 真空、
- *      按 orderNo/version 合并、仅变化行 setData 行级补丁、列表无变化 counts 仍更新、分片 ≤20 行、红点 patch 保留 messages；
- *   D. 首用引导三步 + 兼职编号行（partnerNo 空/非法不造假）+ utils/storage 引导标记读写；
- *   E. 行级动作只消费服务端 actions[]（无 actions 不显示、面板校验/请求包络 expectedVersion、补码后跳下一条需查明）；
+ *   C. 筛选/搜索/分页/轮询增量：状态 chip 走服务端 status、需查明 client 过滤、筛空 vs 真空、按 orderNo/version 合并、仅变化行 setData 行级补丁、列表无变化 counts 仍更新、分片 ≤20 行、红点 patch 保留 messages；
+ *   D. 首用引导三步 + 兼职编号行（partnerNo 空/非法不造假）+ utils/storage 引导标记读写；E. 行级动作只消费服务端 actions[]（无 actions 不显示、面板校验/请求包络 expectedVersion、补码后跳下一条需查明）；
  *   F. 静态纪律：页面零 wx.cloud / 零七状态字面量 / 零 random / 不直调 client.call / 写动作带 expectedVersion /
  *      行渲染不出现 openid；有牙反例证明扫描能红；
  *   G. 异步联调：真实 _dto.buildOrderDto 七状态 actions 与行工具逐格一致、批量循环共享 batchActionId、批量撤销同 id。
@@ -66,7 +63,7 @@ const {
 // P1-5/P1-6：复制汇总纯件单源（主包 parts，工作台与统计页共用）；缺件时 optionalRequire 给逐条可定位红。
 const summaryCopy = optionalRequire('pages/partner/workbench/parts/summary-copy.js');
 
-const EXPECTED_ASSERTIONS = 235 + dayCases.EXPECTED_ASSERTIONS + 33 + 15 + orderCases.EXPECTED_ASSERTIONS
+const EXPECTED_ASSERTIONS = 237 + dayCases.EXPECTED_ASSERTIONS + 33 + 15 + orderCases.EXPECTED_ASSERTIONS
   + pickedCases.EXPECTED_ASSERTIONS + 6 + 5 + transferCases.WORKBENCH_EXPECTED_ASSERTIONS + 3; // A~O 实际断言总数（批 26-W4：O 组转派待接收用例表见 lib；+2 H11a/H11b 送别人；+3 E09b/E09c/H08b 按钮 B 与件级定位；+2 批 37 浮层模态；+1 tabBar 互斥）
 function textOf(rel) {
   return fsutil.readText(path.join(ROOT, rel));
@@ -467,6 +464,10 @@ function register(h) {
     const deliverWrite = rowActions.buildWrite('deliver', pickedRow, { deliveryNote: '放宿舍门口' }, 'BID');
     t.eq([deliverWrite.method, deliverWrite.payload.deliveryNote, deliverWrite.payload.batchActionId],
       ['markDelivered', '放宿舍门口', 'BID'], 'E27 送达带 deliveryNote 与 batchActionId');
+    const deliverPhotoWrite = rowActions.buildWrite('deliver', pickedRow, { photo: { ticket: 'T'.repeat(32), fileId: 'cloud://env.bucket/proofs/T/image.jpg' } }, '');
+    t.eq([deliverPhotoWrite.payload.deliveryPhotoTicket, deliverPhotoWrite.payload.deliveryPhotoFileId], ['T'.repeat(32), 'cloud://env.bucket/proofs/T/image.jpg'], 'E27b D97 送达 payload 带 PROOF 票据 + fileId（一单一图，页面先拍照后提交）');
+    const photoSrc = textOf('pages/partner/workbench/parts/deliver-photo.js') + textOf('pages/partner/workbench/index.js');
+    t.check(photoSrc.indexOf('proofPhoto.capture()') !== -1 && photoSrc.indexOf("require('./parts/deliver-photo')") !== -1 && photoSrc.indexOf('deliverWithPhoto') !== -1, 'E27c 工作台单件与批量送达均经 utils/proof-photo 采集（批量逐单快门）');
     const undoRowWrite = rowActions.buildWrite('undoPick', pickedRow, {}, '');
     t.eq([undoRowWrite.method, undoRowWrite.payload.batchActionId], ['unmarkPicked', undefined],
       'E28 行级「撤销已取件」走 unmarkPicked（契约单件动作）');
@@ -549,7 +550,7 @@ function register(h) {
     t.check(wxml.indexOf('skeleton') >= 0 && wxml.indexOf('加载中') === -1, 'F23 骨架屏替「加载中…」（§4.15）');
     t.check(wxml.indexOf('onBannerTap') >= 0 && wxml.indexOf('banner.visible') >= 0,
       'F24 页内新订单横幅存在（不自动跳页）');
-    t.check(wxml.indexOf('class="panel-mask"') >= 0 && wxml.indexOf('class="panel"') >= 0 && wxml.indexOf('catchtap="onPanelClose"') >= 0 && wxml.indexOf('onHandoverTap') >= 0 && wxml.indexOf('已转出') >= 0 && textOf('pages/partner/workbench/parts/handover.js').indexOf('ensureHandover') >= 0 && textOf('pages/partner/workbench/parts/handover.js').indexOf('navigateTo') >= 0 && textOf('pages/partner/customers/index.js').indexOf('selected: 2') >= 0, 'F35 动作面板=页面级模态浮层；D95 已转出常驻入口/行内徽标/点行进详情已接线');
+    t.check(wxml.indexOf('class="panel-mask"') >= 0 && wxml.indexOf('class="panel"') >= 0 && wxml.indexOf('catchtap="onPanelClose"') >= 0 && wxml.indexOf('row.handover') >= 0 && wxml.indexOf('handover-card') === -1 && wxml.indexOf('onHandoverTap') === -1 && textOf('pages/partner/customers/index.js').indexOf('selected: 2') >= 0, 'F35 动作面板=页面级模态浮层；D99 已转出并入订单卡片（行内标记、无独立卡片/接线）');
     t.check(wxml.indexOf('panel.orderNo') === -1 && wxml.indexOf('panel-page-card') === -1,
       'F36 行内/页底面板已移除（浮层不再撑开列表）');
     t.check(actionSrc.indexOf('setPanel(') >= 0 && textOf('custom-tab-bar/index.wxml').indexOf('!hidden') >= 0, 'F37 浮层打开时隐藏自定义 tabBar（按钮不被遮挡）');

@@ -27,7 +27,7 @@ const {
 const { SUBMITTED, ACCEPTED, PICKED, DELIVERED, COMPLETED, CANCELLED, EXCEPTION } = ORDER_STATUS;
 
 // D61 件级取件（批 25-A）：订单 DTO 增 pickedCount/parcelCount/allPicked（每件 picked/pickedAt/actions 在 parcels[] 内）。
-const EXPECTED_ASSERTIONS = 182;
+const EXPECTED_ASSERTIONS = 190;
 const NOW = Date.parse('2026-10-22T10:00:00+08:00');
 const HOUR = 3600 * 1000;
 const DAY = 24 * HOUR;
@@ -52,7 +52,7 @@ const DTO_ROW_KEYS = [
   'orderNo', 'status', 'statusText', 'bucket', 'progressIndex', 'needCode', 'failureHint', 'source',
   'service', 'addons', 'appoint', 'parcel', 'parcels', 'pickedCount', 'parcelCount', 'allPicked',
   'note', 'phoneTail', 'dorm', 'delivery', 'manualEntry',
-  'guest', 'exception', 'deliveryNote',
+  'guest', 'exception', 'deliveryNote', 'deliveryProof', 'pickProof',
   'cancelReason', 'cancelReasonText', 'cancelledBy', 'cancelledByText', 'customerNo', 'partnerNo',
   'fulfillmentPartnerNo', 'transfer', 'review',
   'image', 'images', 'counterpart', 'actions', 'version', 'statusUpdatedAt', 'createdAt', 'updatedAt', 'acceptedAt',

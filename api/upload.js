@@ -169,6 +169,9 @@ function tooLargeMessage(purpose) {
   if (purpose === 'AVATAR') {
     return '头像图片过大，请更换一张更小的图片';
   }
+  if (purpose === 'PROOF') {
+    return '现场照片超过 500KB，自动压缩后仍太大：请重新拍一张或换一张更小的照片';
+  }
   return '截图文件过大，请重新选择或裁剪后上传';
 }
 
@@ -216,14 +219,21 @@ async function prepareAvatar(platform, filePath) {
 // 票据：先按真实字节数判 ≤500KB 大小闸；超限走压缩阶梯（P0-10：长边≤1440 + 质量 3 档，≤3 次仍超限才拒绝）。
 // 聊天来源的扩展名不受控，类型不做客户端拦截（OCR 由服务端识别失败兜底，CONTRACT §4.3），因此 TYPE 不阻断。
 const TICKET_TOO_LARGE_MESSAGE = '截图超过 500KB，自动压缩后仍太大：请裁剪掉无关部分，或换一张截图再试';
+const PROOF_TOO_LARGE_MESSAGE = '现场照片超过 500KB，自动压缩后仍太大：请重新拍一张，或换一张更小的照片';
 
-async function prepareTicket(platform, filePath, pickedSize) {
+function ticketTooLargeMessage(purpose) {
+  return purpose === 'PROOF' ? PROOF_TOO_LARGE_MESSAGE : TICKET_TOO_LARGE_MESSAGE;
+}
+
+async function prepareTicket(platform, filePath, pickedSize, purpose) {
+  const isProof = purpose === 'PROOF';
+  const kind = isProof ? 'PROOF' : 'TICKET';
   // D44：size 三级解析（选图元数据 → getFileInfo → 有界 readFile 真实字节数）；
   // 只有「文件本身三路都读不出来」才拒，元数据缺失不再按 0 必拒。
   const resolved = await resolveTicketSize(platform, filePath, pickedSize);
   const size = resolved.size;
   if (size <= 0) {
-    throw new client.CallError('VALIDATION_FAILED', invalidMessage('TICKET', 'EMPTY'));
+    throw new client.CallError('VALIDATION_FAILED', invalidMessage(kind, 'EMPTY'));
   }
   const picked = avatar.validatePicked({ path: filePath, size }, MAX_TICKET_BYTES);
   if (picked.ok) {
@@ -248,15 +258,15 @@ async function prepareTicket(platform, filePath, pickedSize) {
     || compressed.reason === 'UNREADABLE'
     || compressed.reason === 'UNSUPPORTED');
   if (unreadable) {
-    throw new client.CallError('VALIDATION_FAILED', invalidMessage('TICKET', 'EMPTY'));
+    throw new client.CallError('VALIDATION_FAILED', invalidMessage(kind, 'EMPTY'));
   }
-  throw new client.CallError('VALIDATION_FAILED', TICKET_TOO_LARGE_MESSAGE);
+  throw new client.CallError('VALIDATION_FAILED', ticketTooLargeMessage(purpose));
 }
 
 async function prepareAndUpload(options) {
   const purpose = options && options.purpose;
   const sourcePath = options && options.filePath;
-  if (purpose !== 'TICKET' && purpose !== 'AVATAR') {
+  if (purpose !== 'TICKET' && purpose !== 'AVATAR' && purpose !== 'PROOF') {
     throw new client.CallError('VALIDATION_FAILED', '上传用途不正确');
   }
   if (!sourcePath) {
@@ -267,7 +277,7 @@ async function prepareAndUpload(options) {
   const platform = platformNow();
   const local = purpose === 'AVATAR'
     ? await prepareAvatar(platform, sourcePath)
-    : await prepareTicket(platform, sourcePath, options && options.size);
+    : await prepareTicket(platform, sourcePath, options && options.size, purpose);
   const preparePayload = { purpose, size: local.size };
   if (purpose === 'AVATAR') {
     preparePayload.contentType = contentTypeOf(local.filePath, sourcePath);
@@ -285,7 +295,7 @@ async function prepareAndUpload(options) {
     fileId,
     purpose,
     size: local.size,
-    longSideLimit: purpose === 'TICKET' ? TICKET_LONG_SIDE_LIMIT : 0
+    longSideLimit: (purpose === 'TICKET' || purpose === 'PROOF') ? TICKET_LONG_SIDE_LIMIT : 0
   };
 }
 

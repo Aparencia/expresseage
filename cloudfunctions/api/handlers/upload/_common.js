@@ -13,17 +13,36 @@ const identity = require('../user/_common');
 const TICKET_MAX_BYTES = 500 * 1024;
 const AVATAR_MAX_BYTES_FALLBACK = 200 * 1024;
 const AVATAR_FILE_EXT = '.jpg';
-const TICKET_TTL_MINUTES = 5;
+// 2026-11-24 用户反馈「时常上传凭证失效」：下单截图跨多步（选图→识别/AI→逐件核对→服务/送达→提交），
+// 5 分钟 TTL 明显过短；现场照片也可能从拍摄到提交超过 5 分钟。头像仍是即时上传即时保存，保持 5 分钟。
+const TICKET_TTL_MINUTES = 30;
+const PROOF_TTL_MINUTES = 30;
+const AVATAR_TTL_MINUTES = 5;
+
+function ttlMinutesOf(purpose) {
+  if (purpose === enums.UPLOAD_PURPOSE.PROOF) {
+    return PROOF_TTL_MINUTES;
+  }
+  if (purpose === enums.UPLOAD_PURPOSE.AVATAR) {
+    return AVATAR_TTL_MINUTES;
+  }
+  return TICKET_TTL_MINUTES;
+}
 
 // 票据用途 → 云存储路径前缀（服务端唯一构造点；客户端不得自拟）
 const PATH_PREFIX = {
   TICKET: 'orders/',
-  AVATAR: 'avatars/'
+  AVATAR: 'avatars/',
+  // D97/D98：兼职现场照片（取件/送达），与下单截图分目录
+  PROOF: 'proofs/'
 };
 
 function buildCloudPath(purpose, params) {
   if (purpose === enums.UPLOAD_PURPOSE.TICKET) {
     return PATH_PREFIX.TICKET + params.ticket + '/image.jpg';
+  }
+  if (purpose === enums.UPLOAD_PURPOSE.PROOF) {
+    return PATH_PREFIX.PROOF + params.ticket + '/image.jpg';
   }
   const roleDir = params.role === enums.ROLES.PARTNER ? 'partner' : 'customer';
   return PATH_PREFIX.AVATAR + roleDir + '/' + params.random + AVATAR_FILE_EXT;
@@ -104,6 +123,9 @@ module.exports = {
   TICKET_MAX_BYTES,
   AVATAR_MAX_BYTES_FALLBACK,
   TICKET_TTL_MINUTES,
+  PROOF_TTL_MINUTES,
+  AVATAR_TTL_MINUTES,
+  ttlMinutesOf,
   PATH_PREFIX,
   buildCloudPath,
   avatarMaxBytes,

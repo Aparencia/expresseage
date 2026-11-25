@@ -11,7 +11,7 @@
  */
 const path = require('path');
 const { createHarness, installCrashGuard } = require('./selftest');
-const { cloudStub, createTestDb, createUpdateProbeDb } = require('./selftest-cloud-fixtures'); const cloudConfigCases = require('./lib/cloud-config-clock-cases');
+const { cloudStub, createTestDb, createUpdateProbeDb } = require('./selftest-cloud-fixtures'); const cloudConfigCases = require('./lib/cloud-config-clock-cases'); const { proofPayload } = require('./lib/proof-fixtures');
 const ROOT = path.resolve(__dirname, '..');
 const API = path.join(ROOT, 'cloudfunctions/api');
 const CLEANUP = path.join(ROOT, 'cloudfunctions/cleanup');
@@ -405,9 +405,7 @@ function register(h) {
     }
     t.eq(publicError && publicError.code, 'RATE_LIMITED', 'partner.getPublic 5 次/日打满 → RATE_LIMITED');
     const coveredRules = ratelimit.RATE_RULES.map((rule) => rule.action + ':' + rule.scope);
-    t.check(['bind.create:bind', 'partner.activate:activate', 'partner.getPublic:partnerPublic', 'upload.prepare:avatarUpload']
-      .every((key) => coveredRules.indexOf(key) >= 0),
-    '限流策略覆盖 bind.create/partner.activate/partner.getPublic/AVATAR 上传');
+    t.check(['bind.create:bind', 'partner.activate:activate', 'partner.getPublic:partnerPublic', 'upload.prepare:avatarUpload', 'upload.prepare:proofUpload'].every((key) => coveredRules.indexOf(key) >= 0) && ratelimit.rulesOf('upload.prepare', { purpose: 'PROOF' })[0].scope === 'proofUpload', '限流策略覆盖 bind.create/partner.activate/partner.getPublic/AVATAR 与 PROOF 独立桶');
     t.notEmpty(db.dump('counters'), 'ratelimit 样本非空');
   });
 
@@ -756,7 +754,7 @@ function register(h) {
     t.eq(acceptAgain.code, 'INVALID_TRANSITION', '反例：重复接单（非 SUBMITTED）INVALID_TRANSITION');
     const pick = await partnerApi.call('order.markPicked', { orderNo: '20261021-0001' }, { clientRequestId: 'pick-request-000000000001' });
     t.eq(pick.ok, true, '取件：ACCEPTED → PICKED 合法');
-    const deliver = await partnerApi.call('order.markDelivered', { orderNo: '20261021-0001' }, { clientRequestId: 'deliver-request-0000000001' });
+    const deliver = await partnerApi.call('order.markDelivered', Object.assign({ orderNo: '20261021-0001' }, proofPayload(db, 'openid-partner-order', { now: NOW })), { clientRequestId: 'deliver-request-0000000001' });
     t.eq(deliver.ok, true, '送达：PICKED → DELIVERED 合法');
     const customerApiProbe = app.createApi({ db, now: () => NOW, openid: 'openid-cust-order', env: ADMIN_ENV });
     const confirm = await customerApiProbe.call('order.confirmDelivery', { orderNo: '20261021-0001' }, { clientRequestId: 'confirm-request-0000000001' });

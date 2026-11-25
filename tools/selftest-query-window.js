@@ -546,10 +546,10 @@ async function sectionQ5(t) {
 
   const counted = countingApiOf(world({ orders: summaryOrders() }), P1);
   const countedRes = await counted.api.call('order.listPartner', { view: 'workbench' });
-  // D58：summary 不增 count（仍 6 次）+ transferPending 角标 1 次 = 7 次；find 仍 5 次
+  // D58：summary 不增 count（仍 6 次）+ transferPending 角标 1 次 = 7 次；find = 5 状态 + D99 已转出并入 1 次 = 6 次
   t.eq([countedRes.ok, counted.counters.orderCounts, counted.counters.orderGets],
-    [true, 7, 5],
-    'Q5.15 零额外查询：summary 不增 count（6+1 角标=7 次）也不二次 find（仍按 5 个状态各 1 次）');
+    [true, 7, 6],
+    'Q5.15 零额外查询：summary 不增 count（6+1 角标=7 次）；find = 5 状态 + D99 已转出并入 1 次有界扫描');
   const history = await pApi.call('order.listPartner', { view: 'history' });
   t.eq([history.ok, history.data.summary, Object.keys(history.data).sort()],
     [true, undefined, ['counts', 'list', 'nextCursor']],
@@ -594,9 +594,9 @@ async function sectionQ5(t) {
     'Q5.25 触顶数据下 history 视图仍无 summary（既有响应形状不变）');
   const wideCounted = countingApiOf(wideDb, P1);
   const wideCountedRes = await wideCounted.api.call('order.listPartner', { view: 'workbench', limit: 5 });
-  // 6 项 counts + 1 角标 = 7 count；5 find 不变
+  // 6 项 counts + 1 角标 = 7 count；find = 5 状态 + D99 已转出并入 1 次
   t.eq([wideCountedRes.ok, wideCounted.counters.orderCounts, wideCounted.counters.orderGets],
-    [true, 7, 5], 'Q5.26 触顶路径也零额外查询（6 count + 1 角标 + 5 find，不因 truncated 再扫一遍）');
+    [true, 7, 6], 'Q5.26 触顶路径也零额外查询（6 count + 1 角标 + 5 状态 find + 1 次已转出并入扫描）');
 }
 
 // ================================================================ Q6 D67 客户页筛选器 × 游标分页
