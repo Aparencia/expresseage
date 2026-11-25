@@ -26,7 +26,7 @@
     <view class="card">
       <view class="section-title">上传取件码截图（0~{{maxImages}} 张）</view>
       <view class="muted">可一次多选，也可分几次添加；多张截图会合并成同一张订单。截图仅用于识别取件码与兼职核对；订单完成或取消后 7 天删除。</view>
-      <!-- D97：有截图即可下单——信息识别不出来可以先留空，兼职审核按截图补全（不阻断提交） -->
+      <!-- D101：有截图即可下单——信息识别不出来可以先留空，兼职审核按截图补全（不阻断提交） -->
       <view class="shot-tip small">只要确保截图上传成功即可下单：站点、取件码识别不出来的可以先留空，兼职审核时会按截图补全。</view>
       <image-picker id="ticketPicker" purpose="TICKET" max-count="{{maxImages}}" disabled="{{readonly}}" bind:change="onPickFile" bind:uploaded="onUploaded" bind:error="onPickError" bind:limit="onPickLimit" />
       <view class="muted upload-state" wx:if="{{ocrState === 'upload'}}">正在上传…</view>
@@ -88,7 +88,7 @@
       </view>
     </view>
 
-    <!-- D97：有截图即可提交——缺站点/缺码只提示不阻断，兼职审核按截图补全 -->
+    <!-- D101：有截图即可提交——缺站点/缺码只提示不阻断，兼职审核按截图补全 -->
     <view class="card" wx:if="{{files.length}}">
       <view class="small">只要截图已上传成功，站点、取件码留空也能提交；兼职审核时会按截图补全。</view>
     </view>
@@ -145,7 +145,7 @@
         </view>
       </view>
 
-      <!-- 字段级红字紧跟站点/码行，不再落到柜号/尾号之后；D97：有截图时缺站点改行内灰字提示（可留空） -->
+      <!-- 字段级红字紧跟站点/码行，不再落到柜号/尾号之后；D101：有截图时缺站点改行内灰字提示（可留空） -->
       <view class="item-errors" wx:if="{{(!files.length && item.formErrors.station) || item.stationConflictText || item.formErrors.pickupCode}}">
         <view class="small error-text" wx:if="{{!files.length && item.formErrors.station}}">{{item.formErrors.station}}</view>
         <view class="small error-text" wx:if="{{item.stationConflictText}}">{{item.stationConflictText}}</view>

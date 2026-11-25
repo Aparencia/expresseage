@@ -93,7 +93,7 @@ function revalidateItem(item) {
 }
 
 /** 提交前形态闸：勾选件 1~MAX_PARCELS；无截图手填单每件站点 + 取件码或运单尾号（NEED_CODE 口径不变）。
- *  D97：options.allowIncomplete=true（本单有上传成功的截图）时，站点/取件码/运单尾号允许留空，
+ *  D101：options.allowIncomplete=true（本单有上传成功的截图）时，站点/取件码/运单尾号允许留空，
  *  仍拦非法取件码/柜号/尾号形态（兼职审核页按截图补全）。 */
 function canSubmit(items, options) {
   const allowIncomplete = !!(options && options.allowIncomplete);

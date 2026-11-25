@@ -783,7 +783,7 @@ C中的隐私合规中的C1 见上文
 
 ---
 
-## D97 · 2026-11-24 有截图即可下单（站点/取件码/运单尾号允许留空）
+## D101 · 2026-11-24 有截图即可下单（站点/取件码/运单尾号允许留空）
 
 **用户原文**：「顾客端下单，允许在有截图情况下，没有快递信息（因为有审核），直接下单；其次增加信息提示：表明只要确保上传截图即可」。**背景**：现有 `order.create` 与下单页形态闸要求每件「站点 +（取件码或运单尾号）」，OCR 连站点/码都没认出时用户被卡在核对页；而 D78/D92 已有兼职「审核」核对页（按截图改站点/取件码/柜号/尾号），补全路径已存在。**范围确认**（同日追问「哪些信息允许留空」）：用户选择「**站点、取件码、运单尾号都可留空**」。
 
@@ -797,7 +797,7 @@ C中的隐私合规中的C1 见上文
 
 **被否**：只放宽取件码/尾号、站点仍必选（OCR 连站点都没认出时仍需手选，违背「只要截图」）；放宽无截图手填（无审核依据、兼职无从补全）；由客户端自行补全壳数据（伪造站点/码，禁止）。
 
-**代价/落点**：`pkg-customer/pages/order-create/**`（`model.canSubmit`、`submit` 截图上送、`recognize-aggregate` 失败保留 perImage、WXML 提示/行内错误收敛）、`cloudfunctions/api/handlers/order/_parcels-input.js`、`tools/{selftest-order,selftest-order-flow}.js`、CONTRACT §4.2/§5.2/§13、DATA_MODEL §2.5/§4.8、UX_CUSTOMER §3.7/§4.5/§4.12/§12.6、QA §AN、STATE/CHANGELOG。**无新集合/索引/云函数单元；需重新部署 `api` + 上传体验版；无页数变化。**
+**代价/落点**：`pkg-customer/pages/order-create/**`（`model.canSubmit`、`submit` 截图上送、`recognize-aggregate` 失败保留 perImage、WXML 提示/行内错误收敛）、`cloudfunctions/api/handlers/order/_parcels-input.js`、`tools/{selftest-order,selftest-order-flow}.js`、CONTRACT §4.2/§5.2/§13、DATA_MODEL §2.5/§4.8、UX_CUSTOMER §3.7/§4.5/§4.12/§12.6、QA §AO、STATE/CHANGELOG。**无新集合/索引/云函数单元；需重新部署 `api` + 上传体验版；无页数变化。**
 
 ---
 

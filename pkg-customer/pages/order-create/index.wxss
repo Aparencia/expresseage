@@ -40,7 +40,7 @@
   margin-top: 16rpx;
 }
 
-/* D97：有截图即可下单提示（说明可留空，不是错误态） */
+/* D101：有截图即可下单提示（说明可留空，不是错误态） */
 .shot-tip {
   margin-top: 12rpx;
   padding: 12rpx 16rpx;

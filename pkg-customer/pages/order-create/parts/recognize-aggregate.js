@@ -68,7 +68,7 @@ function baseFieldsOf(list, results) {
     ok: false,
     files: list,
     images: imagesOf(results),
-    // D97：识别失败也保留来源图/票据快照——页面据此把已上传截图带上订单（否则退化成无截图手填，
+    // D101：识别失败也保留来源图/票据快照——页面据此把已上传截图带上订单（否则退化成无截图手填，
     // 审核页看不到截图，也就无从「按截图补全」）。buildImages 会过滤 image/ticket 不全的条目。
     perImage: perImageOf(list, results),
     items: [],

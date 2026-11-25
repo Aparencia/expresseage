@@ -42,7 +42,7 @@ const {
   lowercaseCollectionKeyHitsInText, listJs, scanLowercaseKeys, serial
 } = caseLib;
 
-const EXPECTED_ASSERTIONS = 187; // 179 + 8：D97 有截图允许站点/取件码/运单尾号留空（无截图手填仍严格） // 176 + 3：D94 配送地址 roomTag（本人宿舍/送别人/详情格式） // 172 + 4：D93 订单号规格（拼装/楼栋 10→X/双格式/宿舍快照闸） // 156 + 15：D92 审核（两级状态/撤销重审/件数增删/已取件只读/上限/DTO 裁剪/顾客侧过滤/写响应投影/新增件 NEED_CODE） // 153 + 3：D77 附加服务合法建单落库/DTO 名称、枚举外、重复 // 140 + 13：D47 预约 LATEST 服务端归一/拒绝样例/落库/DTO/合并同值 // 137 + 3：D40 10 张截图合法 / 11 张截图拒绝 / 合并追加将超 10 张不并入
+const EXPECTED_ASSERTIONS = 187; // 179 + 8：D101 有截图允许站点/取件码/运单尾号留空（无截图手填仍严格） // 176 + 3：D94 配送地址 roomTag（本人宿舍/送别人/详情格式） // 172 + 4：D93 订单号规格（拼装/楼栋 10→X/双格式/宿舍快照闸） // 156 + 15：D92 审核（两级状态/撤销重审/件数增删/已取件只读/上限/DTO 裁剪/顾客侧过滤/写响应投影/新增件 NEED_CODE） // 153 + 3：D77 附加服务合法建单落库/DTO 名称、枚举外、重复 // 140 + 13：D47 预约 LATEST 服务端归一/拒绝样例/落库/DTO/合并同值 // 137 + 3：D40 10 张截图合法 / 11 张截图拒绝 / 合并追加将超 10 张不并入
 
 function register(h) {
   const asyncSection = (title, fn) => h.section(title, (t) => serial(() => {
@@ -892,8 +892,8 @@ function register(h) {
     t.eq(orderView.deliveryOf({ delivery: { buildingText: 'D4', room: '522', dormKey: 'D4-522', roomTag: 'A' } }).deliveryText,
       'D4-522A', 'L3 兼职详情地址格式=楼栋-房门+字母（与清单锚一致）');
   });
-  // ---------------------------------------------------------------- M D97 有截图允许信息留空
-  asyncSection('M. D97 有截图允许站点/取件码/运单尾号留空（无截图手填仍严格）', async (t) => {
+  // ---------------------------------------------------------------- M D101 有截图允许信息留空
+  asyncSection('M. D101 有截图允许站点/取件码/运单尾号留空（无截图手填仍严格）', async (t) => {
     const world = seedWorld();
     const db = world.db;
     const cApi = apiOf(db, world.customerOpenid);

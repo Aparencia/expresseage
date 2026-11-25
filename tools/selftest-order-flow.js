@@ -48,7 +48,7 @@ const {
   createOrderDb, orderApiOf, pageLayerHits
 } = caseLib;
 
-const EXPECTED_ASSERTIONS = 301; // 287 + 14：T 组 D97 有截图即可提交（canSubmit 放宽/形态闸仍拦/失败保留截图/载荷/服务端判据/文案接线） // 286 + 1：G18b 核对页截图吸顶 + 两行紧凑布局（2026-11-08） // 256 + 21：R 组 P0-1 多图 imageIndex 重映射 9 + S 组 P1-10 取消识别 8 + Q13~Q16 日历日回算 4；+4：D70 手填码补站点/开关；+5：D70 手选站点优先（采纳/兜底两条路径不覆盖 4 + stationBy=code 可被码更新 1）
+const EXPECTED_ASSERTIONS = 301; // 287 + 14：T 组 D101 有截图即可提交（canSubmit 放宽/形态闸仍拦/失败保留截图/载荷/服务端判据/文案接线） // 286 + 1：G18b 核对页截图吸顶 + 两行紧凑布局（2026-11-08） // 256 + 21：R 组 P0-1 多图 imageIndex 重映射 9 + S 组 P1-10 取消识别 8 + Q13~Q16 日历日回算 4；+4：D70 手填码补站点/开关；+5：D70 手选站点优先（采纳/兜底两条路径不覆盖 4 + stationBy=code 可被码更新 1）
 
 function register(h) {
   // ---------------------------------------------------------------- A 站点选择器（P1~P8）
@@ -877,15 +877,15 @@ function register(h) {
       'S7 取消走 discardSession 单源（丢弃在飞会话，不另写一份）');
     t.notEmpty(basePage.data.items, 'S 组样本非空');
   });
-  // ---------------------------------------------------------------- T D97 有截图即可提交
-  h.section('T. D97 有截图即可提交：站点/取件码/运单尾号可留空（无截图仍严格）', (t) => {
+  // ---------------------------------------------------------------- T D101 有截图即可提交
+  h.section('T. D101 有截图即可提交：站点/取件码/运单尾号可留空（无截图仍严格）', (t) => {
     const blank = stationItem({ stationId: '', stationName: '', pickupCode: '', trackingTail: '' });
     const strict = model.canSubmit([blank]);
     t.check(strict.ok === false && strict.reason.indexOf('站点') >= 0,
       'T1 无截图：缺站点仍拒绝（D24 不放宽）');
     const shotPass = model.canSubmit([blank], { allowIncomplete: true });
     t.check(shotPass.ok === true && shotPass.items[0].codeStatus === 'NONE',
-      'T2 有截图：站点/取件码/运单尾号全空也放行（D97）');
+      'T2 有截图：站点/取件码/运单尾号全空也放行（D101）');
     const badCode = model.canSubmit([stationItem({ stationId: '', pickupCode: '!!' })], { allowIncomplete: true });
     t.check(badCode.ok === false && badCode.reason.indexOf('取件码') >= 0,
       'T3 有截图仍拦非法取件码形态（形态闸不放宽）');
@@ -905,7 +905,7 @@ function register(h) {
       failureCopy: { text: '没识别出来。', next: '可以手动填写。' },
       image: { fileId: files[0].fileId, width: 100, height: 200 }, ocrText: '' }]);
     t.check(failedResult.perImage.length === 1 && failedResult.perImage[0].ticket === files[0].uploadTicketId,
-      'T7 识别失败也保留来源图/票据（审核页可看截图，D97）');
+      'T7 识别失败也保留来源图/票据（审核页可看截图，D101）');
     const failPage = identifyPageOf();
     filesFlow.applyIdentify(failPage, [], failedResult.perImage, { ocrState: 'failed' });
     t.eq([failPage.data.images.length, failPage.data.tickets.length], [1, 1],
@@ -923,7 +923,7 @@ function register(h) {
       && normalized[0].codeStatus === 'NEED_CODE', 'T10 服务端判据同样放行（有截图，站点/码可空）');
     const wxml = textOf(ORDER_CREATE_WXML);
     t.check(wxml.indexOf('只要确保截图上传成功即可下单') >= 0 && wxml.indexOf('兼职审核时会按截图补全') >= 0,
-      'T11 上传页常驻提示「只要确保上传截图即可」（D97 信息提示）');
+      'T11 上传页常驻提示「只要确保上传截图即可」（D101 信息提示）');
     const pageSrc = textOf(ORDER_CREATE_PAGE);
     t.check(pageSrc.indexOf('filesFlow.imageSnapshotOf(this)') >= 0 && pageSrc.indexOf('allowIncomplete') >= 0,
       'T12 核对页下一步接线 allowIncomplete + 截图快照（页面零判据）');

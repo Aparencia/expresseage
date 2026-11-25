@@ -40,7 +40,7 @@ function discardSession(page) {
 }
 
 /**
- * 已上传文件 → images[]/tickets[]（D97 兜底）：识别失败/「先手动填写」时还没有识别结果快照，
+ * 已上传文件 → images[]/tickets[]（D101 兜底）：识别失败/「先手动填写」时还没有识别结果快照，
  * 但截图已经上传成功——把 fileId + 上传票据带上订单，避免退化成无截图手填（审核页就看不到截图）。
  * 宽高未知记 0（服务端 normalizeImages 允许 0）；只收同时有 fileId 与上传票据的文件。
  */
@@ -57,7 +57,7 @@ function imagesFromFiles(files) {
   return { images: images, tickets: tickets };
 }
 
-/** 提交/核对闸的截图快照：识别结果优先；尚未产生识别快照时回退到已上传文件（D97） */
+/** 提交/核对闸的截图快照：识别结果优先；尚未产生识别快照时回退到已上传文件（D101） */
 function imageSnapshotOf(page) {
   const data = (page && page.data) || {};
   const images = Array.isArray(data.images) ? data.images : [];

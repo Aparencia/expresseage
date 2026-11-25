@@ -85,7 +85,7 @@ async function onSubmit(page) {
     return;
   }
   if (page.data.submitting) return;
-  // D97：有截图（识别快照或已上传文件）时站点/取件码/运单尾号可留空；无截图手填仍必须填全
+  // D101：有截图（识别快照或已上传文件）时站点/取件码/运单尾号可留空；无截图手填仍必须填全
   const shot = filesFlow.imageSnapshotOf(page);
   const check = model.canSubmit(page.data.items, { allowIncomplete: shot.images.length > 0 });
   if (!check.ok) {

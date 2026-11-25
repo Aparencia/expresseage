@@ -49,7 +49,7 @@ function normalizeFailureId(value) {
 }
 
 // parcels[1~MAX_PARCELS]：无截图手填单每件站点必填 + 取件码或运单尾号至少一个；
-// 有截图单（imageCount>0，D97）允许站点/取件码/运单尾号全空——兼职审核页按截图补全（order.correct）。
+// 有截图单（imageCount>0，D101）允许站点/取件码/运单尾号全空——兼职审核页按截图补全（order.correct）。
 // imageCount = 本批 images 数量（先归一 images 再归一 parcels）；fallbackSource = 整单 recognition.source。
 function normalizeParcels(input, fallbackSource, imageCount) {
   const raw = input && Array.isArray(input.parcels) ? input.parcels : null;

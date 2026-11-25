@@ -26,7 +26,7 @@ function validationOrThrow(result, field) {
 }
 
 // 取件信息：站点只认 P1~P8（可先空，兼职务必 order.correct 补）、码/柜号/尾号过形态闸。
-// D97：有截图单允许站点/取件码/运单尾号全空（_parcels-input 按 images.length>0 放宽；无截图手填仍必填）。
+// D101：有截图单允许站点/取件码/运单尾号全空（_parcels-input 按 images.length>0 放宽；无截图手填仍必填）。
 // fallbackSource：AI 兜底被采纳时由 recognition.source 传入（DATA_MODEL §4.9：DEEPSEEK 采纳→写 DEEPSEEK）；
 // 显式 parcel.recognitionSource 优先（手改→MANUAL 由调用方传显式值）。
 function normalizeParcel(input, fallbackSource) {
