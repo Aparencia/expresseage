@@ -9,6 +9,7 @@ const route = require('../../../config/route');
 const ordersView = require('../parts/orders-view');
 const tickerPatch = require('./parts/ticker-patch');
 const pickupTag = require('./parts/pickup-tag');
+const requestGuard = require('./parts/request-guard');
 const share = require('../../../utils/share/handlers');
 
 const DETAIL_PAGE = '/pkg-customer/pages/order-detail/index';
@@ -36,6 +37,8 @@ Page({
 
   onLoad() {
     this._loadingTimer = null;
+    this._loadToken = 0;
+    this._loadingTab = '';
   },
 
   onShow() {
@@ -109,14 +112,23 @@ Page({
   },
 
   loadPage(reset) {
-    if (this.data.loading) return Promise.resolve(false);
+    const tab = this.activeTabKey();
+    // 同一 tab 的在途请求不重复发（下拉连点/触底重复）；切 tab 必须发自己的请求，旧响应由代次丢弃。
+    if (this.data.loading && this._loadingTab === tab) return Promise.resolve(false);
+    const taken = { token: (this._loadToken || 0) + 1, tab: tab };
+    this._loadToken = taken.token;
+    this._loadingTab = tab;
     this.setData({ loading: true, error: '' });
     this.scheduleLoadingVisible();
     const payload = { limit: PAGE_SIZE };
-    const status = ordersView.requestStatusOf(this.activeTabKey());
+    const status = ordersView.requestStatusOf(tab);
     if (status) payload.status = status;
     if (!reset && this.data.cursor) payload.cursor = this.data.cursor;
+    const currentOf = () => ({ token: this._loadToken, tab: this.activeTabKey() });
     return orderApi.listCustomer(payload).then((data) => {
+      // 迟到包（已切 tab / 已发新请求）整包丢弃：不 setData、不清 loading、不上错误条（2026-11-26 审查修复）
+      if (requestGuard.isStaleRequest(currentOf(), taken)) return false;
+      this._loadingTab = '';
       const counts = (data && data.counts) || {};
       // D61：部分取件订单行给「已取 n/m 件」标签（判据单源 parts/pickup-tag，只读 DTO 进度字段）
       const rows = ordersView.visibleRows((data && data.list) || []).map((order) => Object.assign(
@@ -141,6 +153,8 @@ Page({
       this.syncTicker();
       return true;
     }).catch((err) => {
+      if (requestGuard.isStaleRequest(currentOf(), taken)) return false;
+      this._loadingTab = '';
       // 失败保留旧数据（已在列表里的行不清空），顶部错误条提示可重试
       this.clearLoadingTimer();
       this.setData({ loading: false, loadingVisible: false, error: (err && err.message) || '网络开小差了，请下拉重试' });

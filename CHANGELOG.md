@@ -7,6 +7,8 @@
 
 ## [未发布]
 
+- **2026-11-26 顾客订单列表切 tab/迟到响应修复（TD-100 同类，纯客户端）**：此前用 `loading` 单飞挡并发——请求在飞时切 tab 会吞掉新请求，旧 tab 的响应又按新 tab 落地（内容与 tab 不符）。修法：每次加载领代次并记录发起 tab（`_loadToken`/`_loadingTab`），`then`/`catch` 两条落地路径统一用纯件 `pages/customer/orders/parts/request-guard.isStaleRequest` 比对，旧包整包丢弃（不 setData、不清 loading、不写错误条）；同 tab 在途仍去重，跨 tab 必发。判据：`selftest-performance` O 组 5 条（真值表 / 两条接线 / 旧单飞闸移除即红）。**需重新上传体验版；`api` 无改动。** TD-100 其余页面（兼职客户列表、后台各列表）仍开放。
+
 - **2026-11-26 索引缺口与查询路径回写（文档/契约；索引待用户在控制台创建）**：补齐 4 个缺失索引到 `docs/data/V4_DATA_MODEL.md` §5.1 与 `docs/delivery/V4_RUNBOOK.md` §3.4——`orders.idx_partner_exception_at(partnerId,exception.at)`、`orders.idx_transfer_from_resolved(transfer.fromPartnerId,transfer.status,transfer.resolvedAt)`、`orders.idx_transfer_to_resolved(transfer.toPartnerId,partnerId,transfer.status,transfer.resolvedAt)`、`users.idx_users_deletion(status,deletionRequestedAt)`；并明确「索引全集以 DATA_MODEL §5.1 为准，ENGINEERING §4.6 为批 1 历史摘要」。§5.2 查询路径按当前实现回写：列表逐桶并行查询 + 有游标时下推、工作台/今日流水保持「最新一窗」、消息中心并发 5 批量。**用户在控制台按 RUNBOOK §3.4 建 4 个索引并截图**；无代码/接口/字段变更。
 
 - **2026-11-26 响应速度修复第二批（历史列表翻页可达性）**：顾客「已完成/已取消」与兼职历史列表此前每页都从「最新一窗」重扫、游标只在内存过滤，历史单超过扫描窗（单状态 60 条、双状态 120 条）后 `nextCursor=null`，旧单在列表里不可达。修法：有游标时把「排序锚之后」下推进查询（`sortField < 游标时间` + 同刻 `orderNo < 游标单号` 两段，可命中既有索引），首屏仍保持「最新一窗」语义；兼职工作台/今日流水因 summary 依赖该窗口，本轮不改。**部署（用户执行）**：重部署 `api`；无客户端改动，无集合/索引/字段/action 变更。

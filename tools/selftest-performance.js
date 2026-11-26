@@ -37,7 +37,7 @@ const partnerMessagePoll = require(path.join(ROOT, 'pkg-partner/pages/order-deta
 const cloudActions = require(path.join(ROOT, 'cloudfunctions/api/shared/actions.js'));
 const { createApi } = require(path.join(ROOT, 'cloudfunctions/api/app.js'));
 
-const EXPECTED_ASSERTIONS = 154; // 实际断言总数（149 + 5：2026-11-26 性能审查 D2 列表/计数并行）；少算/多算都判红
+const EXPECTED_ASSERTIONS = 159; // 实际断言总数（154 + 5：2026-11-26 审查修复 O 顾客订单列表请求代次）；少算/多算都判红
 const NOW = Date.parse('2026-10-22T12:00:00+08:00');
 const ROLES = { CUSTOMER: 'CUSTOMER', PARTNER: 'PARTNER' };
 const USER_STATUS = { ACTIVE: 'ACTIVE' };
@@ -694,6 +694,27 @@ function register(h) {
       'N7 页面订阅回调真消费计划（判等/隐藏挂起在纯件层）');
     t.check(profileSrc.indexOf('_hidden') >= 0 && profileSrc.indexOf('onHide()') >= 0,
       'N8 我的页新增可见性守卫（onHide 挂起，onShow 恢复并补刷）');
+  });
+
+  // ---------------------------------------------------------------- O. 顾客订单列表请求代次
+  asyncSection('O. 顾客订单列表请求代次（切 tab/下拉不再吞请求、旧包不覆盖；2026-11-26 审查修复）', async (t) => {
+    const guard = optionalRequire('pages/customer/orders/parts/request-guard.js');
+    const ordersSrc = codeOf('pages/customer/orders/index.js');
+    t.check(!!guard && typeof guard.isStaleRequest === 'function', 'O1 合法基线：请求代次纯件存在');
+    t.eq(guard ? [
+      guard.isStaleRequest({ token: 2, tab: 'ONGOING' }, { token: 2, tab: 'ONGOING' }),
+      guard.isStaleRequest({ token: 3, tab: 'ONGOING' }, { token: 2, tab: 'ONGOING' }),
+      guard.isStaleRequest({ token: 3, tab: 'FINISHED' }, { token: 3, tab: 'ONGOING' }),
+      guard.isStaleRequest({ token: 3, tab: 'ONGOING' }, null)
+    ] : null, [false, true, true, true],
+      'O2 真值表：同代次同 tab 才落地；旧代次/换 tab/无发起快照一律丢弃');
+    t.eq((ordersSrc.match(/requestGuard\.isStaleRequest\(/g) || []).length, 2,
+      'O3 接线：then 与 catch 两条落地路径共用同一代次判据（迟到失败不写错误条）');
+    t.check(ordersSrc.indexOf('_loadingTab') >= 0
+      && ordersSrc.indexOf('const taken = { token: (this._loadToken || 0) + 1, tab: tab };') >= 0,
+    'O4 接线：每次请求领代次并记录发起 tab（同 tab 去重、跨 tab 必发）');
+    t.check(ordersSrc.indexOf('if (this.data.loading) return Promise.resolve(false);') < 0,
+      'O5 旧单飞闸已移除（回归即红：切 tab 时请求会被吞掉）');
   });
 }
 
