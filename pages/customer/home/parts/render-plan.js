@@ -113,17 +113,25 @@ function syncPlanOf(input) {
 }
 
 // refresh 渲染计划：返回 { batches, setData(第 1 批), store(单次 store.patch), view }。
-// batches = 1（第 1 批）+ 1（post-patch 通知触发的 sync 第 2 批）；store 永含 binding → 常态恒为 2。
+// batches = 1（第 1 批）+ 1（post-patch 通知触发的 sync 第 2 批）；store 含 binding → 常态恒为 2。
+// 2026-11-26 审查修复：bindingFailed=true 时沿用 current.binding（不写 store.binding、不清旧卡），
+// 订单结果照常上屏——绑定失败不再连订单一起丢成整页错误。
 function refreshPlanOf(input) {
   const ctx = input || {};
   const current = ctx.current || {};
   const config = ctx.config || current.config || {};
-  const binding = ctx.binding || null;
-  const partnerPublic = ctx.partnerPublic || null;
+  const bindingFailed = ctx.bindingFailed === true;
+  const binding = bindingFailed ? (current.binding || null) : (ctx.binding || null);
+  const partnerPublic = bindingFailed
+    ? (ctx.fallbackPartnerPublic || (binding && binding.partnerPublic) || null)
+    : (ctx.partnerPublic || null);
   const order = ctx.order || null;
   const bindingRef = binding ? Object.assign({}, binding, { partnerPublic: partnerPublic }) : null;
-  const badges = ongoingBadgesPatchOf(current.badges, ctx.counts);
-  const store = { binding: bindingRef };
+  const badges = ctx.counts === undefined ? null : ongoingBadgesPatchOf(current.badges, ctx.counts);
+  const store = {};
+  if (!bindingFailed) {
+    store.binding = bindingRef;
+  }
   if (ctx.config) {
     store.config = ctx.config;
   }

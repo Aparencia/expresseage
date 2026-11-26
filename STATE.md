@@ -23,6 +23,8 @@
 
 **2026-11-26 后台请求代次（TD-100 收口，纯客户端）**：后台订单/顾客/兼职列表共用的 `pkg-admin/common/list-flow` 实现代次守卫（`loadList`/`loadMore` 领 `_loadToken`、`then`/`catch` 用 `utils/stale-request` 比对、`onUnload` 置 `_unloaded` 并作废代次）；后台消息（三请求聚合）、总览（统计+审计追加）、顾客详情（治理动作后回读）同步接入。判据：`selftest-admin-pages` Q 组 4 条（公共判据真值表/列表流两条链路/页面接线），读数以 `node tools/selftest.js` 为准。**部署（用户执行）**：仅重传体验版；`api` 无改动。**TD-100 已关闭**（其列出的列表/消息/总览/顾客详情均已接入；订单详情走轮询策略另档）。
 
+**2026-11-26 首页 refresh 绑定/订单解耦（纯客户端）**：此前 `bind.getCurrent` 与 `order.listCustomer` 同在一个 `Promise.all`，任一失败整页错误（绑定失败连订单一起丢）。修法：两任务各自 settle；`parts/render-plan.refreshPlanOf` 增 `bindingFailed`/`fallbackPartnerPublic`（绑定失败沿用旧卡、不写 store.binding、不闪骨架），订单照常上屏；只有两边都失败才整页错误，订单单独失败仍更新绑定卡 + 非阻塞错误条。判据：`selftest-performance` P 组 6 条（读数以 `node tools/selftest.js` 为准）。**部署（用户执行）**：仅重传体验版；`api` 无改动。
+
 **2026-11-24 D101 批（有截图即可下单：站点/取件码/运单尾号可留空，兼职审核按截图补全；无截图手填仍严格）工程侧完成，等待用户部署/点检**：口径 CONTRACT §4.2/§5.2/§13 D101 + DECISIONS D101。交付：`order.create` 服务端形态闸（`handlers/order/_parcels-input.normalizeParcels`）对 `images.length>0` 放宽站点/取件码/运单尾号，无截图手填保持「站点 + 码/尾号」严格；客户端 `canSubmit({allowIncomplete})` 同步放宽、非法站点/码/尾号形态闸照旧；识别失败/先手填保留已上传截图与票据（`recognize-aggregate` 失败分支带 `perImage`），订单不降级成无截图手填；下单页 Step1 常驻「只要确保截图上传成功即可下单…」提示、Step2 缺站点/缺码改灰字提示不阻断下一步；提交闸使用同一截图快照（识别结果优先、回退已上传文件）。判据：`selftest-order` **190/190**（M 组 8 条）、`selftest-order-flow` **301/301**（T 组 14 条）；**门禁真实输出（2026-11-24）**：`check.ps1` 4 步退出码 0——`check.js` 39/39、`check-docs` 12/12、零金额 0 命中（白名单 108 项）、`selftest` 39 套 0 失败。**变异电池**（`tools/mutation.ps1`，均首红→SHA256 还原→复绿）：关掉服务端 `hasScreenshot` → M3 首红；关掉客户端 `allowIncomplete` → T2 首红；失败分支去 `perImage` → T7 首红。**部署（用户执行）**：`api` 重部署（共享件无改动）→ 上传体验版 → 真机 QA §AO1~AO4（agent 不代勾）。
 
 

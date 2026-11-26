@@ -7,6 +7,8 @@
 
 ## [未发布]
 
+- **2026-11-26 首页 refresh 绑定/订单解耦（纯客户端）**：此前一次 refresh 把 `bind.getCurrent` 与 `order.listCustomer` 放进同一个 `Promise.all`，任一失败都走整页错误——绑定失败会连已经取回的订单一起丢。修法：两任务各自 settle（`{ok,data,err}`）；渲染计划新增 `bindingFailed`/`fallbackPartnerPublic`：绑定失败时沿用旧绑定卡（不写 `store.binding`、不闪骨架），订单照常上屏；只有两边都失败才整页错误，订单单独失败仍更新绑定卡并给非阻塞错误条。判据：`selftest-performance` 新增 P 组 6 条（正常路径/绑定失败沿用旧卡/无旧卡/订单失败不清角标/页面接线）。**需重新上传体验版；`api` 无改动。**
+
 - **2026-11-26 后台列表/消息/总览/顾客详情请求代次（TD-100 收口，纯客户端）**：后台三张列表页（订单/顾客/兼职）共用的 `pkg-admin/common/list-flow` 原先无代次——搜索防抖/切筛选/含测试开关/下拉可并发，旧响应会覆盖新状态；现在 `loadList`/`loadMore` 每次领 `_loadToken`、`then`/`catch` 用公共件 `utils/stale-request` 比对，`onUnload` 置 `_unloaded` 并作废代次。后台消息（三请求聚合）、总览（统计+审计追加）、顾客详情（治理动作后回读）同样接入。判据：`selftest-admin-pages` 新增 Q 组 4 条（公共判据真值表 / 列表流两条链路 / 页面接线）。**需重新上传体验版；`api` 无改动。**
 
 - **2026-11-26 兼职客户列表请求代次 + 守卫抽公共件（TD-100 同类，纯客户端）**：客户列表此前只拦触底追加，`load()` 刷新可并发——onShow / 下拉 / 搜索防抖 / 切筛选连点时，旧响应晚到会覆盖新状态（chunk token 只防旧分片、不防旧响应）。修法：每次加载领代次（`_loadToken`），`then`/`catch` 首行用公共件 `utils/stale-request.isStaleRequest` 比对，旧包整包丢弃；`onUnload` 置 `_unloaded` 并作废旧分片。顾客订单列表同步改用同一公共件（删除页面内副本）。判据：`selftest-partner-customers` 新增 G 组 4 条（真值表 / 两条接线 / 代次与离页位）、`selftest-performance` O 组 5 条仍锁顾客订单页。**需重新上传体验版；`api` 无改动。**

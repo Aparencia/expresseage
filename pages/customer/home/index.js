@@ -246,34 +246,52 @@ Page({
   },
 
   // 一次 refresh = 2 批 setData（P0-4）：第 1 批结果+派生、第 2 批 store 通知合并（详见 parts/render-plan.js）。
+  // 2026-11-26 审查修复：绑定与订单各自 settle——绑定失败沿用旧卡、不阻断订单上屏；只有两边都失败才走整页错误。
   async refresh() {
     if (this.data.error) {
       this.setData({ error: '' });
     }
     this.scheduleLoading();
-    const tasks = [this.bindingTask(), orderApi.listCustomer({ limit: 1 })];
+    const settle = (promise) => promise.then(
+      (data) => ({ ok: true, data: data }),
+      (err) => ({ ok: false, err: err })
+    );
+    const tasks = [settle(this.bindingTask()), settle(orderApi.listCustomer({ limit: 1 }))];
     if (!this.data.vm.config || !this.data.vm.config.privacyVersion) {
-      tasks.push(configApi.getPublic());
+      tasks.push(settle(configApi.getPublic()));
     }
     try {
       const results = await Promise.all(tasks);
       this.clearLoadingTimer();
       // P2：await 期间切 tab/卸载（onHide/onUnload 已置 _hidden）→ 迟到结果不再 setData、不启动 ticker
       if (this._hidden === true) return;
-      const bindingData = results[0] || {};
-      const listData = results[1] || {};
+      const bindingRes = results[0];
+      const orderRes = results[1];
+      const configRes = results[2];
+      if (!bindingRes.ok && !orderRes.ok) {
+        this.applyMaintenanceError(orderRes.err || bindingRes.err);
+        return;
+      }
+      const bindingData = bindingRes.ok ? (bindingRes.data || {}) : null;
+      const listData = orderRes.ok ? (orderRes.data || {}) : null;
       const plan = renderPlan.refreshPlanOf({
         current: {
           customer: store.get('customer'),
+          // 绑定失败时计划沿用这份快照（不写 store.binding、不清旧卡）
+          binding: store.get('binding'),
           config: store.get('config'),
           viewContext: store.get('viewContext'),
           badges: store.get('badges')
         },
-        config: results[2] || null,
-        binding: bindingData.binding || null,
-        partnerPublic: bindingData.partnerPublic || null,
-        order: (listData.list && listData.list.length > 0) ? listData.list[0] : null,
-        counts: listData.counts,
+        config: configRes && configRes.ok ? configRes.data : null,
+        binding: bindingData ? (bindingData.binding || null) : null,
+        bindingFailed: !bindingRes.ok,
+        fallbackPartnerPublic: this.data.partnerPublic,
+        partnerPublic: bindingData ? (bindingData.partnerPublic || null) : null,
+        order: listData && listData.list && listData.list.length > 0
+          ? listData.list[0]
+          : (orderRes.ok ? null : this.data.order),
+        counts: orderRes.ok ? listData.counts : undefined,
         nowMs: ordersView.serverNowMs(store.get('serverTimeSkew'), Date.now()),
         maintenanceClosed: this._maintenanceClosed
       });
@@ -284,6 +302,15 @@ Page({
       // 单次 store.patch（config/binding/badges 合并）→ 一次 notify → sync 第 2 批（vm + 派生）
       // partnerPublic 一并存回 store.binding（P0-3）：其他页/下次进首页复用同一份，不重复拉
       store.patch(plan.store);
+      if (!orderRes.ok) {
+        this.applyMaintenanceError(orderRes.err);
+        return;
+      }
+      // 绑定失败但没有旧卡可沿用 → 给提示（有旧卡则静默，下次 onShow 再试）
+      if (!bindingRes.ok && !store.get('binding')) {
+        this.applyMaintenanceError(bindingRes.err);
+        return;
+      }
       this.startTicker();
     } catch (err) {
       this.clearLoadingTimer();

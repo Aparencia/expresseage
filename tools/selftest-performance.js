@@ -37,7 +37,7 @@ const partnerMessagePoll = require(path.join(ROOT, 'pkg-partner/pages/order-deta
 const cloudActions = require(path.join(ROOT, 'cloudfunctions/api/shared/actions.js'));
 const { createApi } = require(path.join(ROOT, 'cloudfunctions/api/app.js'));
 
-const EXPECTED_ASSERTIONS = 159; // 实际断言总数（154 + 5：2026-11-26 审查修复 O 顾客订单列表请求代次）；少算/多算都判红
+const EXPECTED_ASSERTIONS = 165; // 实际断言总数（159 + 6：2026-11-26 审查修复 P 首页绑定/订单解耦）；少算/多算都判红
 const NOW = Date.parse('2026-10-22T12:00:00+08:00');
 const ROLES = { CUSTOMER: 'CUSTOMER', PARTNER: 'PARTNER' };
 const USER_STATUS = { ACTIVE: 'ACTIVE' };
@@ -715,6 +715,56 @@ function register(h) {
     'O4 接线：每次请求领代次并记录发起 tab（同 tab 去重、跨 tab 必发）');
     t.check(ordersSrc.indexOf('if (this.data.loading) return Promise.resolve(false);') < 0,
       'O5 旧单飞闸已移除（回归即红：切 tab 时请求会被吞掉）');
+  });
+
+  // ---------------------------------------------------------------- P. 首页 refresh 绑定/订单解耦
+  asyncSection('P. 首页 refresh 绑定/订单解耦（绑定失败不阻断订单，2026-11-26 审查修复）', async (t) => {
+    const renderPlan = optionalRequire('pages/customer/home/parts/render-plan.js');
+    const homeSrc = codeOf('pages/customer/home/index.js');
+    const base = {
+      current: {
+        customer: { profileComplete: true },
+        binding: null,
+        config: {},
+        viewContext: null,
+        badges: { workbenchPending: 0, messages: 0, ordersOngoing: 1 }
+      },
+      config: null,
+      binding: null,
+      bindingFailed: false,
+      fallbackPartnerPublic: null,
+      partnerPublic: null,
+      order: { orderNo: 'A1', status: 'SUBMITTED', statusUpdatedAt: Date.now() },
+      counts: { ongoing: 2 },
+      nowMs: Date.now(),
+      maintenanceClosed: ''
+    };
+    const planOf = (over) => renderPlan.refreshPlanOf(Object.assign({}, base, over || {}));
+    const normal = planOf({ binding: { bindingId: 'b1', partnerNo: 'PABC23', partnerDisplayName: '小王' }, partnerPublic: { displayName: '小王', acceptingOrders: true } });
+    t.check(!!normal.store.binding && normal.store.binding.bindingId === 'b1'
+      && normal.setData.order && normal.setData.order.orderNo === 'A1',
+    'P1 合法基线：绑定成功时 store.binding 写回、订单照常上屏（正常路径不被解耦改动）');
+    const oldBinding = { bindingId: 'b-old', partnerNo: 'POLD22', partnerDisplayName: '旧兼职' };
+    const failed = planOf({
+      current: Object.assign({}, base.current, { binding: oldBinding }),
+      bindingFailed: true,
+      fallbackPartnerPublic: { displayName: '旧兼职', acceptingOrders: true }
+    });
+    t.check(failed.store.binding === undefined && failed.setData.order.orderNo === 'A1'
+      && failed.setData.partnerPublic && failed.setData.partnerPublic.displayName === '旧兼职',
+    'P2 绑定失败：不写 store.binding（不清旧卡）、沿用旧 partnerPublic，订单仍上屏');
+    t.check(failed.setData.partnerCard && failed.setData.partnerCard.loaded === true,
+      'P3 绑定失败：旧绑定卡照常渲染（不闪骨架、不整页错误）');
+    const failedNoCard = planOf({ bindingFailed: true, fallbackPartnerPublic: null });
+    t.check(failedNoCard.store.binding === undefined && failedNoCard.setData.order.orderNo === 'A1',
+      'P4 绑定失败且无旧卡：订单仍上屏，绑定区留空由页面单独提示');
+    const orderFailed = planOf({ counts: undefined });
+    t.check(orderFailed.store.badges === undefined && orderFailed.setData.order !== null,
+      'P5 订单失败（counts 未给）：不写 badges（不清角标），沿用页面旧订单');
+    t.check(homeSrc.indexOf('bindingFailed: !bindingRes.ok') >= 0
+      && homeSrc.indexOf('if (!bindingRes.ok && !orderRes.ok)') >= 0
+      && homeSrc.indexOf('if (!orderRes.ok) {') >= 0,
+    'P6 页面接线：两任务各自 settle；只有两边都失败才整页错误，订单失败单独提示');
   });
 }
 
