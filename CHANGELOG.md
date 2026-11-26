@@ -7,6 +7,10 @@
 
 ## [未发布]
 
+- **2026-11-26 响应速度修复第二批（历史列表翻页可达性）**：顾客「已完成/已取消」与兼职历史列表此前每页都从「最新一窗」重扫、游标只在内存过滤，历史单超过扫描窗（单状态 60 条、双状态 120 条）后 `nextCursor=null`，旧单在列表里不可达。修法：有游标时把「排序锚之后」下推进查询（`sortField < 游标时间` + 同刻 `orderNo < 游标单号` 两段，可命中既有索引），首屏仍保持「最新一窗」语义；兼职工作台/今日流水因 summary 依赖该窗口，本轮不改。**部署（用户执行）**：重部署 `api`；无客户端改动，无集合/索引/字段/action 变更。
+- **2026-11-26 历史列表游标下推工程细节**：`handlers/order/_list-query.js` 新增 `cursorWheresOf`（无游标返回空数组，保持首屏语义）；`handlers/order/listCustomer.js` 与 `listPartner.js`（仅 history/customer 视图）按游标条件逐桶并行查询；`_store.js` 文件行数经拆件回到 500 以内。判据：`selftest-query-window` 62→65（Q7.1 620 条已完成单逐页取尽、Q7.2 兼职历史 623 条跨窗取尽、Q7.3 响应形状/页大小不变）；旧实现 Q7.1 只到 60 条即红。`check.ps1` 4 步退出码 0（输出随本次提交留档）。
+- **2026-11-26 GitHub Secret scanning 两条小程序 AppID 告警处置**：仓库与全历史无 AppSecret（`git grep -i appsecret` 0 命中），两条告警值均为公开的小程序 AppID（v2 快照与 v4 开工期各一枚）；AppID 属应用标识、非凭据，**不需轮换**，建议在仓库 Secret scanning 页面 Dismiss 并备注理由；不改写历史。边界与操作步骤见 `docs/governance/lessons/2026-11-26_小程序AppID不是凭据但会被扫描告警.md`。
+
 - **2026-11-26 响应速度修复第一批（服务端并行 + 轮询不叠加）**：①顾客订单列表、兼职工作台主列表与单量统计里原本逐个状态、逐个计数串行查询，改为并行发出后按原顺序合并（行集、计数、截断标记口径不变）；②消息中心聚合从「逐单查事件+留言、再逐绑定查兼职」改为按订单并发 5 分批并行 + 兼职资料一次批量取；③工作台 30s 轮询遇到上一个请求仍在飞时直接跳过（人工下拉/刷新仍可插队），弱网下不再叠加请求；④兼职订单详情从后台/其他页返回时不再整页切「加载中…」，有数据就静默刷新。**部署（用户执行）**：重部署 `api`（服务端三处查询并行）+ 重新上传体验版（工作台轮询/详情加载）；无集合/索引/字段变更，无新增 action。
 - **2026-11-26 响应速度修复工程细节**：`handlers/order/listCustomer.js`（状态分桶 `Promise.all` + 三桶计数并行）、`handlers/order/listPartner.js`（分桶/截断并行 + 五状态计数与今日完成并行）、`handlers/message/list.js`（`mapLimit` 并发 5 + `partners._id in` 批量 + 双角色订单集并行；`message/_common.myOrders` 并行）、`pages/partner/workbench/parts/load-flow.js`（`_loadInflight` 计数：轮询在飞跳过、人工刷新插队不变）、`pkg-partner/pages/order-detail/index.js`（有数据时静默刷新）。判据：`selftest-order-workbench` P14~P17（+4：轮询跳过/零新请求入队/人工刷新可插队/旧包丢弃）、`selftest-performance` D2（+5：列表动作并发窗口 ≥5 与全串行下界、分桶与计数 `Promise.all` 静态闸）；实际读数以 `node tools/selftest.js` 汇总输出为准。**变异验证**：状态分桶改回串行 `for-await` → D15/D17 首红；逐字节还原后复绿（`selftest-order-workbench` P14~P17 为轮询跳过/插队口径的行为断言，随套件常驻）。`check.ps1` 4 步退出码 0（输出随本次提交留档）。
 

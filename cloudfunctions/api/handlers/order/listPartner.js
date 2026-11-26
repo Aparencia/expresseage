@@ -21,7 +21,7 @@ const listTransfer = require('./_list-transfer');
 const listHandover = require('./_list-handover');
 const listMerged = require('./_list-merged');
 const autoComplete = require('./_auto-complete');
-const { readKeyword, readOptionalBindingId, parseTimeBound } = require('./_list-query');
+const { readKeyword, readOptionalBindingId, parseTimeBound, cursorWheresOf } = require('./_list-query');
 
 const WORKBENCH_VIEW = 'workbench';
 const DAY_VIEW = 'day';
@@ -134,20 +134,28 @@ function matchKeyword(order, keyword) {
 // P1-6：任一状态 find 返回行数触达扫描上限（>= scanLimit）→ 本次候选集可能不全，summary 需如实标注
 // （聚合值仍按已取到的行计算，跨状态合并后去重；不新增查询、不二次扫描）。
 // P0-12（2026-11-26 性能审查）：状态分桶查询互不依赖 → 并行发出，行集与截断标记按状态顺序归并（与串行版逐字一致）。
-async function fetchOrders(ctx, partnerId, filter, scanLimit, extraWhere) {
+// P1-11（同日审查）：pushCursor（history/customer 视图）时把游标下推进 where，历史单超出首屏窗口仍可继续翻页；
+// workbench/day 保持原「最新一窗」语义（summary 依赖该窗，下推会改变 summary 口径）。
+async function fetchOrders(ctx, partnerId, filter, scanLimit, extraWhere, pushCursor) {
   const isTest = common.isTestSession(ctx);
-  const parts = await Promise.all(filter.statuses.map((status) => ctx.dao.find(COLLECTIONS.ORDERS, {
-    where: Object.assign({ partnerId, status, isTest }, extraWhere || {}),
-    orderBy: [[filter.sortField, 'desc'], ['orderNo', 'desc']],
-    limit: scanLimit
-  })));
+  const cursorWheres = cursorWheresOf(ctx, filter.sortField, pushCursor || null);
+  const extraWheres = cursorWheres.length > 0 ? cursorWheres : [{}];
+  const groups = await Promise.all(filter.statuses.map((status) => Promise.all(
+    extraWheres.map((extra) => ctx.dao.find(COLLECTIONS.ORDERS, {
+      where: Object.assign({ partnerId, status, isTest }, extraWhere || {}, extra),
+      orderBy: [[filter.sortField, 'desc'], ['orderNo', 'desc']],
+      limit: scanLimit
+    }))
+  )));
   const rows = [];
   let truncated = false;
-  parts.forEach((part) => {
-    if (part.length >= scanLimit) {
-      truncated = true;
-    }
-    part.forEach((row) => rows.push(row));
+  groups.forEach((parts) => {
+    parts.forEach((part) => {
+      if (part.length >= scanLimit) {
+        truncated = true;
+      }
+      part.forEach((row) => rows.push(row));
+    });
   });
   return { rows, truncated };
 }
@@ -184,7 +192,8 @@ function compareRowsBy(sortField) {
 // P1-6：返回 scanTruncated（fetch 触达扫描上限）供 workbench summary 标注「可能少报」；history/customer 不消费。
 async function pageOf(ctx, partnerId, filter, options) {
   const opts = options || {};
-  const fetched = await fetchOrders(ctx, partnerId, filter, opts.scanLimit, opts.extraWhere);
+  const fetched = await fetchOrders(ctx, partnerId, filter, opts.scanLimit, opts.extraWhere,
+    opts.pushCursor ? opts.paging.cursor : null);
   const rows = fetched.rows;
   // 完整订单号补一次唯一索引精确查询：窗口扫描只截断「部分匹配」，完整单号命中不应受窗口影响。
   const exactOrderNo = opts.keyword ? exactOrderNoOf(opts.keyword) : '';
@@ -212,8 +221,7 @@ async function pageOf(ctx, partnerId, filter, options) {
     .sort(compareRowsBy(filter.sortField));
   const page = candidates.slice(0, opts.paging.limit);
   const hasMore = candidates.length > opts.paging.limit;
-  // 游标必须在 D91 补完成之前取：补完成会把 statusUpdatedAt 改写为 now，若用改写后的最后一行做游标，
-  // 下一页会按「now」重新扫到本页已返回的行（重复行/翻不完）。游标锚定补完成前的排序值。
+  // 游标必须在 D91 补完成之前取（补完成会改写 statusUpdatedAt，下一页会重扫已返回行）。
   const nextCursor = hasMore && page.length
     ? common.makeCursor(page[page.length - 1], filter.sortField)
     : null;
@@ -233,13 +241,14 @@ async function pageOf(ctx, partnerId, filter, options) {
   };
 }
 
-function pageQueryOf(input, scanLimit) {
+function pageQueryOf(input, scanLimit, pushCursor) {
   return {
     scanLimit,
     keyword: readKeyword(input.keyword),
     fromMs: parseTimeBound(input.from),
     toMs: parseTimeBound(input.to),
-    paging: common.parsePaging(input)
+    paging: common.parsePaging(input),
+    pushCursor: pushCursor === true
   };
 }
 
@@ -317,7 +326,7 @@ async function listCustomerOrders(ctx, partner, input) {
     throw errors.forbidden('该顾客不在你的客户列表中');
   }
   const filter = resolveCustomerFilter(input);
-  const query = pageQueryOf(input, 300);
+  const query = pageQueryOf(input, 300, true); // P1-11：客户订单视图无 summary 依赖，游标可下推
   query.extraWhere = { customerId: binding.customerId };
   const result = await pageOf(ctx, partner._id, filter, query);
   const maskFlags = await access.maskFlagsOf(ctx, result.page, partner);
@@ -371,7 +380,8 @@ module.exports = async function orderListPartner(ctx, payload) {
   const filter = resolveFilter(input, view);
   const paging = common.parsePaging(input);
   const nowMs = common.nowMsOf(ctx);
-  const query = pageQueryOf(input, scanLimitOf(paging));
+  // P1-11（2026-11-26 审查）：history 不依赖 summary/窗口聚合，游标可安全下推；workbench/day 保持最新一窗语义。
+  const query = pageQueryOf(input, scanLimitOf(paging), view === HISTORY_VIEW);
   // 批 20/D53：view=day = UTC+8 今日内有状态更新的全部七状态订单（窗口锚 statusUpdatedAt，与服务端排序同字段）
   if (view === DAY_VIEW) {
     query.extraWhere = dayWindowWhereOf(ctx, nowMs);
@@ -385,8 +395,7 @@ module.exports = async function orderListPartner(ctx, payload) {
   if (view === DAY_VIEW) {
     list = stripWriteActionsOf(list);
   }
-  // P0-2/TD-073：只有 workbench 视图计算 counts（页面总览/红点消费它）；history 视图不白算 6 个 count。
-  // 批 20：view=day 同样消费 counts（页面总览/红点），故一并计算；history 仍为零值模板（不计入、无查询）。
+  // P0-2/TD-073：只有 workbench/day 消费 counts；history 为零值模板（不计入、无查询）。
   const counts = inlineActions ? await buildCounts(ctx, partner._id, nowMs) : orderView.countsTemplate();
   const body = { list, nextCursor: nextCursorOf(result), counts };
   // D58：待接收转派角标只在需要它的主视图下发（workbench/day 轮询用；history/customer 保持既有严格形状，

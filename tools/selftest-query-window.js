@@ -49,8 +49,9 @@ const {
 } = cases;
 
 const MINUTE = 60 * 1000;
-// 23（Q1~Q4）+ 27（Q5 D48 summary，含 P1-6 truncated）+ 12（Q6 D67 筛选器，批 24）= 62；少算/多算都判红。
-const EXPECTED_ASSERTIONS = 62;
+// 23（Q1~Q4）+ 27（Q5 D48 summary，含 P1-6 truncated）+ 12（Q6 D67 筛选器，批 24）+ 3（Q7 游标下推）
+// = 65；少算/多算都判红。
+const EXPECTED_ASSERTIONS = 65;
 
 function pad4(value) {
   return String(value).padStart(4, '0');
@@ -739,6 +740,58 @@ async function sectionQ6(t) {
     'Q6.12 筛选下 nextCursor 仍只编码排序锚（dormKey+allocSeq，不含 openid/筛选参数）');
 }
 
+// Q7（2026-11-26 审查修复）：游标下推——历史列表超出「最新一窗」后仍能翻到底（旧实现每页从最新重扫，
+// 单状态/双状态窗口翻完后 nextCursor=null，旧单在列表里不可达）。正控：620 条已完成顾客单 + 兼职历史 623 条。
+async function sectionQ7(t) {
+  const db = world({ orders: customerWindowOrders() });
+  const cApi = apiOf(db, C1);
+  const collected = [];
+  let cursor = null;
+  for (let guard = 0; guard < 60 && guard >= 0; guard += 1) {
+    const payload = { status: 'COMPLETED', limit: 20 };
+    if (cursor) {
+      payload.cursor = cursor;
+    }
+    const res = await cApi.call('order.listCustomer', payload);
+    if (!res.ok) {
+      break;
+    }
+    res.data.list.forEach((row) => collected.push(row.orderNo));
+    cursor = res.data.nextCursor;
+    if (!cursor) {
+      break;
+    }
+  }
+  t.eq([collected.length, new Set(collected).size, cursor], [620, 620, null],
+    'Q7.1 620 条已完成单 limit=20 逐页取尽（旧实现第 4 页 nextCursor=null，只到 60 条）');
+
+  const pApi = apiOf(db, P1);
+  const historyRows = [];
+  let hCursor = null;
+  for (let guard = 0; guard < 80 && guard >= 0; guard += 1) {
+    const payload = { view: 'history', limit: 20 };
+    if (hCursor) {
+      payload.cursor = hCursor;
+    }
+    const res = await pApi.call('order.listPartner', payload);
+    if (!res.ok) {
+      break;
+    }
+    res.data.list.forEach((row) => historyRows.push(row.orderNo));
+    hCursor = res.data.nextCursor;
+    if (!hCursor) {
+      break;
+    }
+  }
+  t.eq([historyRows.length, new Set(historyRows).size, hCursor], [623, 623, null],
+    'Q7.2 兼职历史（已完成 620 + 软删单 1 + 已取消 2）跨窗口取尽（旧实现最多 120 条）');
+
+  const first = await cApi.call('order.listCustomer', { status: 'COMPLETED', limit: 20 });
+  const second = await cApi.call('order.listCustomer', { status: 'COMPLETED', limit: 20, cursor: first.data.nextCursor });
+  t.eq([Object.keys(second.data).sort(), second.data.list.length], [['counts', 'list', 'nextCursor'], 20],
+    'Q7.3 游标下推只改过滤位置：响应形状/页大小/契约不变');
+}
+
 // 段内自带独立 fake DB 世界与「合法基线 → 反例」结构；段之间互不依赖。
 function register(h) {
   h.section('§Q 查询窗口簇：TD-040/043/050 精确计数与全量分页（先红后绿取证据）', async (t) => {
@@ -749,6 +802,7 @@ function register(h) {
     await sectionQ4(t);
     await sectionQ5(t);
     await sectionQ6(t);
+    await sectionQ7(t);
   });
 }
 

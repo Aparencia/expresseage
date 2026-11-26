@@ -10,6 +10,7 @@ const { errors } = require('../../lib/errors');
 const common = require('./_common');
 const dto = require('./_dto');
 const autoComplete = require('./_auto-complete');
+const { cursorWheresOf } = require('./_list-query');
 
 const IN_PROGRESS = 'IN_PROGRESS';
 const SORT_FIELDS = {
@@ -52,16 +53,21 @@ function matchKeyword(order, keyword) {
 }
 
 // P0-12（2026-11-26 性能审查）：状态分桶查询互不依赖 → 并行发出，结果按状态顺序拼接（行集与串行版逐字一致）。
-// 保留「每状态独立窗口」语义（scanLimit 按状态计），只把 N 次串行 RTT 收成 1 轮。
-async function fetchOrders(ctx, customerId, filter, scanLimit) {
+// P1-11（同日审查）：游标下推——有 cursor 时按「sortField 更早 / 同刻 orderNo 更小」两段查，历史单超出
+// 首屏扫描窗后仍能继续翻页（旧实现每页都从最新一窗重扫，第 4 页起 nextCursor=null）。
+async function fetchOrders(ctx, customerId, filter, scanLimit, cursor) {
   const isTest = common.isTestSession(ctx);
-  const parts = await Promise.all(filter.statuses.map((status) => ctx.dao.find(COLLECTIONS.ORDERS, {
-    where: { customerId, status, isTest },
-    orderBy: [[filter.sortField, 'desc'], ['orderNo', 'desc']],
-    limit: scanLimit
-  })));
+  const cursorWheres = cursorWheresOf(ctx, filter.sortField, cursor);
+  const extraWheres = cursorWheres.length > 0 ? cursorWheres : [{}];
+  const groups = await Promise.all(filter.statuses.map((status) => Promise.all(
+    extraWheres.map((extra) => ctx.dao.find(COLLECTIONS.ORDERS, {
+      where: Object.assign({ customerId, status, isTest }, extra),
+      orderBy: [[filter.sortField, 'desc'], ['orderNo', 'desc']],
+      limit: scanLimit
+    }))
+  )));
   const rows = [];
-  parts.forEach((part) => part.forEach((row) => rows.push(row)));
+  groups.forEach((parts) => parts.forEach((part) => part.forEach((row) => rows.push(row))));
   return rows;
 }
 
@@ -97,7 +103,7 @@ module.exports = async function orderListCustomer(ctx, payload) {
   const paging = common.parsePaging(payload || {});
   const keyword = common.readTrimmedText(payload && payload.keyword, 40);
   const scanLimit = Math.min(Math.max(paging.limit * 3, 60), 300);
-  const rows = await fetchOrders(ctx, customerId, filter, scanLimit);
+  const rows = await fetchOrders(ctx, customerId, filter, scanLimit, paging.cursor);
   const sortValueOf = (order) => time.toMs(order[filter.sortField]);
   const candidates = rows
     .filter((order) => !order.deletedByCustomerAt)

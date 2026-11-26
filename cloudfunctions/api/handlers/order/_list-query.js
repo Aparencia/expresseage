@@ -49,10 +49,27 @@ function readOptionalBindingId(input) {
   return text;
 }
 
+// 游标下推（2026-11-26 审查修复）：把「排序锚之后」拆成两段可命中索引的查询条件，让 DB 过滤而不是每页
+// 都在「最新一窗」里内存过滤——否则历史单超过扫描窗后 nextCursor=null，旧单在列表里不可达。
+//   ① sortField < cursor.sortValue（严格更早）；② 同刻 orderNo < cursor.orderNo（按单号降序续读）。
+// 无游标返回 []（首屏仍是「最新一窗」语义不变）。
+function cursorWheresOf(ctx, sortField, cursor) {
+  if (!cursor) {
+    return [];
+  }
+  const at = new Date(cursor.sortValue);
+  const wheres = [{ [sortField]: ctx.dao.command('lt', at) }];
+  if (cursor.orderNo) {
+    wheres.push({ [sortField]: at, orderNo: ctx.dao.command('lt', cursor.orderNo) });
+  }
+  return wheres;
+}
+
 module.exports = {
   KEYWORD_MAX_CHARS,
   BINDING_ID_MAX,
   parseTimeBound,
   readKeyword,
-  readOptionalBindingId
+  readOptionalBindingId,
+  cursorWheresOf
 };
