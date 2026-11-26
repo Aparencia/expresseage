@@ -152,11 +152,12 @@ async function completeIfDue(ctx, order, nowMs) {
   return changed ? Object.assign({}, order, patch) : order;
 }
 
-// 读路径补完成（列表页）：行对象原地更新（同一份引用，页/summary/scan 行同时生效），最多 5 单。
-async function completeDueRows(ctx, rows, nowMs) {
+// 读路径补完成（列表页）：行对象原地更新（同一份引用，页/summary/scan 行同时生效），默认最多 5 单。
+async function completeDueRows(ctx, rows, nowMs, max) {
   const list = Array.isArray(rows) ? rows : [];
+  const limit = typeof max === 'number' && isFinite(max) && max > 0 ? Math.floor(max) : READ_PATH_COMPLETE_LIMIT;
   let completed = 0;
-  for (let i = 0; i < list.length && completed < READ_PATH_COMPLETE_LIMIT; i += 1) {
+  for (let i = 0; i < list.length && completed < limit; i += 1) {
     const row = list[i];
     if (!isDueOrder(ctx, row, nowMs)) {
       continue;
@@ -171,8 +172,39 @@ async function completeDueRows(ctx, rows, nowMs) {
   return completed;
 }
 
+// 本兼职「迟到未结」的送达单扫描（2026-11-27 真机「待确认一直堆积」修复）：
+// 读路径原先只补「本次返回页」里的行，昨日送达单不在今日流水页、也不在其它 chip 页时永远轮不到，
+// counts.delivered（独立 count）只增不减。这里按 statusUpdatedAt 升序取最早的一窗（优先命中已建索引
+// idx_status_updated 的排序锚；复合索引缺失时退回无排序查询），由调用方 fail-open。
+const PARTNER_SWEEP_SCAN_LIMIT = 20;
+
+async function partnerDeliveredRowsOf(ctx, partnerId, isTest) {
+  const where = { partnerId: partnerId, status: enums.ORDER_STATUS.DELIVERED, isTest: isTest === true };
+  try {
+    return await ctx.dao.find(COLLECTIONS.ORDERS, {
+      where: where,
+      orderBy: [['statusUpdatedAt', 'asc']],
+      limit: PARTNER_SWEEP_SCAN_LIMIT
+    });
+  } catch (error) {
+    return ctx.dao.find(COLLECTIONS.ORDERS, { where: where, limit: PARTNER_SWEEP_SCAN_LIMIT });
+  }
+}
+
+// 有界补完成（≤max 单/次）：返回本次实际完成数；任何查询失败都返回 0（不打断读路径）。
+async function sweepDueDeliveredOf(ctx, options) {
+  const opts = options || {};
+  if (!opts.partnerId) {
+    return 0;
+  }
+  const rows = await partnerDeliveredRowsOf(ctx, opts.partnerId, opts.isTest === true);
+  const max = typeof opts.max === 'number' && opts.max > 0 ? opts.max : READ_PATH_COMPLETE_LIMIT;
+  return completeDueRows(ctx, rows, opts.nowMs, max);
+}
+
 module.exports = {
   completeOnDelivery,
   completeIfDue,
-  completeDueRows
+  completeDueRows,
+  sweepDueDeliveredOf
 };

@@ -547,10 +547,11 @@ async function sectionQ5(t) {
 
   const counted = countingApiOf(world({ orders: summaryOrders() }), P1);
   const countedRes = await counted.api.call('order.listPartner', { view: 'workbench' });
-  // D58：summary 不增 count（仍 6 次）+ transferPending 角标 1 次 = 7 次；find = 5 状态 + D99 已转出并入 1 次 = 6 次
+  // D58：summary 不增 count（仍 6 次）+ transferPending 角标 1 次 = 7 次；
+  // find = 5 状态 + D99 已转出并入 1 次 + D91 补完成收敛 1 次（仅 counts.delivered>0 时、limit 20 的有界扫描）= 7 次
   t.eq([countedRes.ok, counted.counters.orderCounts, counted.counters.orderGets],
-    [true, 7, 6],
-    'Q5.15 零额外查询：summary 不增 count（6+1 角标=7 次）；find = 5 状态 + D99 已转出并入 1 次有界扫描');
+    [true, 7, 7],
+    'Q5.15 零额外查询：summary 不增 count（6+1 角标=7 次）；find = 5 状态 + D99 并入 1 次 + D91 有界补完成 1 次');
   const history = await pApi.call('order.listPartner', { view: 'history' });
   t.eq([history.ok, history.data.summary, Object.keys(history.data).sort()],
     [true, undefined, ['counts', 'list', 'nextCursor']],

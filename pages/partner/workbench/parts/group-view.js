@@ -7,6 +7,7 @@
 'use strict';
 
 const stations = require('../../../../shared/stations');
+const orderView = require('../../../../shared/order-view');
 const filterView = require('./filter-view');
 const orderRow = require('./order-row');
 const parcelView = require('./parcel-view');
@@ -122,7 +123,8 @@ function toGroups(data, nowMs) {
 // 今日订单流水（D53/批 20）：「全部」= 今日内有状态更新的七状态订单，服务端已按 statusUpdatedAt desc 排好，
 // 客户端不再按四档重排、也不做站点分组——平铺进单个 day 组（group.day=true → 页面不渲染站点头）。
 // 行字段/工具条复用 toRow：活动行照常显示写操作；待确认（delivered 桶）/已完结（history 桶）行只读（D54）。
-const DAY_READONLY_BUCKETS = ['delivered', 'history'];
+// 2026-11-27：常量上移 shared/order-view（服务端 listPartner/_list-merged 同口径），客户端不再本地复制
+const DAY_READONLY_BUCKETS = orderView.DAY_READONLY_BUCKETS;
 
 function dayRowOf(order, nowMs, readonly) {
   const row = toRow(order, nowMs, readonly ? { stationId: undefined, readonly: true } : null);

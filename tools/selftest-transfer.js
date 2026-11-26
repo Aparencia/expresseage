@@ -936,7 +936,7 @@ function register(h) {
   recentCases.register(h);
   handoverCases.register(h, {
     world, orderDoc, acceptedTransferBlock, transferBlock, apiOf, nextCrid, expectCode,
-    topKeysOf, jsonOf, ORDER_STATUS, PID1, PID2, P1, P2, P3, NOW
+    rowOf, topKeysOf, jsonOf, ORDER_STATUS, PID1, PID2, P1, P2, P3, NOW
   });
 }
 

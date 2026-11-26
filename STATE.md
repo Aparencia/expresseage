@@ -9,6 +9,8 @@
 > 临时总体说明（全局汇总，非状态源）：[`docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md`](docs/archive/overview/V4_INTERIM_OVERVIEW_2026-10-23.md)（版本与取数快照由 Lead 统一维护；状态仍以本文件为准、口径以 CONTRACT 为准）。
 > 批 44 收口回读（2026-11-16，实现提交 `436cfcb`）：`check.ps1` 4 步退出码 0、`check.js` 39/39 条、`check-docs` 12/12 条、零金额 0 命中（白名单 108 项）、`selftest` 39 套 0 失败。
 
+**2026-11-27 工作台「已转出单不能送达」+「待确认一直堆积」修复（用户真机反馈；服务端+客户端，等待部署/重传）**：①已转出单并入默认「全部」（view=day）时被整行清空 `actions[]`（D99 实现偏离 D85「发起人保留控制权」），发起人连取件/送达入口都没有；修法 = day 视图只清「待确认/已完结」桶的写操作（与普通行同口径），取件/配送中阶段保留取件/送达/改码/异常/取消，`DAY_READONLY_BUCKETS` 上移 `shared/order-view.js` 单一来源（服务端 `listPartner`/`_list-merged` + 客户端 `group-view` 三处共用）。②`counts.delivered` 是独立 count、不经过读路径补完成：昨日送达单不进今日流水页、也未必出现在其它 chip 页 → 永远轮不到，待确认只增不减（真机「一直堆积」）；新增 `_auto-complete.sweepDueDeliveredOf`（`partnerId + status=DELIVERED` 取最早一窗 ≤20 条、按日结时刻判定、≤5 单/次、fail-open），在列表与计数生成后收敛并把完成数从响应计数扣掉（不重排、不越游标）；今日流水有下一页时不补。③`listPartner` 主函数拆 `settleDueCount`/`buildBodyOf` 守 #32 ≤50 行。判据：`selftest-transfer` **204/204**（D85-3b/3c、D91-R1：31 单中到期 1 单补完成、counts 31→30）、`selftest-query-window` **65/65**（Q5.15 预算改判 7 次，+1 有界扫描）、`selftest-cloud` 216/216、`selftest-order-partner` 190/190、`selftest-order-workbench` 456/456。**部署（用户执行）**：重部署 `api` + 重传体验版；若待确认仍堆积，是 `cleanup` 10 分钟定时触发器未生效（控制台配置项，RUNBOOK §3.6.1）。
+
 **2026-11-26 工作台「数据显示乱跳 / 显示之前的数据」修复（用户真机反馈；纯客户端，等待重传体验版点检）**：根因 = 兼职工作台主列表加载**没有请求代次守卫**——30s 轮询 + 读动作自动重试（单次读最长在飞约 31s）+ 写后刷新/切 chip/搜索防抖/触底分页/从详情返回都会打同一个 `order.listPartner`，旧响应晚到即按「当前筛选」上屏：①行状态往回跳（标记取件/送达后几秒又变回旧状态）②数量与 tabBar 红点回退 ③刷新前旧行复活（分页按请求前快照合并）④旧请求失败晚到写假错误条。同页的转派区块（`_transferToken`）、取件清单页（`_loadToken` + `_unloaded`）、统计页（`_loadToken`）本来就有守卫——工作台是唯一漏网的。交付：`parts/load-view.js` 新增纯件 `isStaleRequest(current, taken)`（代次/筛选/搜索词/已离页四合一，判据单源）；`parts/load-flow.js` 新增 `requestContextOf/loadMore/applyAppendResult`，`load/applyResult/loadError` 全部接代次（旧包整包丢弃：不 `setData`、不改红点、不弹错，迟到分页只复位 `loadingMore`）；`index.js` `onLoad` 初始化 `_loadToken/_unloaded`、`onUnload` 置位、`onReachBottom` 委托 `loadMore`；历史三段（摘要/展开/更早）从 `page-actions.js` 拆到新件 `parts/history-flow.js` 并补 `_unloaded` 守卫（`page-actions` 522→427、`index.js` 397→376，守 #18 ≤500）。判据：`selftest-order-workbench` **452/452**（新增 P 组 13 条：乱序覆盖/切筛选/搜索词防抖窗/分页复活/离页/迟到失败 + `isStaleRequest` 真值表 + 三条接线静态闸；L 组 15 条搬 `tools/lib/workbench-clock-cases.js` 守测试文件 ≤1000）；随拆件同步 `K13~K16/K30` 与 `selftest-performance L11` 的扫描落点。**变异电池**：`applyResult` 守卫改 `false` → P02/P03/P04/P05/P08 五条首红，SHA256 还原逐字节一致后 452/452 复绿。**门禁真实输出（2026-11-26）**：`check.ps1` 4 步退出码 0——`check.js` 39/39、`check-docs` 12/12、零金额 0 命中（白名单 108 项）、`selftest` 39 套 0 失败。**部署（用户执行）**：仅重传体验版（`api` 零改动）；真机复测：弱网下连点 chip、标记取件/送达后盯该行 5~30 秒不出现回跳。**同类风险面登记 TD-100**（顾客订单/兼职客户/后台各列表仍无代次守卫）。
 
 **2026-11-26 响应速度修复第一批（工程侧完成；等待重部署 `api` + 重传体验版）**：针对同日代码审查报告（`docs/archive/reviews/2026-11-26_CODE_REVIEW_PERF.md`）的 P0 项，只做不改口径的并行化与等待策略：①`order.listCustomer`/`order.listPartner` 的状态分桶查询与计数改为 `Promise.all` 并行（行集、计数、截断标记与原串行逐字一致）；②`message.list` 消息中心按订单并发 5 分批（每单两条查询并行）、逐绑定兼职改 `partners._id in` 一次批量、双角色订单集并行；③工作台 30s 轮询在上一请求未返回时跳过（`_loadInflight` 计数），人工下拉/刷新仍可插队；④兼职订单详情有数据时静默刷新，不再整页切「加载中…」。判据：`selftest-order-workbench` 新增 P14~P17（轮询跳过/零新请求入队/人工刷新可插队/旧包丢弃）、`selftest-performance` 新增 D2 五条（列表动作并发窗口 ≥5 与全串行下界、分桶/计数 `Promise.all` 静态闸），断言总数以 `node tools/selftest.js` 实跑为准。**已知未做（后续批次）**：读动作重试预算（现为 10s×3，ENGINEERING「重试 ≤2 次」口径未变）、列表排序第二键 `orderNo` 的索引覆盖（规模前置，待评估）；索引清单与 §5.2 查询路径已在第三批回写（见下段）。**部署（用户执行）**：重部署 `api`（服务端三处查询并行）+ 重传体验版（工作台轮询/详情加载）；无集合/索引/字段/action 变更。
@@ -1915,11 +1917,14 @@ check.ps1：全部通过（4 步，退出码 0）
 - **用户侧动作**：重新部署 pi 云函数（新增 2 个 handler + shared 副本 + 2 个 config 键需 dmin.bootstrap 回填/或控制台配置）；重传体验版后真机复测。
 ## 51. 批 47 D89 转派后边界与可发现性（2026-11-17，用户裁决「转派全部保留，不允许再次转派」）
 
-- **口径**：CONTRACT §13 D89 —— ①转派被接收后原履约人 A **保留全部动作**（取件/送达/改码/异常/取消/留言，沿用 D85 双人可控）；②**禁止二次转派**：	ransfer.status='ACCEPTED' 后再调 order.requestTransfer → INVALID_STATE「这单已经转派过，不能再转」，_dto 同时不再下发 equestTransfer（页面零入口）；副作用是保护 A 的「已转出」追踪记录不被新的 PENDING 覆盖；③**可发现性**（零口径变更）：详情页顶部黄条「这单已转给 P-XXX，你仍有操作权…」、工作台「已转出的单」展开后标题带条数。
-- **服务端**：handlers/order/_transfer.js +isAccepted；equestTransfer.js 状态守卫链 +1 闸；_dto.js uildTransferActions 在 ACCEPTED 后不再广告转派。
+- **口径**：CONTRACT §13 D89 —— ①转派被接收后原履约人 A **保留全部动作**（取件/送达/改码/异常/取消/留言，沿用 D85 双人可控）；②**禁止二次转派**：	ransfer.status='ACCEPTED' 后再调 order.requestTransfer → INVALID_STATE「这单已经转派过，不能再转」，_dto 同时不再下发 
+equestTransfer（页面零入口）；副作用是保护 A 的「已转出」追踪记录不被新的 PENDING 覆盖；③**可发现性**（零口径变更）：详情页顶部黄条「这单已转给 P-XXX，你仍有操作权…」、工作台「已转出的单」展开后标题带条数。
+- **服务端**：handlers/order/_transfer.js +isAccepted；
+equestTransfer.js 状态守卫链 +1 闸；_dto.js uildTransferActions 在 ACCEPTED 后不再广告转派。
 - **客户端**：parts/transfer.js 新增 wayBannerOf（纯件判定：仅发起人 + 仅 ACCEPTED，页面零状态字面量）+ card.away；parts/view-model.js 透传 myPartnerNo；index.js 在 onLoad 注入本人编号、pplyDetail 传入；index.wxml/.wxss 渲染黄条；工作台 wxml 标题带条数 + 说明。
 - **测试反转**：原先三条"接手后可再转派"的断言按新口径反转——selftest-transfer P0-1（不再含 requestTransfer）、K32b/K74（同）、新增 P2-11/P2-11b（二次转派 INVALID_STATE + 转派块零变化），selftest-transfer 189/189；selftest-order-detail-partner +K79~K82（状态条只对发起人、仅 ACCEPTED、WXML 已接）→ 323/323；页面受 TD-076 ≤450 行限制，onTransferInput 移入 parts/transfer-flow.js 并压缩 setData，index.js 443 行（代码行 446≤450）。
-- **变异电池 M40**：equestTransfer 的禁止二次转派条件改 alse → P2-11 首红（期望 [false,INVALID_STATE] 实得 [true,null]）+ P2-11b 暴露"转派块被覆盖为 PCCCCCC"；还原后 SHA256 9D88BEA9…3F56528A9 逐字节一致 + 189/189 复绿。
+- **变异电池 M40**：
+equestTransfer 的禁止二次转派条件改 alse → P2-11 首红（期望 [false,INVALID_STATE] 实得 [true,null]）+ P2-11b 暴露"转派块被覆盖为 PCCCCCC"；还原后 SHA256 9D88BEA9…3F56528A9 逐字节一致 + 189/189 复绿。
 - **门禁真实输出（2026-11-17）**：check.ps1 4 步 PASS（check 39/39、docs 12/12、零金额 0 命中（白名单 108 项）、selftest 39 套 0 失败），退出码 0。
 - **剩余**：转派候选「最近使用」与审核域（订单级状态 + 件数增删）尚未开工（各自另立裁决）；真机项 QA §AL15 由用户双机点检，agent 不代勾。
 ## 52. 批 48 D92 审核域（2026-11-17/18，用户裁决：订单级两级状态 + 件数增删）
@@ -1928,8 +1933,10 @@ check.ps1：全部通过（4 步，退出码 0）
 - **实现取舍**：REVIEW_STATUS/REVIEW_STATUS_TEXT 放 shared/order-state.js——shared/enums.js 已达 **500 行门禁上限**，新枚举不得顶线；审核事件复用 ORDER_CORRECTED，避免改事件枚举/5 套断言与客户端事件文案。
 - **服务端**：handlers/order/{_review.js,reviewMark.js,reviewReopen.js,reviewParcels.js}（新）+ index.js 注册 + _create.js 建单初值 + _dto.js 兼职侧投影；shared/order-state.js +3 条 	o:'SAME' 规则；shared/actions.js +3 写动作；pi/modules/order.js +3。
 - **客户端**：审核页新增列表状态 chip、详情「标记已审核/撤销审核」、未取件阶段「新增一件/删除这一件」；READONLY 不显示写入口；expectedVersion + clientRequestId。
-- **判据**：selftest-order J 组 13 条（**169/169**）、selftest-review +7（**28/28**）；行 DTO 白名单 +eview；selftest-state 405/405（事件总数仍 24）。
-- **变异电池 M42**：eviewMark 的重复标记闸改 alse → J4 首红（期望 INVALID_STATE 实得 undefined）；还原后 SHA256 EC4D755D…5D1FAAD2 逐字节一致 + 169/169 复绿。
+- **判据**：selftest-order J 组 13 条（**169/169**）、selftest-review +7（**28/28**）；行 DTO 白名单 +
+eview；selftest-state 405/405（事件总数仍 24）。
+- **变异电池 M42**：
+eviewMark 的重复标记闸改 alse → J4 首红（期望 INVALID_STATE 实得 undefined）；还原后 SHA256 EC4D755D…5D1FAAD2 逐字节一致 + 169/169 复绿。
 - **门禁真实输出（2026-11-18）**：check.ps1 4 步 PASS（check 39/39、docs 12/12、零金额 0 命中（白名单 108 项）、selftest 39 套 0 失败），退出码 0。
 - **用户侧动作**：重新部署 pi（新增 4 个 handler + shared 副本）；重传体验版后按 QA §AL17 真机点检（agent 不代勾）。
 ## 53. 批 47.5 D90 转派候选「最近使用」（2026-11-17，补记；收口时因并发批次未落台账）

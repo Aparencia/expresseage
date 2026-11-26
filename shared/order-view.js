@@ -19,6 +19,11 @@ const STATUS_BUCKETS = {
   history: [enums.ORDER_STATUS.COMPLETED, enums.ORDER_STATUS.CANCELLED]
 };
 
+// 今日订单流水（view=day）里只读的桶：待确认/已完结行不显示写操作（CONTRACT §13 D54）。
+// 口径单源：api listPartner 的普通行（stripWriteActionsOf）与 _list-merged 的「已转出」并入行共用本常量——
+// 2026-11-27 真机修复前 _list-merged 在 day 视图把已转出行的 actions 全清，连 D85「发起人仍可控」的取件/送达入口都没了。
+const DAY_READONLY_BUCKETS = ['delivered', 'history'];
+
 const PICKUP_TIERS = [
   { tier: 1, key: 'NEED_CODE', text: '需查明' },
   { tier: 2, key: 'LOCKER', text: '快递柜' },
@@ -159,6 +164,7 @@ function sortByFinishedDesc(list) {
 module.exports = {
   COUNTS_KEYS,
   STATUS_BUCKETS,
+  DAY_READONLY_BUCKETS,
   PICKUP_TIERS,
   countsTemplate,
   statusText,

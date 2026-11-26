@@ -66,8 +66,9 @@ async function finalize(params) {
       const merged = await dto.buildOrderDtos(params.ctx, rows, 'PARTNER', { withActions: true });
       merged.forEach((row) => {
         row.handover = true;
-        // day 视图与主查询同口径：今日流水不显示写操作（已转出单同样只读展示）
-        if (params.view === 'day') {
+        // day 视图与主查询同口径（2026-11-27 真机修复）：只清「待确认/已完结」桶的写操作。
+        // 之前整行清空 → D85「转派发起人仍可控」的单在默认「全部」视图里连取件/送达入口都没有。
+        if (params.view === 'day' && orderView.DAY_READONLY_BUCKETS.indexOf(row.bucket) >= 0) {
           row.actions = [];
         }
       });

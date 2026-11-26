@@ -7,6 +7,8 @@
 
 ## [未发布]
 
+- **2026-11-27 工作台「已转出单」保留行内取件/送达 + 待确认不再堆积（D85/D91 真机修复）**：①此前已转出单并入默认「全部」（今日流水）时被整行清空 `actions[]`，连 D85「转派发起人保留控制权」的取件/送达入口都没有（只能切 chip 或进详情）；现在只清「待确认/已完结」桶的写操作（与普通行同口径），取件/配送中阶段的已转出单在「全部」里照常可取件/送达/改码/异常/取消。②`counts.delivered` 是独立 count、不经过读路径补完成：昨日送达单既不进今日流水页、也未必出现在其它 chip 页里 → 永远轮不到，待确认数字只增不减（真机「一直堆积」）。修法：新增 `_auto-complete.sweepDueDeliveredOf`（`partnerId + status=DELIVERED` 取最早一窗 ≤20 条，按该单日结时刻判定后补完成 ≤5 单/次，fail-open），在列表与计数生成后收敛，并把本次完成数从响应计数里扣掉（不重排列表、不越过游标）；今日流水有下一页时不补（补完成改写 `statusUpdatedAt` 会让已完成行越过游标漏行）。③`DAY_READONLY_BUCKETS` 上移 `shared/order-view.js` 单一来源（服务端 `listPartner`/`_list-merged`、客户端 `group-view` 三处共用）。判据：`selftest-transfer` **204/204**（D85-3b/D85-3c/D91-R1：31 单中到期 1 单被补完成、counts 31→30）、`selftest-query-window` **65/65**（Q5.15 查询预算改判 7 次：+1 有界扫描）、`selftest-cloud` 216/216、`selftest-order-partner` 190/190、`selftest-order-workbench` 456/456。**部署（用户执行）**：重部署 `api` + 重传体验版。若部署后待确认仍堆积，则是 `cleanup` 10 分钟定时触发器未生效（控制台配置项，非代码），见 RUNBOOK §3.6.1。
+
 - **2026-11-26 首页 refresh 绑定/订单解耦（纯客户端）**：此前一次 refresh 把 `bind.getCurrent` 与 `order.listCustomer` 放进同一个 `Promise.all`，任一失败都走整页错误——绑定失败会连已经取回的订单一起丢。修法：两任务各自 settle（`{ok,data,err}`）；渲染计划新增 `bindingFailed`/`fallbackPartnerPublic`：绑定失败时沿用旧绑定卡（不写 `store.binding`、不闪骨架），订单照常上屏；只有两边都失败才整页错误，订单单独失败仍更新绑定卡并给非阻塞错误条。判据：`selftest-performance` 新增 P 组 6 条（正常路径/绑定失败沿用旧卡/无旧卡/订单失败不清角标/页面接线）。**需重新上传体验版；`api` 无改动。**
 
 - **2026-11-26 后台列表/消息/总览/顾客详情请求代次（TD-100 收口，纯客户端）**：后台三张列表页（订单/顾客/兼职）共用的 `pkg-admin/common/list-flow` 原先无代次——搜索防抖/切筛选/含测试开关/下拉可并发，旧响应会覆盖新状态；现在 `loadList`/`loadMore` 每次领 `_loadToken`、`then`/`catch` 用公共件 `utils/stale-request` 比对，`onUnload` 置 `_unloaded` 并作废代次。后台消息（三请求聚合）、总览（统计+审计追加）、顾客详情（治理动作后回读）同样接入。判据：`selftest-admin-pages` 新增 Q 组 4 条（公共判据真值表 / 列表流两条链路 / 页面接线）。**需重新上传体验版；`api` 无改动。**

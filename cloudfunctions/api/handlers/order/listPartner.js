@@ -33,7 +33,8 @@ const TRANSFER_VIEW = 'transfer';
 const HANDOVER_VIEW = 'handover';
 const YESTERDAY_MS = time.DAY_MS;
 // 今日流水行内不显示写操作（D54/批 20）：待确认（delivered 桶）与已完结（history 桶）只读
-const DAY_READONLY_BUCKETS = ['delivered', 'history'];
+// 2026-11-27：常量上移 shared/order-view.DAY_READONLY_BUCKETS（_list-merged 的已转出并入行同口径）
+const DAY_READONLY_BUCKETS = orderView.DAY_READONLY_BUCKETS;
 
 // view 显式五值：缺省=workbench（页面首屏不传）、day=今日订单流水（批 20）；非法值拒绝而不是静默降级
 // （否则筛选口径被悄悄改掉）。
@@ -334,6 +335,50 @@ async function listCustomerOrders(ctx, partner, input) {
   return { list, nextCursor: nextCursorOf(result) };
 }
 
+// D91 修订（2026-11-27 真机「待确认一直堆积」）：读路径有界补完成本兼职到期的送达单，返回本次完成数。
+// 读路径原来只补「本次返回页」里的行：昨日送达单既不进今日流水页、也未必出现在其它 chip 页里 → 永远轮不到，
+// counts.delivered（独立 count）只增不减。cleanup 10 分钟触发器仍是一线，这里只做热路径上有界收敛（≤5 单/次）。
+// 时机：列表与 counts 生成之后（不再重排）；今日流水有下一页时不补——补完成会改写 statusUpdatedAt，
+// 翻页窗口内做会让已完成行越过游标（今日流水含已完成状态，会漏行）；以状态筛选的 workbench 不受影响。
+// fail-open：索引缺失/瞬时错误不得打断加载。
+async function settleDueCount(ctx, partner, view, nowMs, result, counts) {
+  if (view !== WORKBENCH_VIEW && view !== DAY_VIEW) {
+    return 0;
+  }
+  if (!counts || typeof counts.delivered !== 'number' || counts.delivered <= 0) {
+    return 0;
+  }
+  if (view === DAY_VIEW && result && result.hasMore) {
+    return 0;
+  }
+  try {
+    return await autoComplete.sweepDueDeliveredOf(ctx, {
+      partnerId: partner._id,
+      isTest: common.isTestSession(ctx),
+      nowMs: nowMs,
+      max: 5
+    });
+  } catch (error) {
+    return 0;
+  }
+}
+
+// 列表装配（D54/D99/批 20 口径）：inline actions → 行级遮蔽 → 今日流水只读桶 → counts → 顶层键。
+async function buildBodyOf(ctx, partner, view, result, nowMs) {
+  const inlineActions = view === WORKBENCH_VIEW || view === DAY_VIEW;
+  const maskFlags = await access.maskFlagsOf(ctx, result.page, partner);
+  let list = await dto.buildOrderDtos(ctx, result.page, 'PARTNER', { withActions: inlineActions, maskFlags });
+  if (view === DAY_VIEW) {
+    list = stripWriteActionsOf(list);
+  }
+  const counts = inlineActions ? await buildCounts(ctx, partner._id, nowMs) : orderView.countsTemplate();
+  const body = { list, nextCursor: nextCursorOf(result), counts };
+  if (inlineActions) {
+    body.transferPending = await listTransfer.countTransferPending(ctx, partner, nowMs);
+  }
+  return body;
+}
+
 function scanLimitOf(paging) {
   return Math.min(Math.max(paging.limit * 3, 60), 300);
 }
@@ -387,21 +432,10 @@ module.exports = async function orderListPartner(ctx, payload) {
     query.extraWhere = dayWindowWhereOf(ctx, nowMs);
   }
   const result = await pageOf(ctx, partner._id, filter, query);
-  const inlineActions = view === WORKBENCH_VIEW || view === DAY_VIEW;
-  // P1-3：行级顾客身份遮蔽（与详情同口径；转派进入的单在列表同样零 customerNo/昵称泄漏），动作矩阵不动
-  const maskFlags = await access.maskFlagsOf(ctx, result.page, partner);
-  let list = await dto.buildOrderDtos(ctx, result.page, 'PARTNER', { withActions: inlineActions, maskFlags });
-  // D54/批 20：今日流水的待确认/已完结行只读（不显示写操作）；workbench/history/customer 不动
-  if (view === DAY_VIEW) {
-    list = stripWriteActionsOf(list);
-  }
-  // P0-2/TD-073：只有 workbench/day 消费 counts；history 为零值模板（不计入、无查询）。
-  const counts = inlineActions ? await buildCounts(ctx, partner._id, nowMs) : orderView.countsTemplate();
-  const body = { list, nextCursor: nextCursorOf(result), counts };
-  // D58：待接收转派角标只在需要它的主视图下发（workbench/day 轮询用；history/customer 保持既有严格形状，
-  // 避免把 TD-050 的「零额外查询」口径扩到全视图；transfer 视图自带角标）。
-  if (view === WORKBENCH_VIEW || view === DAY_VIEW) {
-    body.transferPending = await listTransfer.countTransferPending(ctx, partner, nowMs);
-  }
+  const body = await buildBodyOf(ctx, partner, view, result, nowMs);
+  // D91 修订（2026-11-27 真机「待确认一直堆积」）：counts.delivered>0 时做一次有界补完成，
+  // 并把本次完成数从本次响应的计数里扣掉（列表已生成，不重排、不影响游标）。
+  const settled = await settleDueCount(ctx, partner, view, nowMs, result, body.counts);
+  body.counts.delivered = Math.max(0, body.counts.delivered - settled);
   return listMerged.finalize({ ctx, partner, view, paging, result, body, nowMs, statuses: filter.statuses, dayStartMs: view === DAY_VIEW ? todayStartOf(nowMs) : 0, attach: attachSummaries });
 };
