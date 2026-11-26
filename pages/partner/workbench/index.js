@@ -5,11 +5,9 @@
 // 拉取/增量渲染接线拆到 parts/load-flow，转派区块接线拆到 parts/transfer-flow（页面行数 ≤500，门禁 #18）。
 'use strict';
 
-const orderApi = require('../../../api/modules/order');
 const store = require('../../../store/index');
 const modeGuard = require('../../../api/mode-guard');
 const filterView = require('./parts/filter-view');
-const groupView = require('./parts/group-view');
 const batchView = require('./parts/batch-view');
 const selectionFlow = require('./parts/selection-flow');
 const actionFlow = require('./parts/action-flow');
@@ -74,6 +72,10 @@ const base = {
     this._summaryDayKey = '';
     this._ack = null;
     this._chunkToken = 0;
+    // 2026-11-26 迟到响应守卫：加载代次（每次 load 领号）+ 离页位（onUnload 置位），
+    // 判据在 parts/load-flow（落地前比对 loadView.isStaleRequest），本页只负责生命周期置位
+    this._loadToken = 0;
+    this._unloaded = false;
     this._lastBatch = null;
     this._transferRows = [];
     this._transferToken = 0;
@@ -99,6 +101,7 @@ const base = {
     this.refreshSubscribeStatus(true);
     // onShow 也走增量：已加载过就只发变化行补丁，不整页重拉（UX §4.11）
     this.load({ poll: this.data.stage === 'ready' }).then(() => {
+      if (this._unloaded) { return; }
       this.loadHistorySummary(); this.applyCompletedFocus();
     });
     this.startPolling();
@@ -134,6 +137,8 @@ const base = {
   },
 
   onUnload() {
+    // 离页位先置：在飞请求的迟到回调一律丢弃（不 setData、不改红点、不弹错）
+    this._unloaded = true;
     this.stopPolling();
     this.clearUndoTimer(); this.clearSearchTimer();
     if (this.offStore) {
@@ -144,50 +149,16 @@ const base = {
 
   onPullDownRefresh() {
     this._historyDirty = true;
-    this.load({ silent: true }).then(() => { this.loadHistorySummary(); wx.stopPullDownRefresh(); })
+    this.load({ silent: true }).then(() => {
+      if (this._unloaded) { return; }
+      this.loadHistorySummary(); wx.stopPullDownRefresh();
+    })
       .catch(() => wx.stopPullDownRefresh());
   },
 
+  // 触底追加：请求/合并/迟到守卫都在 parts/load-flow.loadMore（与 load 共用同一代次判据）
   onReachBottom() {
-    if (this.data.loadingMore || !this.data.nextCursor) {
-      return;
-    }
-    const prev = { list: this._list, page1Keys: this._page1Keys, groups: this.data.groups, counts: this.data.counts };
-    const payload = loadView.queryOf({ filterKey: this.data.filter, keyword: this.data.keyword, cursor: this.data.nextCursor });
-    this.setData({ loadingMore: true });
-    orderApi.listPartner(payload).then((data) => {
-      const plan = loadView.applyAppend(prev, data, {
-        filterKey: this.data.filter,
-        keyword: this.data.keyword,
-        selectedMap: this.data.selecting ? groupView.selectionMapOf(this.data.groups) : null,
-        nowMs: Date.now()
-      });
-      this._list = plan.list;
-      // D54：分页追加同样只在今日流水（view=day）刷新「今日已送达」summary；其它 chip 不覆盖旧值
-      if (this.data.filter === filterView.FILTER_ALL && data && data.summary) {
-        this._summary = data.summary;
-        this._summaryCounts = plan.counts;
-        this._summaryDayKey = dayView.dayDateKeyOf(Date.now());
-      }
-      const patch = {
-        groups: plan.groups,
-        counts: plan.counts,
-        totalRows: plan.totalRows,
-        nextCursor: plan.nextCursor,
-        hasRows: plan.totalRows > 0,
-        loadingMore: false
-      };
-      if (this.data.selecting) {
-        const applied = groupView.applySelection(plan.groups, groupView.selectionMapOf(plan.groups));
-        patch.selectedCount = applied.selectedCount;
-        patch.selectableCount = applied.selectableCount;
-        patch.selectionText = batchView.selectionText(applied.selectedCount, applied.selectableCount);
-      }
-      this.setData(patch);
-    }).catch((err) => {
-      this.setData({ loadingMore: false });
-      this.toastMsg((err && err.message) || '下一批订单没加载出来，检查网络后重试');
-    });
+    this.loadMore();
   },
 
   // 好友转发：判据单源在 utils/share（兼职+非切换会话→绑定卡只带编号；其余回通用卡）
@@ -228,7 +199,10 @@ const base = {
 
   onRefreshTap() {
     this._historyDirty = true;
-    this.load({ silent: true }).then(() => { this.loadHistorySummary(); this.toastMsg('已刷新'); });
+    this.load({ silent: true }).then(() => {
+      if (this._unloaded) { return; }
+      this.loadHistorySummary(); this.toastMsg('已刷新');
+    });
   },
 
   // 2026-11-08：审核核对页（顾客截图 vs 订单信息；页面内就地改字段，不改订单状态）
@@ -238,7 +212,10 @@ const base = {
 
   onRetryTap() {
     this._historyDirty = true;
-    this.load({ silent: true }).then(() => this.loadHistorySummary());
+    this.load({ silent: true }).then(() => {
+      if (this._unloaded) { return; }
+      this.loadHistorySummary();
+    });
   },
 
   onBannerTap() {
@@ -393,5 +370,7 @@ Object.assign(base, require('./parts/subscribe-wiring'));
 Object.assign(base, require('./parts/panel-host'));
 // D97：送达现场照片（单件/批量逐单快门；方法体拆件守页面 ≤500 行）
 Object.assign(base, require('./parts/deliver-photo'));
+// 2026-11-26：已完结历史分区（摘要/展开/更早 + 离页/筛选守卫）从 page-actions 拆出，守 ≤500 行门禁
+Object.assign(base, require('./parts/history-flow'));
 
 Page(Object.assign(base, require('./parts/page-actions')));

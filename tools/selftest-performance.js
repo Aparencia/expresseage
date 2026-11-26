@@ -500,6 +500,8 @@ function register(h) {
     const historyView = optionalRequire('pages/partner/workbench/parts/history-view.js');
     const indexSrc = codeOf('pages/partner/workbench/index.js');
     const actionsSrc = codeOf('pages/partner/workbench/parts/page-actions.js');
+    // 2026-11-26：历史摘要接线从 page-actions 拆到 parts/history-flow.js（守 ≤500 行门禁）——按拆件后落点扫
+    const historySrc = codeOf('pages/partner/workbench/parts/history-flow.js');
     const planFn = historyView && typeof historyView.summaryCallPlan === 'function' ? historyView.summaryCallPlan : null;
     t.check(!!planFn, 'L1 历史摘要调用计划纯件存在（onShow 去重判据前置）');
     const base = { hasSummary: true, pending: false, dirty: false, filter: 'all', lastFilter: 'all', countsVersion: 'v1', lastCountsVersion: 'v1' };
@@ -523,7 +525,7 @@ function register(h) {
       '1,2,3,4,5,6', 'L8 counts 版本指纹 = 六项逐值（不是时间戳/对象引用）');
     t.eq(fp ? fp(null) : 'x', '0,0,0,0,0,0', 'L9 空 counts 退回零指纹（首帧/失败路径安全）');
     t.check(indexSrc.indexOf('historyView.summaryQuery') < 0, 'L10 工作台页面不再自行发历史摘要请求（判据下沉 parts）');
-    t.check(actionsSrc.indexOf('summaryCallPlan(') >= 0, 'L11 摘要请求唯一入口先过纯件调用计划（判等后才 request）');
+    t.check((actionsSrc + historySrc).indexOf('summaryCallPlan(') >= 0, 'L11 摘要请求唯一入口先过纯件调用计划（判等后才 request；parts/history-flow 落点）');
     t.check(indexSrc.indexOf('historyView') < 0, 'L12 页面零 history 视图判据（纯件/零件单源）');
   });
 

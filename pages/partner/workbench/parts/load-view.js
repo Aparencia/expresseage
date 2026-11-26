@@ -16,6 +16,28 @@ const POLL_MS = 30 * 1000;
 const SEARCH_DEBOUNCE_MS = 300;
 const COUNTS_FALLBACK = { submitted: 0, accepted: 0, picked: 0, delivered: 0, exception: 0, todayCompleted: 0 };
 
+// 迟到响应守卫（判据单源）：请求发起时的代次/筛选/搜索词与落地时的当前值不一致 → 整包丢弃。
+// 为什么需要：30s 轮询 + 读动作自动重试（单次读最长在飞约 31s）+ 写后刷新/切 chip/搜索防抖/触底分页会叠在
+// 同一个在飞请求上；没有本守卫时旧响应会覆盖新状态（真机症状：行状态往回跳、旧行复活、红点回退、迟到失败弹假错）。
+// current = { unloaded, token, filterKey, keyword }（落地时快照）；taken = 发起时快照（同形状，未卸载位不看请求侧）。
+function isStaleRequest(current, taken) {
+  const now = current || {};
+  const req = taken || {};
+  if (now.unloaded) {
+    return true;
+  }
+  if (typeof req.token !== 'number' || req.token !== now.token) {
+    return true;
+  }
+  if (req.filterKey !== now.filterKey) {
+    return true;
+  }
+  if (req.keyword !== now.keyword) {
+    return true;
+  }
+  return false;
+}
+
 function orderNoOf(order) {
   return (order && order.orderNo) || '';
 }
@@ -315,6 +337,7 @@ module.exports = {
   POLL_MS,
   SEARCH_DEBOUNCE_MS,
   COUNTS_FALLBACK,
+  isStaleRequest,
   queryOf,
   normalizeCounts,
   mergeCounts,

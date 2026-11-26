@@ -15,7 +15,10 @@
  *      零额外请求）；P1-6 summary.truncated 时文案/toast 如实说明「可能少报」。
  *   L. 修复批 T5-B（TD-083）：批量送达确认文案的「系统每天 X 自动完成」时刻按调用方注入的
  *      config.autoCompleteAt 生成；缺配置/非法一律回退出厂默认（唯一默认单源 = config/defaults），
- *      纯件零第二处时刻字面量 + 页面/action-flow 注入接线静态守卫。
+ *      纯件零第二处时刻字面量 + 页面/action-flow 注入接线静态守卫（用例表已拆 tools/lib/workbench-clock-cases.js）。
+ *   P. 2026-11-26 迟到响应守卫（真机「数据显示乱跳/显示之前的数据」）：并发加载乱序时旧响应整包丢弃
+ *      （行状态不往回跳、counts/红点不回退、旧分页行不复活、迟到失败不弹假错、离页不再 setData）；
+ *      isStaleRequest 真值表 + 三条接线静态闸（用例表 tools/lib/workbench-load-cases.js）。
  *
  * 拆件：夹具/静态样本拆到 tools/lib/workbench-cases.js（控测试文件 ≤1000 行，门禁 #18；
  *       tools/lib 不参与 selftest 注册完整性闸，先例 tools/lib/workbench-day-cases.js）。
@@ -46,7 +49,6 @@ const enums = require(path.join(ROOT, 'shared/enums.js'));
 const orderState = require(path.join(ROOT, 'shared/order-state.js'));
 const storage = require(path.join(ROOT, 'utils/storage.js'));
 const serverDto = require(path.join(ROOT, 'cloudfunctions/api/handlers/order/_dto.js'));
-const defaults = require(path.join(ROOT, 'config/defaults.js'));
 const dayCases = require(path.join(__dirname, 'lib', 'workbench-day-cases.js'));
 // 批 20（D53/D54）：今日订单流水 + 今日已送达汇总用例表（拆 tools/lib，控测试文件 ≤1000 行，门禁 #18）
 const orderCases = require(path.join(__dirname, 'lib', 'order-workbench-cases.js'));
@@ -56,6 +58,10 @@ const cases = require(path.join(__dirname, 'lib', 'workbench-cases.js'));
 const pickedCases = require(path.join(__dirname, 'lib', 'workbench-picked-cases.js'));
 // 批 26-W4（D58 转派兼职端）：待接收区块/红点/零判据用例表（拆 tools/lib，控测试文件 ≤1000 行，门禁 #18）
 const transferCases = require(path.join(__dirname, 'lib', 'partner-transfer-ui-cases.js'));
+// 2026-11-26 迟到响应守卫：P 组用例表（乱序/切筛选/搜索词/分页/离页/迟到失败 + 接线静态闸）
+const loadCases = require(path.join(__dirname, 'lib', 'workbench-load-cases.js'));
+// TD-083 L 组用例表（2026-11-26 从本文件搬出，给 P 组腾门禁 #18 行数；断言/编号不变）
+const clockCases = require(path.join(__dirname, 'lib', 'workbench-clock-cases.js'));
 const {
   STATUS, STATUS_LITERALS, PAGES, ISO, DOC_MS,
   actionsFor, dto, multiDto, manualDto, row, rowsOf, groupsOf, selectedNames, orderDoc, FAKE_DTO_CTX
@@ -63,8 +69,8 @@ const {
 // P1-5/P1-6：复制汇总纯件单源（主包 parts，工作台与统计页共用）；缺件时 optionalRequire 给逐条可定位红。
 const summaryCopy = optionalRequire('pages/partner/workbench/parts/summary-copy.js');
 
-const EXPECTED_ASSERTIONS = 237 + dayCases.EXPECTED_ASSERTIONS + 33 + 15 + orderCases.EXPECTED_ASSERTIONS
-  + pickedCases.EXPECTED_ASSERTIONS + 6 + 5 + transferCases.WORKBENCH_EXPECTED_ASSERTIONS + 3; // A~O 实际断言总数（批 26-W4：O 组转派待接收用例表见 lib；+2 H11a/H11b 送别人；+3 E09b/E09c/H08b 按钮 B 与件级定位；+2 批 37 浮层模态；+1 tabBar 互斥）
+const EXPECTED_ASSERTIONS = 237 + dayCases.EXPECTED_ASSERTIONS + 33 + clockCases.EXPECTED_ASSERTIONS + orderCases.EXPECTED_ASSERTIONS
+  + pickedCases.EXPECTED_ASSERTIONS + 6 + 5 + transferCases.WORKBENCH_EXPECTED_ASSERTIONS + 3 + loadCases.EXPECTED_ASSERTIONS; // A~P 实际断言总数（P 组见 lib/workbench-load-cases）
 function textOf(rel) {
   return fsutil.readText(path.join(ROOT, rel));
 }
@@ -850,10 +856,13 @@ function register(h) {
     const actionSrc = textOf(PAGES.actions);
     const indexSrc = textOf(PAGES.index);
     const wxml = textOf(PAGES.wxml);
-    t.check(actionSrc.indexOf('historyView.moreQueryOf(') !== -1 && actionSrc.indexOf('historyView.moreResultOf(') !== -1,
-      'K13 页面「更早」接单窗口状态机（moreQueryOf + moreResultOf）');
-    t.check(actionSrc.indexOf('historyView.olderQuery(') === -1, 'K14 旧两阶段 olderQuery 接线已移除');
-    t.check(actionSrc.indexOf('historyView.openedPaging(') !== -1, 'K15 展开成功即写状态机 openedPaging');
+    // 2026-11-26：历史分区接线从 page-actions 拆到 parts/history-flow.js（守 ≤500 行门禁）——接线判据跟文件走
+    const historySrc = textOf('pages/partner/workbench/parts/history-flow.js');
+    t.check(historySrc.indexOf('historyView.moreQueryOf(') !== -1 && historySrc.indexOf('historyView.moreResultOf(') !== -1,
+      'K13 页面「更早」接单窗口状态机（moreQueryOf + moreResultOf，parts/history-flow）');
+    t.check(historySrc.indexOf('historyView.olderQuery(') === -1 && actionSrc.indexOf('historyView.olderQuery(') === -1,
+      'K14 旧两阶段 olderQuery 接线已移除');
+    t.check(historySrc.indexOf('historyView.openedPaging(') !== -1, 'K15 展开成功即写状态机 openedPaging');
     t.check(indexSrc.indexOf('_historyPaging') !== -1, 'K16 页面状态存 _historyPaging');
     t.check(wxml.indexOf('bindtap="onHistoryMore"') !== -1, 'K17 WXML「更早」按钮仍接 onHistoryMore');
 
@@ -897,8 +906,9 @@ function register(h) {
       'K28 无送达不复制假文案 + 成功 toast 与统计页同口径');
     t.check(actionSrc.indexOf('copy.truncated') !== -1 && actionSrc.indexOf('可能少报') !== -1,
       'K29 truncated 时 toast 如实提示可能少报');
-    t.check(indexSrc.indexOf('_summaryCounts') !== -1 && indexSrc.indexOf('filterView.FILTER_ALL && data && data.summary') !== -1,
-      'K30 页面只在「全部」今日流水存 summary（其它 chip 的旧形状不覆盖）');
+    const loadSrc = textOf('pages/partner/workbench/parts/load-flow.js');
+    t.check(loadSrc.indexOf('_summaryCounts') !== -1 && loadSrc.indexOf('filterView.FILTER_ALL && data && data.summary') !== -1,
+      'K30 加载链路只在「全部」今日流水存 summary（其它 chip 的旧形状不覆盖；2026-11-26 分页并入 load-flow）');
     t.check(!optionalRequire('pkg-partner/pages/stats/parts/summary-copy.js'),
       'K31 旧 pkg-partner 路径已删除（纯件主包单源）');
     t.eq(summaryCopy ? summaryCopy.copyOf(null).textOmitted : null, false,
@@ -906,59 +916,10 @@ function register(h) {
     t.notEmpty([todaySummary, copyBase], 'K33 今日已送达样本非空');
   });
 
-  // ── L. TD-083：日结批自动完成时刻配置化（batch-view 零第二处时刻字面量）─────────
-  h.section('L 自动完成时刻配置化', (t) => {
-    const fallbackAt = defaults.DEFAULT_CONFIG.autoCompleteAt;
-    const pickedRows = rowsOf([dto(STATUS.PICKED, { orderNo: 'L-1' }), dto(STATUS.PICKED, { orderNo: 'L-2' })]);
-    const at2230 = batchView.plan('deliver', pickedRows, { config: { autoCompleteAt: '22:30' } });
-    t.check(at2230.confirmText.indexOf('系统每天 22:30 自动完成送达单') >= 0,
-      'L01 TD-083 合法基线：注入 config.autoCompleteAt=22:30 → 送达确认文案按配置时刻生成');
-    const at2115 = batchView.plan('deliver', pickedRows, { config: { autoCompleteAt: '21:15' } });
-    t.eq([(at2115.confirmText.match(/21:15/g) || []).length, at2115.confirmText.indexOf(fallbackAt)], [1, -1], 'L02 文案时刻按配置值单处渲染（D91 文案只提一次时刻；缺省值不出现在配置生效文案里）');
-    const noConfig = batchView.plan('deliver', pickedRows, {});
-    t.check(noConfig.confirmText.indexOf('系统每天 ' + fallbackAt + ' 自动完成送达单') >= 0,
-      'L03 缺配置 → 回退出厂默认（唯一默认单源 = config/defaults.DEFAULT_CONFIG.autoCompleteAt）');
-    const outOfRange = batchView.plan('deliver', pickedRows, { config: { autoCompleteAt: '25:00' } });
-    t.eq([outOfRange.confirmText.indexOf(fallbackAt) >= 0, outOfRange.confirmText.indexOf('25:00')],
-      [true, -1], 'L04 非法配置（25:00 越界）→ 回退默认，不把非法时刻上屏');
-    const emptyClock = batchView.plan('deliver', pickedRows, { config: { autoCompleteAt: '' } });
-    t.eq(emptyClock.confirmText.indexOf('系统每天 ' + fallbackAt + ' 自动完成送达单') >= 0, true,
-      'L05 空串配置值 → 同样回退默认（不生成「系统每天  自动完成」残句）');
-    const nonString = batchView.plan('deliver', pickedRows, { config: { autoCompleteAt: 2230 } });
-    t.eq([nonString.confirmText.indexOf(fallbackAt) >= 0, nonString.confirmText.indexOf('2230')], [true, -1],
-      'L06 非字符串配置值（数字 2230）→ 回退默认，不上屏半截时刻');
-    const trimmed = batchView.plan('deliver', pickedRows, { config: { autoCompleteAt: ' 22:30 ' } });
-    t.check(trimmed.confirmText.indexOf('系统每天 22:30 自动完成送达单') >= 0,
-      'L07 配置前后空格归一后使用（normalizeClockText 单源，不把脏值直接拼进文案）');
-    const pickWithConfig = batchView.plan('pick', pickedRows, { config: { autoCompleteAt: '22:30' } });
-    const pickNoConfig = batchView.plan('pick', pickedRows, {});
-    t.eq(pickWithConfig.confirmText, pickNoConfig.confirmText,
-      'L08 其它批量动作不受影响（无占位模板逐字一致，配置化只作用于送达文案）');
-    t.check(at2230.confirmText.indexOf('将 2 单（共 2 件）') >= 0
-      && at2230.confirmText.indexOf('guest 单无需确认') >= 0,
-      'L09 配置化不影响件数替换与 guest 口径原文（N/M 与时刻同时正确）');
-    const batchSrc = fsutil.stripComments(textOf('pages/partner/workbench/parts/batch-view.js'));
-    t.check(batchSrc.indexOf(fallbackAt) === -1 && batchSrc.indexOf('{autoCompleteAt}') >= 0,
-      'L10 纯件零第二处时刻字面量（剥注释后无默认时刻）、模板用 {autoCompleteAt} 占位单源');
-    t.check(batchSrc.indexOf('defaults.DEFAULT_CONFIG.autoCompleteAt') >= 0
-      && batchSrc.indexOf('defaults.normalizeClockText(') >= 0,
-      'L11 默认值/归一判据都引用 config/defaults（唯一默认值来源），零件不本地写死时刻');
-    t.check(at2230.confirmText.indexOf('该时刻前送达的当天完成') >= 0 && at2230.confirmText.indexOf('下一轮') === -1
-      && at2230.confirmText.indexOf('该时刻及之后送达的送达即完成') >= 0 && at2230.confirmText.indexOf('顺延次日') === -1,
-      'L12 D91 文案语义：该时刻前送达的当天完成、该时刻及之后送达的送达即完成（旧「下一轮/顺延次日」作废）');
-    const at2350 = batchView.plan('deliver', pickedRows, { config: { autoCompleteAt: '23:50' } });
-    t.check(at2350.confirmText.indexOf('系统每天 23:50 自动完成送达单') >= 0,
-      'L13 显式注入 23:50 的可配置用例：文案按注入值生效（旧默认已成配置可改项）');
-    const actionSrc = textOf(PAGES.actions);
-    const tapBody = actionSrc.slice(actionSrc.indexOf('onBatchTap('));
-    t.check(tapBody.indexOf("store.get('config')") >= 0
-      && /batchTapIntent\([\s\S]{0,200}?this\.data\.readonly,\s*config\)/.test(tapBody),
-      "L14 页面接线：onBatchTap 读 store.get('config') 并注入 actionFlow.batchTapIntent");
-    const flowSrc = textOf('pages/partner/workbench/parts/action-flow.js');
-    t.check(/function batchTapIntent\(key, groups, readonly, config\)/.test(flowSrc)
-      && flowSrc.indexOf('batchView.plan(key, rows, { config: config })') >= 0,
-      'L15 action-flow 接线：config 参数透传到 batch-view.plan（不吞配置、不本地判时刻）');
-  });
+  // ── L. TD-083：日结批自动完成时刻配置化（用例表 tools/lib/workbench-clock-cases.js）─────────
+  h.section('L 自动完成时刻配置化', (t) => clockCases.clockChecks(t, {
+    batchView: batchView, textOf: textOf, rowsOf: rowsOf, dto: dto, STATUS: STATUS, PAGES: PAGES
+  }));
 
   // ── M. 批 20（D53/D54）：全部=今日订单流水 + 复制汇总=今日已送达（用例表 tools/lib/order-workbench-cases.js）──
   h.section('M 今日订单流水与今日已送达汇总', (t) => orderCases.dayFlowChecks(t, {
@@ -986,6 +947,10 @@ function register(h) {
 
   // ── O. 批 26-W4（D58）：待接收转派区块（count 服务端 transferPending / 行文案 / 排序 / 红点复用 / 零判据）──
   h.section('O D58 待接收转派（工作台）', (t) => transferCases.workbenchTransferChecks(t));
+
+  // ── P. 2026-11-26 迟到响应守卫（真机「数据显示乱跳/显示之前的数据」；用例表 tools/lib/workbench-load-cases.js）──
+  // 放最后：本组是异步用例且独占 api/client 的 transport 注入窗口（其它分节的 fake transport 不得与之交错）
+  h.section('P 迟到响应守卫', (t) => loadCases.staleChecks(t));
 }
 
 module.exports = { EXPECTED_ASSERTIONS, register };

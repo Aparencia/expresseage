@@ -354,80 +354,8 @@ module.exports = {
     wx.navigateTo({ url: CREATE_ON_BEHALF_PAGE });
   },
 
-  // P0-2/TD-073：历史摘要（已完结折叠入口文案）按调用计划去重——同筛选/同 counts 版本/无脏/无在途
-  // 一律 0 次 request；显式刷新（下拉/刷新/重试）由页面置 _historyDirty 后才重拉。请求在途时合并。
-  loadHistorySummary() {
-    const filter = this.data.filter;
-    const countsVersion = historyView.countsFingerprintOf(this.data.counts);
-    const plan = historyView.summaryCallPlan({
-      pending: this._historyPending === true,
-      dirty: this._historyDirty === true,
-      hasSummary: this._historyFilter !== undefined,
-      filter: filter,
-      lastFilter: this._historyFilter,
-      countsVersion: countsVersion,
-      lastCountsVersion: this._historyCountsVersion
-    });
-    if (!plan.call) {
-      return Promise.resolve();
-    }
-    this._historyDirty = false;
-    this._historyPending = true;
-    return orderApi.listPartner(historyView.summaryQuery(Date.now())).then((data) => {
-      this._historyPending = false;
-      this._historyFilter = filter;
-      this._historyCountsVersion = countsVersion;
-      this.setData({ 'completed.text': historyView.collapsedState(data).text });
-    }).catch(() => {
-      this._historyPending = false;
-    });
-  },
-
-  onCompletedToggle() {
-    const current = this.data.completed;
-    if (current.loading) {
-      return;
-    }
-    if (current.expanded) {
-      this.setData({ 'completed.expanded': false });
-      return;
-    }
-    this.setData({ 'completed.loading': true, 'completed.expanded': true });
-    orderApi.listPartner(historyView.expandQuery(Date.now())).then((data) => {
-      this._historyRows = Array.isArray(data.list) ? data.list : [];
-      // P1-4：展开成功即 hasMore=true（更早未知）；窗口内有下一页就先窗口续页，耗尽后由 onHistoryMore 转 older
-      this._historyPaging = historyView.openedPaging(data);
-      this.setData({ completed: Object.assign({}, this.data.completed,
-        actionFlow.historyStateOf(this._historyRows, this._historyPaging, false, Date.now())) });
-    }).catch((err) => {
-      this.setData({ 'completed.loading': false, 'completed.expanded': false });
-      this.toastMsg((err && err.message) || '历史订单没加载出来，检查网络后重试');
-    });
-  },
-
-  // 批 20（D53）：已完结只放昨日及更早——单窗口游标翻页（服务端 to=今日0点-1；「更早」由同一游标继续）
-  onHistoryMore() {
-    const current = this.data.completed;
-    const paging = this._historyPaging || historyView.pagingState();
-    if (current.loading || !paging.hasMore) {
-      return;
-    }
-    const plan = historyView.moreQueryOf(Date.now(), paging);
-    this.setData({ 'completed.loading': true });
-    orderApi.listPartner(plan.query).then((data) => {
-      const applied = historyView.moreResultOf(paging, data);
-      this._historyPaging = applied.paging;
-      this._historyRows = historyView.mergeOlderRows(this._historyRows, applied.rows);
-      this.setData({ completed: Object.assign({}, this.data.completed,
-        actionFlow.historyStateOf(this._historyRows, applied.paging, false, Date.now())) });
-      if (applied.notice === 'earliest') {
-        this.toastMsg('已到最早的订单');
-      }
-    }).catch((err) => {
-      this.setData({ 'completed.loading': false });
-      this.toastMsg((err && err.message) || '更早的订单没加载出来，检查网络后重试');
-    });
-  },
+  // 已完结历史分区（摘要/展开/更早）接线已迁出：2026-11-26 迟到响应守卫批拆到 parts/history-flow.js
+  // （page-actions 守门禁 #18 ≤500 行；历史三段与动作面板职责分离）。
 
   // D54/P1-5：复制汇总改「今日已送达」口径——优先复用页面 load 保存的 summary（点击零请求）；
   // 仅当今日 summary 缺失或 counts 版本已变（用户长时间停在其它 chip）才补拉一次 view=day 再复制。
