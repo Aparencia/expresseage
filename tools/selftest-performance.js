@@ -37,7 +37,7 @@ const partnerMessagePoll = require(path.join(ROOT, 'pkg-partner/pages/order-deta
 const cloudActions = require(path.join(ROOT, 'cloudfunctions/api/shared/actions.js'));
 const { createApi } = require(path.join(ROOT, 'cloudfunctions/api/app.js'));
 
-const EXPECTED_ASSERTIONS = 149; // 实际断言总数（145 + 2：审查 P1-9 E16 改独立期望源拆 1→3 断）；少算/多算都判红
+const EXPECTED_ASSERTIONS = 154; // 实际断言总数（149 + 5：2026-11-26 性能审查 D2 列表/计数并行）；少算/多算都判红
 const NOW = Date.parse('2026-10-22T12:00:00+08:00');
 const ROLES = { CUSTOMER: 'CUSTOMER', PARTNER: 'PARTNER' };
 const USER_STATUS = { ACTIVE: 'ACTIVE' };
@@ -227,6 +227,64 @@ function register(h) {
       });
     t.check(src.indexOf('const user = await identity.loadUser') < 0, 'D12 不再串行 await users 读（回归即红）');
     t.check(/boundPartner[\s\S]{0,120}binding\.partnerId/.test(src), 'D13 boundPartner 仍依赖 binding 结果（依赖顺序保留）');
+  });
+
+  // ---------------------------------------------------------------- D2. 列表/计数并行（2026-11-26 审查修复）
+  asyncSection('D2. order.listCustomer 状态分桶 + 三桶计数并行（延迟 DB 复算并发窗口）', async (t) => {
+    const db = createFakeDb();
+    db.seed('config', [{ _id: 'global', privacyVersion: 'v4.0' }]);
+    db.seed('users', [{
+      _id: 'openid-perf-list',
+      roles: [ROLES.CUSTOMER],
+      status: USER_STATUS.ACTIVE,
+      isTestAccount: false,
+      privacyConsent: { version: 'v4.0', at: NOW }
+    }]);
+    db.seed('customers', [{
+      _id: 'openid-perf-list', customerNo: 'CABCDEFGH', displayName: '小王', profileCompleted: true, dormKey: 'D4-522'
+    }]);
+    const statuses = ['SUBMITTED', 'ACCEPTED', 'PICKED', 'DELIVERED', 'EXCEPTION'];
+    db.seed('orders', statuses.map((status, index) => ({
+      _id: 'order-perf-' + index,
+      orderNo: '20261021-10' + (index + 1),
+      requestKey: 'openid-perf-list:perf-' + index,
+      customerId: 'openid-perf-list',
+      customerOpenid: 'openid-perf-list',
+      customerNo: 'CABCDEFGH',
+      source: 'CUSTOMER',
+      isTest: false,
+      status: status,
+      statusUpdatedAt: NOW - index * 60000,
+      createdAt: NOW - index * 60000,
+      version: 1,
+      parcel: { stationId: 'P3', stationName: '北部菜鸟驿站', pickupCode: 'A12' + index }
+    })));
+    const READ_DELAY_MS = 60;
+    const stats = { reads: 0, inflight: 0, maxInflight: 0 };
+    const api = createApi({
+      db: wrapDb(db, {
+        delayMs: READ_DELAY_MS,
+        onReadStart: () => {
+          stats.reads += 1;
+          stats.inflight += 1;
+          stats.maxInflight = Math.max(stats.maxInflight, stats.inflight);
+        },
+        onReadEnd: () => { stats.inflight -= 1; }
+      }),
+      now: () => NOW,
+      openid: 'openid-perf-list'
+    });
+    const startedAt = Date.now();
+    const result = await api.call('order.listCustomer', { limit: 20 });
+    const elapsed = Date.now() - startedAt;
+    t.check(result.ok === true && !!result.data && Array.isArray(result.data.list),
+      'D14 合法基线：listCustomer 成功且列表为数组（并行化未破坏响应包络）');
+    t.check(stats.maxInflight >= 5, 'D15 状态分桶并发窗口 ≥5 同时在途（5 次 find 真并行，不是逐个 await）');
+    t.check(elapsed < stats.reads * READ_DELAY_MS,
+      'D16 总耗时严格小于全串行下界 reads×60ms（实测 ' + elapsed + 'ms / reads=' + stats.reads + '）');
+    const src = codeOf('cloudfunctions/api/handlers/order/listCustomer.js');
+    t.check(src.indexOf('Promise.all(filter.statuses.map') >= 0, 'D17 状态分桶走 Promise.all（回归串行 for-await 即红）');
+    t.check(/const \[ongoing, completed, cancelled\] = await Promise\.all\(\[/.test(src), 'D18 三桶计数并行（回归串行 await 即红）');
   });
 
   // ---------------------------------------------------------------- E. P0-5 router 懒加载

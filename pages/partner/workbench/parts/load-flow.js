@@ -48,11 +48,16 @@ module.exports = {
     };
   },
 
-  load(options) {
+  async load(options) {
     const opts = options || {};
     // 离页后不再发请求（onUnload 置位；返回 false 不 reject，调用方 .then 里的收尾按需再判 _unloaded）
     if (this._unloaded) {
-      return Promise.resolve(false);
+      return false;
+    }
+    // P1-9（2026-11-26 性能审查）：30s 轮询 < 读重试最坏 31.2s，弱网会叠着在飞请求越积越多。
+    // 轮询遇到在飞直接跳过（人工下拉/刷新仍照常插队，由代次守卫裁决旧包）。
+    if (opts.poll && this._loadInflight > 0) {
+      return false;
     }
     if (!opts.poll && this.data.stage !== 'ready') {
       this.setData({ stage: 'skeleton', errorText: '' });
@@ -62,9 +67,15 @@ module.exports = {
     taken.token = taken.token + 1;
     this._loadToken = taken.token;
     const payload = loadView.queryOf({ filterKey: taken.filterKey, keyword: taken.keyword });
-    return orderApi.listPartner(payload)
-      .then((data) => this.applyResult(data, opts, taken))
-      .catch((err) => this.loadError(err, opts, taken));
+    this._loadInflight = (this._loadInflight || 0) + 1;
+    try {
+      const data = await orderApi.listPartner(payload);
+      return this.applyResult(data, opts, taken);
+    } catch (err) {
+      return this.loadError(err, opts, taken);
+    } finally {
+      this._loadInflight -= 1;
+    }
   },
 
   loadError(err, opts, taken) {

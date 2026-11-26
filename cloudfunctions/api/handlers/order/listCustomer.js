@@ -51,17 +51,17 @@ function matchKeyword(order, keyword) {
   return false;
 }
 
+// P0-12（2026-11-26 性能审查）：状态分桶查询互不依赖 → 并行发出，结果按状态顺序拼接（行集与串行版逐字一致）。
+// 保留「每状态独立窗口」语义（scanLimit 按状态计），只把 N 次串行 RTT 收成 1 轮。
 async function fetchOrders(ctx, customerId, filter, scanLimit) {
   const isTest = common.isTestSession(ctx);
+  const parts = await Promise.all(filter.statuses.map((status) => ctx.dao.find(COLLECTIONS.ORDERS, {
+    where: { customerId, status, isTest },
+    orderBy: [[filter.sortField, 'desc'], ['orderNo', 'desc']],
+    limit: scanLimit
+  })));
   const rows = [];
-  for (let i = 0; i < filter.statuses.length; i += 1) {
-    const part = await ctx.dao.find(COLLECTIONS.ORDERS, {
-      where: { customerId, status: filter.statuses[i], isTest },
-      orderBy: [[filter.sortField, 'desc'], ['orderNo', 'desc']],
-      limit: scanLimit
-    });
-    part.forEach((row) => rows.push(row));
-  }
+  parts.forEach((part) => part.forEach((row) => rows.push(row)));
   return rows;
 }
 
@@ -81,14 +81,14 @@ async function countBucket(ctx, customerId, statusWhere) {
 // 三桶计数（批 5 契约 C）：进行中=SUBMITTED/ACCEPTED/PICKED/DELIVERED/EXCEPTION；已完成=COMPLETED；
 // 已取消=CANCELLED。均排除 deletedByCustomerAt 软删（列表口径一致）；不受 keyword/status 筛选影响
 // （供列表 tab 角标，切 tab 不变）；与列表同样按 isTest 隔离，测试单不污染真实计数。
+// 三桶计数互不依赖 → 并行（每桶内部仍是「总数 - 软删数」，保持口径不变）。
 async function buildCounts(ctx, customerId) {
-  return {
-    ongoing: await countBucket(ctx, customerId, {
-      status: ctx.dao.command('in', enums.ORDER_ACTIVE_STATUSES)
-    }),
-    completed: await countBucket(ctx, customerId, { status: enums.ORDER_STATUS.COMPLETED }),
-    cancelled: await countBucket(ctx, customerId, { status: enums.ORDER_STATUS.CANCELLED })
-  };
+  const [ongoing, completed, cancelled] = await Promise.all([
+    countBucket(ctx, customerId, { status: ctx.dao.command('in', enums.ORDER_ACTIVE_STATUSES) }),
+    countBucket(ctx, customerId, { status: enums.ORDER_STATUS.COMPLETED }),
+    countBucket(ctx, customerId, { status: enums.ORDER_STATUS.CANCELLED })
+  ]);
+  return { ongoing, completed, cancelled };
 }
 
 module.exports = async function orderListCustomer(ctx, payload) {

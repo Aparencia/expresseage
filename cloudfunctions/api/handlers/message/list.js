@@ -63,13 +63,31 @@ async function customerPartnerOpenids(ctx, scope) {
     where: { customerId: scope.openid },
     limit: 20
   });
+  const partnerIds = [];
+  bindings.forEach((binding) => {
+    if (binding.partnerId && partnerIds.indexOf(binding.partnerId) < 0) {
+      partnerIds.push(binding.partnerId);
+    }
+  });
+  if (partnerIds.length === 0) {
+    return [];
+  }
+  // P0-13：逐绑定查兼职改为一次 `_id in` 批量，再按绑定顺序回填（归属过滤口径不变）。
+  const partners = await ctx.dao.find(common.COLLECTIONS.PARTNERS, {
+    where: { _id: ctx.dao.command('in', partnerIds) },
+    limit: partnerIds.length
+  });
+  const byId = {};
+  partners.forEach((partner) => {
+    byId[partner._id] = partner;
+  });
   const openids = [];
-  for (let i = 0; i < bindings.length; i += 1) {
-    const partner = await ctx.dao.get(common.COLLECTIONS.PARTNERS, bindings[i].partnerId);
+  partnerIds.forEach((partnerId) => {
+    const partner = byId[partnerId];
     if (partner && typeof partner.openid === 'string' && partner.openid && openids.indexOf(partner.openid) < 0) {
       openids.push(partner.openid);
     }
-  }
+  });
   return openids;
 }
 
@@ -128,6 +146,62 @@ function eventItemOf(scope, orderNo, event, readWatermarkMs) {
   return item;
 }
 
+// P0-13（2026-11-26 性能审查）：逐单「事件 + 留言」两条查询互不依赖，按并发 5 分波并行；
+// 结果仍按 recentOrders 顺序、单内「事件在前留言在后」归并（排序/分页语义与串行版逐字一致。
+const PER_ORDER_CONCURRENCY = 5;
+
+async function mapLimit(items, limit, fn) {
+  const results = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    while (next < items.length) {
+      const index = next;
+      next += 1;
+      results[index] = await fn(items[index], index);
+    }
+  }
+  const workerCount = Math.min(limit, items.length);
+  const workers = [];
+  for (let i = 0; i < workerCount; i += 1) {
+    workers.push(worker());
+  }
+  await Promise.all(workers);
+  return results;
+}
+
+async function perOrderItems(ctx, scope, order, readWatermarkMs) {
+  const orderNo = order.orderNo || '';
+  const [events, messages] = await Promise.all([
+    ctx.dao.find(common.COLLECTIONS.ORDER_EVENTS, {
+      where: { orderId: order._id },
+      orderBy: [['at', 'desc']],
+      limit: common.EVENTS_PER_ORDER
+    }),
+    ctx.dao.find(common.COLLECTIONS.ORDER_MESSAGES, {
+      where: { orderId: order._id },
+      orderBy: [['createdAt', 'desc']],
+      limit: common.MESSAGES_PER_ORDER
+    })
+  ]);
+  const side = common.orderSideOf(ctx, order);
+  const rows = [];
+  visibleEventRowsOf(events, side).forEach((event) => {
+    rows.push(eventItemOf(scope, orderNo, event, readWatermarkMs));
+  });
+  messages.forEach((message) => {
+    rows.push(common.buildMessageItem(scope, orderNo, message));
+  });
+  return rows;
+}
+
+async function collectOrderItems(ctx, scope, recentOrders, readWatermarkMs) {
+  const perOrder = await mapLimit(recentOrders, PER_ORDER_CONCURRENCY,
+    (order) => perOrderItems(ctx, scope, order, readWatermarkMs));
+  const items = [];
+  perOrder.forEach((rows) => rows.forEach((item) => items.push(item)));
+  return items;
+}
+
 async function listCenter(ctx, payload) {
   const scope = common.scopeOf(ctx);
   if (scope.roles.length === 0) {
@@ -135,35 +209,16 @@ async function listCenter(ctx, payload) {
   }
   const limit = common.parseLimit(payload);
   const cursor = common.parseCursor(payload);
-  const user = await common.loadUser(ctx, scope.openid);
+  const [user, orders] = await Promise.all([
+    common.loadUser(ctx, scope.openid),
+    common.myOrders(ctx, scope)
+  ]);
   const readWatermarkMs = common.watermarkMsOf(user);
   const config = await common.loadConfig(ctx);
-  const orders = await common.myOrders(ctx, scope);
-  const items = [];
   const recentOrders = orders
     .filter((order) => !order.deletedByCustomerAt)
     .slice(0, common.MAX_ORDERS_SCAN);
-  for (let i = 0; i < recentOrders.length; i += 1) {
-    const order = recentOrders[i];
-    const orderNo = order.orderNo || '';
-    const events = await ctx.dao.find(common.COLLECTIONS.ORDER_EVENTS, {
-      where: { orderId: order._id },
-      orderBy: [['at', 'desc']],
-      limit: common.EVENTS_PER_ORDER
-    });
-    const side = common.orderSideOf(ctx, order);
-    visibleEventRowsOf(events, side).forEach((event) => {
-      items.push(eventItemOf(scope, orderNo, event, readWatermarkMs));
-    });
-    const messages = await ctx.dao.find(common.COLLECTIONS.ORDER_MESSAGES, {
-      where: { orderId: order._id },
-      orderBy: [['createdAt', 'desc']],
-      limit: common.MESSAGES_PER_ORDER
-    });
-    messages.forEach((message) => {
-      items.push(common.buildMessageItem(scope, orderNo, message));
-    });
-  }
+  const items = await collectOrderItems(ctx, scope, recentOrders, readWatermarkMs);
   const announcement = common.buildAnnouncementItem(config);
   if (announcement) {
     items.push(announcement);

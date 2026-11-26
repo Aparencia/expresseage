@@ -133,21 +133,22 @@ function matchKeyword(order, keyword) {
 
 // P1-6：任一状态 find 返回行数触达扫描上限（>= scanLimit）→ 本次候选集可能不全，summary 需如实标注
 // （聚合值仍按已取到的行计算，跨状态合并后去重；不新增查询、不二次扫描）。
+// P0-12（2026-11-26 性能审查）：状态分桶查询互不依赖 → 并行发出，行集与截断标记按状态顺序归并（与串行版逐字一致）。
 async function fetchOrders(ctx, partnerId, filter, scanLimit, extraWhere) {
   const isTest = common.isTestSession(ctx);
+  const parts = await Promise.all(filter.statuses.map((status) => ctx.dao.find(COLLECTIONS.ORDERS, {
+    where: Object.assign({ partnerId, status, isTest }, extraWhere || {}),
+    orderBy: [[filter.sortField, 'desc'], ['orderNo', 'desc']],
+    limit: scanLimit
+  })));
   const rows = [];
   let truncated = false;
-  for (let i = 0; i < filter.statuses.length; i += 1) {
-    const part = await ctx.dao.find(COLLECTIONS.ORDERS, {
-      where: Object.assign({ partnerId, status: filter.statuses[i], isTest }, extraWhere || {}),
-      orderBy: [[filter.sortField, 'desc'], ['orderNo', 'desc']],
-      limit: scanLimit
-    });
+  parts.forEach((part) => {
     if (part.length >= scanLimit) {
       truncated = true;
     }
     part.forEach((row) => rows.push(row));
-  }
+  });
   return { rows, truncated };
 }
 
@@ -278,22 +279,27 @@ async function buildCounts(ctx, partnerId, nowMs) {
     ['delivered', enums.ORDER_STATUS.DELIVERED],
     ['exception', enums.ORDER_STATUS.EXCEPTION]
   ];
-  for (let i = 0; i < mapping.length; i += 1) {
-    counts[mapping[i][0]] = await ctx.dao.count(COLLECTIONS.ORDERS, {
-      where: { partnerId, status: mapping[i][1], isTest }
-    });
-  }
   const todayStart = todayStartOf(nowMs);
-  // 今日完成（TD-043）：单 count 表达「completedAt ≥ 今日起点」，不再 find(limit:100) 后内存过滤；
-  // 口径与旧实现一致（单日完成数没有上界），仍按 isTest 隔离。
-  counts.todayCompleted = await ctx.dao.count(COLLECTIONS.ORDERS, {
-    where: {
-      partnerId,
-      status: enums.ORDER_STATUS.COMPLETED,
-      isTest,
-      completedAt: ctx.dao.command('gte', new Date(todayStart))
-    }
+  // P0-12：五状态等值 count 与「今日完成」范围 count 互不依赖 → 并行（口径与查询条件不变）。
+  const [statusCounts, todayCompleted] = await Promise.all([
+    Promise.all(mapping.map((item) => ctx.dao.count(COLLECTIONS.ORDERS, {
+      where: { partnerId, status: item[1], isTest }
+    }))),
+    // 今日完成（TD-043）：单 count 表达「completedAt ≥ 今日起点」，不再 find(limit:100) 后内存过滤；
+    // 口径与旧实现一致（单日完成数没有上界），仍按 isTest 隔离。
+    ctx.dao.count(COLLECTIONS.ORDERS, {
+      where: {
+        partnerId,
+        status: enums.ORDER_STATUS.COMPLETED,
+        isTest,
+        completedAt: ctx.dao.command('gte', new Date(todayStart))
+      }
+    })
+  ]);
+  mapping.forEach((item, index) => {
+    counts[item[0]] = statusCounts[index];
   });
+  counts.todayCompleted = todayCompleted;
   return counts;
 }
 

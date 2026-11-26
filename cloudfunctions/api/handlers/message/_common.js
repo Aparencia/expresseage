@@ -355,13 +355,15 @@ async function partnerOrders(ctx, scope, isTest) {
 async function myOrders(ctx, scope) {
   const isTest = scope.testWrite;
   const roles = Array.isArray(scope.roles) ? scope.roles : [];
-  const lists = [];
+  const tasks = [];
   if (roles.indexOf(enums.ROLES.CUSTOMER) >= 0) {
-    lists.push(await customerOrders(ctx, scope, isTest));
+    tasks.push(customerOrders(ctx, scope, isTest));
   }
   if (roles.indexOf(enums.ROLES.PARTNER) >= 0) {
-    lists.push(await partnerOrders(ctx, scope, isTest));
+    tasks.push(partnerOrders(ctx, scope, isTest));
   }
+  // P0-13：顾客侧与兼职侧订单集互不依赖 → 并行取（双角色账号少 1 轮串行 RTT；合并/排序口径不变）。
+  const lists = await Promise.all(tasks);
   if (lists.length !== 2) {
     return lists.length === 1 ? lists[0] : [];
   }

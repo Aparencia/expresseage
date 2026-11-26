@@ -118,7 +118,8 @@ Page(Object.assign({
       this.setData({ loading: false, error: COPY.noOrderNo });
       return Promise.resolve();
     }
-    this.setData({ loading: true, error: '' });
+    // P1-7（2026-11-26 性能审查）：已有数据时静默刷新——不整页切「加载中…」，弱网返回页面也不会空白到读重试结束。
+    this.setData(this.data.order ? { error: '' } : { loading: true, error: '' });
     return orderApi.get({ orderNo: this.data.orderNo })
       .then((data) => this.applyDetail(data))
       .catch((err) => {

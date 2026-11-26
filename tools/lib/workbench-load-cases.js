@@ -21,7 +21,7 @@ const loadFlow = require(path.join(ROOT, 'pages/partner/workbench/parts/load-flo
 const loadView = require(path.join(ROOT, 'pages/partner/workbench/parts/load-view.js'));
 const fsutil = require('./fsutil');
 
-const EXPECTED_ASSERTIONS = 13; // P01~P13
+const EXPECTED_ASSERTIONS = 17; // P01~P17
 const ISO = '2026-11-26T02:00:00.000Z';
 const COUNTS_ZERO = { submitted: 0, accepted: 0, picked: 0, delivered: 0, exception: 0, todayCompleted: 0 };
 
@@ -127,9 +127,10 @@ async function staleChecks(t) {
     t.eq([orderNos(base), base.data.counts.accepted], [['P-1'], 1],
       'P01 合法基线：单请求落地（列表/计数按服务端响应上屏）');
 
-    // ── 反例 1：旧响应晚到（轮询竞态的典型形态）────────────────────────────────
+    // ── 反例 1：旧响应晚到（轮询在飞 + 人工刷新插队的典型形态）──────────────────
+    // 2026-11-26 性能审查后轮询不再叠加（在飞时跳过），故「新请求」用人工刷新（silent）表达插队。
     const stale = runLoad(base, { poll: true });
-    const newest = runLoad(base, { poll: true });
+    const newest = runLoad(base, { silent: true });
     gate.pending[2](resp([dto('P-2', 'PICKED', 2)], countsOf({ picked: 1 })));
     await newest;
     const afterNewest = orderNos(base);
@@ -190,7 +191,7 @@ async function staleChecks(t) {
     // ── 反例 6：旧请求失败晚于新请求成功（假错误条）──────────────────────────────
     const failing = makePage();
     const olderFail = runLoad(failing, { poll: true });
-    const newerOk = runLoad(failing, { poll: true });
+    const newerOk = runLoad(failing, { silent: true });
     gate.pending[10](resp([dto('OK-1', 'ACCEPTED', 2)], countsOf({ accepted: 1 })));
     await newerOk;
     gate.pending[9]({ ok: false, code: 'VALIDATION_FAILED', message: '参数不合法' });
@@ -224,6 +225,21 @@ async function staleChecks(t) {
     const actionGuards = (actionSrc.match(/this\._unloaded/g) || []).length;
     t.check(actionGuards >= 6,
       'P13 接线：历史摘要/展开/更早三处响应都判 _unloaded（离页不再 setData/toast；实测 ' + actionGuards + ' 处）');
+
+    // ── P1-9（2026-11-26 性能审查）：30s 轮询不叠在飞，人工刷新仍可插队 ─────────────
+    const skip = makePage();
+    const inFlight = runLoad(skip, { poll: true });
+    const queueBefore = gate.pending.length;
+    const skipped = await loadFlow.load.call(skip, { poll: true });
+    t.eq(skipped, false, 'P14 轮询在飞：第二次轮询直接跳过（30s<读重试 31.2s 不再叠加）');
+    t.eq(gate.pending.length, queueBefore, 'P15 轮询在飞：跳过时零新请求入队（流量不再翻倍）');
+    const manual = runLoad(skip, { silent: true });
+    t.eq(gate.pending.length, queueBefore + 1, 'P16 人工刷新不跳过：在飞时仍插队（旧包交给代次守卫）');
+    gate.pending[queueBefore](resp([dto('M-1', 'ACCEPTED', 1)], countsOf({ accepted: 1 })));
+    await manual;
+    gate.pending[queueBefore - 1](resp([dto('P-9', 'ACCEPTED', 1)], countsOf({ submitted: 1 })));
+    await inFlight;
+    t.eq(orderNos(skip), ['M-1'], 'P17 插队刷新先落地，随后到达的旧轮询包整包丢弃');
   } finally {
     client.restoreTransport();
     store.patch({ badges: { workbenchPending: 0, messages: 0 } });
