@@ -7,6 +7,8 @@
 
 ## [未发布]
 
+- **2026-11-26 索引缺口与查询路径回写（文档/契约；索引待用户在控制台创建）**：补齐 4 个缺失索引到 `docs/data/V4_DATA_MODEL.md` §5.1 与 `docs/delivery/V4_RUNBOOK.md` §3.4——`orders.idx_partner_exception_at(partnerId,exception.at)`、`orders.idx_transfer_from_resolved(transfer.fromPartnerId,transfer.status,transfer.resolvedAt)`、`orders.idx_transfer_to_resolved(transfer.toPartnerId,partnerId,transfer.status,transfer.resolvedAt)`、`users.idx_users_deletion(status,deletionRequestedAt)`；并明确「索引全集以 DATA_MODEL §5.1 为准，ENGINEERING §4.6 为批 1 历史摘要」。§5.2 查询路径按当前实现回写：列表逐桶并行查询 + 有游标时下推、工作台/今日流水保持「最新一窗」、消息中心并发 5 批量。**用户在控制台按 RUNBOOK §3.4 建 4 个索引并截图**；无代码/接口/字段变更。
+
 - **2026-11-26 响应速度修复第二批（历史列表翻页可达性）**：顾客「已完成/已取消」与兼职历史列表此前每页都从「最新一窗」重扫、游标只在内存过滤，历史单超过扫描窗（单状态 60 条、双状态 120 条）后 `nextCursor=null`，旧单在列表里不可达。修法：有游标时把「排序锚之后」下推进查询（`sortField < 游标时间` + 同刻 `orderNo < 游标单号` 两段，可命中既有索引），首屏仍保持「最新一窗」语义；兼职工作台/今日流水因 summary 依赖该窗口，本轮不改。**部署（用户执行）**：重部署 `api`；无客户端改动，无集合/索引/字段/action 变更。
 - **2026-11-26 历史列表游标下推工程细节**：`handlers/order/_list-query.js` 新增 `cursorWheresOf`（无游标返回空数组，保持首屏语义）；`handlers/order/listCustomer.js` 与 `listPartner.js`（仅 history/customer 视图）按游标条件逐桶并行查询；`_store.js` 文件行数经拆件回到 500 以内。判据：`selftest-query-window` 62→65（Q7.1 620 条已完成单逐页取尽、Q7.2 兼职历史 623 条跨窗取尽、Q7.3 响应形状/页大小不变）；旧实现 Q7.1 只到 60 条即红。`check.ps1` 4 步退出码 0（输出随本次提交留档）。
 - **2026-11-26 GitHub Secret scanning 两条小程序 AppID 告警处置**：仓库与全历史无 AppSecret（`git grep -i appsecret` 0 命中），两条告警值均为公开的小程序 AppID（v2 快照与 v4 开工期各一枚）；AppID 属应用标识、非凭据，**不需轮换**，建议在仓库 Secret scanning 页面 Dismiss 并备注理由；不改写历史。边界与操作步骤见 `docs/governance/lessons/2026-11-26_小程序AppID不是凭据但会被扫描告警.md`。
