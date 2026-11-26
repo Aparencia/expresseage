@@ -2,6 +2,7 @@
 const admin = require('../../../api/modules/admin');
 const C = require('../../common/constants');
 const feedback = require('../../common/feedback');
+const staleRequest = require('../../../utils/stale-request');
 const vm = require('./parts/view-model');
 
 Page({
@@ -19,6 +20,8 @@ Page({
   },
 
   onLoad(query) {
+    this._loadToken = 0;
+    this._unloaded = false;
     const raw = query && query.customerNo ? query.customerNo : '';
     const no = raw ? decodeURIComponent(raw) : '';
     if (!no) {
@@ -29,16 +32,35 @@ Page({
     this.loadDetail();
   },
 
+  onUnload() {
+    // 离页位先置 + 代次作废：治理动作后的回读/下拉迟到的包不再 setData、不弹假错
+    this._unloaded = true;
+    this._loadToken = (this._loadToken || 0) + 1;
+  },
+
   onPullDownRefresh() {
     return feedback.refresh(this, 'loadDetail');
   },
 
   loadDetail() {
+    if (this._unloaded === true) {
+      return Promise.resolve();
+    }
+    // 2026-11-26 审查修复（TD-100 同类）：下拉/重试/治理动作后回读可并发，只有最新代次能落地
+    const taken = { token: (this._loadToken || 0) + 1 };
+    this._loadToken = taken.token;
+    const stale = () => this._unloaded === true || staleRequest.isStaleRequest({ token: this._loadToken }, taken);
     this.setData({ loading: true, error: '', notFound: false });
     return admin.getCustomer({ customerNo: this.data.customerNo }).then((result) => {
+      if (stale()) {
+        return;
+      }
       this.applyDetail(result || {});
       this.setData({ loading: false });
     }).catch((err) => {
+      if (stale()) {
+        return;
+      }
       if (err && err.code === 'NOT_FOUND') {
         this.setData({ loading: false, notFound: true });
         feedback.toast('记录不存在或已注销。');

@@ -4,6 +4,7 @@
 'use strict';
 
 const feedback = require('./feedback');
+const staleRequest = require('../../utils/stale-request');
 
 const PAGE_SIZE = 20;
 const DEBOUNCE_MS = 300;
@@ -22,10 +23,21 @@ function paramsOf(page, cfg, cursor) {
 
 /** 首屏/重置加载：成功合并 rows + 服务端游标 + 页面附加 patch；失败交 feedback 统一文案并原样抛出。 */
 function loadList(page, reset, cfg) {
+  if (page._unloaded === true) {
+    return Promise.resolve();
+  }
   if (reset) {
     page.setData({ loading: !page.data.searched, searching: page.data.searched, error: '' });
   }
+  // 2026-11-26 审查修复（TD-100 同类）：搜索防抖/切筛选/含测试开关/下拉可并发，只有最新代次能落地；
+  // 旧包整包丢弃（不 setData、不写错误条）。离页后的迟到包同样丢弃。
+  const taken = { token: (page._loadToken || 0) + 1 };
+  page._loadToken = taken.token;
+  const stale = () => staleRequest.isStaleRequest({ token: page._loadToken }, taken);
   return cfg.request(page, paramsOf(page, cfg)).then((result) => {
+    if (page._unloaded === true || stale()) {
+      return;
+    }
     const rows = cfg.decorate(page, result);
     const patch = {
       list: reset ? rows : page.data.list.concat(rows),
@@ -38,6 +50,9 @@ function loadList(page, reset, cfg) {
     Object.assign(patch, cfg.patch ? cfg.patch(page, result) : {});
     page.setData(patch);
   }).catch((err) => {
+    if (page._unloaded === true || stale()) {
+      return;
+    }
     feedback.handleError(page, err);
     throw err;
   });
@@ -45,15 +60,25 @@ function loadList(page, reset, cfg) {
 
 /** 触底加载下一页：四道闸（loading/searching/loadingMore/无游标）与失败 toast 与原页面一致。 */
 function loadMore(page, cfg) {
+  if (page._unloaded === true) return;
   if (page.data.loading || page.data.searching || page.data.loadingMore || !page.data.nextCursor) return;
+  const taken = { token: (page._loadToken || 0) + 1 };
+  page._loadToken = taken.token;
+  const stale = () => staleRequest.isStaleRequest({ token: page._loadToken }, taken);
   page.setData({ loadingMore: true });
   cfg.request(page, paramsOf(page, cfg, page.data.nextCursor)).then((result) => {
+    if (page._unloaded === true || stale()) {
+      return;
+    }
     page.setData({
       list: page.data.list.concat(cfg.decorate(page, result)),
       nextCursor: (result && result.nextCursor) || '',
       loadingMore: false
     });
   }).catch((err) => {
+    if (page._unloaded === true || stale()) {
+      return;
+    }
     page.setData({ loadingMore: false });
     feedback.toast(err && err.message);
   });
@@ -63,6 +88,9 @@ function loadMore(page, cfg) {
 function methods(cfg) {
   return {
     onUnload() {
+      // 离页位先置：在飞响应不再 setData；代次 +1 让已发出的请求全部作废（迟到包静默丢弃）
+      this._unloaded = true;
+      this._loadToken = (this._loadToken || 0) + 1;
       if (this.timer) {
         clearTimeout(this.timer);
         this.timer = null;

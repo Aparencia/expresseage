@@ -7,6 +7,8 @@
 
 ## [未发布]
 
+- **2026-11-26 后台列表/消息/总览/顾客详情请求代次（TD-100 收口，纯客户端）**：后台三张列表页（订单/顾客/兼职）共用的 `pkg-admin/common/list-flow` 原先无代次——搜索防抖/切筛选/含测试开关/下拉可并发，旧响应会覆盖新状态；现在 `loadList`/`loadMore` 每次领 `_loadToken`、`then`/`catch` 用公共件 `utils/stale-request` 比对，`onUnload` 置 `_unloaded` 并作废代次。后台消息（三请求聚合）、总览（统计+审计追加）、顾客详情（治理动作后回读）同样接入。判据：`selftest-admin-pages` 新增 Q 组 4 条（公共判据真值表 / 列表流两条链路 / 页面接线）。**需重新上传体验版；`api` 无改动。**
+
 - **2026-11-26 兼职客户列表请求代次 + 守卫抽公共件（TD-100 同类，纯客户端）**：客户列表此前只拦触底追加，`load()` 刷新可并发——onShow / 下拉 / 搜索防抖 / 切筛选连点时，旧响应晚到会覆盖新状态（chunk token 只防旧分片、不防旧响应）。修法：每次加载领代次（`_loadToken`），`then`/`catch` 首行用公共件 `utils/stale-request.isStaleRequest` 比对，旧包整包丢弃；`onUnload` 置 `_unloaded` 并作废旧分片。顾客订单列表同步改用同一公共件（删除页面内副本）。判据：`selftest-partner-customers` 新增 G 组 4 条（真值表 / 两条接线 / 代次与离页位）、`selftest-performance` O 组 5 条仍锁顾客订单页。**需重新上传体验版；`api` 无改动。**
 
 - **2026-11-26 顾客订单列表切 tab/迟到响应修复（TD-100 同类，纯客户端）**：此前用 `loading` 单飞挡并发——请求在飞时切 tab 会吞掉新请求，旧 tab 的响应又按新 tab 落地（内容与 tab 不符）。修法：每次加载领代次并记录发起 tab（`_loadToken`/`_loadingTab`），`then`/`catch` 两条落地路径统一用纯件 `pages/customer/orders/parts/request-guard.isStaleRequest` 比对，旧包整包丢弃（不 setData、不清 loading、不写错误条）；同 tab 在途仍去重，跨 tab 必发。判据：`selftest-performance` O 组 5 条（真值表 / 两条接线 / 旧单飞闸移除即红）。**需重新上传体验版；`api` 无改动。** TD-100 其余页面（兼职客户列表、后台各列表）仍开放。

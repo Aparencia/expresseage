@@ -34,7 +34,7 @@ const accountSwitchVm = require(path.join(ROOT, 'pkg-admin/pages/account-switch/
 const reviewVm = require(path.join(ROOT, 'pkg-admin/pages/recognition-review/parts/view-model.js'));
 const messagesVm = require(path.join(ROOT, 'pkg-admin/pages/messages/parts/view-model.js'));
 
-const EXPECTED_ASSERTIONS = 146 - 16 + adminStationCases.CLIENT_ASSERTIONS + 22 + 3 + 11 + 5 + 2 + adminOrdersCases.CLIENT_ASSERTIONS + adminInviteCases.CLIENT_ASSERTIONS + adminCustomerUiCases.CLIENT_ASSERTIONS + 3; // 146-16+…：v1.1/D32 站点卡 16 条随 D70/D71 新增断言移入 tools/lib/admin-config-station-cases.js（合计 CLIENT_ASSERTIONS）；146+…=C 组 8 条移入 tools/lib/admin-invite-cases.js（含原 8 + D59 新增 15，合计 CLIENT_ASSERTIONS）；+5：批26-D58 后台转派留痕（P 组，D58 真实 DTO 驱动后 3→5）；+11：D43 自动完成时间用例表；+6：订单行/消息行「称呼（编号）」；+6：D68 顾客状态界面（用例表拆出 admin-customer-ui-cases.js）；+3：P2-B1 DISABLED 归因按 failureCode 分流断言；余同批 16 前：反馈④ 6 + D41 目录 3
+const EXPECTED_ASSERTIONS = 146 - 16 + adminStationCases.CLIENT_ASSERTIONS + 22 + 3 + 11 + 5 + 2 + adminOrdersCases.CLIENT_ASSERTIONS + adminInviteCases.CLIENT_ASSERTIONS + adminCustomerUiCases.CLIENT_ASSERTIONS + 3 + 4; // …+4：2026-11-26 审查修复 Q 后台请求代次 // 146-16+…：v1.1/D32 站点卡 16 条随 D70/D71 新增断言移入 tools/lib/admin-config-station-cases.js（合计 CLIENT_ASSERTIONS）；146+…=C 组 8 条移入 tools/lib/admin-invite-cases.js（含原 8 + D59 新增 15，合计 CLIENT_ASSERTIONS）；+5：批26-D58 后台转派留痕（P 组，D58 真实 DTO 驱动后 3→5）；+11：D43 自动完成时间用例表；+6：订单行/消息行「称呼（编号）」；+6：D68 顾客状态界面（用例表拆出 admin-customer-ui-cases.js）；+3：P2-B1 DISABLED 归因按 failureCode 分流断言；余同批 16 前：反馈④ 6 + D41 目录 3
 
 const ADMIN_PAGES = ['overview', 'invite-codes', 'customers', 'customer-detail', 'partners', 'orders', 'order-detail', 'config', 'account-switch', 'messages', 'recognition-review'];
 const STATUS_LITERALS = ['SUBMITTED', 'ACCEPTED', 'PICKED', 'DELIVERED', 'COMPLETED', 'CANCELLED', 'EXCEPTION'];
@@ -936,6 +936,29 @@ function register(h) {
       && textOf('pkg-admin/pages/order-detail/index.wxml').indexOf('order.transfer.requestedAtText') >= 0
       && textOf('pkg-admin/pages/orders/index.wxml').indexOf('item.transferText') >= 0,
     'P5 后台详情/列表 WXML 渲染编号级转派留痕（只读、无 openid/昵称头像）');
+  });
+  // ---------------------------------------------------------------- Q. 请求代次（TD-100 同类，2026-11-26 审查修复）
+  h.section('Q. 后台请求代次：列表/消息/顾客详情迟到包不再覆盖新状态', (t) => {
+    const guard = require(path.join(ROOT, 'utils/stale-request.js'));
+    t.check(typeof guard.isStaleRequest === 'function', 'Q1 合法基线：公共代次判据存在（utils/stale-request）');
+    t.eq([
+      guard.isStaleRequest({ token: 2 }, { token: 2 }),
+      guard.isStaleRequest({ token: 3 }, { token: 2 }),
+      guard.isStaleRequest({ token: 3 }, null)
+    ], [false, true, true], 'Q2 真值表：同代次才落地；旧代次/无发起快照一律丢弃');
+    const flow = textOf('pkg-admin/common/list-flow.js');
+    t.eq((flow.match(/staleRequest\.isStaleRequest\(/g) || []).length, 2,
+      'Q3 公共列表流：loadList 与 loadMore 两条链路共用同一判据');
+    const messages = textOf('pkg-admin/pages/messages/index.js');
+    const detail = textOf('pkg-admin/pages/customer-detail/index.js');
+    const overview = textOf('pkg-admin/pages/overview/index.js');
+    t.check(flow.indexOf('this._unloaded = true;') >= 0
+      && (messages.match(/staleRequest\.isStaleRequest\(/g) || []).length === 2
+      && (detail.match(/staleRequest\.isStaleRequest\(/g) || []).length === 1
+      && (overview.match(/staleRequest\.isStaleRequest\(/g) || []).length === 4
+      && detail.indexOf('this._unloaded = true;') >= 0
+      && overview.indexOf('this._unloaded = true;') >= 0,
+      'Q4 接线：列表流 onUnload 置离页位；后台消息 then/catch、顾客详情回读、总览统计与审计追加均按代次落地');
   });
 }
 

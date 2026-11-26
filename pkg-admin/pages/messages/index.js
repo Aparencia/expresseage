@@ -2,6 +2,7 @@
 const admin = require('../../../api/modules/admin');
 const C = require('../../common/constants');
 const feedback = require('../../common/feedback');
+const staleRequest = require('../../../utils/stale-request');
 const vm = require('./parts/view-model');
 
 Page({
@@ -18,7 +19,15 @@ Page({
   },
 
   onLoad() {
+    this._loadToken = 0;
+    this._unloaded = false;
     this.load();
+  },
+
+  onUnload() {
+    // 离页位先置 + 代次作废：在飞响应不再 setData/不弹错（迟到包静默丢弃）
+    this._unloaded = true;
+    this._loadToken = (this._loadToken || 0) + 1;
   },
 
   onShow() {
@@ -32,12 +41,21 @@ Page({
   },
 
   load() {
+    if (this._unloaded === true) {
+      return Promise.resolve();
+    }
+    // 2026-11-26 审查修复（TD-100 同类）：onShow/下拉/重试可并发，只有最新代次能落地
+    const taken = { token: (this._loadToken || 0) + 1 };
+    this._loadToken = taken.token;
     this.setData({ loading: true, error: '' });
     return Promise.all([
       admin.listOrders({ status: C.ORDER_STATUS_EXCEPTION, limit: 20 }),
       admin.listRecognitionFailures({ status: C.FAILURE_STATUS_PENDING, limit: 5 }),
       admin.stats({})
     ]).then((result) => {
+      if (this._unloaded === true || staleRequest.isStaleRequest({ token: this._loadToken }, taken)) {
+        return;
+      }
       const orderData = result[0] || {};
       const failureData = result[1] || {};
       const stats = result[2] || {};
@@ -54,6 +72,9 @@ Page({
         loadedOnce: true
       });
     }).catch((err) => {
+      if (this._unloaded === true || staleRequest.isStaleRequest({ token: this._loadToken }, taken)) {
+        return;
+      }
       this.setData({ loading: false });
       feedback.handleError(this, err);
       throw err;
