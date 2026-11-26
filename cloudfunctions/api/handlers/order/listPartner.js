@@ -79,6 +79,18 @@ function readStatusFilter(payload) {
   return raw;
 }
 
+// D103：取件清单专用——只隐藏「已转出」列表行（counts 仍按 D99 并集，计数不变）；工作台不传。
+function readExcludeHandover(payload) {
+  const value = payload && typeof payload === 'object' ? payload.excludeHandover : undefined;
+  if (value === undefined || value === null) {
+    return false;
+  }
+  if (typeof value !== 'boolean') {
+    throw errors.validation('excludeHandover', '请求参数格式不正确，请刷新页面后重试');
+  }
+  return value;
+}
+
 function resolveFilter(payload, view) {
   const raw = readStatusFilter(payload);
   if (view === HISTORY_VIEW) {
@@ -388,5 +400,5 @@ module.exports = async function orderListPartner(ctx, payload) {
   if (view === WORKBENCH_VIEW || view === DAY_VIEW) {
     body.transferPending = await listTransfer.countTransferPending(ctx, partner, nowMs);
   }
-  return listMerged.finalize({ ctx, partner, view, paging, result, body, nowMs, statuses: filter.statuses, dayStartMs: view === DAY_VIEW ? todayStartOf(nowMs) : 0, attach: attachSummaries });
+  return listMerged.finalize({ ctx, partner, view, paging, result, body, nowMs, statuses: filter.statuses, dayStartMs: view === DAY_VIEW ? todayStartOf(nowMs) : 0, attach: attachSummaries, excludeHandover: readExcludeHandover(input) });
 };

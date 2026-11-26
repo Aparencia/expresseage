@@ -27,9 +27,7 @@
 const path = require('path');
 const fsutil = require('./lib/fsutil');
 const { createHarness, installCrashGuard } = require('./selftest');
-
 const ROOT = path.resolve(__dirname, '..');
-
 const groupView = require(path.join(ROOT, 'pages/partner/workbench/parts/group-view.js'));
 const filterView = require(path.join(ROOT, 'pages/partner/workbench/parts/filter-view.js'));
 const rowActions = require(path.join(ROOT, 'pages/partner/workbench/parts/row-actions.js'));
@@ -64,7 +62,7 @@ const {
 const summaryCopy = optionalRequire('pages/partner/workbench/parts/summary-copy.js');
 
 const EXPECTED_ASSERTIONS = 237 + dayCases.EXPECTED_ASSERTIONS + 33 + 15 + orderCases.EXPECTED_ASSERTIONS
-  + pickedCases.EXPECTED_ASSERTIONS + 6 + 5 + transferCases.WORKBENCH_EXPECTED_ASSERTIONS + 3; // A~O 实际断言总数（批 26-W4：O 组转派待接收用例表见 lib；+2 H11a/H11b 送别人；+3 E09b/E09c/H08b 按钮 B 与件级定位；+2 批 37 浮层模态；+1 tabBar 互斥）
+  + pickedCases.EXPECTED_ASSERTIONS + 6 + 5 + transferCases.WORKBENCH_EXPECTED_ASSERTIONS + 3 + 3; // A~O 实际断言总数（批 26-W4：O 组转派待接收用例表见 lib；+2 H11a/H11b 送别人；+3 E09b/E09c/H08b 按钮 B 与件级定位；+2 批 37 浮层模态；+1 tabBar 互斥；+3 D104 备注/附加服务）
 function textOf(rel) {
   return fsutil.readText(path.join(ROOT, rel));
 }
@@ -467,7 +465,8 @@ function register(h) {
     const deliverPhotoWrite = rowActions.buildWrite('deliver', pickedRow, { photo: { ticket: 'T'.repeat(32), fileId: 'cloud://env.bucket/proofs/T/image.jpg' } }, '');
     t.eq([deliverPhotoWrite.payload.deliveryPhotoTicket, deliverPhotoWrite.payload.deliveryPhotoFileId], ['T'.repeat(32), 'cloud://env.bucket/proofs/T/image.jpg'], 'E27b D97 送达 payload 带 PROOF 票据 + fileId（一单一图，页面先拍照后提交）');
     const photoSrc = textOf('pages/partner/workbench/parts/deliver-photo.js') + textOf('pages/partner/workbench/index.js');
-    t.check(photoSrc.indexOf('proofPhoto.capture()') !== -1 && photoSrc.indexOf("require('./parts/deliver-photo')") !== -1 && photoSrc.indexOf('deliverWithPhoto') !== -1, 'E27c 工作台单件与批量送达均经 utils/proof-photo 采集（批量逐单快门）');
+    t.check(photoSrc.indexOf('proofPhoto.captureOptional()') !== -1 && photoSrc.indexOf("require('./parts/deliver-photo')") !== -1 && photoSrc.indexOf('deliverWithPhoto') !== -1, 'E27c 工作台单件/批量送达先问「拍照/跳过」（D102 照片可选，批量逐单询问）');
+    cases.feedbackAssertions(t, { groupView: groupView, dto: dto, textOf: textOf });
     const undoRowWrite = rowActions.buildWrite('undoPick', pickedRow, {}, '');
     t.eq([undoRowWrite.method, undoRowWrite.payload.batchActionId], ['unmarkPicked', undefined],
       'E28 行级「撤销已取件」走 unmarkPicked（契约单件动作）');

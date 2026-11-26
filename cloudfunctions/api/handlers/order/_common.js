@@ -151,8 +151,9 @@ async function runOrderAction(ctx, payload, spec) {
   if (actorRole === enums.CANCELLED_BY.ADMIN && spec.action !== 'order.cancel') {
     throw errors.forbidden('后台仅可介入取消异常订单');
   }
+  let actorPartner = null;
   if (actorRole === enums.ROLES.PARTNER) {
-    await loadWritablePartner(ctx);
+    actorPartner = await loadWritablePartner(ctx);
   }
   const clientRequestId = ctx.clientRequestId || '';
   if (!clientRequestId) {
@@ -173,10 +174,10 @@ async function runOrderAction(ctx, payload, spec) {
     throw errors.invalidTransition('当前订单状态不允许该操作');
   }
   const checked = typeof spec.guard === 'function'
-    ? await spec.guard({ ctx, order, payload, now, actorRole, scope, batchActionId })
+    ? await spec.guard({ ctx, order, payload, now, actorRole, scope, partner: actorPartner, batchActionId })
     : {};
   const built = typeof spec.build === 'function'
-    ? spec.build({ ctx, order, payload, now, nowDate, actorRole, scope, checked, batchActionId })
+    ? spec.build({ ctx, order, payload, now, nowDate, actorRole, scope, partner: actorPartner, checked, batchActionId })
     : {};
   const fromStatus = order.status;
   const toStatus = built.toStatus !== undefined

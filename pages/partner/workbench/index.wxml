@@ -177,7 +177,11 @@
             <text wx:if="{{row.tierText && !row.needCode}}" class="small line-tier">{{row.tierText}}</text>
           </view>
           <view wx:if="{{row.exceptionText}}" class="exception-text">异常：{{row.exceptionText}}</view>
+          <!-- D104：顾客备注截断一行 + 附加服务标签（详情看全文） -->
+          <view wx:if="{{row.notePreview}}" class="note-line">备注：{{row.notePreview}}</view>
           <view class="row line-tags">
+            <!-- D104：附加服务只表达做什么；工作台行内先给反馈，详情块给完整说明 -->
+            <view wx:for="{{row.addonList}}" wx:key="*this" class="tag addon-tag">{{item}}</view>
             <!-- D45/M1：跨日未送达行标签（文案单源 parts/day-view.js；当日单/待确认/已完结不显示） -->
             <view wx:if="{{row.delayDaysText}}" class="tag delay-tag">{{row.delayDaysText}}</view>
             <view wx:if="{{row.isGuest}}" class="tag guest-tag">代客单</view>

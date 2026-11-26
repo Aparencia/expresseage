@@ -644,8 +644,8 @@ function register(h) {
       const file = path.join(ROOT, route + '.wxml');
       return !fs.existsSync(file) || fs.readFileSync(file, 'utf8').indexOf('--v4-fs-scale') === -1;
     });
-    t.check(routes.length === 34 && missing.length === 0,
-      '34 页根节点均注入 --v4-fs-scale（字号缩放生效面；缺页：' + missing.join(',') + '）');
+    t.check(routes.length === project.ALL_PAGES.length && missing.length === 0,
+      project.ALL_PAGES.length + ' 页根节点均注入 --v4-fs-scale（字号缩放生效面；缺页：' + missing.join(',') + '）');
   });
 
   // ---------------------------------------------------------------- §7.5 装饰色 token 收口（2026-11-19）

@@ -34,7 +34,7 @@ const fsutil = require('./lib/fsutil');
 const zeroMoney = require('./zero-money-scan');
 const project = require('./lib/project');
 
-const EXPECTED_ASSERTIONS = 229; // 227 + 2：D97 送达拍照闸（采集入口 + 写请求带票据） // 225 + 2：D96 锚码同域（结构 + 样式落点） // 实跑读数：node tools/selftest-pick-list.js（批 25-B D61/D62：L/M 改判 + O 组 16 条 + N9b；+2：送别人「送至」判定 L10b/L11b；+1：H18 TAB_DATA 合并回归；+5：2026-11-09 取件码自然序/行首大字 L5a/L5b/L5c/L9b/L9c）
+const EXPECTED_ASSERTIONS = 237; // 229 + 8：D103 取件清单折叠已转出 + 转出单页（query/页面/注册/行/汇总/入口）
 
 const PAGE_DIR = 'pages/partner/pick-list';
 const FILES = {
@@ -443,8 +443,8 @@ function register(h) {
     t.eq(page.indexOf('markDelivered') === -1, true, 'G12 页面零直写 action 键（markDelivered 只经 row-actions 映射）');
     t.eq(wxml.indexOf('onRowDeliver') !== -1 && wxml.indexOf('onBatchDeliver') !== -1, true,
       'G13 行内「已送达」与批量送达入口均接线');
-    t.eq(page.indexOf('proofPhoto.capture()') !== -1, true,
-      'G14 D97 送达先拍 1 张现场照片（PROOF 票据）再写库，单件/批量同口径');
+    t.eq(page.indexOf('proofPhoto.captureOptional()') !== -1, true,
+      'G14 D102 送达先问「拍照/跳过照片」，单件/批量同口径（照片可选）');
     t.eq(page.indexOf("buildWrite('deliver'") !== -1 && page.indexOf('{ photo: photo }') !== -1, true,
       'G15 送达写请求带照片票据（rowActions.buildWrite 汇总为 deliveryPhotoTicket/FileId）');
   });
@@ -850,6 +850,34 @@ function register(h) {
     t.eq(pickGroupsOf([noAction])[0].rows[0].pieces[0].action, null,
       'O12 服务端 actions 为空（终态/只读派生）→ 不渲染件按钮（可见性只认 DTO）');
     t.notEmpty([order, groups, write], 'O 组样本非空');
+  });
+
+  // ------------------------------------------------------------ P. D103 已转出折叠 + 转出单页
+  h.section('P D103 取件清单折叠已转出单 + 独立「转出单」页（计数不变）', (t) => {
+    const transferredView = require(path.join(ROOT, 'pkg-partner/pages/transferred/parts/transferred-view.js'));
+    t.eq([pickView.queryOf({}).excludeHandover, view.queryOf({}).excludeHandover], [true, true],
+      'P1 取件清单两个 tab 都传 excludeHandover=true（服务端只藏行、counts 不变）');
+    const four = ['index.js', 'index.json', 'index.wxml', 'index.wxss']
+      .map((file) => readText('pkg-partner/pages/transferred/' + file));
+    t.eq(four.filter((text) => !text), [], 'P2 转出单页四件套齐全且非空');
+    t.eq(project.ALL_PAGES.indexOf('pkg-partner/pages/transferred/index') !== -1, true,
+      'P3 转出单页已登记 project ALL_PAGES（与 app.json 联动）');
+    const query = transferredView.queryOf('');
+    t.eq([query.view, query.limit, query.cursor], ['handover', 20, undefined],
+      'P4 转出单页数据源 = order.listPartner({view:handover})，≤20 行/页');
+    const row = transferredView.rowOf({
+      orderNo: '20261114-3101', status: 'ACCEPTED', statusText: '已接单',
+      fulfillmentPartnerNo: 'PBBBBBB', parcelCount: 3, pickedCount: 1, allPicked: false,
+      statusUpdatedAt: '2026-11-25T10:00:00.000Z'
+    });
+    t.eq([row.orderNo, row.partnerText, row.pieceText], ['20261114-3101', '接手 PBBBBBB', '3 件 · 已取 1/3'],
+      'P5 转出单行：订单号/接手人/件数进度（信息最小集，不含顾客 L3）');
+    t.eq(transferredView.summaryOf([row], null), '已加载 1 单', 'P6 转出单页汇总只报已加载，不并入取件清单 chip');
+    const wxml = readText(FILES.wxml);
+    t.check(wxml.indexOf('onHandoverTap') !== -1 && wxml.indexOf('转出单') !== -1
+      && wxml.indexOf('收件人待同步') === -1, 'P7 取件清单提供转出单入口，且不再渲染「收件人待同步」占位');
+    t.eq(fsutil.stripComments(readText(FILES.page)).indexOf('handoverHidden') !== -1, true,
+      'P8 取件清单接线读取服务端 handoverHidden（提示已转出数量）');
   });
 }
 

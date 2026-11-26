@@ -315,7 +315,7 @@ function payloadOf(key, orderNo, values, batchActionId) {
   }
   if (key === 'deliver') {
     const payload = { orderNo: orderNo, deliveryNote: values.deliveryNote || '' };
-    // D97：送达必须带现场照片票据（页面在提交前经 utils/proof-photo 采集）
+    // D102：送达照片可选（页面先问「拍照 / 跳过」；跳过时不带票据）
     const photo = values && values.photo;
     if (photo && photo.ticket && photo.fileId) {
       payload.deliveryPhotoTicket = photo.ticket;

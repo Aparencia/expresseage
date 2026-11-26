@@ -802,6 +802,33 @@ C中的隐私合规中的C1 见上文
 
 ---
 
+## D102 · 2026-11-26 送达照片可跳过（修订 D97）
+
+**用户原文**：「将送达照片新添跳过选项」。**背景**：D97 送达照片为强制，兼职未拍照/相册不可用时会卡住送达；取件照片（D98）已有「拍照 / 跳过」。
+**裁决**：`order.markDelivered` 的 `deliveryPhotoTicket/deliveryPhotoFileId` 改为**可选**——带票据仍按 D97 校验（PROOF/归属/未过期未用/路径）并落 `deliveryProof` + 同事务消费；不带 = 跳过，不阻断，`deliveryProof=null`、事件不带 `hasPhoto`、顾客端显示「未留存照片」；工作台/取件清单/详情统一「拍照 / 跳过照片」，批量逐单询问（取消=本批剩余未提交，跳过=继续下一单）；照片归属按**实际操作人**（D85 转派发起人送达时不冒充接手人）。
+**被否**：继续强制拍照（用户明确要跳过）；跳过也写空 `deliveryProof` 记录（会把「没拍」伪装成有字段）。
+**代价/落点**：`handlers/order/{markDelivered,_proof,_common,markPicked}.js`、`row-actions`/`deliver-photo`/`deliver-actions`/详情送达面板、`selftest-order-partner`、CONTRACT/DATA_MODEL/UX/QA/STATE/CHANGELOG。**无新集合/索引/页面。**
+
+---
+
+## D103 · 2026-11-26 取件清单折叠已转出 + 转出单页（修订 D99）
+
+**用户原文**：「取件清单中，折叠对方已经接受的单，新增一个页面转出单的信息，计数不变」。**背景**：D99 把已转出且已接收的单并入 workbench/day 首屏并计入 counts；取件清单复用 workbench 视图，导致这些单也出现在两个 tab。
+**裁决**：`order.listPartner` 增可选布尔 `excludeHandover`——取件清单两个 tab 传 true，**只隐藏已转出行，counts 仍按 D99 并集（计数不变）**，响应增 `handoverHidden` 供入口提示；工作台不传，保持 D99 并入；新增第 35 页 `pkg-partner/pages/transferred/index`（`view:'handover'`），只读展示订单号/状态/接手人/件数进度/时间，点行进详情；取件清单头部给「转出单 N」入口；新页不并入取件清单 chip 计数。
+**被否**：客户端过滤（counts 与服务端不一致、分页/复制计划会错）；把已转出并回工作台 counts（违背 D99）。
+**代价/落点**：`listPartner`/`_list-merged`/取件清单、新页四件套、`app.json`/`tools/lib/project.js`、CONTRACT §7/ARCH/UX/QA、`selftest-transfer`/`selftest-pick-list`；页数 34→35。
+
+---
+
+## D104 · 2026-11-26 工作台备注/附加服务反馈（A 方案）
+
+**用户原文**：「如果顾客有写备注、附加服务的话，需要能够在工作台上有所反馈」，并在方案 A/B/C 中选择 A。
+**裁决**：工作台行内展示 `note` 截断单行预览（≤24 字 + …）与 `addons[]` 名称标签（上楼/拆快递/丢垃圾）；全文/说明仍在订单详情「服务与备注」；取件清单不复用；不新增 DTO 字段（`note/addons` 已下发），不进复制/通知/分享/日志。
+**被否**：只给「有备注/附加 N 项」角标（兼职仍需点开详情才知道做什么）；把全文塞进行内（行高与 L3 扩散）。
+**代价/落点**：`pages/partner/workbench/parts/order-row.{js,wxss}` + `index.wxml`、`selftest-order-workbench`、UX_PARTNER/QA/STATE/CHANGELOG。**无服务端/集合/索引/页面变化。**
+
+---
+
 ## A 批 P1 十项（按推荐采纳，2026-10-23 实现留痕）
 
 **用户原文**（2026-10-22）：「A、B 按照推荐进行采纳」。**背景**：`docs/archive/research/CONVENIENCE_2026-10-22.md` §4.1 方案 A（P1 小修包，收益/成本比最高）。**采纳**：十项全部实现，落点与判据见 `docs/ux/V4_UX_CUSTOMER.md` v1.1 六次修订 + §12.6.1 AC-C-71~75、`docs/delivery/V4_QA_CHECKLIST.md` A23/C15/P24/P25。

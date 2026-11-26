@@ -6,7 +6,7 @@
  *   但**转派邀请本身**（发起/撤回/确认/拒收）仍只归当前履约人。
  * 覆盖：发起者读完整视图 + 动作矩阵、发起者可写、现履约人仍可写、旁人 403、PENDING 不放行、终态可读。
  */
-const EXPECTED_ASSERTIONS = 9;
+const EXPECTED_ASSERTIONS = 11;
 const { proofPayload } = require('./proof-fixtures');
 
 function register(h, deps) {
@@ -29,6 +29,13 @@ function register(h, deps) {
     const keys = (got.data.order.actions || []).map((action) => action.key);
     t.eq([keys.indexOf('requestTransfer'), keys.indexOf('cancelTransfer'), keys.indexOf('pick') >= 0],
       [-1, -1, true], 'D85-2 发起者可继续履约，但不持有转派邀请（发起/撤回仍归当前履约人）');
+    // D103（2026-11-26）：取件清单传 excludeHandover=true → 已转出行不并入列表，但 counts 仍按 D99 并集
+    const hidden = await p1.call('order.listPartner', { view: 'workbench', status: ORDER_STATUS.ACCEPTED, excludeHandover: true });
+    t.eq([hidden.data.list.length, hidden.data.handoverHidden, hidden.data.counts.accepted],
+      [0, 1, 1], 'D103-1 取件清单排除已转出行（list=0）但计数不变（handoverHidden=1、counts.accepted=1）');
+    const merged = await p1.call('order.listPartner', { view: 'workbench', status: ORDER_STATUS.ACCEPTED });
+    t.eq([merged.data.list.length, merged.data.list[0] && merged.data.list[0].handover],
+      [1, true], 'D103-2 工作台不传 excludeHandover 时保持 D99 并入（handover=true）');
     const picked = await p1.call('order.markPicked', { orderNo: '20261114-3101' },
       { clientRequestId: nextCrid('d85pick') });
     t.eq([picked.ok, picked.data && picked.data.order && picked.data.order.status],

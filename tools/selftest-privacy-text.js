@@ -601,9 +601,9 @@ function register(h) {
     const supplementFile = 'docs/privacy/补充文档.txt';
     const supplement = exists(supplementFile) ? readSource(supplementFile) : '';
     t.check(TEXT.indexOf('取件与送达现场照片') !== -1
-      && TEXT.indexOf('取件时可选择拍摄 1 张现场照片，可以跳过') !== -1
-      && TEXT.indexOf('送达时必须拍摄或从相册选择 1 张送达现场照片') !== -1,
-    '端内全文新增 D97/D98：送达必拍 1 张、取件可选可跳过');
+      && TEXT.indexOf('取件时同样可以选择拍摄 1 张现场照片，可以跳过') !== -1
+      && TEXT.indexOf('送达时可以选择拍摄或从相册选择 1 张送达现场照片，也可以跳过') !== -1,
+    '端内全文 D97/D98 + D102：送达可选可跳过、取件可选可跳过');
     t.check(TEXT.indexOf('仅本单顾客、当前履约兼职与转派发起人') !== -1
       && TEXT.indexOf('后台不提供照片入口') !== -1,
     '端内全文写明可见面（顾客/履约兼职/转派发起人）与后台无入口');

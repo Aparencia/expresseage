@@ -297,12 +297,17 @@ async function sectionD(h) {
     t.eq([delivered.data.order.deliveryProof.hasImage,
       rowOf(db, '20261022-0301').deliveryProof.fileId === proof1.fileId, !!proofRow.usedAt],
     [true, true, true], 'D9 送达照片：DTO hasImage、订单字段 fileId 落库、票据 usedAt 已消费');
-    await expectField(t, pApi.call('order.markDelivered', { orderNo: '20261022-0302' },
-      { clientRequestId: nextCrid('deliver-nophoto') }), 'VALIDATION_FAILED', 'deliveryPhotoTicket',
-    'D10 缺送达照片票据 → VALIDATION_FAILED(field=deliveryPhotoTicket)');
-    await expectCode(t, pApi.call('order.markDelivered', Object.assign({ orderNo: '20261022-0302' }, proof1),
+    // D102（2026-11-26）：送达照片改为可选——不带票据可送达；带已消费票据仍按票据闸报错
+    const noPhoto = await pApi.call('order.markDelivered', { orderNo: '20261022-0302' },
+      { clientRequestId: nextCrid('deliver-nophoto') });
+    t.eq([noPhoto.ok, noPhoto.data.order.deliveryProof.hasImage], [true, false],
+      'D10 跳过送达照片仍可送达（D102；DTO hasImage=false）');
+    db.seed('orders', [orderDoc('20261022-0307', PICKED, {
+      acceptedAt: new Date(NOW - 3000), pickedAt: new Date(NOW - 2000)
+    })]);
+    await expectCode(t, pApi.call('order.markDelivered', Object.assign({ orderNo: '20261022-0307' }, proof1),
       { clientRequestId: nextCrid('deliver-reuse') }), 'INVALID_STATE', 'D11 复用已消费票据 → INVALID_STATE');
-    const photoAgain = await pApi.call('order.markDelivered', Object.assign({ orderNo: '20261022-0302' },
+    const photoAgain = await pApi.call('order.markDelivered', Object.assign({ orderNo: '20261022-0307' },
       proofPayload(db, P1, { now: NOW })), { clientRequestId: nextCrid('deliver-photo2') });
     t.eq([photoAgain.ok, photoAgain.data.order.deliveryProof.hasImage], [true, true],
       'D12 换新票据再送达成功且 DTO 有照片');

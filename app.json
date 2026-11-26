@@ -32,7 +32,8 @@
         "pages/stats/index",
         "pages/messages/index",
         "pages/team/index",
-        "pages/review/index"
+        "pages/review/index",
+        "pages/transferred/index"
       ]
     },
     {

@@ -8,6 +8,7 @@
   <view class="head-row">
     <view class="title">取件清单</view>
     <view class="row">
+      <view class="mini-btn btn btn-ghost handover-link" bindtap="onHandoverTap">转出单{{handoverHidden ? ' ' + handoverHidden : ''}}</view>
       <view wx:if="{{tab === tabPick}}" class="mini-btn btn btn-ghost copy-btn" bindtap="onCopyAllPick">复制全部</view>
       <block wx:else>
         <view class="mini-btn btn btn-ghost copy-btn" bindtap="onCopyTap">复制清单</view>
@@ -21,15 +22,15 @@
     <view class="chip {{tab === tabDeliver ? 'chip-active' : ''}}" data-tab="{{tabDeliver}}" bindtap="onSwitchTab">{{deliverTabText}}</view>
   </view>
 
-  <view class="card intro-card">
-    <view wx:if="{{tab === tabPick}}" class="small intro-text">按取件站点（P1~P8）分组，只列已接单、还没取件的单；复制含取件码与宿舍锚。不自动刷新：下拉或切回本页时更新。</view>
-    <view wx:else class="small intro-text">按苑 → 栋 → 楼层分组，只列已取件待送达的单。不自动刷新：下拉或切回本页时更新。</view>
-    <view wx:if="{{tab === tabPick && pickSummary.total}}" class="small intro-text intro-summary">{{pickSummary.text}}</view>
-    <view wx:if="{{tab === tabPick && pickSummary.loadedText}}" class="small intro-text intro-loaded">{{pickSummary.loadedText}}</view>
-    <view wx:if="{{tab !== tabPick && summary.total}}" class="small intro-text intro-summary">{{summary.text}}</view>
-    <view wx:if="{{tab !== tabPick && summary.loadedText}}" class="small intro-text intro-loaded">{{summary.loadedText}}</view>
-    <view wx:if="{{readonly}}" class="small intro-text readonly-tip">只读视角下不能改订单状态</view>
-    <view wx:elif="{{testWrite}}" class="small intro-text test-tip">测试账号会话：写操作只写入测试数据</view>
+  <!-- D103：说明收口为一行汇总 + 已转出提示；不再用多行说明卡占首屏 -->
+  <view class="pick-summary">
+    <view class="small pick-summary-text">{{tab === tabPick ? pickSummary.text : summary.text}}</view>
+    <view wx:if="{{tab === tabPick && pickSummary.loadedText}}" class="small muted">{{pickSummary.loadedText}}</view>
+    <view wx:if="{{tab !== tabPick && summary.loadedText}}" class="small muted">{{summary.loadedText}}</view>
+    <view wx:if="{{handoverHidden}}" class="small handover-hint" bindtap="onHandoverTap">对方已接收的 {{handoverHidden}} 单已转出，不在此清单 · 查看转出单</view>
+    <view class="small muted">不自动刷新：下拉或切回本页时更新。</view>
+    <view wx:if="{{readonly}}" class="small readonly-tip">只读视角下不能改订单状态</view>
+    <view wx:elif="{{testWrite}}" class="small test-tip">测试账号会话：写操作只写入测试数据</view>
   </view>
 
   <view wx:if="{{copyLoading}}" class="small load-more">正在拉取全部清单，稍等…</view>
@@ -121,7 +122,7 @@
               <view wx:if="{{row.roomTagText}}" class="tag room-tag">{{row.roomTagText}}</view>
               <view wx:if="{{row.parcelCountText}}" class="small parcel-count">{{row.parcelCountText}}</view>
             </view>
-            <view class="muted ellipsis">{{row.nameText || '收件人待同步'}}</view>
+            <view class="muted ellipsis" wx:if="{{row.nameText}}">{{row.nameText}}</view>
             <view class="row between small line-foot">
               <text>{{row.serviceName}}</text>
               <text>{{row.timeText}}</text>

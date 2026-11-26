@@ -29,13 +29,21 @@ function hasEveryCode(order) {
   return parcels.length > 0 && parcels.every(hasPickupCode);
 }
 
+// D85：转派发起人仍可操作——件级 pickedByNo / 照片 byPartnerNo 用「实际操作人」编号，
+// 不用订单当前 partnerNo（接手人）；非转派场景两者相同。
+function actorPartnerNoOf(input) {
+  const actor = input && input.partner && typeof input.partner.partnerNo === 'string'
+    ? input.partner.partnerNo : '';
+  return actor || pickedState.partnerNoOf(input && input.order);
+}
+
 // 守卫（先于任何写库）：形态闸 itemIndex → 整单码闸 / 逐件存在·未取·有码闸；照片票据可选（D98）。
 async function checkedOf(input) {
   const nowDate = new Date(input.now);
   const itemIndex = pickedState.readItemIndexOf(input.payload);
   const parcels = pickedState.materializeOf(input.order, nowDate);
   const dropOff = isDropOff(input.order);
-  const pickedByNo = pickedState.partnerNoOf(input.order);
+  const pickedByNo = actorPartnerNoOf(input);
   const photo = await proof.readOptional(input.ctx, {
     ticket: input.payload.pickPhotoTicket,
     fileId: input.payload.pickPhotoFileId,
@@ -63,7 +71,7 @@ async function checkedOf(input) {
 function buildOf(input) {
   const checked = input.checked;
   const photoOf = checked.photo && checked.photo.ticket
-    ? proof.proofOf(checked.photo, pickedState.partnerNoOf(input.order), input.nowDate) : null;
+    ? proof.proofOf(checked.photo, actorPartnerNoOf(input), input.nowDate) : null;
   let parcels = checked.parcels;
   let set = null;
   if (photoOf && checked.itemIndex !== null) {

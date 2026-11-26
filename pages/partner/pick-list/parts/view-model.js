@@ -454,7 +454,12 @@ function findOrderOf(lists, orderNo) {
 // 数据源 payload（现成动作、无服务端改动）：workbench 视图 + PICKED 状态 + ≤20 行/片
 function queryOf(options) {
   const opts = options || {};
-  const payload = { view: WORKBENCH_VIEW, status: enums.ORDER_STATUS.PICKED, limit: PAGE_LIMIT };
+  const payload = {
+    view: WORKBENCH_VIEW,
+    status: enums.ORDER_STATUS.PICKED,
+    limit: PAGE_LIMIT,
+    excludeHandover: true
+  };
   if (opts.cursor) {
     payload.cursor = opts.cursor;
   }

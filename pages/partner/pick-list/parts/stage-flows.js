@@ -23,6 +23,9 @@ module.exports = {
     this._pickOrders = more ? this._pickOrders.concat(list) : list;
     this._pickGroups = pickView.buildGroups(this._pickOrders);
     const tabTexts = pickView.tabTextsOf(data);
+    const hidden = more
+      ? this.data.handoverHidden
+      : (data && typeof data.handoverHidden === 'number' ? data.handoverHidden : 0);
     this.setData({
       stage: this._pickGroups.length ? 'ready' : 'empty',
       errorText: '',
@@ -32,7 +35,8 @@ module.exports = {
       pickChunks: view.splitChunks(this._pickGroups, view.CHUNK_ROWS),
       pickSummary: pickView.summaryLineOf(pickView.summaryOf(this._pickGroups), nextCursor),
       pickTabText: tabTexts.pick,
-      deliverTabText: tabTexts.deliver
+      deliverTabText: tabTexts.deliver,
+      handoverHidden: hidden
     });
     return true;
   },

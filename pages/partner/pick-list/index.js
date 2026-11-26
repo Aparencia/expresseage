@@ -49,7 +49,9 @@ Page(Object.assign({
     batchRunning: false,
     batchResult: null,
     copyLoading: false,
-    emptyText: EMPTY_TEXT
+    emptyText: EMPTY_TEXT,
+    // D103：已转出且对方已接收的单不在本清单展示，数量由服务端 handoverHidden 下发（计数不变）
+    handoverHidden: 0
   }, tabWiring.TAB_DATA),
 
   onLoad() {
@@ -171,6 +173,9 @@ Page(Object.assign({
     const groups = view.buildGroups(view.rowsOf(this._orders));
     const selection = view.applySelection(groups, this._selected);
     const tabTexts = pickView.tabTextsOf(data);
+    const hidden = more
+      ? this.data.handoverHidden
+      : (data && typeof data.handoverHidden === 'number' ? data.handoverHidden : 0);
     this.setData({
       stage: selection.groups.length ? 'ready' : 'empty',
       errorText: '',
@@ -183,7 +188,8 @@ Page(Object.assign({
       selectedCount: selection.selectedCount,
       selectionText: selection.selectionText,
       pickTabText: tabTexts.pick,
-      deliverTabText: tabTexts.deliver
+      deliverTabText: tabTexts.deliver,
+      handoverHidden: hidden
     });
     return true;
   },
@@ -282,6 +288,11 @@ Page(Object.assign({
     if (orderNo) {
       wx.navigateTo({ url: DETAIL_PAGE + orderNo });
     }
+  },
+
+  // D103：已转出单独立页（信息 + 可进详情；不在取件清单两个 tab 内）
+  onHandoverTap() {
+    wx.navigateTo({ url: '/pkg-partner/pages/transferred/index' });
   },
 
   onToggleSelecting() {

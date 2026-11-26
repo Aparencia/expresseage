@@ -24,7 +24,7 @@ const { createHarness, installCrashGuard } = require('./selftest');
 const zeroMoney = require('./zero-money-scan');
 
 const ROOT = path.resolve(__dirname, '..');
-const EXPECTED_ASSERTIONS = 249; // 实跑读数：node tools/selftest-share.js（D63：+S1~S7 共 52 条；D59：团队页禁分享 +1 条；2026-11-08：审核页禁分享 +1 条）
+const EXPECTED_ASSERTIONS = 250; // 实跑读数：node tools/selftest-share.js（D63：+S1~S7 共 52 条；D59：团队页禁分享 +1 条；2026-11-08：审核页禁分享 +1 条；D103：转出单页禁分享 +1 条）
 
 const sharePages = require('./lib/share-pages');
 const checkShare = require('./lib/check-share');
@@ -225,7 +225,7 @@ function register(h) {
     // D64：取件码页是本机 L3 明文页，明确禁分享——既不在清单、也不得私挂钩子（其余业务页仍双向对帐）
     // D59：团队页含子邀请码/成员信息（治理数据不外传），同样禁分享
     // 2026-11-08：审核页含顾客截图与订单信息，禁分享
-    const NO_SHARE = ['pages/customer/pickcodes/index.js', 'pkg-partner/pages/team/index.js', 'pkg-partner/pages/review/index.js'];
+    const NO_SHARE = ['pages/customer/pickcodes/index.js', 'pkg-partner/pages/team/index.js', 'pkg-partner/pages/review/index.js', 'pkg-partner/pages/transferred/index.js'];
     const noShareSource = readText(NO_SHARE[0]);
     t.check(noShareSource.indexOf('onShareAppMessage') === -1 && noShareSource.indexOf('onShareTimeline') === -1
       && sharePages.APP_MESSAGE.indexOf(NO_SHARE[0]) === -1,
@@ -238,6 +238,10 @@ function register(h) {
     t.check(reviewPageSource.indexOf('onShareAppMessage') === -1 && reviewPageSource.indexOf('onShareTimeline') === -1
       && sharePages.APP_MESSAGE.indexOf(NO_SHARE[2]) === -1,
     '审核页不提供分享/转发：无分享钩子且不在好友转发清单（含顾客截图与订单信息）');
+    const transferredPageSource = readText(NO_SHARE[3]);
+    t.check(transferredPageSource.indexOf('onShareAppMessage') === -1 && transferredPageSource.indexOf('onShareTimeline') === -1
+      && sharePages.APP_MESSAGE.indexOf(NO_SHARE[3]) === -1,
+    'D103 转出单页不提供分享/转发：含订单/接手人信息，无分享钩子且不在好友转发清单');
     const business = businessPageFiles().filter((rel) => NO_SHARE.indexOf(rel) === -1).sort();
     t.eq(business, sharePages.APP_MESSAGE.slice().sort(), 'app.json 业务页集合（除禁分享页外）= 好友转发清单（新增页面漏接即红）');
 

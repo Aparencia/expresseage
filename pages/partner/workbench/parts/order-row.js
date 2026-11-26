@@ -175,11 +175,35 @@ function scopedNeedCode(parcels) {
   return parcels.pieces.some((piece) => piece.needCode);
 }
 
+// D104（2026-11-26 用户指令 A）：顾客备注/附加服务在工作台行内可见——备注截断一行、附加服务名做标签；
+// 全文仍在订单详情「服务与备注」块。列表/复制区不引入备注（避免把 L3 复制扩散）。
+function noteTextOf(item) {
+  return textOf(item && item.note);
+}
+
+function notePreviewOf(text, max) {
+  const value = textOf(text);
+  const limit = typeof max === 'number' && max > 0 ? max : 24;
+  if (value.length <= limit) {
+    return value;
+  }
+  return value.slice(0, limit) + '…';
+}
+
+function addonListOf(item) {
+  const list = item && Array.isArray(item.addons) ? item.addons : [];
+  return list.map(function name(addon) {
+    return addon && typeof addon === 'object' ? textOf(addon.name) : '';
+  }).filter(function present(name) { return !!name; });
+}
+
 // 订单级稳定字段（状态/锚/时间/动作等；不含件聚合）
 function baseFieldsOf(item, identity, nowMs) {
   const status = textOf(item.status);
   const bucket = textOf(item.bucket) || orderView.bucketOf(status);
   const exception = item.exception || {};
+  const noteText = noteTextOf(item);
+  const addonList = addonListOf(item);
   return {
     orderNo: textOf(item.orderNo),
     status: status,
@@ -193,6 +217,10 @@ function baseFieldsOf(item, identity, nowMs) {
     isGuest: textOf(item.source) === enums.ORDER_SOURCE.PARTNER,
     // D99：已转出并入主列表的行（发起者仍可操作，卡片带「已转出」标记）
     handover: item.handover === true,
+    noteText: noteText,
+    notePreview: notePreviewOf(noteText),
+    addonList: addonList,
+    addonText: addonList.join('、'),
     exceptionText: textOf(exception.text) || textOf(exception.codeText) || textOf(item.exceptionText),
     cancelReasonText: textOf(item.cancelReasonText) || textOf(item.cancelReason),
     deliveryNote: textOf(item.deliveryNote),

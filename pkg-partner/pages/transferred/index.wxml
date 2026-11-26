@@ -1,0 +1,47 @@
+<!-- pkg-partner/pages/transferred/index.wxml · 「转出单」页（D103）
+     只列「我转出且对方已接收」的单；点行进订单详情（D85：发起人仍可继续操作）。
+     本页不改取件清单 counts，也不提供列表写操作。 -->
+<view class="page-body" style="--v4-fs-scale: {{fsScale}}">
+  <switch-bar />
+
+  <view class="head-row">
+    <view class="title">转出单</view>
+  </view>
+
+  <view class="card intro-card">
+    <view class="small">你转出且对方已接收的单；点行进入订单详情继续查看/操作。取件清单两个 tab 不再显示这些单。</view>
+    <view wx:if="{{summaryText}}" class="small muted summary-text">{{summaryText}}</view>
+  </view>
+
+  <view wx:if="{{stage === 'loading'}}" class="card"><view class="empty-text">加载中…</view></view>
+  <view wx:elif="{{stage === 'error'}}" class="card">
+    <empty-state text="{{errorText}}" actionText="重试" bind:action="onRetryTap" />
+  </view>
+  <view wx:elif="{{stage === 'empty'}}" class="card">
+    <empty-state text="还没有转出且对方已接收的单。" />
+  </view>
+
+  <block wx:elif="{{stage === 'ready'}}">
+    <view
+      wx:for="{{rows}}"
+      wx:key="orderNo"
+      class="card transfer-card"
+      data-order-no="{{item.orderNo}}"
+      bindtap="onRowTap"
+      aria-role="button"
+      aria-label="订单 {{item.orderNo}}"
+    >
+      <view class="row between transfer-head">
+        <text class="strong order-no-text">{{item.orderNo}}</text>
+        <status-pill status="{{item.status}}" />
+      </view>
+      <view class="small muted transfer-line">{{item.statusText}} · {{item.partnerText}}</view>
+      <view class="row between small transfer-foot">
+        <text class="muted">{{item.pieceText}}</text>
+        <text class="muted">{{item.timeText}}</text>
+      </view>
+    </view>
+    <view wx:if="{{loadingMore}}" class="small load-more">加载中…</view>
+    <view wx:elif="{{nextCursor}}" class="small load-more">上拉加载下一批</view>
+  </block>
+</view>

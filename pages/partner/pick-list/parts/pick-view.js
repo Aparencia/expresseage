@@ -54,10 +54,17 @@ function tabTextsOf(data) {
   };
 }
 
-// 数据源 payload（现成动作、无服务端改动）：workbench 视图 + 已接单状态 + ≤20 行/页
+// 数据源 payload（现成动作、无服务端改动）：workbench 视图 + 已接单状态 + ≤20 行/页；
+// D103：excludeHandover=true 只隐藏「已转出」行（counts 仍按 D99 并集，计数不变），
+// 已转出单由独立「转出单」页展示。
 function queryOf(options) {
   const opts = options || {};
-  const payload = { view: 'workbench', status: enums.ORDER_STATUS.ACCEPTED, limit: PAGE_LIMIT };
+  const payload = {
+    view: 'workbench',
+    status: enums.ORDER_STATUS.ACCEPTED,
+    limit: PAGE_LIMIT,
+    excludeHandover: true
+  };
   if (opts.cursor) {
     payload.cursor = opts.cursor;
   }

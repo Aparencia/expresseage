@@ -53,7 +53,7 @@ function resolveFileId(ticket, fileId, field) {
   return value;
 }
 
-// guard 返回值：票据可缺省（取件跳过 / 送达旧客户端过渡期），带则全部校验。
+// 送达/取件可选照片（D102 修订 D97）：缺票据 = 跳过，不阻断；带则全部校验。
 async function readOptional(ctx, options) {
   const opts = options || {};
   const ticketValue = textOf(opts.ticket).trim();
@@ -64,16 +64,6 @@ async function readOptional(ctx, options) {
   const fileId = resolveFileId(ticket, opts.fileId, opts.fileField);
   const size = typeof ticket.size === 'number' && ticket.size > 0 ? ticket.size : 0;
   return { ticket, fileId, size };
-}
-
-// 送达必填（D97）：缺票据直接 VALIDATION_FAILED(field=deliveryPhotoTicket)。
-async function readRequired(ctx, options) {
-  const opts = options || {};
-  const ticketValue = textOf(opts.ticket).trim();
-  if (!ticketValue) {
-    throw errors.validation('deliveryPhotoTicket', '请先拍一张送达现场照片');
-  }
-  return readOptional(ctx, opts);
 }
 
 // 订单字段（单值覆盖）：{fileId,size,at,byPartnerNo}；fileId 不出云（DTO 只给摘要）。
@@ -102,7 +92,6 @@ async function consume(trx, ticket, nowDate) {
 
 module.exports = {
   readOptional,
-  readRequired,
   proofOf,
   consume,
   loadTicket,

@@ -156,17 +156,18 @@ module.exports = {
         if (!res.confirm) {
           return;
         }
-        // D97：送达必须附 1 张现场照片（一单一图）；取消拍照则中止并给下一步
-        proofPhoto.capture().then((photo) => {
-          if (!photo) {
-            this.setData({ deliveryError: '送达需要拍一张现场照片，已取消' });
+        // D102：送达照片可选——先问「拍照 / 跳过」，跳过不阻断；取消则中止并给下一步
+        proofPhoto.captureOptional().then((choice) => {
+          if (!choice) {
+            this.setData({ deliveryError: '已取消送达' });
             return;
           }
           const submit = deliveryPanel.buildSubmit(this.data.order, this.data.deliveryNote);
-          const data = Object.assign({}, submit.data, {
-            deliveryPhotoTicket: photo.ticket,
-            deliveryPhotoFileId: photo.fileId
-          });
+          const data = Object.assign({}, submit.data);
+          if (!choice.skipped && choice.photo) {
+            data.deliveryPhotoTicket = choice.photo.ticket;
+            data.deliveryPhotoFileId = choice.photo.fileId;
+          }
           this.submitWrite(() => orderApi.markDelivered(data, submit.opts),
             deliveryPanel.COPY.success, 'delivery');
         }).catch((err) => this.setData({ deliveryError: (err && err.message) || '照片上传失败，请重试' }));

@@ -1,6 +1,8 @@
 // handlers/order/_list-merged.js · D99 已转出并入工作台首屏（counts 并集；不并入游标分页）
 // 口径：CONTRACT §13 D99（修订 D95 ①）——首屏有界扫描 ≤100，行按 PARTNER 视角正常 DTO（D85 双人可控），
 //       行加只读标记 handover=true；counts 六个桶按订单当前状态各 +1（一次扫描内存 tally，不再发 6 次 count）。
+// D103（2026-11-26 用户指令）：取件清单传 excludeHandover=true 时**只计 counts、不把已转出行并入列表**，
+//       由「转出单」页单独展示；工作台不传，行为保持 D99 不变（计数不变）。
 'use strict';
 
 const { COLLECTIONS } = require('../../shared/collections');
@@ -51,7 +53,7 @@ function tallyOf(rows, counts) {
 
 /**
  * 主列表收口：workbench/day 首屏并入「已转出」行，再走既有 summary 附加。
- * params = { ctx, partner, view, paging, result, body, nowMs, attach }
+ * params = { ctx, partner, view, paging, result, body, nowMs, attach, excludeHandover }
  */
 async function finalize(params) {
   const body = params.body;
@@ -63,17 +65,22 @@ async function finalize(params) {
       dayStartMs: params.dayStartMs || 0
     });
     if (rows.length) {
-      const merged = await dto.buildOrderDtos(params.ctx, rows, 'PARTNER', { withActions: true });
-      merged.forEach((row) => {
-        row.handover = true;
-        // day 视图与主查询同口径：今日流水不显示写操作（已转出单同样只读展示）
-        if (params.view === 'day') {
-          row.actions = [];
-        }
-      });
-      body.list = merged.concat(body.list);
+      // D103：counts 始终按并集口径（计数不变）；excludeHandover 只影响列表行。
       body.counts = tallyOf(rows, body.counts);
       body.handoverMerged = rows.length;
+      if (params.excludeHandover !== true) {
+        const merged = await dto.buildOrderDtos(params.ctx, rows, 'PARTNER', { withActions: true });
+        merged.forEach((row) => {
+          row.handover = true;
+          // day 视图与主查询同口径：今日流水不显示写操作（已转出单同样只读展示）
+          if (params.view === 'day') {
+            row.actions = [];
+          }
+        });
+        body.list = merged.concat(body.list);
+      } else {
+        body.handoverHidden = rows.length;
+      }
     }
   }
   return params.attach(body, params.view, params.result, params.nowMs);

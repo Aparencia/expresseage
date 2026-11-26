@@ -198,6 +198,25 @@ const FAKE_DTO_CTX = {
   now: DOC_MS
 };
 
+// D104：工作台行内备注/附加服务反馈（备注截断单行 + 附加名称标签）——拆到 lib 控测试文件 ≤1000 行
+function feedbackAssertions(t, deps) {
+  const groupView = deps.groupView;
+  const dto = deps.dto;
+  const textOf = deps.textOf;
+  const feedbackRow = groupView.toRow(dto(STATUS.ACCEPTED, {
+    orderNo: 'E-FEEDBACK-1',
+    note: '放门口鞋柜上，别按门铃，到了发消息，谢谢，辛苦了，麻烦轻拿轻放',
+    addons: [{ code: 'UPSTAIRS', name: '上楼' }, { code: 'TRASH', name: '丢垃圾' }]
+  }));
+  t.check(feedbackRow.notePreview.indexOf('…') !== -1 && feedbackRow.notePreview.length <= 25
+    && feedbackRow.notePreview.indexOf('放门口') === 0, 'E27d 备注行截断为单行预览（不把 200 字全文塞进行内）');
+  t.eq([feedbackRow.addonList, feedbackRow.addonText], [['上楼', '丢垃圾'], '上楼、丢垃圾'],
+    'E27e 附加服务取 DTO 名称（标签逐个渲染，全文仍在详情）');
+  const rowWxml = textOf('pages/partner/workbench/index.wxml');
+  t.check(rowWxml.indexOf('row.notePreview') !== -1 && rowWxml.indexOf('row.addonList') !== -1,
+    'E27f 工作台 WXML 渲染备注预览 + 附加服务标签');
+}
+
 module.exports = {
   ISO,
   DOC_MS,
@@ -211,6 +230,7 @@ module.exports = {
   row,
   rowsOf,
   groupsOf,
+  feedbackAssertions,
   selectedNames,
   orderDoc,
   FAKE_DTO_CTX

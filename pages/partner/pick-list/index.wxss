@@ -11,6 +11,24 @@
   padding: 0 0 16rpx;
 }
 
+/* D103：转出单入口 + 首屏说明收口（原多行 intro-card 压缩为汇总行） */
+.handover-link {
+  margin-right: 12rpx;
+}
+
+.pick-summary {
+  padding: 0 8rpx 16rpx;
+}
+
+.pick-summary-text {
+  color: var(--v4-brand);
+}
+
+.handover-hint {
+  margin-top: 6rpx;
+  color: var(--v4-warning-text);
+}
+
 .chip {
   min-height: 64rpx;
   line-height: 64rpx;

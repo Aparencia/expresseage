@@ -1,5 +1,5 @@
-// pages/partner/pick-list/parts/deliver-actions.js · 待送达阶段「已送达」接线（D97 现场照片）
-// 职责：单件/批量送达都先拍 1 张现场照片再写库；批量逐单快门，取消后剩余单如实计失败。
+// pages/partner/pick-list/parts/deliver-actions.js · 待送达阶段「已送达」接线（D97/D102 现场照片）
+// 职责：单件/批量送达先问「拍照 / 跳过照片」（D102 照片可选）；批量逐单询问，跳过不阻断。
 // 边界：页面方法（与 index.js 合并为 Page 配置）；判据/文案/重试计划仍在 view / batch-view。
 'use strict';
 
@@ -11,18 +11,19 @@ const proofPhoto = require('../../../../utils/proof-photo');
 const view = require('./view-model');
 
 const READONLY_COPY = '开发者只读视角不能操作';
-const PHOTO_CANCEL_TEXT = '送达需要拍一张现场照片，已取消';
+const PHOTO_CANCEL_TEXT = '已取消送达';
 
 module.exports = {
   deliverOne(order) {
     if (this._unloaded) {
       return Promise.resolve();
     }
-    return proofPhoto.capture().then((photo) => {
-      if (!photo) {
+    return proofPhoto.captureOptional().then((choice) => {
+      if (!choice) {
         this.toastMsg(PHOTO_CANCEL_TEXT);
         return null;
       }
+      const photo = choice.skipped ? null : choice.photo;
       const write = rowActions.buildWrite('deliver', order, { photo: photo }, '');
       return orderApi[write.method](write.payload, write.opts).then(() => {
         if (!this._unloaded) {
@@ -78,16 +79,17 @@ module.exports = {
       .catch((err) => this.batchFailed(err));
   },
 
-  // 逐单快门：本批取消后不再弹相机（如实计为未提交）
+  // 逐单询问：本批取消（null）后不再弹窗（如实计为未提交）；跳过继续下一单
   deliverOneInBatch(row, batchActionId) {
     if (this._photoCancelled) {
-      return Promise.reject(new Error('本批已取消拍照，剩余单未提交'));
+      return Promise.reject(new Error('本批已取消照片选择，剩余单未提交'));
     }
-    return proofPhoto.capture().then((photo) => {
-      if (!photo) {
+    return proofPhoto.captureOptional().then((choice) => {
+      if (!choice) {
         this._photoCancelled = true;
         throw new Error(PHOTO_CANCEL_TEXT);
       }
+      const photo = choice.skipped ? null : choice.photo;
       const write = rowActions.buildWrite('deliver', view.writeRowOf(row), { photo: photo }, batchActionId);
       return orderApi[write.method](write.payload, write.opts);
     });

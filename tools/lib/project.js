@@ -41,6 +41,8 @@ const SUBPACKAGES = {
     'pages/team/index',
     // 2026-11-08：兼职「审核」核对页（截图 vs 订单信息，MVP 不留审核状态）
     'pages/review/index',
+    // D103：转出单独立页（已转出不进取件清单两个 tab）
+    'pages/transferred/index',
   ],
   'pkg-admin': [
     'pages/overview/index',
