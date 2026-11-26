@@ -19,6 +19,8 @@
 
 **2026-11-26 顾客订单列表请求代次（TD-100 同类，纯客户端）**：此前 `pages/customer/orders` 用 `loading` 单飞挡并发，请求在飞时切 tab 会吞掉新请求、旧 tab 响应按新 tab 落地。修法：每次加载领代次 + 记录发起 tab（`_loadToken`/`_loadingTab`），`then`/`catch` 共用纯件 `parts/request-guard.isStaleRequest`，旧包整包丢弃；同 tab 在途仍去重、跨 tab 必发。判据：`selftest-performance` O 组 5 条（真值表/两条接线/旧单飞闸移除即红），读数以 `node tools/selftest.js` 为准。**部署（用户执行）**：仅重传体验版；`api` 无改动。**TD-100 其余页面（兼职客户列表、后台各列表）仍开放**，后续接入时把守卫抽到 `utils/` 公共件。
 
+**2026-11-26 兼职客户列表请求代次 + 守卫公共件（TD-100 同类，纯客户端）**：客户列表此前只拦触底追加，onShow/下拉/搜索防抖/切筛选并发时旧响应会覆盖新状态；修法：每次加载领代次 + `then`/`catch` 首行用 `utils/stale-request.isStaleRequest` 比对（旧包整包丢弃），`onUnload` 置 `_unloaded` 并作废旧分片；顾客订单列表同步改用同一公共件并删除页面内副本。判据：`selftest-partner-customers` G 组 4 条、`selftest-performance` O 组 5 条；读数以 `node tools/selftest.js` 为准。**部署（用户执行）**：仅重传体验版；`api` 无改动。**TD-100 剩余：后台各列表**（`pkg-admin/*` 与顾客/兼职订单详情轮询另属一档）。
+
 **2026-11-24 D101 批（有截图即可下单：站点/取件码/运单尾号可留空，兼职审核按截图补全；无截图手填仍严格）工程侧完成，等待用户部署/点检**：口径 CONTRACT §4.2/§5.2/§13 D101 + DECISIONS D101。交付：`order.create` 服务端形态闸（`handlers/order/_parcels-input.normalizeParcels`）对 `images.length>0` 放宽站点/取件码/运单尾号，无截图手填保持「站点 + 码/尾号」严格；客户端 `canSubmit({allowIncomplete})` 同步放宽、非法站点/码/尾号形态闸照旧；识别失败/先手填保留已上传截图与票据（`recognize-aggregate` 失败分支带 `perImage`），订单不降级成无截图手填；下单页 Step1 常驻「只要确保截图上传成功即可下单…」提示、Step2 缺站点/缺码改灰字提示不阻断下一步；提交闸使用同一截图快照（识别结果优先、回退已上传文件）。判据：`selftest-order` **190/190**（M 组 8 条）、`selftest-order-flow` **301/301**（T 组 14 条）；**门禁真实输出（2026-11-24）**：`check.ps1` 4 步退出码 0——`check.js` 39/39、`check-docs` 12/12、零金额 0 命中（白名单 108 项）、`selftest` 39 套 0 失败。**变异电池**（`tools/mutation.ps1`，均首红→SHA256 还原→复绿）：关掉服务端 `hasScreenshot` → M3 首红；关掉客户端 `allowIncomplete` → T2 首红；失败分支去 `perImage` → T7 首红。**部署（用户执行）**：`api` 重部署（共享件无改动）→ 上传体验版 → 真机 QA §AO1~AO4（agent 不代勾）。
 
 

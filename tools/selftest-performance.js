@@ -698,7 +698,7 @@ function register(h) {
 
   // ---------------------------------------------------------------- O. 顾客订单列表请求代次
   asyncSection('O. 顾客订单列表请求代次（切 tab/下拉不再吞请求、旧包不覆盖；2026-11-26 审查修复）', async (t) => {
-    const guard = optionalRequire('pages/customer/orders/parts/request-guard.js');
+    const guard = optionalRequire('utils/stale-request.js');
     const ordersSrc = codeOf('pages/customer/orders/index.js');
     t.check(!!guard && typeof guard.isStaleRequest === 'function', 'O1 合法基线：请求代次纯件存在');
     t.eq(guard ? [

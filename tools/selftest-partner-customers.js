@@ -48,7 +48,9 @@ const {
 const D67_A2_ASSERTIONS = 17;
 // 批31 T4-a：A11b~A11d D68 顾客状态 DTO 下发（3 条）
 const D68_STATUS_ASSERTIONS = 3;
-const TOTAL_ASSERTIONS = EXPECTED_ASSERTIONS + D67_A2_ASSERTIONS + D68_STATUS_ASSERTIONS;
+// 2026-11-26 审查修复：G 兼职客户列表请求代次（4 条）
+const GUARD_ASSERTIONS = 4;
+const TOTAL_ASSERTIONS = EXPECTED_ASSERTIONS + D67_A2_ASSERTIONS + D68_STATUS_ASSERTIONS + GUARD_ASSERTIONS;
 
 const ACTIVE = 'ACTIVE';
 
@@ -763,6 +765,26 @@ async function sectionF(h) {
   });
 }
 
+// ---------------------------------------------------------------- G. 请求代次（TD-100 同类，2026-11-26 审查修复）
+function sectionG(h) {
+  h.section('G. 兼职客户列表请求代次：onShow/搜索/筛选并发时旧包不再覆盖新状态（TD-100 同类）', (t) => {
+    const page = fs.readFileSync(path.join(ROOT, 'pages/partner/customers/index.js'), 'utf8');
+    const guard = require(path.join(ROOT, 'utils/stale-request.js'));
+    t.check(typeof guard.isStaleRequest === 'function', 'G1 合法基线：公共请求代次判据存在（utils/stale-request）');
+    t.eq([
+      guard.isStaleRequest({ token: 2 }, { token: 2 }),
+      guard.isStaleRequest({ token: 3 }, { token: 2 }),
+      guard.isStaleRequest({ token: 3, tab: 'X' }, { token: 3, tab: 'Y' }),
+      guard.isStaleRequest({ token: 3 }, null)
+    ], [false, true, true, true], 'G2 真值表：同代次才落地；旧代次/换 tab/无发起快照一律丢弃');
+    t.eq((page.match(/staleRequest\.isStaleRequest\(/g) || []).length, 2,
+      'G3 接线：then 与 catch 两条落地路径共用同一判据（迟到失败不写错误条）');
+    t.check(page.indexOf('const taken = { token: (this._loadToken || 0) + 1 };') >= 0
+      && page.indexOf('this._unloaded = true;') >= 0,
+      'G4 接线：每次加载领代次、onUnload 置离页位（迟到包不再 setData）');
+  });
+}
+
 // ---------------------------------------------------------------- 注册
 function register(h) {
   h.setExpected(TOTAL_ASSERTIONS);
@@ -773,6 +795,7 @@ function register(h) {
   sectionD(h);
   sectionE(h);
   sectionF(h);
+  sectionG(h);
 }
 
 module.exports = { register, EXPECTED_ASSERTIONS: TOTAL_ASSERTIONS };

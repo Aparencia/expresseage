@@ -9,7 +9,7 @@ const route = require('../../../config/route');
 const ordersView = require('../parts/orders-view');
 const tickerPatch = require('./parts/ticker-patch');
 const pickupTag = require('./parts/pickup-tag');
-const requestGuard = require('./parts/request-guard');
+const requestGuard = require('../../../utils/stale-request');
 const share = require('../../../utils/share/handlers');
 
 const DETAIL_PAGE = '/pkg-customer/pages/order-detail/index';

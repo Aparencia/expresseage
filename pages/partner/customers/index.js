@@ -8,6 +8,7 @@
 const partnerApi = require('../../../api/modules/partner');
 const store = require('../../../store/index');
 const modeGuard = require('../../../api/mode-guard');
+const staleRequest = require('../../../utils/stale-request');
 const listModel = require('./parts/list-model');
 const shareCard = require('../../profile/parts/share-card');
 
@@ -56,6 +57,8 @@ Page({
     this.state = listModel.createState();
     this.searchTimer = null;
     this._chunkToken = 0;
+    this._loadToken = 0;
+    this._unloaded = false;
     this.setData({ partnerNo: this.partnerNoOf(), session: !!store.getViewContext() });
     this.render();
   },
@@ -80,6 +83,9 @@ Page({
   },
 
   onUnload() {
+    // 离页位先置：在飞请求的迟到回调不再 setData；同时作废旧分片追加
+    this._unloaded = true;
+    this._chunkToken = (this._chunkToken || 0) + 1;
     this.clearSearchTimer();
   },
 
@@ -152,10 +158,17 @@ Page({
     if (append && (this.state.loading || this.state.loadingMore)) {
       return Promise.resolve();
     }
+    // 2026-11-26 审查修复（TD-100 同类）：refresh 与在途请求可并发（onShow/下拉/搜索/筛选连点），
+    // 只有最新代次的响应能落地；旧包整包丢弃（不 setData、不改 loading、不写错误条）。
+    const taken = { token: (this._loadToken || 0) + 1 };
+    this._loadToken = taken.token;
     this.state = listModel.beginLoad(this.state, append);
     this.render(this.data.rows);
     return partnerApi.listBindings(query)
       .then((data) => {
+        if (this._unloaded === true || staleRequest.isStaleRequest({ token: this._loadToken }, taken)) {
+          return;
+        }
         const prevRows = this.data.rows;
         const resultOpts = { nowMs: Date.now(), freshAvatars: opts.freshAvatars === true };
         this.state = append
@@ -164,6 +177,9 @@ Page({
         this.render(prevRows);
       })
       .catch((err) => {
+        if (this._unloaded === true || staleRequest.isStaleRequest({ token: this._loadToken }, taken)) {
+          return;
+        }
         this.state = listModel.applyError(this.state, err && err.message);
         this.render(this.data.rows);
       });
